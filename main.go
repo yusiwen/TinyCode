@@ -172,33 +172,32 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				close(inputCh)
 			}()
 
-		replLoop:
-			for {
-				select {
-				case <-gracefulDone:
-					break replLoop
-				case line, ok := <-inputCh:
-					if !ok {
-						break replLoop
+				replLoop:
+					for {
+						fmt.Print("> ")
+						select {
+						case <-gracefulDone:
+							break replLoop
+						case line, ok := <-inputCh:
+							if !ok {
+								break replLoop
+							}
+							line = strings.TrimSpace(line)
+							if line == "" {
+								continue
+							}
+							if line == "/exit" || line == "/quit" {
+								break replLoop
+							}
+							result, err := ag.Run(ctx, line)
+							if err != nil {
+								fmt.Printf("⚠️  Error: %v\n", err)
+								continue
+							}
+							fmt.Println(result)
+							fmt.Println()
+						}
 					}
-					fmt.Print("> ")
-					line = strings.TrimSpace(line)
-					if line == "" {
-						continue
-					}
-					if line == "/exit" || line == "/quit" {
-						break replLoop
-					}
-
-					result, err := ag.Run(ctx, line)
-					if err != nil {
-						fmt.Printf("⚠️  Error: %v\n", err)
-						continue
-					}
-					fmt.Println(result)
-					fmt.Println()
-				}
-			}
 			fmt.Println("\nBye!")
 			return nil
 		},
