@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -12,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chzyer/readline"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
@@ -164,59 +164,56 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			fmt.Printf("🤖 TinyCode (model: %s) — interactive mode\n", provider.Name())
 			fmt.Println("Type your request, or /exit to quit. (Ctrl+C once to save & exit, twice to force)")
 
-			inputCh := make(chan string)
-			go func() {
-				scanner := bufio.NewScanner(os.Stdin)
-				for scanner.Scan() {
-					inputCh <- scanner.Text()
-				}
-				close(inputCh)
-			}()
+			rl, err := readline.New("> ")
+			if err != nil {
+				return err
+			}
+			defer rl.Close()
 
-				replLoop:
-					for {
-						fmt.Print("> ")
-						select {
-						case <-gracefulDone:
-							break replLoop
-						case line, ok := <-inputCh:
-							if !ok {
-								break replLoop
-							}
-							line = strings.TrimSpace(line)
-							if line == "" {
-									continue
-								}
-								if line == "/exit" || line == "/quit" {
-									break replLoop
-								}
-								if line == "/verbose" {
-									ag.Verbose = !ag.Verbose
-									status := "off"
-									if ag.Verbose {
-										status = "on"
-									}
-									fmt.Printf("Verbose mode %s\n", status)
-									continue
-								}
-								if line == "/thinking" {
-									ag.ShowThinking = !ag.ShowThinking
-									status := "off"
-									if ag.ShowThinking {
-										status = "on"
-									}
-									fmt.Printf("Thinking display %s\n", status)
-									continue
-								}
-							result, err := ag.Run(ctx, line)
-							if err != nil {
-								fmt.Printf("⚠️  Error: %v\n", err)
-								continue
-							}
-							fmt.Println(result)
-							fmt.Println()
-						}
+		replLoop:
+			for {
+				select {
+				case <-gracefulDone:
+					break replLoop
+				default:
+				}
+				line, err := rl.Readline()
+				if err != nil {
+					break replLoop
+				}
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				if line == "/exit" || line == "/quit" {
+					break replLoop
+				}
+				if line == "/verbose" {
+					ag.Verbose = !ag.Verbose
+					status := "off"
+					if ag.Verbose {
+						status = "on"
 					}
+					fmt.Printf("Verbose mode %s\n", status)
+					continue
+				}
+				if line == "/thinking" {
+					ag.ShowThinking = !ag.ShowThinking
+					status := "off"
+					if ag.ShowThinking {
+						status = "on"
+					}
+					fmt.Printf("Thinking display %s\n", status)
+					continue
+				}
+				result, err := ag.Run(ctx, line)
+				if err != nil {
+					fmt.Printf("⚠️  Error: %v\n", err)
+					continue
+				}
+				fmt.Println(result)
+				fmt.Println()
+			}
 			fmt.Println("\nBye!")
 			return nil
 		},
