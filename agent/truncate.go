@@ -14,7 +14,10 @@ const (
 	TruncMaxLines = 2000
 
 	// TruncMaxBytes is the max bytes of tool output to return to the LLM.
-	TruncMaxBytes = 50 * 1024 // 50KB
+	// Set high enough (200KB) to pass read_file's max 2000-line output (~100KB)
+	// without re-truncating it. Acts as a safety net for tools that don't
+	// have their own internal truncation (e.g. bash, code_review).
+	TruncMaxBytes = 200 * 1024 // 200KB
 
 	// truncDir is where full truncated output files are saved.
 	truncDir = "/tmp/tinycode/truncated"
