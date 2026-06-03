@@ -27,13 +27,16 @@ type Agent struct {
 	MaxSteps     int
 	MaxTokens    int
 	Verbose      bool // when true, print detailed tool results
+	ShowThinking bool // when true, display reasoning_content from thinking mode
 }
 
 // ANSI color codes for terminal output.
 const (
-	colorCyan  = "\033[36m"
-	colorGray  = "\033[90m"
-	colorReset = "\033[0m"
+	colorCyan    = "\033[36m"
+	colorGray    = "\033[90m"
+	colorYellow  = "\033[33m"
+	colorDim     = "\033[2m"
+	colorReset   = "\033[0m"
 )
 
 // stepName prints the step header (always visible) in cyan.
@@ -45,6 +48,17 @@ func (a *Agent) stepName(format string, args ...any) {
 func (a *Agent) stepDetail(format string, args ...any) {
 	if a.Verbose {
 		fmt.Printf(colorGray+"[tinycode] "+format+colorReset+"\n", args...)
+	}
+}
+
+// showThinking prints the model's reasoning content in dim yellow with | prefix.
+// Only shown when ShowThinking is enabled and reasoning_content is non-empty.
+func (a *Agent) showThinking(reasoning string) {
+	if !a.ShowThinking || reasoning == "" {
+		return
+	}
+	for _, line := range strings.Split(strings.TrimRight(reasoning, "\n"), "\n") {
+		fmt.Printf(colorDim + colorYellow + "| " + line + colorReset + "\n")
 	}
 }
 
@@ -125,6 +139,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
+
+		// Show reasoning content if enabled
+		a.showThinking(resp.ReasoningContent)
 
 		// No tool call → final answer
 		if resp.ToolCall == nil {

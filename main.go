@@ -198,6 +198,15 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 									fmt.Printf("Verbose mode %s\n", status)
 									continue
 								}
+								if line == "/thinking" {
+									ag.ShowThinking = !ag.ShowThinking
+									status := "off"
+									if ag.ShowThinking {
+										status = "on"
+									}
+									fmt.Printf("Thinking display %s\n", status)
+									continue
+								}
 							result, err := ag.Run(ctx, line)
 							if err != nil {
 								fmt.Printf("⚠️  Error: %v\n", err)
