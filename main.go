@@ -184,11 +184,20 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 							}
 							line = strings.TrimSpace(line)
 							if line == "" {
-								continue
-							}
-							if line == "/exit" || line == "/quit" {
-								break replLoop
-							}
+									continue
+								}
+								if line == "/exit" || line == "/quit" {
+									break replLoop
+								}
+								if line == "/verbose" {
+									ag.Verbose = !ag.Verbose
+									status := "off"
+									if ag.Verbose {
+										status = "on"
+									}
+									fmt.Printf("Verbose mode %s\n", status)
+									continue
+								}
 							result, err := ag.Run(ctx, line)
 							if err != nil {
 								fmt.Printf("⚠️  Error: %v\n", err)

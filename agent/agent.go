@@ -26,6 +26,14 @@ type Agent struct {
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int
+	Verbose      bool // when true, print step logs and tool results to stdout
+}
+
+// stepLog prints a verbose message to stdout if Verbose is enabled.
+func (a *Agent) stepLog(format string, args ...any) {
+	if a.Verbose {
+		fmt.Printf("[tinycode] "+format+"\n", args...)
+	}
 }
 
 const (
@@ -123,7 +131,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		}
 
 		// Tool call
-		log.Printf("[step %d] calling tool %s", step, resp.ToolCall.Name)
+		a.stepLog("[step %d] calling tool %s", step, resp.ToolCall.Name)
 
 		messages = append(messages, types.Message{
 			Role:    types.RoleAssistant,
@@ -157,10 +165,17 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			result = fmt.Sprintf("unknown tool: %s", resp.ToolCall.Name)
 		}
 
+		// Verbose: show tool result
+		if len(result) > 500 {
+			a.stepLog("[step %d] tool result (%d chars):\n%s...", step, len(result), result[:500])
+		} else {
+			a.stepLog("[step %d] tool result (%d chars):\n%s", step, len(result), result)
+		}
+
 		// Security intercept: if the tool result contains the security block
 		// marker, bypass the LLM and return directly to the user.
 		if strings.Contains(result, securityBlockMarker) {
-			log.Printf("[step %d] security block detected, bypassing LLM", step)
+			a.stepLog("[step %d] security block detected, bypassing LLM", step)
 			if a.SessionStore != nil {
 				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
 				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: result})
