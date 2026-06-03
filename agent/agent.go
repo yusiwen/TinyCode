@@ -26,11 +26,16 @@ type Agent struct {
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int
-	Verbose      bool // when true, print step logs and tool results to stdout
+	Verbose      bool // when true, print detailed tool results
 }
 
-// stepLog prints a verbose message to stdout if Verbose is enabled.
-func (a *Agent) stepLog(format string, args ...any) {
+// stepName prints the step header (always visible).
+func (a *Agent) stepName(format string, args ...any) {
+	fmt.Printf("[tinycode] "+format+"\n", args...)
+}
+
+// stepDetail prints detailed output only when Verbose is enabled.
+func (a *Agent) stepDetail(format string, args ...any) {
 	if a.Verbose {
 		fmt.Printf("[tinycode] "+format+"\n", args...)
 	}
@@ -131,7 +136,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		}
 
 		// Tool call
-		a.stepLog("[step %d] calling tool %s", step, resp.ToolCall.Name)
+		a.stepName("[step %d] calling tool %s", step, resp.ToolCall.Name)
 
 		messages = append(messages, types.Message{
 			Role:    types.RoleAssistant,
@@ -165,17 +170,17 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			result = fmt.Sprintf("unknown tool: %s", resp.ToolCall.Name)
 		}
 
-		// Verbose: show tool result
+		// Show tool result (verbose only: actual content)
 		if len(result) > 500 {
-			a.stepLog("[step %d] tool result (%d chars):\n%s...", step, len(result), result[:500])
+			a.stepDetail("[step %d] tool result (%d chars):\n%s...", step, len(result), result[:500])
 		} else {
-			a.stepLog("[step %d] tool result (%d chars):\n%s", step, len(result), result)
+			a.stepDetail("[step %d] tool result (%d chars):\n%s", step, len(result), result)
 		}
 
 		// Security intercept: if the tool result contains the security block
 		// marker, bypass the LLM and return directly to the user.
 		if strings.Contains(result, securityBlockMarker) {
-			a.stepLog("[step %d] security block detected, bypassing LLM", step)
+			a.stepName("[step %d] security block detected, bypassing LLM", step)
 			if a.SessionStore != nil {
 				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
 				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: result})
