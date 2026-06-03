@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tool"
@@ -100,6 +101,10 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			})
 			ag.AddTool(skill.NewCodeReviewSkill().ToTool())
 			ag.AddTool(skill.NewGitCommitSkill().ToTool())
+			ag.AddTool(lsp.ToolFactory(lsp.ToolGoToDefinition))
+			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
+			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
+			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
 
 			// Session
 			store := session.NewStore(sessionDir)
