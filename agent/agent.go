@@ -77,7 +77,11 @@ func New(provider LLMProvider) *Agent {
 	return &Agent{
 		Provider:     provider,
 		SystemPrompt: "You are TinyCode, an AI coding assistant. " +
-			"Use tools when needed to accomplish the user's request. Think step by step.",
+			"Use tools when needed to accomplish the user's request. " +
+			"Think step by step. You have a limited budget of 20 tool calls " +
+			"per request — plan which files to read strategically. " +
+			"Use bash (tree/find) to explore project structure first, " +
+			"then read only the key files needed to answer.",
 		MaxSteps:  20,
 		MaxTokens: 4096,
 	}
