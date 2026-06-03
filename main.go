@@ -22,8 +22,11 @@ import (
 )
 
 func init() {
-	// Try loading .env from the project root (next to the binary or current dir)
-	godotenv.Load(filepath.Join(".env"))
+	// .env 加载优先级（高 → 低）：
+	//   1. 进程已有的环境变量（export OPENAI_API_KEY=***）
+	//   2. ./.tinycode/.env（当前工作目录下的项目配置）
+	//   3. ~/.tinycode/.env（用户 home 下的全局配置）
+	godotenv.Load(filepath.Join(".tinycode", ".env"))
 	godotenv.Load(filepath.Join(os.Getenv("HOME"), ".tinycode", ".env"))
 }
 

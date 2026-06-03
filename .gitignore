@@ -26,6 +26,7 @@ go.work.sum
 
 # env file
 .env
+.tinycode/.env
 
 # Editor/IDE
 # .idea/
