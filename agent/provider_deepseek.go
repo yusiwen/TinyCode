@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/yusiwen/tinycode/types"
@@ -112,7 +113,8 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 	authVal := fmt.Sprintf("Bearer %s", p.apiKey)
 	httpReq.Header.Set("Authorization", authVal)
 
-	httpResp, err := http.DefaultClient.Do(httpReq)
+	client := &http.Client{Timeout: 120 * time.Second}
+	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("api call: %w", err)
 	}

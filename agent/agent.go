@@ -62,6 +62,10 @@ func (a *Agent) showThinking(reasoning string) {
 	}
 }
 
+// maxToolResultLen is the maximum characters of a tool result to send back to the LLM.
+// Longer results are truncated with a note.
+const maxToolResultLen = 3000
+
 const (
 	MemoryModeNone     = 0
 	MemoryModeAuto     = 1
@@ -228,9 +232,16 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return result, nil
 		}
 
+		// Truncate very large tool results to avoid ballooning context
+		truncatedResult := result
+		if len(result) > maxToolResultLen {
+			truncatedResult = result[:maxToolResultLen] +
+				fmt.Sprintf("\n... (truncated, %d total chars)", len(result))
+		}
+
 		messages = append(messages, types.Message{
 			Role:        types.RoleTool,
-			Content:     result,
+			Content:     truncatedResult,
 			Name:        resp.ToolCall.Name,
 			ToolCallID:  resp.ToolCall.ID,
 		})
