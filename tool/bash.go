@@ -4,17 +4,40 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
+
+const (
+	// bashMaxLines is the max lines of bash output to return to the LLM.
+	// Beyond this, output is truncated and saved to a file.
+	bashMaxLines = 2000
+
+	// bashMaxBytes is the max bytes of bash output to return to the LLM.
+	bashMaxBytes = 50 * 1024 // 50KB
+
+	// bashTruncDir is where full truncated output files are saved.
+	bashTruncDir = "/tmp/tinycode/truncated"
+)
+
+// uniqueToolFile generates a unique file path for saving truncated tool output.
+func uniqueToolFile() string {
+	os.MkdirAll(bashTruncDir, 0755)
+	return filepath.Join(bashTruncDir,
+		fmt.Sprintf("tool_%x_%x", time.Now().UnixNano(), rand.Uint64()))
+}
 
 // Bash returns a Tool that executes shell commands.
 func Bash() Tool {
 	return Tool{
 		Name:        "bash",
 		Description: "Execute a shell command and return its combined stdout+stderr. " +
-			"Use this to run commands, build code, run tests, install packages, etc.",
+			"Use this to run commands, build code, run tests, install packages, etc. " +
+			"Output is truncated at 2000 lines or 50 KB; use read_file with offset/limit to view the full saved output.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -83,8 +106,50 @@ func Bash() Tool {
 			result := strings.TrimSpace(sb.String())
 			if result == "" {
 				result = "(no output)"
+				return result, nil
 			}
-			return result, nil
+
+			// Truncation check: limit by lines or bytes
+			lines := strings.Split(result, "\n")
+			if len(lines) <= bashMaxLines && len(result) <= bashMaxBytes {
+				return result, nil
+			}
+
+			// Save full output to a unique file
+			filePath := uniqueToolFile()
+			if wErr := os.WriteFile(filePath, []byte(result), 0644); wErr != nil {
+				// If we can't save, just return full output as-is
+				return result, nil
+			}
+
+			// Build head-only preview respecting both limits
+			var preview strings.Builder
+			bytesAccum := 0
+			lineLimit := bashMaxLines
+			if len(lines) < lineLimit {
+				lineLimit = len(lines)
+			}
+			for i := 0; i < lineLimit; i++ {
+				lineSize := len(lines[i]) + 1 // +1 for the newline
+				if bytesAccum+lineSize > bashMaxBytes {
+					break
+				}
+				preview.WriteString(lines[i])
+				preview.WriteString("\n")
+				bytesAccum += lineSize
+			}
+
+			totalBytes := len(result)
+			removedBytes := totalBytes - bytesAccum
+
+			hint := fmt.Sprintf(
+				"\n... (%d bytes truncated) ...\n\n"+
+					"[TRUNCATED] Full output saved to: %s\n"+
+					"Use read_file with offset/limit to view specific sections.\n",
+				removedBytes, filePath,
+			)
+			preview.WriteString(hint)
+			return preview.String(), nil
 		},
 	}
 }
