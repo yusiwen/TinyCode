@@ -216,20 +216,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.stepDetail("[step %d] tool result (%d chars):\n%s", step, len(result), result)
 		}
 
-		// Truncate large tool output (2000 lines / 50KB limit)
-		// Full output is saved to disk; LLM reads remainder via read_file with offset/limit.
-		trunc := TruncateOutput(result)
-		truncatedResult := trunc.Content
-
-		// Security intercept: if truncation saved a file but the tool result is a
-		// security block, don't tell the LLM about the file (no point).
-		if strings.Contains(result, securityBlockMarker) {
-			truncatedResult = result
-		}
-
 		// Security intercept: if the tool result is a security block,
 		// bypass the LLM and return directly to the user.
-		if strings.Contains(result, securityBlockMarker) {
+		// Use HasPrefix to avoid false matches on file content that happens
+		// to contain the marker string (e.g. agent/agent.go defines the constant).
+		isSecurityBlock := strings.HasPrefix(result, "\n"+securityBlockMarker) ||
+			strings.HasPrefix(result, securityBlockMarker)
+
+		if isSecurityBlock {
 			a.stepName("[step %d] security block detected, bypassing LLM", step)
 			if a.SessionStore != nil {
 				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
@@ -238,6 +232,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 			return result, nil
 		}
+
+		// Truncate large tool output (2000 lines / 50KB limit)
+		// Full output is saved to disk; LLM reads remainder via read_file with offset/limit.
+		trunc := TruncateOutput(result)
+		truncatedResult := trunc.Content
 
 		messages = append(messages, types.Message{
 			Role:        types.RoleTool,
