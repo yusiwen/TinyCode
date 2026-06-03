@@ -76,6 +76,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			// Create agent
 			ag := agent.New(provider)
 			ag.MaxSteps = 20
+			ag.ShowThinking = true // show thinking by default
 
 			// Register tools
 			ag.AddTool(agent.Tool{
