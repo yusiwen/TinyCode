@@ -129,14 +129,15 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		// No tool call → final answer
 		if resp.ToolCall == nil {
 			messages = append(messages, types.Message{
-				Role:    types.RoleAssistant,
-				Content: resp.Content,
+				Role:             types.RoleAssistant,
+				Content:          resp.Content,
+				ReasoningContent: resp.ReasoningContent,
 			})
 			// Save to multi-turn history (skip empty responses)
 			if resp.Content != "" {
 				a.History = append(a.History,
 					types.Message{Role: types.RoleUser, Content: prompt},
-					types.Message{Role: types.RoleAssistant, Content: resp.Content},
+					types.Message{Role: types.RoleAssistant, Content: resp.Content, ReasoningContent: resp.ReasoningContent},
 				)
 			}
 			// Persist to disk if session store available
@@ -154,8 +155,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		a.stepName("[step %d] calling tool %s", step, resp.ToolCall.Name)
 
 		messages = append(messages, types.Message{
-			Role:    types.RoleAssistant,
-			Content: "",
+			Role:             types.RoleAssistant,
+			Content:          "",
+			ReasoningContent: resp.ReasoningContent,
 			ToolCall: &types.ToolCall{
 				ID:        resp.ToolCall.ID,
 				Name:      resp.ToolCall.Name,

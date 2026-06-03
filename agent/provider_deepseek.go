@@ -1,8 +1,12 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/yusiwen/tinycode/types"
@@ -12,6 +16,8 @@ import (
 type DeepSeekProvider struct {
 	client *openai.Client
 	model  string
+	apiKey string
+	baseURL string
 }
 
 // NewDeepSeekProvider creates a provider using the given API key and base URL.
@@ -19,8 +25,10 @@ func NewDeepSeekProvider(apiKey, baseURL, model string) *DeepSeekProvider {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = baseURL
 	return &DeepSeekProvider{
-		client: openai.NewClientWithConfig(config),
-		model:  model,
+		client:  openai.NewClientWithConfig(config),
+		model:   model,
+		apiKey:  apiKey,
+		baseURL: baseURL,
 	}
 }
 
@@ -29,17 +37,29 @@ func (p *DeepSeekProvider) Name() string {
 }
 
 func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
-	// Convert types.Message → openai.ChatCompletionMessage
-	openaiMsgs := make([]openai.ChatCompletionMessage, len(req.Messages))
+	// Build messages with reasoning_content support (DeepSeek thinking mode).
+	// go-openai's ChatCompletionMessage doesn't have reasoning_content, so we
+	// use custom serialization via a raw-message struct.
+
+	type rawMsg struct {
+		Role             string             `json:"role"`
+		Content          string             `json:"content"`
+		Name             string             `json:"name,omitempty"`
+		ToolCallID       string             `json:"tool_call_id,omitempty"`
+		ToolCalls        []openai.ToolCall  `json:"tool_calls,omitempty"`
+		ReasoningContent string             `json:"reasoning_content,omitempty"`
+	}
+
+	rawMsgs := make([]rawMsg, len(req.Messages))
 	for i, msg := range req.Messages {
-		m := openai.ChatCompletionMessage{
-			Role:        msg.Role,
-			Content:     msg.Content,
-			Name:        msg.Name,
-			ToolCallID:  msg.ToolCallID,
+		m := rawMsg{
+			Role:             msg.Role,
+			Content:          msg.Content,
+			Name:             msg.Name,
+			ToolCallID:       msg.ToolCallID,
+			ReasoningContent: msg.ReasoningContent,
 		}
 
-		// Assistant tool-call messages: serialize ToolCall
 		if msg.ToolCall != nil {
 			m.ToolCalls = []openai.ToolCall{{
 				ID:   msg.ToolCall.ID,
@@ -51,7 +71,7 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 			}}
 		}
 
-		openaiMsgs[i] = m
+		rawMsgs[i] = m
 	}
 
 	// Convert types.ToolDef → openai.Tool
@@ -67,33 +87,75 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 		}
 	}
 
-	apiReq := openai.ChatCompletionRequest{
-		Model:    p.model,
-		Messages: openaiMsgs,
-		MaxTokens: req.MaxTokens,
+	// Build request body manually for reasoning_content support
+	bodyMap := map[string]any{
+		"model":      p.model,
+		"messages":   rawMsgs,
+		"max_tokens": req.MaxTokens,
 	}
-
 	if len(openaiTools) > 0 {
-		apiReq.Tools = openaiTools
+		bodyMap["tools"] = openaiTools
 	}
 
-	resp, err := p.client.CreateChatCompletion(ctx, apiReq)
+	body, err := json.Marshal(bodyMap)
 	if err != nil {
-		return nil, fmt.Errorf("deepseek api: %w", err)
+		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
-	if len(resp.Choices) == 0 {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		p.baseURL+"/chat/completions",
+		bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	authVal := fmt.Sprintf("Bearer %s", p.apiKey)
+	httpReq.Header.Set("Authorization", authVal)
+
+	httpResp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("api call: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if httpResp.StatusCode != 200 {
+		return nil, fmt.Errorf("deepseek api: status %d: %s", httpResp.StatusCode, string(respBody))
+	}
+
+	// Parse response, extracting reasoning_content
+	var rawResp struct {
+		Choices []struct {
+			Message struct {
+				Role             string             `json:"role"`
+				Content          string             `json:"content"`
+				ToolCalls        []openai.ToolCall  `json:"tool_calls,omitempty"`
+				ReasoningContent string             `json:"reasoning_content,omitempty"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.Unmarshal(respBody, &rawResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	if len(rawResp.Choices) == 0 {
 		return nil, fmt.Errorf("no choices returned")
 	}
 
-	choice := resp.Choices[0]
+	choice := rawResp.Choices[0].Message
 	result := &types.ChatResponse{
-		Content: choice.Message.Content,
+		Content: choice.Content,
 	}
 
-	// Check for tool calls
-	if len(choice.Message.ToolCalls) > 0 {
-		tc := choice.Message.ToolCalls[0]
+	// Capture reasoning_content for thinking mode
+	result.ReasoningContent = choice.ReasoningContent
+
+	if len(choice.ToolCalls) > 0 {
+		tc := choice.ToolCalls[0]
 		result.ToolCall = &types.ToolCall{
 			ID:        tc.ID,
 			Name:      tc.Function.Name,
