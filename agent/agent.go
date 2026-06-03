@@ -63,8 +63,8 @@ func (a *Agent) showThinking(reasoning string) {
 }
 
 // maxToolResultLen is the maximum characters of a tool result to send back to the LLM.
-// Longer results are truncated with a note.
-const maxToolResultLen = 3000
+// Acts as a safety net; individual tools should truncate their own output first.
+const maxToolResultLen = 200000
 
 const (
 	MemoryModeNone     = 0

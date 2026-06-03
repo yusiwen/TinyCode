@@ -16,7 +16,7 @@ import (
 func ReadFile() Tool {
 	return Tool{
 		Name:        "read_file",
-		Description: "Read the contents of a file. Returns file content with line numbers.",
+		Description: "Read the contents of a file. Returns file content with line numbers. Truncated to 2000 lines if the file is larger.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -46,11 +46,21 @@ func ReadFile() Tool {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
 
+			const maxLines = 2000
 			lines := strings.Split(string(data), "\n")
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("=== %s (%d lines) ===\n", path, len(lines)))
-			for i, line := range lines {
-				sb.WriteString(fmt.Sprintf("%5d| %s\n", i+1, line))
+
+			if len(lines) > maxLines {
+				sb.WriteString(fmt.Sprintf("=== %s (%d lines, showing %d) ===\n", path, len(lines), maxLines))
+				for i := 0; i < maxLines; i++ {
+					sb.WriteString(fmt.Sprintf("%5d| %s\n", i+1, lines[i]))
+				}
+				sb.WriteString(fmt.Sprintf("... (truncated, file has %d lines total)\n", len(lines)))
+			} else {
+				sb.WriteString(fmt.Sprintf("=== %s (%d lines) ===\n", path, len(lines)))
+				for i, line := range lines {
+					sb.WriteString(fmt.Sprintf("%5d| %s\n", i+1, line))
+				}
 			}
 			return sb.String(), nil
 		},
