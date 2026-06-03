@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/session"
+	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tool"
 )
 
@@ -97,6 +98,8 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				Parameters:  tool.SearchFiles().Parameters,
 				Execute:     tool.SearchFiles().Execute,
 			})
+			ag.AddTool(skill.NewCodeReviewSkill().ToTool())
+			ag.AddTool(skill.NewGitCommitSkill().ToTool())
 
 			// Session
 			store := session.NewStore(sessionDir)

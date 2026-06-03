@@ -1,6 +1,10 @@
 package skill
 
-import "context"
+import (
+	"context"
+
+	"github.com/yusiwen/tinycode/agent"
+)
 
 // Step is a single step in a skill's execution plan.
 type Step struct {
@@ -37,4 +41,16 @@ func (r *Registry) List() []Skill {
 	cp := make([]Skill, len(r.skills))
 	copy(cp, r.skills)
 	return cp
+}
+
+// ToTool wraps the Skill into an agent.Tool so it can be registered with the agent.
+// The tool's Execute delegates to the Skill's Handler.
+func (s Skill) ToTool() agent.Tool {
+	params := map[string]any{"type": "object"}
+	return agent.Tool{
+		Name:        s.Name,
+		Description: s.Description,
+		Parameters:  params,
+		Execute:     s.Handler,
+	}
 }
