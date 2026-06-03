@@ -16,13 +16,21 @@ import (
 func ReadFile() Tool {
 	return Tool{
 		Name:        "read_file",
-		Description: "Read the contents of a file. Returns file content with line numbers. Truncated to 2000 lines if the file is larger.",
+		Description: "Read the contents of a file. Returns file content with line numbers. Truncated to 2000 lines if the file is larger. Use offset to read beyond the 2000-line limit (e.g., offset=2001 reads from line 2001), and limit to control how many lines to return.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"path": map[string]any{
 					"type":        "string",
 					"description": "Absolute or relative path to the file",
+				},
+				"offset": map[string]any{
+					"type":        "integer",
+					"description": "Starting line number (1-based). Use this to read beyond the 2000-line truncation limit. Default: 1.",
+				},
+				"limit": map[string]any{
+					"type":        "integer",
+					"description": "Maximum number of lines to return (default: 2000, max: 2000).",
 				},
 			},
 			"required": []string{"path"},
@@ -48,19 +56,46 @@ func ReadFile() Tool {
 
 			const maxLines = 2000
 			lines := strings.Split(string(data), "\n")
-			var sb strings.Builder
+			totalLines := len(lines)
 
-			if len(lines) > maxLines {
-				sb.WriteString(fmt.Sprintf("=== %s (%d lines, showing %d) ===\n", path, len(lines), maxLines))
-				for i := 0; i < maxLines; i++ {
-					sb.WriteString(fmt.Sprintf("%5d| %s\n", i+1, lines[i]))
+			startLine := 1
+			if offset, ok := args["offset"].(float64); ok && offset > 1 {
+				startLine = int(offset)
+			}
+
+			readLimit := maxLines
+			if l, ok := args["limit"].(float64); ok && l > 0 {
+				readLimit = int(l)
+				if readLimit > maxLines {
+					readLimit = maxLines
 				}
-				sb.WriteString(fmt.Sprintf("... (truncated, file has %d lines total)\n", len(lines)))
+			}
+
+			// Convert from 1-based to 0-based slice indices
+			startIdx := startLine - 1
+			if startIdx >= totalLines {
+				return fmt.Sprintf("=== %s (requested offset %d but file has only %d lines) ===\n", path, startLine, totalLines), nil
+			}
+
+			endIdx := startIdx + readLimit
+			if endIdx > totalLines {
+				endIdx = totalLines
+			}
+
+			slice := lines[startIdx:endIdx]
+			actualLines := len(slice)
+
+			var sb strings.Builder
+			if startLine == 1 && actualLines == totalLines {
+				sb.WriteString(fmt.Sprintf("=== %s (%d lines) ===\n", path, totalLines))
 			} else {
-				sb.WriteString(fmt.Sprintf("=== %s (%d lines) ===\n", path, len(lines)))
-				for i, line := range lines {
-					sb.WriteString(fmt.Sprintf("%5d| %s\n", i+1, line))
-				}
+				sb.WriteString(fmt.Sprintf("=== %s (%d lines, showing %d-%d) ===\n", path, totalLines, startLine, startLine+actualLines-1))
+			}
+			for i, line := range slice {
+				sb.WriteString(fmt.Sprintf("%5d| %s\n", startLine+i, line))
+			}
+			if endIdx < totalLines {
+				sb.WriteString(fmt.Sprintf("... (truncated, file has %d lines total; use offset=%d to read more)\n", totalLines, endIdx+1))
 			}
 			return sb.String(), nil
 		},
