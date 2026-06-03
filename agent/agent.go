@@ -62,10 +62,6 @@ func (a *Agent) showThinking(reasoning string) {
 	}
 }
 
-// maxToolResultLen is the maximum characters of a tool result to send back to the LLM.
-// Acts as a safety net; individual tools should truncate their own output first.
-const maxToolResultLen = 200000
-
 const (
 	MemoryModeNone     = 0
 	MemoryModeAuto     = 1
@@ -220,8 +216,19 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.stepDetail("[step %d] tool result (%d chars):\n%s", step, len(result), result)
 		}
 
-		// Security intercept: if the tool result contains the security block
-		// marker, bypass the LLM and return directly to the user.
+		// Truncate large tool output (2000 lines / 50KB limit)
+		// Full output is saved to disk; LLM reads remainder via read_file with offset/limit.
+		trunc := TruncateOutput(result)
+		truncatedResult := trunc.Content
+
+		// Security intercept: if truncation saved a file but the tool result is a
+		// security block, don't tell the LLM about the file (no point).
+		if strings.Contains(result, securityBlockMarker) {
+			truncatedResult = result
+		}
+
+		// Security intercept: if the tool result is a security block,
+		// bypass the LLM and return directly to the user.
 		if strings.Contains(result, securityBlockMarker) {
 			a.stepName("[step %d] security block detected, bypassing LLM", step)
 			if a.SessionStore != nil {
@@ -230,13 +237,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				a.SessionStore.Flush()
 			}
 			return result, nil
-		}
-
-		// Truncate very large tool results to avoid ballooning context
-		truncatedResult := result
-		if len(result) > maxToolResultLen {
-			truncatedResult = result[:maxToolResultLen] +
-				fmt.Sprintf("\n... (truncated, %d total chars)", len(result))
 		}
 
 		messages = append(messages, types.Message{

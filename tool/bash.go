@@ -14,8 +14,7 @@ func Bash() Tool {
 	return Tool{
 		Name:        "bash",
 		Description: "Execute a shell command and return its combined stdout+stderr. " +
-			"Use this to run commands, build code, run tests, install packages, etc. " +
-			"Output is truncated at 2000 lines or 50 KB; use read_file with offset/limit to view the full saved output.",
+			"Use this to run commands, build code, run tests, install packages, etc.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -84,12 +83,8 @@ func Bash() Tool {
 			result := strings.TrimSpace(sb.String())
 			if result == "" {
 				result = "(no output)"
-				return result, nil
 			}
-
-			// Truncate large output (2000 lines / 50KB limit)
-			trunc := TruncateOutput(result)
-			return trunc.Content, nil
+			return result, nil
 		},
 	}
 }
