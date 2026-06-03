@@ -46,23 +46,23 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 
 			// Resolve config
 			if apiKey == "" {
-				apiKey = os.Getenv("DEEPSEEK_API_KEY")
-				if apiKey == "" {
-					apiKey = os.Getenv("OPENAI_API_KEY")
-				}
+				apiKey = os.Getenv("OPENAI_API_KEY")
 			}
 			if baseURL == "" {
-				baseURL = os.Getenv("DEEPSEEK_BASE_URL")
+				baseURL = os.Getenv("OPENAI_BASE_URL")
 				if baseURL == "" {
 					baseURL = "https://api.deepseek.com"
 				}
 			}
 			if model == "" {
-				model = "deepseek-chat"
+				model = os.Getenv("OPENAI_MODEL")
+				if model == "" {
+					model = "deepseek-v4-flash"
+				}
 			}
 
 			if apiKey == "" {
-				return fmt.Errorf("API key not set; use --api-key or DEEPSEEK_API_KEY / OPENAI_API_KEY")
+				return fmt.Errorf("API key not set; use --api-key or OPENAI_API_KEY env")
 			}
 
 			// Create provider
@@ -189,9 +189,9 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 		},
 	}
 
-	rootCmd.Flags().StringVar(&apiKey, "api-key", "", "API key (default: DEEPSEEK_API_KEY or OPENAI_API_KEY env)")
-	rootCmd.Flags().StringVar(&baseURL, "base-url", "", "API base URL (default: https://api.deepseek.com or DEEPSEEK_BASE_URL env)")
-	rootCmd.Flags().StringVar(&model, "model", "", "Model name (default: deepseek-chat)")
+	rootCmd.Flags().StringVar(&apiKey, "api-key", "", "API key (default: OPENAI_API_KEY env)")
+	rootCmd.Flags().StringVar(&baseURL, "base-url", "", "API base URL (default: OPENAI_BASE_URL env, fallback https://api.deepseek.com)")
+	rootCmd.Flags().StringVar(&model, "model", "", "Model name (default: OPENAI_MODEL env, fallback deepseek-v4-flash)")
 	rootCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Session storage directory (default: ~/.tinycode/sessions)")
 
 	if err := rootCmd.Execute(); err != nil {
