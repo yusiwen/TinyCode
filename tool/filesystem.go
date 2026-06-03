@@ -154,7 +154,8 @@ func WriteFile() Tool {
 func SearchFiles() Tool {
 	return Tool{
 		Name:        "search_files",
-		Description: "Search for text patterns in files. Supports regex. Returns matching lines with file paths and line numbers. Searches recursively.",
+		Description: "Search for text patterns in files. Supports regex. Returns matching lines with file paths and line numbers. Searches recursively. " +
+			"Output is truncated at 2000 lines or 50 KB; narrow the search with a more specific pattern or file_glob to get all results.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -187,13 +188,21 @@ func SearchFiles() Tool {
 			glob, _ := args["file_glob"].(string)
 
 			// Priority ladder: rg → grep → Go native
+			var searchResult string
+			var searchErr error
 			if isAvailable("rg") {
-				return searchWithRG(ctx, pattern, searchPath, glob)
+				searchResult, searchErr = searchWithRG(ctx, pattern, searchPath, glob)
+			} else if isAvailable("grep") {
+				searchResult, searchErr = searchWithGrep(ctx, pattern, searchPath, glob)
+			} else {
+				searchResult, searchErr = searchGoNative(ctx, pattern, searchPath, glob)
 			}
-			if isAvailable("grep") {
-				return searchWithGrep(ctx, pattern, searchPath, glob)
+			if searchErr != nil {
+				return searchResult, searchErr
 			}
-			return searchGoNative(ctx, pattern, searchPath, glob)
+			// Truncate large search results
+			trunc := TruncateOutput(searchResult)
+			return trunc.Content, nil
 		},
 	}
 }
