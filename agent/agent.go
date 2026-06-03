@@ -170,7 +170,12 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			result = fmt.Sprintf("unknown tool: %s", resp.ToolCall.Name)
 		}
 
-		// Show tool result (verbose only: actual content)
+		// Show tool input and result (verbose only)
+		if len(resp.ToolCall.Arguments) > 500 {
+			a.stepDetail("[step %d] tool input:\n%s...", step, resp.ToolCall.Arguments[:500])
+		} else {
+			a.stepDetail("[step %d] tool input:\n%s", step, resp.ToolCall.Arguments)
+		}
 		if len(result) > 500 {
 			a.stepDetail("[step %d] tool result (%d chars):\n%s...", step, len(result), result[:500])
 		} else {
