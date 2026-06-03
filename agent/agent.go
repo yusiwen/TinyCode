@@ -80,8 +80,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		{Role: types.RoleSystem, Content: a.SystemPrompt},
 	}
 
-	// Load multi-turn history
-	messages = append(messages, a.History...)
+	// Load multi-turn history, skipping messages that would cause API errors
+	for _, msg := range a.History {
+		// Skip assistant messages with neither content nor tool_call
+		if msg.Role == types.RoleAssistant && msg.Content == "" && msg.ToolCall == nil {
+			continue
+		}
+		messages = append(messages, msg)
+	}
 
 	// Inject long-term memory if enabled
 	if a.Memory != nil && a.MemoryMode == MemoryModeAuto {
@@ -126,11 +132,13 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				Role:    types.RoleAssistant,
 				Content: resp.Content,
 			})
-			// Save to multi-turn history
-			a.History = append(a.History,
-				types.Message{Role: types.RoleUser, Content: prompt},
-				types.Message{Role: types.RoleAssistant, Content: resp.Content},
-			)
+			// Save to multi-turn history (skip empty responses)
+			if resp.Content != "" {
+				a.History = append(a.History,
+					types.Message{Role: types.RoleUser, Content: prompt},
+					types.Message{Role: types.RoleAssistant, Content: resp.Content},
+				)
+			}
 			// Persist to disk if session store available
 			if a.SessionStore != nil {
 				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
