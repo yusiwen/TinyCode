@@ -29,15 +29,22 @@ type Agent struct {
 	Verbose      bool // when true, print detailed tool results
 }
 
-// stepName prints the step header (always visible).
+// ANSI color codes for terminal output.
+const (
+	colorCyan  = "\033[36m"
+	colorGray  = "\033[90m"
+	colorReset = "\033[0m"
+)
+
+// stepName prints the step header (always visible) in cyan.
 func (a *Agent) stepName(format string, args ...any) {
-	fmt.Printf("[tinycode] "+format+"\n", args...)
+	fmt.Printf(colorCyan+"[tinycode] "+format+colorReset+"\n", args...)
 }
 
-// stepDetail prints detailed output only when Verbose is enabled.
+// stepDetail prints detailed output in gray, only when Verbose is enabled.
 func (a *Agent) stepDetail(format string, args ...any) {
 	if a.Verbose {
-		fmt.Printf("[tinycode] "+format+"\n", args...)
+		fmt.Printf(colorGray+"[tinycode] "+format+colorReset+"\n", args...)
 	}
 }
 
