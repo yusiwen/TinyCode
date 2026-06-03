@@ -33,6 +33,14 @@ func ReadFile() Tool {
 				return "", fmt.Errorf("path is required")
 			}
 
+			// Layer 2: Path restriction check
+			if err := DefaultSandbox.CheckPath(path); err != nil {
+				if ad, ok := err.(*AccessDenied); ok {
+					return ad.DenyHint(), nil
+				}
+				return "", fmt.Errorf("path check: %w", err)
+			}
+
 			data, err := os.ReadFile(path)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
@@ -73,6 +81,14 @@ func WriteFile() Tool {
 			content, _ := args["content"].(string)
 			if path == "" {
 				return "", fmt.Errorf("path is required")
+			}
+
+			// Layer 2: Path restriction check
+			if err := DefaultSandbox.CheckPath(path); err != nil {
+				if ad, ok := err.(*AccessDenied); ok {
+					return ad.DenyHint(), nil
+				}
+				return "", fmt.Errorf("path check: %w", err)
 			}
 
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

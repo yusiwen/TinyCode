@@ -105,6 +105,10 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
 			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
 			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
+			ag.AddTool(tool.SandboxAllowTool())
+
+			// Set security sandbox: restrict file access to project root
+			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
 			// Session
 			store := session.NewStore(sessionDir)

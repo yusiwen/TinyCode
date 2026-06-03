@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/yusiwen/tinycode/types"
 )
@@ -28,9 +29,13 @@ type Agent struct {
 }
 
 const (
-	MemoryModeNone    = 0
-	MemoryModeAuto    = 1
+	MemoryModeNone     = 0
+	MemoryModeAuto     = 1
 	MemoryModeOnDemand = 2
+
+	// securityBlockMarker is the prefix used by sandbox tools to indicate
+	// a security restriction. The agent loop detects this and bypasses the LLM.
+	securityBlockMarker = "[SECURITY BLOCKED]"
 )
 
 // New creates an Agent with sensible defaults.
@@ -150,6 +155,18 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		}
 		if !found {
 			result = fmt.Sprintf("unknown tool: %s", resp.ToolCall.Name)
+		}
+
+		// Security intercept: if the tool result contains the security block
+		// marker, bypass the LLM and return directly to the user.
+		if strings.Contains(result, securityBlockMarker) {
+			log.Printf("[step %d] security block detected, bypassing LLM", step)
+			if a.SessionStore != nil {
+				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
+				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: result})
+				a.SessionStore.Flush()
+			}
+			return result, nil
 		}
 
 		messages = append(messages, types.Message{

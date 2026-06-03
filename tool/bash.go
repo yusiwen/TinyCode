@@ -39,6 +39,11 @@ func Bash() Tool {
 				return "", fmt.Errorf("command is required")
 			}
 
+			// Layer 1: Command blocklist check
+			if err := DefaultSandbox.CheckCommand(cmdStr); err != nil {
+				return fmt.Sprintf("\n[SECURITY BLOCKED] %s\n\nThis command has been blocked by the security policy.\nTell the user this command was blocked and ask what to do instead.", err), nil
+			}
+
 			timeout := 30
 			if t, ok := args["timeout"].(float64); ok {
 				timeout = int(t)
