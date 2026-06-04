@@ -33,27 +33,27 @@ func TestMessageCreation(t *testing.T) {
 }
 
 func TestMessageWithOptionalFields(t *testing.T) {
-	toolCall := &ToolCall{
-		ID:        "call_123",
-		Name:      "read_file",
-		Arguments: `{"path": "foo.txt"}`,
-	}
-
 	msg := Message{
 		Role:       RoleAssistant,
 		Content:    "",
-		ToolCall:   toolCall,
+		ToolCalls: []ToolCall{
+			{
+				ID:        "call_123",
+				Name:      "read_file",
+				Arguments: `{"path": "foo.txt"}`,
+			},
+		},
 		ToolCallID: "call_123",
 	}
 
-	if msg.ToolCall == nil {
-		t.Fatal("expected ToolCall to be non-nil")
+	if len(msg.ToolCalls) == 0 {
+		t.Fatal("expected ToolCalls to be non-empty")
 	}
-	if msg.ToolCall.ID != "call_123" {
-		t.Fatalf("expected ToolCall.ID 'call_123', got %q", msg.ToolCall.ID)
+	if msg.ToolCalls[0].ID != "call_123" {
+		t.Fatalf("expected ToolCalls[0].ID 'call_123', got %q", msg.ToolCalls[0].ID)
 	}
-	if msg.ToolCall.Name != "read_file" {
-		t.Fatalf("expected ToolCall.Name 'read_file', got %q", msg.ToolCall.Name)
+	if msg.ToolCalls[0].Name != "read_file" {
+		t.Fatalf("expected ToolCalls[0].Name 'read_file', got %q", msg.ToolCalls[0].Name)
 	}
 }
 

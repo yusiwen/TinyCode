@@ -115,8 +115,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 	// Load multi-turn history, skipping messages that would cause API errors
 	for _, msg := range a.History {
-		// Skip assistant messages with neither content nor tool_call
-		if msg.Role == types.RoleAssistant && msg.Content == "" && msg.ToolCall == nil {
+		// Skip assistant messages with neither content nor tool_calls
+		if msg.Role == types.RoleAssistant && msg.Content == "" && len(msg.ToolCalls) == 0 {
 			continue
 		}
 		messages = append(messages, msg)
@@ -172,8 +172,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		// Show reasoning content if enabled
 		a.showThinking(resp.ReasoningContent)
 
-		// No tool call → final answer
-		if resp.ToolCall == nil {
+		// No tool calls → final answer
+		if len(resp.ToolCalls) == 0 {
 			messages = append(messages, types.Message{
 				Role:             types.RoleAssistant,
 				Content:          resp.Content,
@@ -197,89 +197,100 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return resp.Content, nil
 		}
 
-		// Tool call
-		a.stepName("[step %d] calling tool %s", step, resp.ToolCall.Name)
+		// Multiple tool calls in one step
+		toolCalls := resp.ToolCalls
 
-		messages = append(messages, types.Message{
+		// Build tool names string for step header
+		names := make([]string, len(toolCalls))
+		for i, tc := range toolCalls {
+			names[i] = tc.Name
+		}
+		a.stepName("[step %d] calling tools: %s", step, strings.Join(names, ", "))
+
+		// Append assistant message with ALL tool calls
+		assistantMsg := types.Message{
 			Role:             types.RoleAssistant,
 			Content:          "",
 			ReasoningContent: resp.ReasoningContent,
-			ToolCall: &types.ToolCall{
-				ID:        resp.ToolCall.ID,
-				Name:      resp.ToolCall.Name,
-				Arguments: resp.ToolCall.Arguments,
-			},
-		})
+		}
+		assistantMsg.ToolCalls = make([]types.ToolCall, len(toolCalls))
+		for i, tc := range toolCalls {
+			assistantMsg.ToolCalls[i] = types.ToolCall{
+				ID:        tc.ID,
+				Name:      tc.Name,
+				Arguments: tc.Arguments,
+			}
+		}
+		messages = append(messages, assistantMsg)
 
-		var result string
-		found := false
-		for _, t := range a.Tools {
-			if t.Name == resp.ToolCall.Name {
-				// Runtime permission check (defense-in-depth)
-				if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
-					result = fmt.Sprintf("[DENIED] %s is not available in %s mode.",
-						t.Name, a.Config.Name)
+		// Execute each tool call and collect results
+		for _, tc := range toolCalls {
+			var result string
+			found := false
+			for _, t := range a.Tools {
+				if t.Name == tc.Name {
+					// Runtime permission check (defense-in-depth)
+					if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
+						result = fmt.Sprintf("[DENIED] %s is not available in %s mode.",
+							t.Name, a.Config.Name)
+						found = true
+						break
+					}
 					found = true
+					var args map[string]any
+					if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+						result = fmt.Sprintf("error parsing args: %v", err)
+					} else {
+						var execErr error
+						result, execErr = t.Execute(ctx, args)
+						if execErr != nil {
+							result = fmt.Sprintf("error: %v", execErr)
+						}
+					}
 					break
 				}
-				found = true
-				var args map[string]any
-				if err := json.Unmarshal([]byte(resp.ToolCall.Arguments), &args); err != nil {
-					result = fmt.Sprintf("error parsing args: %v", err)
-				} else {
-					var execErr error
-					result, execErr = t.Execute(ctx, args)
-					if execErr != nil {
-						result = fmt.Sprintf("error: %v", execErr)
-					}
+			}
+			if !found {
+				result = fmt.Sprintf("unknown tool: %s", tc.Name)
+			}
+
+			// Show tool input and result (verbose only)
+			if len(tc.Arguments) > 500 {
+				a.stepDetail("[step %d] tool input (%s):\n%s...", step, tc.Name, tc.Arguments[:500])
+			} else {
+				a.stepDetail("[step %d] tool input (%s):\n%s", step, tc.Name, tc.Arguments)
+			}
+			if len(result) > 500 {
+				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s...", step, tc.Name, len(result), result[:500])
+			} else {
+				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s", step, tc.Name, len(result), result)
+			}
+
+			// Security intercept
+			isSecurityBlock := strings.HasPrefix(result, "\n"+securityBlockMarker) ||
+				strings.HasPrefix(result, securityBlockMarker)
+
+			if isSecurityBlock {
+				a.stepName("[step %d] security block detected, bypassing LLM", step)
+				if a.SessionStore != nil {
+					a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
+					a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: result})
+					a.SessionStore.Flush()
 				}
-				break
+				return result, nil
 			}
-		}
-		if !found {
-			result = fmt.Sprintf("unknown tool: %s", resp.ToolCall.Name)
-		}
 
-		// Show tool input and result (verbose only)
-		if len(resp.ToolCall.Arguments) > 500 {
-			a.stepDetail("[step %d] tool input:\n%s...", step, resp.ToolCall.Arguments[:500])
-		} else {
-			a.stepDetail("[step %d] tool input:\n%s", step, resp.ToolCall.Arguments)
+			// Truncate large tool output
+			trunc := TruncateOutput(result)
+			truncatedResult := trunc.Content
+
+			messages = append(messages, types.Message{
+				Role:        types.RoleTool,
+				Content:     truncatedResult,
+				Name:        tc.Name,
+				ToolCallID:  tc.ID,
+			})
 		}
-		if len(result) > 500 {
-			a.stepDetail("[step %d] tool result (%d chars):\n%s...", step, len(result), result[:500])
-		} else {
-			a.stepDetail("[step %d] tool result (%d chars):\n%s", step, len(result), result)
-		}
-
-		// Security intercept: if the tool result is a security block,
-		// bypass the LLM and return directly to the user.
-		// Use HasPrefix to avoid false matches on file content that happens
-		// to contain the marker string (e.g. agent/agent.go defines the constant).
-		isSecurityBlock := strings.HasPrefix(result, "\n"+securityBlockMarker) ||
-			strings.HasPrefix(result, securityBlockMarker)
-
-		if isSecurityBlock {
-			a.stepName("[step %d] security block detected, bypassing LLM", step)
-			if a.SessionStore != nil {
-				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
-				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: result})
-				a.SessionStore.Flush()
-			}
-			return result, nil
-		}
-
-		// Truncate large tool output (2000 lines / 50KB limit)
-		// Full output is saved to disk; LLM reads remainder via read_file with offset/limit.
-		trunc := TruncateOutput(result)
-		truncatedResult := trunc.Content
-
-		messages = append(messages, types.Message{
-			Role:        types.RoleTool,
-			Content:     truncatedResult,
-			Name:        resp.ToolCall.Name,
-			ToolCallID:  resp.ToolCall.ID,
-		})
 		step++
 	}
 

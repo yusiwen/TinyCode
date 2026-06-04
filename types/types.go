@@ -10,12 +10,12 @@ const (
 
 // Message represents a single message in the conversation.
 type Message struct {
-	Role             string    `json:"role"`
-	Content          string    `json:"content"`
-	Name             string    `json:"name,omitempty"`
-	ToolCallID       string    `json:"tool_call_id,omitempty"`
-	ToolCall         *ToolCall `json:"tool_calls,omitempty"`
-	ReasoningContent string    `json:"reasoning_content,omitempty"` // DeepSeek thinking mode
+	Role             string     `json:"role"`
+	Content          string     `json:"content"`
+	Name             string     `json:"name,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"` // DeepSeek thinking mode
 }
 
 // Memory represents a remembered fact.
@@ -39,10 +39,10 @@ type ChatRequest struct {
 	MaxTokens int
 }
 
-// ChatResponse is the LLM's reply — either text or a tool call.
+// ChatResponse is the LLM's reply — either text or tool calls.
 type ChatResponse struct {
 	Content          string
-	ToolCall         *ToolCall
+	ToolCalls        []ToolCall
 	ReasoningContent string // DeepSeek thinking mode
 }
 

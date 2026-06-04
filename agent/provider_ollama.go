@@ -88,13 +88,17 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 			}
 		}
 
-		if msg.ToolCall != nil {
-			m.ToolCalls = []ollamaToolCall{{
-				Function: ollamaFunctionCall{
-					Name:      msg.ToolCall.Name,
-					Arguments: json.RawMessage(msg.ToolCall.Arguments),
-				},
-			}}
+		if len(msg.ToolCalls) > 0 {
+			tcs := make([]ollamaToolCall, len(msg.ToolCalls))
+			for j, tc := range msg.ToolCalls {
+				tcs[j] = ollamaToolCall{
+					Function: ollamaFunctionCall{
+						Name:      tc.Name,
+						Arguments: json.RawMessage(tc.Arguments),
+					},
+				}
+			}
+			m.ToolCalls = tcs
 		}
 
 		ollamaMsgs[i] = m
@@ -155,11 +159,13 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	}
 
 	if len(ollamaResp.Message.ToolCalls) > 0 {
-		tc := ollamaResp.Message.ToolCalls[0]
-		result.ToolCall = &types.ToolCall{
-			ID:        tc.Function.Name,
-			Name:      tc.Function.Name,
-			Arguments: string(tc.Function.Arguments),
+		result.ToolCalls = make([]types.ToolCall, len(ollamaResp.Message.ToolCalls))
+		for i, tc := range ollamaResp.Message.ToolCalls {
+			result.ToolCalls[i] = types.ToolCall{
+				ID:        tc.Function.Name,
+				Name:      tc.Function.Name,
+				Arguments: string(tc.Function.Arguments),
+			}
 		}
 	}
 

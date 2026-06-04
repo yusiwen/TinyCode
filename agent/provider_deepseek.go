@@ -61,15 +61,19 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 			ReasoningContent: msg.ReasoningContent,
 		}
 
-		if msg.ToolCall != nil {
-			m.ToolCalls = []openai.ToolCall{{
-				ID:   msg.ToolCall.ID,
-				Type: "function",
-				Function: openai.FunctionCall{
-					Name:      msg.ToolCall.Name,
-					Arguments: msg.ToolCall.Arguments,
-				},
-			}}
+		if len(msg.ToolCalls) > 0 {
+			tcs := make([]openai.ToolCall, len(msg.ToolCalls))
+			for j, tc := range msg.ToolCalls {
+				tcs[j] = openai.ToolCall{
+					ID:   tc.ID,
+					Type: "function",
+					Function: openai.FunctionCall{
+						Name:      tc.Name,
+						Arguments: tc.Arguments,
+					},
+				}
+			}
+			m.ToolCalls = tcs
 		}
 
 		rawMsgs[i] = m
@@ -157,11 +161,13 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 	result.ReasoningContent = choice.ReasoningContent
 
 	if len(choice.ToolCalls) > 0 {
-		tc := choice.ToolCalls[0]
-		result.ToolCall = &types.ToolCall{
-			ID:        tc.ID,
-			Name:      tc.Function.Name,
-			Arguments: tc.Function.Arguments,
+		result.ToolCalls = make([]types.ToolCall, len(choice.ToolCalls))
+		for i, tc := range choice.ToolCalls {
+			result.ToolCalls[i] = types.ToolCall{
+				ID:        tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			}
 		}
 	}
 
