@@ -1,0 +1,119 @@
+package lsp
+
+import (
+	"log"
+	"os/exec"
+	"path/filepath"
+	"sync"
+)
+
+var (
+	mu           sync.Mutex
+	lspAvailable bool
+	server       *Server
+	client       *Client
+	conn         *Conn
+	projectRoot  string
+)
+
+// Init initializes the LSP system. Call once at startup if LSP is enabled.
+func Init(root string) {
+	mu.Lock()
+	defer mu.Unlock()
+	projectRoot = root
+	// LSP server is started lazily on first TouchFile call
+}
+
+// IsAvailable returns true if LSP is initialized and not broken.
+func IsAvailable() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return lspAvailable && client != nil
+}
+
+// TouchFile opens a file in the LSP server.
+// If withDiagnostics is true, waits up to 5 seconds for diagnostics.
+// Returns diagnostics if any, or nil on timeout/failure.
+func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
+	mu.Lock()
+	// Lazy start: spawn gopls on first use
+	if client == nil {
+		if err := lazyStart(); err != nil {
+			mu.Unlock()
+			return nil, err
+		}
+	}
+	mu.Unlock()
+
+	// Build file URI
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, err
+	}
+	uri := "file://" + absPath
+
+	if !withDiagnostics {
+		// Fire-and-forget: just send didOpen, no waiting
+		if err := client.NotifyOpen(uri); err != nil {
+			log.Printf("LSP warmup: notify open: %v", err)
+		}
+		return nil, nil
+	}
+
+	// With diagnostics: open and wait
+	diags, err := client.Diagnostics(uri, "")
+	if err != nil {
+		log.Printf("LSP diagnostics: %v", err)
+		return nil, nil // silent failure
+	}
+	return diags, nil
+}
+
+// lazyStart starts the LSP server (gopls) on first use.
+func lazyStart() error {
+	cmd := exec.Command("gopls")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		log.Printf("LSP start: stdin pipe: %v", err)
+		lspAvailable = false
+		return err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("LSP start: stdout pipe: %v", err)
+		lspAvailable = false
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("LSP start: gopls not found: %v", err)
+		lspAvailable = false
+		return err
+	}
+
+	conn = NewConn(stdin, stdout)
+	c := NewClient(conn)
+	rootURI := "file://" + projectRoot
+	if err := c.Initialize(rootURI); err != nil {
+		log.Printf("LSP init: %v", err)
+		cmd.Process.Kill()
+		lspAvailable = false
+		return err
+	}
+
+	client = c
+	lspAvailable = true
+	log.Printf("LSP: gopls started for %s", projectRoot)
+	return nil
+}
+
+// NotifyOpen sends a didOpen notification for a file.
+func (c *Client) NotifyOpen(uri string) error {
+	return c.conn.Notify("textDocument/didOpen", map[string]any{
+		"textDocument": map[string]any{
+			"uri":        uri,
+			"languageId": "go",
+			"version":    1,
+		},
+	})
+}

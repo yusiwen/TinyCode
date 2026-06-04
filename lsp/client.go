@@ -3,6 +3,12 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"time"
+)
+
+const (
+	// diagnosticsTimeout is the max time to wait for LSP diagnostics.
+	diagnosticsTimeout = 5 * time.Second
 )
 
 // Client is a high-level LSP client wrapping the JSON-RPC connection.
@@ -144,8 +150,8 @@ func (c *Client) DocumentSymbols(uri string) ([]SymbolInformation, error) {
 }
 
 // Diagnostics returns diagnostics (errors/warnings) for a document.
-// NOTE: LSP diagnostics are pushed from server as notifications, not requested.
-// This method opens a file temporarily and waits for the diagnostic push.
+// Opens the file in LSP and waits up to 5 seconds for diagnostics.
+// Returns nil on timeout or if no diagnostics arrive.
 func (c *Client) Diagnostics(uri string, content string) ([]Diagnostic, error) {
 	// Open the document
 	if err := c.conn.Notify("textDocument/didOpen", map[string]any{
@@ -159,33 +165,20 @@ func (c *Client) Diagnostics(uri string, content string) ([]Diagnostic, error) {
 		return nil, err
 	}
 
-	// Read the pushed textDocument/publishDiagnostics notification
-	body, err := c.conn.readMessage()
-	if err != nil {
-		return nil, err
+	// Wait for diagnostic push notification with timeout
+	timeout := diagnosticsTimeout
+	deadline := time.After(timeout)
+	for {
+		select {
+		case push := <-c.conn.diagChan:
+			if push.URI == uri {
+				return push.Diagnostics, nil
+			}
+			// Different file's diagnostics, continue waiting
+		case <-deadline:
+			return nil, nil // timeout → return empty silently
+		}
 	}
-
-	var base struct {
-		Method string          `json:"method"`
-		Params json.RawMessage `json:"params"`
-	}
-	if err := json.Unmarshal(body, &base); err != nil {
-		return nil, err
-	}
-
-	if base.Method != "textDocument/publishDiagnostics" {
-		return nil, nil
-	}
-
-	var params struct {
-		URI         string       `json:"uri"`
-		Diagnostics []Diagnostic `json:"diagnostics"`
-	}
-	if err := json.Unmarshal(base.Params, &params); err != nil {
-		return nil, err
-	}
-
-	return params.Diagnostics, nil
 }
 
 // Diagnostic represents a single diagnostic (error/warning).

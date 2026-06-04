@@ -14,6 +14,15 @@ type Conn struct {
 	stdin  io.WriteCloser
 	reader *bufio.Reader
 	closed bool
+
+	// diagChan receives publishDiagnostics notifications from the LSP server.
+	// Lazily initialized on first use.
+	diagChan chan diagnosticPush
+}
+
+type diagnosticPush struct {
+	URI         string      `json:"uri"`
+	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
 // NewConn creates a Conn wrapping the given stdin/stdout.
@@ -84,7 +93,7 @@ func (c *Conn) writeMessage(body []byte) error {
 	return nil
 }
 
-// readResponse reads a JSON-RPC response message, skipping notifications.
+// readResponse reads a JSON-RPC response message, routing notifications to handlers.
 func (c *Conn) readResponse() (json.RawMessage, error) {
 	for {
 		body, err := c.readMessage()
@@ -96,6 +105,7 @@ func (c *Conn) readResponse() (json.RawMessage, error) {
 			ID     any             `json:"id"`
 			Result json.RawMessage `json:"result"`
 			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
 			Error  *struct {
 				Code    int    `json:"code"`
 				Message string `json:"message"`
@@ -106,7 +116,23 @@ func (c *Conn) readResponse() (json.RawMessage, error) {
 			return nil, fmt.Errorf("parse response: %w", err)
 		}
 
-		// Skip notifications (no ID, have Method)
+		// Route publishDiagnostics notifications to channel
+		if base.Method == "textDocument/publishDiagnostics" {
+			if c.diagChan == nil {
+				c.diagChan = make(chan diagnosticPush, 10)
+			}
+			var push diagnosticPush
+			if err := json.Unmarshal(base.Params, &push); err == nil {
+				select {
+				case c.diagChan <- push:
+				default:
+					// channel full, drop
+				}
+			}
+			continue
+		}
+
+		// Skip other notifications (no ID, have Method)
 		if base.Method != "" && base.ID == nil {
 			continue
 		}

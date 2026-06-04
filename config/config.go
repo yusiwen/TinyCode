@@ -45,6 +45,12 @@ type Config struct {
 	Truncation   TruncationConfig        `json:"truncation,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	SessionDir   string                  `json:"session_dir,omitempty"`
+	LSP          LSPConfig               `json:"lsp,omitempty"`
+}
+
+// LSPConfig holds LSP integration settings.
+type LSPConfig struct {
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // DefaultConfig returns the hardcoded default configuration.

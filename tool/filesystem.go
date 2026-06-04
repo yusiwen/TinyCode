@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/yusiwen/tinycode/lsp"
 )
 
 // ReadFile returns a Tool that reads file contents.
@@ -97,6 +99,12 @@ func ReadFile() Tool {
 			if endIdx < totalLines {
 				sb.WriteString(fmt.Sprintf("... (truncated, file has %d lines total; use offset=%d to read more)\n", totalLines, endIdx+1))
 			}
+
+			// LSP warmup (fire-and-forget, non-blocking)
+			if lsp.IsAvailable() {
+				go lsp.TouchFile(path, false)
+			}
+
 			return sb.String(), nil
 		},
 	}
@@ -144,7 +152,14 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 
-			return fmt.Sprintf("Wrote %d bytes to %s", len(content), path), nil
+			result := fmt.Sprintf("Wrote %d bytes to %s", len(content), path)
+
+			// LSP post-write validation (non-blocking, silent on failure)
+			if diags, err := lsp.TouchFile(path, true); err == nil && len(diags) > 0 {
+				result += lsp.FormatDiagnostics(path, diags)
+			}
+
+			return result, nil
 		},
 	}
 }

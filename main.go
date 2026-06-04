@@ -87,6 +87,11 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			// Create provider
 			provider := agent.NewDeepSeekProvider(apiKey, baseURL, model)
 
+			// Initialize LSP if enabled
+			if cfg.LSP.Enabled {
+				lsp.Init(cfg.SessionDir)
+			}
+
 			// Create agent registry (registers plan, build, explore agents)
 			reg := agent.NewRegistry()
 			_ = reg // used indirectly via current mode
