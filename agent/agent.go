@@ -41,15 +41,23 @@ const (
 	colorReset   = "\033[0m"
 )
 
+// agentPrefix returns the display prefix based on current mode config.
+func (a *Agent) agentPrefix() string {
+	if a.Config != nil {
+		return "[" + a.Config.Name + "]"
+	}
+	return "[tinycode]"
+}
+
 // stepName prints the step header (always visible) in cyan.
 func (a *Agent) stepName(format string, args ...any) {
-	fmt.Printf(colorCyan+"[tinycode] "+format+colorReset+"\n", args...)
+	fmt.Printf(colorCyan+"%s "+format+colorReset+"\n", append([]any{a.agentPrefix()}, args...)...)
 }
 
 // stepDetail prints detailed output in gray, only when Verbose is enabled.
 func (a *Agent) stepDetail(format string, args ...any) {
 	if a.Verbose {
-		fmt.Printf(colorGray+"[tinycode] "+format+colorReset+"\n", args...)
+		fmt.Printf(colorGray+"%s "+format+colorReset+"\n", append([]any{a.agentPrefix()}, args...)...)
 	}
 }
 
