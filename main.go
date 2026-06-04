@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
@@ -46,27 +47,36 @@ func main() {
 		Long: `TinyCode is an AI-powered coding assistant built in Go.
 It uses a ReAct loop to understand your requests and use tools (shell, filesystem) to accomplish them.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load config file (defaults → ~/.tinycode/config.json → ./.tinycode/config.json)
+			cfg := config.LoadConfig()
+
 			// Expand $HOME in sessionDir
-			if sessionDir == "" {
-				sessionDir = os.ExpandEnv("$HOME/.tinycode/sessions")
+			if sessionDir != "" {
+				cfg.SessionDir = os.ExpandEnv(sessionDir)
 			} else {
-				sessionDir = os.ExpandEnv(sessionDir)
+				cfg.SessionDir = os.ExpandEnv(cfg.SessionDir)
 			}
 
-			// Resolve config
+			// Resolve provider settings: CLI flag → env var → config file → hardcoded default
 			if apiKey == "" {
 				apiKey = os.Getenv("OPENAI_API_KEY")
 			}
 			if baseURL == "" {
 				baseURL = os.Getenv("OPENAI_BASE_URL")
 				if baseURL == "" {
-					baseURL = "https://api.deepseek.com"
+					baseURL = cfg.Provider.BaseURL
+					if baseURL == "" {
+						baseURL = "https://api.deepseek.com"
+					}
 				}
 			}
 			if model == "" {
 				model = os.Getenv("OPENAI_MODEL")
 				if model == "" {
-					model = "deepseek-v4-flash"
+					model = cfg.Provider.Model
+					if model == "" {
+						model = "deepseek-v4-flash"
+					}
 				}
 			}
 
@@ -81,11 +91,39 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			reg := agent.NewRegistry()
 			_ = reg // used indirectly via current mode
 
-			// Create agent (starts with plan mode config)
+			// Apply agent overrides from config file
+			for name, override := range cfg.Agents {
+				if aCfg, err := reg.Get(name); err == nil {
+					if override.MaxSteps > 0 {
+						aCfg.MaxSteps = override.MaxSteps
+					}
+					if override.SystemPrompt != "" {
+						aCfg.SystemPrompt = override.SystemPrompt
+					}
+					if override.AllowedTools != nil {
+						aCfg.AllowedTools = override.AllowedTools
+					}
+					if override.DeniedTools != nil {
+						aCfg.DeniedTools = override.DeniedTools
+					}
+				}
+			}
+
+			// Set default mode from config
+			if cfg.DefaultMode != "" {
+				reg.Set(cfg.DefaultMode)
+			}
+
+			// Create agent (starts with configured default mode)
 			ag := agent.New(provider)
 			ag.Config = reg.Current()
-			ag.MaxSteps = 20
 			ag.ShowThinking = true
+			if cfg.ShowThinking != nil {
+				ag.ShowThinking = *cfg.ShowThinking
+			}
+			if cfg.Verbose != nil {
+				ag.Verbose = *cfg.Verbose
+			}
 
 			// Register tools (all tools, filtered at runtime by agent config)
 			ag.AddTool(agent.Tool{
@@ -124,7 +162,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
 			// Session
-			store := session.NewStore(sessionDir)
+			store := session.NewStore(cfg.SessionDir)
 			sess := store.Create("default")
 			ag.SessionStore = sess
 
@@ -165,7 +203,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
 				}
-				printMarkdown(result)
+				printMarkdown(result, cfg.GlamourStyle)
 				return nil
 			}
 
@@ -276,7 +314,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					fmt.Printf("⚠️  Error: %v\n", err)
 					continue
 				}
-				printMarkdown(result)
+				printMarkdown(result, cfg.GlamourStyle)
 				fmt.Println()
 			}
 			fmt.Println("\nBye!")

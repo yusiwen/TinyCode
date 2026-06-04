@@ -8,12 +8,14 @@ import (
 )
 
 // renderMarkdown converts markdown text to ANSI-formatted terminal output using glamour.
-func renderMarkdown(text string) string {
+func renderMarkdown(text string, style string) string {
 	if text == "" {
 		return text
 	}
-	// Auto-detect style from terminal, fall back to dark
-	rendered, err := glamour.Render(text, "auto")
+	if style == "" {
+		style = "auto"
+	}
+	rendered, err := glamour.Render(text, style)
 	if err != nil {
 		return text // fallback to raw markdown on error
 	}
@@ -21,7 +23,7 @@ func renderMarkdown(text string) string {
 }
 
 // printMarkdown renders markdown text and prints it to stdout.
-func printMarkdown(text string) {
-	rendered := renderMarkdown(text)
+func printMarkdown(text string, style string) {
+	rendered := renderMarkdown(text, style)
 	fmt.Println(rendered)
 }
