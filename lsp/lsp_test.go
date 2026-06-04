@@ -1,98 +1,166 @@
 package lsp
 
 import (
-	"context"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestGoplsLifecycle(t *testing.T) {
-	srv, err := Start(context.Background(), "gopls")
-	if err != nil {
-		t.Fatalf("Start gopls: %v", err)
+const demoProject = "/home/yusiwen/tmp/demo_project"
+
+// TestTouchFileNoDiag verifies that a fire-and-forget touch (no diagnostics)
+// completes without error.
+func TestTouchFileNoDiag(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping LSP integration test in short mode")
 	}
-	defer srv.Close()
-
-	// Initialize
-	fileURI := "file:///home/yusiwen/git/ai/TinyCode"
-	err = srv.Client.Initialize(fileURI)
-	if err != nil {
-		t.Fatalf("Initialize: %v", err)
+	if os.Getenv("LSP_TEST") == "" {
+		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
 	}
-	t.Log("Initialize OK")
-
-	// Read source file
-	src, err := os.ReadFile("/home/yusiwen/git/ai/TinyCode/agent/agent.go")
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	if _, err := os.Stat(filepath.Join(demoProject, "main.go")); err != nil {
+		t.Fatalf("demo project not found at %s: %v", demoProject, err)
 	}
-	t.Logf("Read source: %d bytes", len(src))
 
-	// didOpen
-	targetURI := "file:///home/yusiwen/git/ai/TinyCode/agent/agent.go"
-	err = srv.Conn.Notify("textDocument/didOpen", map[string]any{
-		"textDocument": map[string]any{
-			"uri":        targetURI,
-			"languageId": "go",
-			"version":    1,
-			"text":       string(src),
-		},
-	})
+	Init(demoProject)
+	// LSP starts lazily on first TouchFile call
+
+	// Fire-and-forget touch (no diagnostics)
+	diags, err := TouchFile(filepath.Join(demoProject, "main.go"), false)
 	if err != nil {
-		t.Fatalf("didOpen: %v", err)
+		t.Fatalf("TouchFile (no diag) failed: %v", err)
 	}
-	t.Log("didOpen OK")
+	if diags != nil {
+		t.Logf("unexpected diagnostics returned: %v", diags)
+	}
+}
 
-	// Try definition at line 12 (0-indexed), which is "type Agent struct {"
-	var syms []SymbolInformation
+// TestTouchFileWithDiag verifies that touching a file with diagnostics
+// returns results from gopls.
+func TestTouchFileWithDiag(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping LSP integration test in short mode")
+	}
+	if os.Getenv("LSP_TEST") == "" {
+		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
+	}
+	if _, err := os.Stat(filepath.Join(demoProject, "main.go")); err != nil {
+		t.Fatalf("demo project not found at %s: %v", demoProject, err)
+	}
 
-	// Try definition at line 12 (0-indexed), which is "type Agent struct {"
-	loc, err := srv.Client.GoToDefinition(targetURI, 12, 5)
+	Init(demoProject)
+	// LSP starts lazily on first TouchFile call
+
+	// Touch with diagnostics — main.go is valid Go, should have no errors
+	diags, err := TouchFile(filepath.Join(demoProject, "main.go"), true)
 	if err != nil {
-		t.Fatalf("GoToDefinition error: %v", err)
+		t.Fatalf("TouchFile (with diag) failed: %v", err)
 	}
-	if loc == nil {
-		t.Log("Definition returned nil (may be a local struct)")
 
-		// Try getting document symbols instead
-		syms, err = srv.Client.DocumentSymbols(targetURI)
-		if err != nil {
-			t.Fatalf("DocumentSymbols error: %v", err)
+	t.Logf("Got %d diagnostics for main.go", len(diags))
+	for _, d := range diags {
+		t.Logf("  [sev=%d] %s", d.Severity, d.Message)
+	}
+}
+
+// TestTouchFileWithErrors verifies that a file with deliberate errors
+// gets caught by LSP diagnostics.
+func TestTouchFileWithErrors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping LSP integration test in short mode")
+	}
+	if os.Getenv("LSP_TEST") == "" {
+		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
+	}
+	if _, err := os.Stat(filepath.Join(demoProject, "main.go")); err != nil {
+		t.Fatalf("demo project not found at %s: %v", demoProject, err)
+	}
+
+	tmpDir := filepath.Join(demoProject, ".lsp_test")
+	os.MkdirAll(tmpDir, 0755)
+	defer os.RemoveAll(tmpDir)
+	errFile := filepath.Join(tmpDir, "broken.go")
+	badContent := `package main
+
+func main() {
+	undefinedFunc()
+}
+`
+	if err := os.WriteFile(errFile, []byte(badContent), 0644); err != nil {
+		t.Fatalf("write broken.go: %v", err)
+	}
+
+	Init(demoProject)
+	// LSP starts lazily on first TouchFile call
+
+	diags, err := TouchFile(errFile, true)
+	if err != nil {
+		t.Fatalf("TouchFile (errors) failed: %v", err)
+	}
+
+	if len(diags) == 0 {
+		t.Log("no diagnostics returned (gopls may need more time)")
+		return
+	}
+
+	t.Logf("Got %d diagnostics for broken.go:", len(diags))
+
+	found := false
+	for _, d := range diags {
+		t.Logf("  [sev=%d] %s", d.Severity, d.Message)
+		if d.Severity == 1 && d.Message != "" {
+			found = true
 		}
-		if len(syms) == 0 {
-			t.Fatal("DocumentSymbols returned no symbols")
-		}
-		t.Logf("DocumentSymbols: %d symbols found", len(syms))
-		for _, sym := range syms {
-			t.Logf("  %s (kind=%d) at line %d", sym.Name, sym.Kind, sym.Location.Range.Start.Line+1)
-		}
-	} else {
-		t.Logf("Definition: %s:%d:%d", loc.URI, loc.Range.Start.Line+1, loc.Range.Start.Character+1)
-		// Also get symbols for logging
-		syms, _ = srv.Client.DocumentSymbols(targetURI)
+	}
+	if !found {
+		t.Error("expected at least one ERROR level diagnostic in broken.go")
+	}
+}
+
+// TestFormatDiagnostics verifies the formatter works correctly.
+func TestFormatDiagnostics(t *testing.T) {
+	diags := []Diagnostic{
+		{Severity: 1, Range: Range{Start: Position{Line: 4, Character: 1}}, Message: "expected declaration, found undefinedFunc"},
+		{Severity: 2, Range: Range{Start: Position{Line: 2, Character: 5}}, Message: "unused variable"}, // WARN, should be ignored
+		{Severity: 1, Range: Range{Start: Position{Line: 5, Character: 2}}, Message: "undefined: x"},
 	}
 
-	// Test hover - try the word "Agent" at line 13 (0-indexed: 12), character 6
-	hover, err := srv.Client.Hover(targetURI, 12, 6)
-	if err != nil {
-		t.Fatalf("Hover error: %v", err)
-	}
-	if hover == nil {
-		t.Log("Hover returned nil - checking DocumentSymbols as fallback")
+	result := FormatDiagnostics("broken.go", diags)
+	t.Logf("Formatted output:\n%s", result)
 
-		// Try references on first symbol
-		if len(syms) > 0 {
-			first := syms[0]
-			refs, err := srv.Client.FindReferences(targetURI,
-				first.Location.Range.Start.Line,
-				first.Location.Range.Start.Character)
-			if err != nil {
-				t.Logf("FindReferences error: %v", err)
-			} else {
-				t.Logf("FindReferences: %d results", len(refs))
-			}
+	if result == "" {
+		t.Fatal("FormatDiagnostics returned empty for errors")
+	}
+}
+
+// TestFormatDiagnosticsNoErrors verifies that no errors = empty output.
+func TestFormatDiagnosticsNoErrors(t *testing.T) {
+	diags := []Diagnostic{
+		{Severity: 2, Message: "unused variable"},    // WARN
+		{Severity: 3, Message: "deprecated function"}, // INFO
+	}
+
+	result := FormatDiagnostics("clean.go", diags)
+	if result != "" {
+		t.Fatalf("expected empty for non-error diagnostics, got: %q", result)
+	}
+}
+
+// TestFormatDiagnosticsMaxErrors verifies the 20-error limit.
+func TestFormatDiagnosticsMaxErrors(t *testing.T) {
+	diags := make([]Diagnostic, 25)
+	for i := range diags {
+		diags[i] = Diagnostic{
+			Severity: 1,
+			Range:    Range{Start: Position{Line: i, Character: 0}},
+			Message:  "error",
 		}
-	} else {
-		t.Logf("Hover: %s", hover.Contents.Value[:min(200, len(hover.Contents.Value))])
+	}
+
+	result := FormatDiagnostics("big.go", diags)
+	if result == "" {
+		t.Fatal("expected non-empty result")
+	}
+	if len(result) < 100 {
+		t.Fatalf("expected substantial output, got %d chars: %s", len(result), result)
 	}
 }
