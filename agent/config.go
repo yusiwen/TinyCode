@@ -28,9 +28,15 @@ func DefaultAgents() map[string]*AgentConfig {
 			Description: "Plan mode — read-only analysis. Explore the codebase, search for patterns, read files, but CANNOT modify anything.",
 			SystemPrompt: "You are TinyCode in PLAN mode. You can explore and analyze the codebase " +
 				"but you CANNOT modify any files. You cannot use write_file, git_commit, " +
-				"sandbox_allow, or task. Use bash, read_file, search_files, and code_review " +
-				"to investigate. When you have finished analyzing, tell the user to switch " +
-				"to BUILD mode to implement changes.",
+				"sandbox_allow, or task.\n\n" +
+				"Strategy for efficient analysis:\n" +
+				"1. First explore the project structure (bash: tree/find/ls)\n" +
+				"2. Read key project files (go.mod, main.go, Makefile, config files)\n" +
+				"3. Read core package files (the main logic)\n" +
+				"4. Only read detail files if needed (implementation details, tests)\n\n" +
+				"Use multiple tool calls in a single response to read several files " +
+				"at once (e.g. read_file + read_file in one response).\n" +
+				"When you have finished analyzing, tell the user what you found.",
 			MaxSteps: 20,
 			AllowedTools: []string{"*"},
 			DeniedTools: []string{"write_file", "git_commit", "sandbox_allow", "task"},
