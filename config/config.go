@@ -46,6 +46,7 @@ type Config struct {
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	SessionDir   string                  `json:"session_dir,omitempty"`
 	LSP          LSPConfig               `json:"lsp,omitempty"`
+	LogLevel     string                  `json:"log_level,omitempty"`
 }
 
 // LSPConfig holds LSP integration settings.

@@ -19,6 +19,7 @@ import (
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/tool"
 )
 
@@ -49,6 +50,15 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load config file (defaults → ~/.tinycode/config.json → ./.tinycode/config.json)
 			cfg := config.LoadConfig()
+
+			// Initialize logger
+			logDir := filepath.Join(os.ExpandEnv(cfg.SessionDir), "..", "log")
+			logLevel := tlog.ParseLevel(cfg.LogLevel)
+			if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
+				logLevel = tlog.ParseLevel(envLevel)
+			}
+			tlog.Init(logDir, logLevel)
+			tlog.Info("main", "startup", "version", "dev")
 
 			// Expand $HOME in sessionDir
 			if sessionDir != "" {
