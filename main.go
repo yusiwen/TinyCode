@@ -165,7 +165,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
 				}
-				fmt.Println(result)
+				printMarkdown(result)
 				return nil
 			}
 
@@ -276,7 +276,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					fmt.Printf("⚠️  Error: %v\n", err)
 					continue
 				}
-				fmt.Println(result)
+				printMarkdown(result)
 				fmt.Println()
 			}
 			fmt.Println("\nBye!")
