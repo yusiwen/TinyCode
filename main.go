@@ -30,6 +30,10 @@ func init() {
 	godotenv.Load(filepath.Join(os.Getenv("HOME"), ".tinycode", ".env"))
 }
 
+func modePrompt(mode string) string {
+	return fmt.Sprintf("[%s]> ", mode)
+}
+
 func main() {
 	var apiKey string
 	var baseURL string
@@ -73,12 +77,17 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			// Create provider
 			provider := agent.NewDeepSeekProvider(apiKey, baseURL, model)
 
-			// Create agent
-			ag := agent.New(provider)
-			ag.MaxSteps = 20
-			ag.ShowThinking = true // show thinking by default
+			// Create agent registry (registers plan, build, explore agents)
+			reg := agent.NewRegistry()
+			_ = reg // used indirectly via current mode
 
-			// Register tools
+			// Create agent (starts with plan mode config)
+			ag := agent.New(provider)
+			ag.Config = reg.Current()
+			ag.MaxSteps = 20
+			ag.ShowThinking = true
+
+			// Register tools (all tools, filtered at runtime by agent config)
 			ag.AddTool(agent.Tool{
 				Name:        tool.Bash().Name,
 				Description: tool.Bash().Description,
@@ -161,14 +170,27 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			}
 
 			// Interactive REPL mode
-			fmt.Printf("🤖 TinyCode (model: %s) — interactive mode\n", provider.Name())
-			fmt.Println("Type your request, or /exit to quit. (Ctrl+C once to save & exit, twice to force)")
+			modeName := reg.CurrentName()
+			fmt.Printf("🤖 TinyCode (model: %s) — %s mode\n", provider.Name(), modeName)
+			fmt.Println("Type your request, or /exit to quit. Press Tab to toggle plan/build mode.")
 
-			rl, err := readline.New("> ")
+			// Readline config with Tab completer for mode switching
+			rl, err := readline.New(modePrompt(modeName))
 			if err != nil {
 				return err
 			}
 			defer rl.Close()
+
+			// Tab completion for commands
+			rl.Config.AutoComplete = readline.NewPrefixCompleter(
+				readline.PcItem("/exit"),
+				readline.PcItem("/quit"),
+				readline.PcItem("/verbose"),
+				readline.PcItem("/thinking"),
+				readline.PcItem("/plan"),
+				readline.PcItem("/build"),
+				readline.PcItem("/mode"),
+			)
 
 		replLoop:
 			for {
@@ -177,35 +199,78 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					break replLoop
 				default:
 				}
+
 				line, err := rl.Readline()
 				if err != nil {
 					break replLoop
 				}
+
+				// Switch mode when input is empty (Tab was pressed)
+				if line == "" {
+					reg.Switch()
+					newMode := reg.CurrentName()
+					ag.Config = reg.Current()
+					rl.SetPrompt(modePrompt(newMode))
+					fmt.Printf("Switched to %s mode\n", newMode)
+					rl.Refresh()
+					continue
+				}
+
 				line = strings.TrimSpace(line)
 				if line == "" {
 					continue
 				}
-				if line == "/exit" || line == "/quit" {
-					break replLoop
-				}
-				if line == "/verbose" {
-					ag.Verbose = !ag.Verbose
-					status := "off"
-					if ag.Verbose {
-						status = "on"
+
+				// Handle commands
+				if strings.HasPrefix(line, "/") {
+					switch line {
+					case "/exit", "/quit":
+						break replLoop
+					case "/verbose":
+						ag.Verbose = !ag.Verbose
+						status := "off"
+						if ag.Verbose {
+							status = "on"
+						}
+						fmt.Printf("Verbose mode %s\n", status)
+						continue
+					case "/thinking":
+						ag.ShowThinking = !ag.ShowThinking
+						status := "off"
+						if ag.ShowThinking {
+							status = "on"
+						}
+						fmt.Printf("Thinking display %s\n", status)
+						continue
+					case "/plan":
+						if err := reg.Set("plan"); err != nil {
+							fmt.Printf("⚠️  Error: %v\n", err)
+							continue
+						}
+						ag.Config = reg.Current()
+						rl.SetPrompt(modePrompt("plan"))
+						fmt.Println("Switched to plan mode")
+						rl.Refresh()
+						continue
+					case "/build":
+						if err := reg.Set("build"); err != nil {
+							fmt.Printf("⚠️  Error: %v\n", err)
+							continue
+						}
+						ag.Config = reg.Current()
+						rl.SetPrompt(modePrompt("build"))
+						fmt.Println("Switched to build mode")
+						rl.Refresh()
+						continue
+					case "/mode":
+						fmt.Printf("Current mode: %s\n", reg.CurrentName())
+						continue
+					default:
+						fmt.Printf("Unknown command: %s\n", line)
+						continue
 					}
-					fmt.Printf("Verbose mode %s\n", status)
-					continue
 				}
-				if line == "/thinking" {
-					ag.ShowThinking = !ag.ShowThinking
-					status := "off"
-					if ag.ShowThinking {
-						status = "on"
-					}
-					fmt.Printf("Thinking display %s\n", status)
-					continue
-				}
+
 				result, err := ag.Run(ctx, line)
 				if err != nil {
 					fmt.Printf("⚠️  Error: %v\n", err)

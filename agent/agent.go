@@ -12,6 +12,8 @@ import (
 
 // Agent is the core ReAct loop.
 type Agent struct {
+	Config *AgentConfig // agent mode config (plan/build/subagent)
+
 	Provider   LLMProvider
 	Tools      []Tool
 	Memory     types.MemoryStore
@@ -94,8 +96,13 @@ func (a *Agent) AddTool(t Tool) {
 
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
+	// Resolve system prompt from config, falling back to Agent.SystemPrompt
+	sysPrompt := a.SystemPrompt
+	if a.Config != nil && a.Config.SystemPrompt != "" {
+		sysPrompt = a.Config.SystemPrompt
+	}
 	messages := []types.Message{
-		{Role: types.RoleSystem, Content: a.SystemPrompt},
+		{Role: types.RoleSystem, Content: sysPrompt},
 	}
 
 	// Load multi-turn history, skipping messages that would cause API errors
@@ -125,14 +132,24 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	messages = append(messages, types.Message{Role: types.RoleUser, Content: prompt})
 
 	step := 0
-	for step < a.MaxSteps {
-		toolDefs := make([]types.ToolDef, len(a.Tools))
-		for i, t := range a.Tools {
-			toolDefs[i] = types.ToolDef{
+	// Resolve max steps from config, falling back to Agent.MaxSteps
+	maxSteps := a.MaxSteps
+	if a.Config != nil && a.Config.MaxSteps > 0 {
+		maxSteps = a.Config.MaxSteps
+	}
+
+	for step < maxSteps {
+		// Build tool definitions, filtering by config permissions
+		toolDefs := make([]types.ToolDef, 0, len(a.Tools))
+		for _, t := range a.Tools {
+			if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
+				continue // skip tools not allowed in current mode
+			}
+			toolDefs = append(toolDefs, types.ToolDef{
 				Name:        t.Name,
 				Description: t.Description,
 				Parameters:  t.Parameters,
-			}
+			})
 		}
 
 		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
@@ -190,6 +207,13 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		found := false
 		for _, t := range a.Tools {
 			if t.Name == resp.ToolCall.Name {
+				// Runtime permission check (defense-in-depth)
+				if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
+					result = fmt.Sprintf("[DENIED] %s is not available in %s mode.",
+						t.Name, a.Config.Name)
+					found = true
+					break
+				}
 				found = true
 				var args map[string]any
 				if err := json.Unmarshal([]byte(resp.ToolCall.Arguments), &args); err != nil {
@@ -251,5 +275,5 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		step++
 	}
 
-	return "", fmt.Errorf("exceeded max steps (%d)", a.MaxSteps)
+	return "", fmt.Errorf("exceeded max steps (%d)", maxSteps)
 }
