@@ -12,8 +12,8 @@ func renderMarkdown(text string) string {
 	if text == "" {
 		return text
 	}
-	// Use the "dark" style for terminals with dark backgrounds
-	rendered, err := glamour.Render(text, "dark")
+	// Auto-detect style from terminal, fall back to dark
+	rendered, err := glamour.Render(text, "auto")
 	if err != nil {
 		return text // fallback to raw markdown on error
 	}
