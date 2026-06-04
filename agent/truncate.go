@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yusiwen/tinycode/tlog"
 )
 
 const (
@@ -46,6 +48,8 @@ func TruncateOutput(output string) TruncationResult {
 		// If we can't save, just return full output as-is
 		return TruncationResult{Content: output}
 	}
+
+	tlog.Debug("truncate", "truncated", "file", filePath, "total_lines", len(lines), "total_bytes", len(output))
 
 	// Build head-only preview respecting both limits
 	var preview strings.Builder

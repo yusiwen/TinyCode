@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/yusiwen/tinycode/tlog"
 )
 
 // Bash returns a Tool that executes shell commands.
@@ -41,8 +43,11 @@ func Bash() Tool {
 
 			// Layer 1: Command blocklist check
 			if err := DefaultSandbox.CheckCommand(cmdStr); err != nil {
+				tlog.Warn("shell.bash", "blocked", "command", cmdStr, "reason", err.Error())
 				return fmt.Sprintf("\n[SECURITY BLOCKED] %s\n\nThis command has been blocked by the security policy.\nTell the user this command was blocked and ask what to do instead.", err), nil
 			}
+
+			tlog.Info("shell.bash", "exec", "command", cmdStr)
 
 			timeout := 30
 			if t, ok := args["timeout"].(float64); ok {

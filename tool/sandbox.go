@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/tlog"
 )
 
 // SandboxConfig holds security configuration for tool execution.
@@ -57,6 +58,7 @@ func (sc *SandboxConfig) CheckCommand(cmd string) error {
 	cmdLower := strings.ToLower(strings.TrimSpace(cmd))
 	for _, deny := range sc.CommandDenyList {
 		if strings.Contains(cmdLower, strings.ToLower(deny)) {
+			tlog.Warn("sandbox", "cmd_blocked", "pattern", deny, "cmd", cmd)
 			return fmt.Errorf("command blocked by security policy (matches: %q)", deny)
 		}
 	}

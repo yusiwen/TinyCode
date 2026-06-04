@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -147,6 +148,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	}
 
 	for step < maxSteps {
+		tlog.Info("agent.loop", "llm call", "step", step, "mode", a.agentPrefix())
+
 		// Build tool definitions, filtering by config permissions
 		toolDefs := make([]types.ToolDef, 0, len(a.Tools))
 		for _, t := range a.Tools {
@@ -166,6 +169,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			MaxTokens: a.MaxTokens,
 		})
 		if err != nil {
+			tlog.Error("agent.loop", "llm error", "step", step, "error", err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
 
@@ -174,6 +178,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 		// No tool calls → final answer
 		if len(resp.ToolCalls) == 0 {
+			tlog.Info("agent.loop", "answer", "step", step, "mode", a.agentPrefix(), "resp_len", len(resp.Content))
 			messages = append(messages, types.Message{
 				Role:             types.RoleAssistant,
 				Content:          resp.Content,
@@ -199,6 +204,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 		// Multiple tool calls in one step
 		toolCalls := resp.ToolCalls
+		tlog.Debug("agent.loop", "tool calls", "step", step, "count", len(toolCalls))
 
 		// Build tool names string for step header
 		names := make([]string, len(toolCalls))
@@ -225,6 +231,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 		// Execute each tool call and collect results
 		for _, tc := range toolCalls {
+			tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
 			var result string
 			found := false
 			for _, t := range a.Tools {
@@ -284,6 +291,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			trunc := TruncateOutput(result)
 			truncatedResult := trunc.Content
 
+			tlog.Debug("agent.loop", "tool result", "step", step, "tool", tc.Name, "size", len(result), "truncated", trunc.FullPath != "")
+
 			messages = append(messages, types.Message{
 				Role:        types.RoleTool,
 				Content:     truncatedResult,
@@ -294,5 +303,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		step++
 	}
 
+	tlog.Warn("agent.loop", "max steps", "steps", maxSteps)
 	return "", fmt.Errorf("exceeded max steps (%d)", maxSteps)
 }

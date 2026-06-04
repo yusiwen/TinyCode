@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+
+	"github.com/yusiwen/tinycode/tlog"
 )
 
 var (
@@ -54,6 +56,7 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 
 	if !withDiagnostics {
 		// Fire-and-forget: just send didOpen, no waiting
+		tlog.Debug("lsp.touch", "warmup", "file", absPath)
 		if err := client.NotifyOpen(uri); err != nil {
 			log.Printf("LSP warmup: notify open: %v", err)
 		}
@@ -61,19 +64,23 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	}
 
 	// With diagnostics: open and wait
+	tlog.Debug("lsp.touch", "diagnostics", "file", absPath)
 	diags, err := client.Diagnostics(uri, "")
 	if err != nil {
 		log.Printf("LSP diagnostics: %v", err)
 		return nil, nil // silent failure
 	}
+	tlog.Debug("lsp.touch", "diag_result", "file", absPath, "count", len(diags))
 	return diags, nil
 }
 
 // lazyStart starts the LSP server (gopls) on first use.
 func lazyStart() error {
+	tlog.Info("lsp.touch", "lazy_start", "root", projectRoot)
 	cmd := exec.Command("gopls")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		tlog.Warn("lsp.touch", "stdin_pipe_failed", "error", err.Error())
 		log.Printf("LSP start: stdin pipe: %v", err)
 		lspAvailable = false
 		return err

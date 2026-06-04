@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/sashabaranov/go-openai"
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
-
 // DeepSeekProvider implements LLMProvider for DeepSeek (OpenAI-compatible API).
 type DeepSeekProvider struct {
 	client *openai.Client
@@ -119,7 +119,9 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 
 	client := &http.Client{Timeout: 120 * time.Second}
 	httpResp, err := client.Do(httpReq)
+	start := time.Now()
 	if err != nil {
+		tlog.Error("llm.provider", "api error", "error", err)
 		return nil, fmt.Errorf("api call: %w", err)
 	}
 	defer httpResp.Body.Close()
@@ -129,6 +131,7 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if httpResp.StatusCode != 200 {
+		tlog.Error("llm.provider", "api error", "status", httpResp.StatusCode)
 		return nil, fmt.Errorf("deepseek api: status %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
@@ -169,6 +172,9 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 				Arguments: tc.Function.Arguments,
 			}
 		}
+		tlog.Debug("llm.provider", "response", "model", p.model, "tool_calls", len(result.ToolCalls), "duration", time.Since(start).Round(time.Millisecond).String())
+	} else {
+		tlog.Debug("llm.provider", "response", "model", p.model, "content_len", len(result.Content), "duration", time.Since(start).Round(time.Millisecond).String())
 	}
 
 	return result, nil
