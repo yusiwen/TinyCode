@@ -59,6 +59,8 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			}
 			tlog.Init(logDir, logLevel)
 			tlog.Info("main", "startup", "version", "dev")
+			tlog.Info("main", "config_loaded", "session_dir", cfg.SessionDir, "log_level", cfg.LogLevel)
+			tlog.Info("main", "provider", "name", "deepseek", "model", model)
 
 			// Expand $HOME in sessionDir
 			if sessionDir != "" {
@@ -128,6 +130,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			if cfg.DefaultMode != "" {
 				reg.Set(cfg.DefaultMode)
 			}
+			tlog.Info("main", "default_mode", cfg.DefaultMode, "agents", len(cfg.Agents))
 
 			// Create agent (starts with configured default mode)
 			ag := agent.New(provider)
@@ -177,6 +180,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
 			// Session
+			tlog.Info("main", "session_dir", cfg.SessionDir)
 			store := session.NewStore(cfg.SessionDir)
 			sess := store.Create("default")
 			ag.SessionStore = sess
@@ -264,6 +268,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					newMode := reg.CurrentName()
 					ag.Config = reg.Current()
 					rl.SetPrompt(modePrompt(newMode))
+					tlog.Info("repl", "mode_switch", "to", newMode, "via", "tab")
 					fmt.Printf("Switched to %s mode\n", newMode)
 					rl.Refresh()
 					continue
@@ -285,6 +290,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 						if ag.Verbose {
 							status = "on"
 						}
+						tlog.Info("repl", "verbose", "status", status)
 						fmt.Printf("Verbose mode %s\n", status)
 						continue
 					case "/thinking":
@@ -302,6 +308,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 						}
 						ag.Config = reg.Current()
 						rl.SetPrompt(modePrompt("plan"))
+						tlog.Info("repl", "mode_switch", "to", "plan", "via", "cmd")
 						fmt.Println("Switched to plan mode")
 						rl.Refresh()
 						continue
@@ -312,6 +319,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 						}
 						ag.Config = reg.Current()
 						rl.SetPrompt(modePrompt("build"))
+						tlog.Info("repl", "mode_switch", "to", "build", "via", "cmd")
 						fmt.Println("Switched to build mode")
 						rl.Refresh()
 						continue

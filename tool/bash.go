@@ -86,6 +86,7 @@ func Bash() Tool {
 			}
 
 			result := strings.TrimSpace(sb.String())
+			tlog.Debug("shell.bash", "result", "output_size", len(result), "exit_error", err != nil)
 			if result == "" {
 				result = "(no output)"
 			}
