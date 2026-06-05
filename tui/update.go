@@ -35,27 +35,15 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
 		}
 
-		// Enter on non-empty input
-		if msg.Type == tea.KeyEnter && m.input.Value() != "" {
+		// Submit on Alt+Enter (multi-line mode)
+		if msg.Type == tea.KeyEnter && msg.Alt {
 			if m.status == StatusStreaming {
 				return m, nil
 			}
-			text := strings.TrimSpace(m.input.Value())
-			if text == "" {
-				return m, nil
-			}
-			m.lastInput = text
-			m.input.Reset()
-
-			// Handle commands
-			if strings.HasPrefix(text, "/") {
-				return m.handleCommand(text)
-			}
-
-			return m, func() tea.Msg { return ChatMsg{Text: text} }
+			return m.submitInput()
 		}
 
-		// Ctrl+C to interrupt
+		// Ctrl+C to interrupt or quit
 		if msg.Type == tea.KeyCtrlC {
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
@@ -64,7 +52,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// Pass key to textarea
+		// Pass all other keys to textarea (including Shift+Enter for newline)
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
@@ -144,6 +132,19 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
+	text := strings.TrimSpace(m.input.Value())
+	if text == "" {
+		return m, nil
+	}
+	m.lastInput = text
+	m.input.Reset()
+	if strings.HasPrefix(text, "/") {
+		return m.handleCommand(text)
+	}
+	return m, func() tea.Msg { return ChatMsg{Text: text} }
 }
 
 func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
