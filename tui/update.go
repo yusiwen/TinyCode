@@ -55,6 +55,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Pass all other keys to textarea (including Shift+Enter for newline)
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		m.adjustInputHeight()
 		return m, cmd
 
 	case spinner.TickMsg:
@@ -132,6 +133,28 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+const maxInputHeight = 10
+
+func (m *TuiModel) adjustInputHeight() {
+	lines := m.input.LineCount()
+	wanted := lines
+	if wanted < 1 {
+		wanted = 1
+	}
+	if wanted > maxInputHeight {
+		wanted = maxInputHeight
+	}
+	if m.input.Height() != wanted {
+		val := m.input.Value()
+		m.input.SetHeight(wanted)
+		// Force recalc of internal scroll/view state
+		m.input.SetValue(val)
+		if m.ready {
+			m.vp.Height = m.height - 2 - wanted
+		}
+	}
 }
 
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
