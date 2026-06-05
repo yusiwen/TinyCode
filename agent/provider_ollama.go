@@ -3,13 +3,16 @@
 package agent
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -68,10 +71,6 @@ type ollamaChatRequest struct {
 	Tools    []ollamaTool    `json:"tools,omitempty"`
 }
 
-type ollamaChatResponse struct {
-	Message ollamaMessage `json:"message"`
-}
-
 func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	ollamaMsgs := make([]ollamaMessage, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -119,7 +118,7 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	apiReq := ollamaChatRequest{
 		Model:    p.model,
 		Messages: ollamaMsgs,
-		Stream:   false,
+		Stream:   req.StreamCallbacks != nil,
 		Options:  map[string]any{},
 	}
 
@@ -149,8 +148,26 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		return nil, fmt.Errorf("ollama api: status %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
-	var ollamaResp ollamaChatResponse
-	if err := json.NewDecoder(httpResp.Body).Decode(&ollamaResp); err != nil {
+	if req.StreamCallbacks != nil {
+		return p.ollamaStream(ctx, httpResp.Body, req.StreamCallbacks)
+	}
+
+	return p.ollamaBatch(httpResp.Body)
+}
+
+// ollamaBatch parses a batch (non-streaming) Ollama response.
+func (p *OllamaProvider) ollamaBatch(body io.ReadCloser) (*types.ChatResponse, error) {
+	defer body.Close()
+
+	var ollamaResp struct {
+		Message struct {
+			Role      string           `json:"role"`
+			Content   string           `json:"content"`
+			ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+		} `json:"message"`
+	}
+
+	if err := json.NewDecoder(body).Decode(&ollamaResp); err != nil {
 		return nil, fmt.Errorf("ollama decode: %w", err)
 	}
 
@@ -161,6 +178,76 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	if len(ollamaResp.Message.ToolCalls) > 0 {
 		result.ToolCalls = make([]types.ToolCall, len(ollamaResp.Message.ToolCalls))
 		for i, tc := range ollamaResp.Message.ToolCalls {
+			result.ToolCalls[i] = types.ToolCall{
+				ID:        tc.Function.Name,
+				Name:      tc.Function.Name,
+				Arguments: string(tc.Function.Arguments),
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// ollamaStream parses a streaming Ollama response with real-time callbacks.
+// Each line is JSON: {"message":{"role":"assistant","content":"token"}}
+// Final line: {"done":true}
+func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
+	defer body.Close()
+
+	result := &types.ChatResponse{}
+	var content strings.Builder
+	var toolCalls []ollamaToolCall
+
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		// Parse each line as a streaming response
+		var event struct {
+			Message struct {
+				Role      string           `json:"role,omitempty"`
+				Content   string           `json:"content,omitempty"`
+				ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+			} `json:"message,omitempty"`
+			Done bool `json:"done,omitempty"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			tlog.Debug("ollama.stream", "parse_error", "line", line, "error", err.Error())
+			continue
+		}
+
+		if event.Done {
+			break
+		}
+
+		if event.Message.Content != "" {
+			content.WriteString(event.Message.Content)
+			if cb.OnTextDelta != nil {
+				cb.OnTextDelta(event.Message.Content)
+			}
+		}
+
+		if len(event.Message.ToolCalls) > 0 {
+			toolCalls = event.Message.ToolCalls
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		tlog.Warn("ollama.stream", "scan_error", "error", err.Error())
+	}
+
+	result.Content = content.String()
+
+	if len(toolCalls) > 0 {
+		result.ToolCalls = make([]types.ToolCall, len(toolCalls))
+		for i, tc := range toolCalls {
 			result.ToolCalls[i] = types.ToolCall{
 				ID:        tc.Function.Name,
 				Name:      tc.Function.Name,
