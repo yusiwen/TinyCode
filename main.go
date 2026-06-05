@@ -348,6 +348,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					printMarkdown(result, cfg.GlamourStyle)
 				}
 				fmt.Println()
+				fmt.Println()
 			}
 			fmt.Println("\nBye!")
 			return nil
