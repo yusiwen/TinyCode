@@ -37,9 +37,10 @@ type TuiModel struct {
 // NewTUI creates and returns a new TUI model.
 func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry) *TuiModel {
 	t := textarea.New()
-	t.Placeholder = "Type your request..."
+	t.Placeholder = "Type your request (Alt+Enter to send)..."
 	t.CharLimit = 0
 	t.SetWidth(80)
+	t.ShowLineNumbers = false
 	t.SetHeight(1)
 	t.Focus()
 

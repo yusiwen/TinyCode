@@ -55,7 +55,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Pass all other keys to textarea (including Shift+Enter for newline)
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
-		m.adjustInputHeight()
 		return m, cmd
 
 	case spinner.TickMsg:
@@ -135,26 +134,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-const maxInputHeight = 10
-
-func (m *TuiModel) adjustInputHeight() {
-	lines := m.input.LineCount()
-	wanted := lines
-	if wanted < 1 {
-		wanted = 1
-	}
-	if wanted > maxInputHeight {
-		wanted = maxInputHeight
-	}
-	// Only adjust if height actually changed
-	if m.input.Height() != wanted {
-		m.input.SetHeight(wanted)
-		if m.ready {
-			m.vp.Height = m.height - 2 - wanted
-		}
-	}
-}
-
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
 	if text == "" {
@@ -162,7 +141,6 @@ func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	}
 	m.lastInput = text
 	m.input.Reset()
-	m.adjustInputHeight() // reset to 1 line after submit
 	if strings.HasPrefix(text, "/") {
 		return m.handleCommand(text)
 	}
