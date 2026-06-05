@@ -7,11 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/chzyer/readline"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
@@ -21,19 +20,12 @@ import (
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/tool"
+	"github.com/yusiwen/tinycode/tui"
 )
 
 func init() {
-	// .env 加载优先级（高 → 低）：
-	//   1. 进程已有的环境变量（export OPENAI_API_KEY=***）
-	//   2. ./.tinycode/.env（当前工作目录下的项目配置）
-	//   3. ~/.tinycode/.env（用户 home 下的全局配置）
 	godotenv.Load(filepath.Join(".tinycode", ".env"))
 	godotenv.Load(filepath.Join(os.Getenv("HOME"), ".tinycode", ".env"))
-}
-
-func modePrompt(mode string) string {
-	return "[" + mode + "]> "
 }
 
 func main() {
@@ -46,10 +38,7 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "tinycode",
 		Short: "TinyCode - AI coding agent in Go",
-		Long: `TinyCode is an AI-powered coding assistant built in Go.
-It uses a ReAct loop to understand your requests and use tools (shell, filesystem) to accomplish them.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Load config file (defaults → ~/.tinycode/config.json → ./.tinycode/config.json)
 			cfg := config.LoadConfig()
 
 			// Initialize logger
@@ -63,8 +52,6 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			}
 			tlog.Init(logDir, lvl)
 			tlog.Info("main", "startup", "version", "dev", "log_level", logLevel)
-			tlog.Info("main", "config_loaded", "session_dir", cfg.SessionDir, "log_level", cfg.LogLevel)
-			tlog.Info("main", "provider", "name", "deepseek", "model", model)
 
 			// Expand $HOME in sessionDir
 			if sessionDir != "" {
@@ -73,7 +60,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				cfg.SessionDir = os.ExpandEnv(cfg.SessionDir)
 			}
 
-			// Resolve provider settings: CLI flag → env var → config file → hardcoded default
+			// Resolve provider settings
 			if apiKey == "" {
 				apiKey = os.Getenv("OPENAI_API_KEY")
 			}
@@ -100,18 +87,12 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				return fmt.Errorf("API key not set; use --api-key or OPENAI_API_KEY env")
 			}
 
-			// Create provider
 			provider := agent.NewDeepSeekProvider(apiKey, baseURL, model)
-
-			// Initialize LSP if enabled
 			if cfg.LSP.Enabled {
 				lsp.Init(cfg.SessionDir)
 			}
 
-			// Create agent registry (registers plan, build, explore agents)
 			reg := agent.NewRegistry()
-
-			// Apply agent overrides from config file
 			for name, override := range cfg.Agents {
 				if aCfg, err := reg.Get(name); err == nil {
 					if override.MaxSteps > 0 {
@@ -128,14 +109,10 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					}
 				}
 			}
-
-			// Set default mode from config
 			if cfg.DefaultMode != "" {
 				reg.Set(cfg.DefaultMode)
 			}
-			tlog.Info("main", "default_mode", cfg.DefaultMode, "agents", len(cfg.Agents))
 
-			// Create agent (starts with configured default mode)
 			ag := agent.New(provider)
 			ag.Config = reg.Current()
 			ag.ShowThinking = true
@@ -146,30 +123,22 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				ag.Verbose = *cfg.Verbose
 			}
 
-			// Register tools (all tools, filtered at runtime by agent config)
+			// Register tools
 			ag.AddTool(agent.Tool{
-				Name:        tool.Bash().Name,
-				Description: tool.Bash().Description,
-				Parameters:  tool.Bash().Parameters,
-				Execute:     tool.Bash().Execute,
+				Name: tool.Bash().Name, Description: tool.Bash().Description,
+				Parameters: tool.Bash().Parameters, Execute: tool.Bash().Execute,
 			})
 			ag.AddTool(agent.Tool{
-				Name:        tool.ReadFile().Name,
-				Description: tool.ReadFile().Description,
-				Parameters:  tool.ReadFile().Parameters,
-				Execute:     tool.ReadFile().Execute,
+				Name: tool.ReadFile().Name, Description: tool.ReadFile().Description,
+				Parameters: tool.ReadFile().Parameters, Execute: tool.ReadFile().Execute,
 			})
 			ag.AddTool(agent.Tool{
-				Name:        tool.WriteFile().Name,
-				Description: tool.WriteFile().Description,
-				Parameters:  tool.WriteFile().Parameters,
-				Execute:     tool.WriteFile().Execute,
+				Name: tool.WriteFile().Name, Description: tool.WriteFile().Description,
+				Parameters: tool.WriteFile().Parameters, Execute: tool.WriteFile().Execute,
 			})
 			ag.AddTool(agent.Tool{
-				Name:        tool.SearchFiles().Name,
-				Description: tool.SearchFiles().Description,
-				Parameters:  tool.SearchFiles().Parameters,
-				Execute:     tool.SearchFiles().Execute,
+				Name: tool.SearchFiles().Name, Description: tool.SearchFiles().Description,
+				Parameters: tool.SearchFiles().Parameters, Execute: tool.SearchFiles().Execute,
 			})
 			ag.AddTool(skill.NewCodeReviewSkill().ToTool())
 			ag.AddTool(skill.NewGitCommitSkill().ToTool())
@@ -179,11 +148,8 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
 			ag.AddTool(tool.SandboxAllowTool())
 
-			// Set security sandbox: restrict file access to project root
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
-			// Session
-			tlog.Info("main", "session_dir", cfg.SessionDir)
 			store := session.NewStore(cfg.SessionDir)
 			sess := store.Create("default")
 			ag.SessionStore = sess
@@ -191,20 +157,15 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			// Handle Ctrl+C
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 			gracefulDone := make(chan struct{})
 			go func() {
-				// First Ctrl+C: graceful shutdown
 				<-sigCh
 				fmt.Println("\n\nSaving session...")
 				sess.Flush()
 				cancel()
 				close(gracefulDone)
-
-				// Second Ctrl+C within 2s: force exit
 				select {
 				case <-sigCh:
 					fmt.Println("\nForce exit.")
@@ -231,135 +192,23 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				return nil
 			}
 
-			// Interactive REPL mode
-			modeName := reg.CurrentName()
-			fmt.Printf("🤖 TinyCode (model: %s) — %s mode\n", provider.Name(), modeName)
-			fmt.Println("Type your request, or /exit to quit. Press Tab to toggle plan/build mode.")
-
-			// Readline config
-			rl, err := readline.NewEx(&readline.Config{
-				Prompt: modePrompt(modeName),
-			})
-			if err != nil {
+			// Interactive TUI mode
+			model := tui.NewTUI(ag, &cfg, reg)
+			p := tea.NewProgram(model)
+			if _, err := p.Run(); err != nil {
 				return err
 			}
-			defer rl.Close()
 
-			// Tab completion for commands
-			rl.Config.AutoComplete = readline.NewPrefixCompleter(
-				readline.PcItem("/exit"),
-				readline.PcItem("/quit"),
-				readline.PcItem("/verbose"),
-				readline.PcItem("/thinking"),
-				readline.PcItem("/plan"),
-				readline.PcItem("/build"),
-				readline.PcItem("/mode"),
-			)
-
-		replLoop:
-			for {
-				select {
-				case <-gracefulDone:
-					break replLoop
-				default:
-				}
-
-				line, err := rl.Readline()
-				if err != nil {
-					break replLoop
-				}
-
-				// Switch mode when input is empty (Tab was pressed)
-				if line == "" {
-					reg.Switch()
-					newMode := reg.CurrentName()
-					ag.Config = reg.Current()
-					rl.SetPrompt(modePrompt(newMode))
-					tlog.Info("repl", "mode_switch", "to", newMode, "via", "tab")
-					fmt.Printf("\nSwitched to %s mode\n", newMode)
-					rl.Refresh()
-					continue
-				}
-
-				line = strings.TrimSpace(line)
-				if line == "" {
-					continue
-				}
-
-				// Handle commands
-				if strings.HasPrefix(line, "/") {
-					switch line {
-					case "/exit", "/quit":
-						break replLoop
-					case "/verbose":
-						ag.Verbose = !ag.Verbose
-						status := "off"
-						if ag.Verbose {
-							status = "on"
-						}
-						tlog.Info("repl", "verbose", "status", status)
-						fmt.Printf("Verbose mode %s\n", status)
-						continue
-					case "/thinking":
-						ag.ShowThinking = !ag.ShowThinking
-						status := "off"
-						if ag.ShowThinking {
-							status = "on"
-						}
-						fmt.Printf("Thinking display %s\n", status)
-						continue
-					case "/plan":
-						if err := reg.Set("plan"); err != nil {
-							fmt.Printf("⚠️  Error: %v\n", err)
-							continue
-						}
-						ag.Config = reg.Current()
-						rl.SetPrompt(modePrompt("plan"))
-						tlog.Info("repl", "mode_switch", "to", "plan", "via", "cmd")
-						fmt.Println("Switched to plan mode")
-						rl.Refresh()
-						continue
-					case "/build":
-						if err := reg.Set("build"); err != nil {
-							fmt.Printf("⚠️  Error: %v\n", err)
-							continue
-						}
-						ag.Config = reg.Current()
-						rl.SetPrompt(modePrompt("build"))
-						tlog.Info("repl", "mode_switch", "to", "build", "via", "cmd")
-						fmt.Println("Switched to build mode")
-						rl.Refresh()
-						continue
-					case "/mode":
-						fmt.Printf("Current mode: %s\n", reg.CurrentName())
-						continue
-					default:
-						fmt.Printf("Unknown command: %s\n", line)
-						continue
-					}
-				}
-
-				result, err := ag.Run(ctx, line)
-				if err != nil {
-					fmt.Printf("⚠️  Error: %v\n", err)
-					continue
-				}
-				if !ag.ContentStreamed {
-					printMarkdown(result, cfg.GlamourStyle)
-				}
-				fmt.Println()
-				fmt.Println()
-			}
 			fmt.Println("\nBye!")
 			return nil
 		},
 	}
 
-	rootCmd.Flags().StringVar(&apiKey, "api-key", "", "API key (default: OPENAI_API_KEY env)")
-	rootCmd.Flags().StringVar(&baseURL, "base-url", "", "API base URL (default: OPENAI_BASE_URL env, fallback https://api.deepseek.com)")
-	rootCmd.Flags().StringVar(&model, "model", "", "Model name (default: OPENAI_MODEL env, fallback deepseek-v4-flash)")
-	rootCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Session storage directory (default: ~/.tinycode/sessions)")
-	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: trace, debug, info, warn, error (default: info)")
+	rootCmd.Flags().StringVar(&apiKey, "api-key", "", "API key")
+	rootCmd.Flags().StringVar(&baseURL, "base-url", "", "API base URL")
+	rootCmd.Flags().StringVar(&model, "model", "", "Model name")
+	rootCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Session directory")
+	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)

@@ -31,6 +31,7 @@ type Agent struct {
 	MaxTokens    int
 	Verbose      bool // when true, print detailed tool results
 	ShowThinking bool // when true, display reasoning_content from thinking mode
+	StreamCallbacks *types.StreamCallbacks // optional streaming callbacks (TUI mode)
 
 	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
 }
@@ -56,13 +57,13 @@ func (a *Agent) agentPrefix() string {
 
 // stepName prints the step header (always visible) in cyan.
 func (a *Agent) stepName(format string, args ...any) {
-	fmt.Printf("\n"+colorCyan+"%s "+format+colorReset+"\n", append([]any{a.agentPrefix()}, args...)...)
+	fmt.Print("\n" + colorCyan + a.agentPrefix() + " " + fmt.Sprintf(format, args...) + colorReset + "\n")
 }
 
 // stepDetail prints detailed output in gray, only when Verbose is enabled.
 func (a *Agent) stepDetail(format string, args ...any) {
 	if a.Verbose {
-		fmt.Printf(colorGray+"%s "+format+colorReset+"\n", append([]any{a.agentPrefix()}, args...)...)
+		fmt.Print(colorGray + a.agentPrefix() + " " + fmt.Sprintf(format, args...) + colorReset + "\n")
 	}
 }
 
@@ -73,7 +74,7 @@ func (a *Agent) showThinking(reasoning string) {
 		return
 	}
 	for _, line := range strings.Split(strings.TrimRight(reasoning, "\n"), "\n") {
-		fmt.Printf(colorDim + colorYellow + "| " + line + colorReset + "\n")
+		fmt.Print(colorDim + colorYellow + "| " + line + colorReset + "\n")
 	}
 }
 
@@ -166,27 +167,34 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				Parameters:  t.Parameters,
 			})
 		}
-			// Call provider
-			var reasoningFirstToken bool
-			resp, err := a.Provider.Chat(ctx, types.ChatRequest{
-				Messages:  messages,
-				Tools:     toolDefs,
-				MaxTokens: a.MaxTokens,
-					StreamCallbacks: &types.StreamCallbacks{
-						OnReasoningDelta: func(text string) {
-							if a.ShowThinking {
-								if !reasoningFirstToken {
-									reasoningFirstToken = true
-									fmt.Print(colorDim + colorYellow + thinkingPrefix)
+					// Determine streaming callbacks: use Agent-level if set (TUI mode),
+					// otherwise create default callbacks for terminal display.
+					callbacks := a.StreamCallbacks
+					if callbacks == nil {
+						var reasoningFirstToken bool
+						callbacks = &types.StreamCallbacks{
+							OnReasoningDelta: func(text string) {
+								if a.ShowThinking {
+									if !reasoningFirstToken {
+										reasoningFirstToken = true
+										fmt.Print(colorDim + colorYellow + thinkingPrefix)
+									}
+									fmt.Print(text)
 								}
-								fmt.Print(text)
-							}
-						},
-						OnTextDelta: func(text string) {
-							fmt.Print(colorReset + text)
-						},
-			},
-		})
+							},
+							OnTextDelta: func(text string) {
+								fmt.Print(colorReset + text)
+							},
+						}
+					}
+
+								// Call provider
+								resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+						Messages:  messages,
+						Tools:     toolDefs,
+						MaxTokens: a.MaxTokens,
+						StreamCallbacks: callbacks,
+					})
 		if err != nil {
 			tlog.Error("agent.loop", "llm error", "step", step, "error", err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
