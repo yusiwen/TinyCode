@@ -42,6 +42,8 @@ const (
 	colorYellow  = "\033[33m"
 	colorDim     = "\033[2m"
 	colorReset   = "\033[0m"
+
+	thinkingPrefix = "| "
 )
 
 // agentPrefix returns the display prefix based on current mode config.
@@ -54,7 +56,7 @@ func (a *Agent) agentPrefix() string {
 
 // stepName prints the step header (always visible) in cyan.
 func (a *Agent) stepName(format string, args ...any) {
-	fmt.Printf(colorCyan+"%s "+format+colorReset+"\n", append([]any{a.agentPrefix()}, args...)...)
+	fmt.Printf("\n"+colorCyan+"%s "+format+colorReset+"\n", append([]any{a.agentPrefix()}, args...)...)
 }
 
 // stepDetail prints detailed output in gray, only when Verbose is enabled.
@@ -172,6 +174,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			StreamCallbacks: &types.StreamCallbacks{
 				OnReasoningDelta: func(text string) {
 					if a.ShowThinking {
+						if !a.ContentStreamed {
+							a.ContentStreamed = true
+							fmt.Print(colorDim + colorYellow + thinkingPrefix)
+						}
 						fmt.Print(text)
 					}
 				},
@@ -185,8 +191,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
 
-		// Show reasoning content if enabled — now streamed via OnReasoningDelta callback
-		// a.showThinking(resp.ReasoningContent)
+		// Reasoning already handled by streaming callback (OnReasoningDelta)
 
 		// No tool calls → final answer
 		if len(resp.ToolCalls) == 0 {
