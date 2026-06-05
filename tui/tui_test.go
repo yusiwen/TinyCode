@@ -10,7 +10,10 @@ import (
 
 // newTestTUI creates a TUI model with minimal valid dependencies.
 func newTestTUI() *TuiModel {
-	return NewTUI(agent.New(nil), &config.Config{}, agent.NewRegistry())
+	return NewTUI(agent.New(nil), &config.Config{}, agent.NewRegistry(),
+		agent.NewProviderRegistry([]agent.ProviderRecord{
+			{Name: "test", Provider: &agent.MockProvider{}},
+		}))
 }
 
 func TestInitialInputHeight(t *testing.T) {

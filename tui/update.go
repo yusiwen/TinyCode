@@ -38,16 +38,22 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.providerCursor--
 				}
 			case tea.KeyDown:
-				if m.providerCursor < 2 { // max 2 providers for now
+				if m.providerCursor < m.provReg.Len()-1 {
 					m.providerCursor++
 				}
 			case tea.KeyEnter:
 				// Switch to selected provider
 				idx := m.providerCursor
+				if idx >= 0 && idx < m.provReg.Len() {
+					if err := m.provReg.SwitchTo(idx); err == nil {
+						m.agent.Provider = m.provReg.Current()
+						m.messages = append(m.messages, chatMessage{
+							Role: "system",
+							Content: fmt.Sprintf("Switched to %s", m.provReg.CurrentName()),
+						})
+					}
+				}
 				m.selectingProvider = false
-				m.messages = append(m.messages, chatMessage{
-					Role: "system", Content: fmt.Sprintf("Switched to provider %s", "provider "+fmt.Sprint(idx)),
-				})
 				return m, nil
 			case tea.KeyEscape, tea.KeyCtrlC:
 				m.selectingProvider = false

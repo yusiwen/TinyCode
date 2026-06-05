@@ -15,19 +15,19 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
-// DeepSeekProvider implements LLMProvider for DeepSeek (OpenAI-compatible API).
-type DeepSeekProvider struct {
+// OpenAIProvider implements LLMProvider for OpenAI-compatible APIs (DeepSeek, OpenAI, Groq, etc.).
+type OpenAIProvider struct {
 	client *openai.Client
 	model  string
 	apiKey string
 	baseURL string
 }
 
-// NewDeepSeekProvider creates a provider using the given API key and base URL.
-func NewDeepSeekProvider(apiKey, baseURL, model string) *DeepSeekProvider {
+// NewOpenAIProvider creates a provider for OpenAI-compatible APIs (DeepSeek, OpenAI, etc.).
+func NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = baseURL
-	return &DeepSeekProvider{
+	return &OpenAIProvider{
 		client:  openai.NewClientWithConfig(config),
 		model:   model,
 		apiKey:  apiKey,
@@ -35,11 +35,11 @@ func NewDeepSeekProvider(apiKey, baseURL, model string) *DeepSeekProvider {
 	}
 }
 
-func (p *DeepSeekProvider) Name() string {
+func (p *OpenAIProvider) Name() string {
 	return fmt.Sprintf("deepseek/%s", p.model)
 }
 
-func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	// Build messages with reasoning_content support (DeepSeek thinking mode).
 	type rawMsg struct {
 		Role             string             `json:"role"`
@@ -148,7 +148,7 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 }
 
 // chatBatch parses a batch (non-streaming) response.
-func (p *DeepSeekProvider) chatBatch(ctx context.Context, body io.ReadCloser, start time.Time) (*types.ChatResponse, error) {
+func (p *OpenAIProvider) chatBatch(ctx context.Context, body io.ReadCloser, start time.Time) (*types.ChatResponse, error) {
 	respBody, err := io.ReadAll(body)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
@@ -195,7 +195,7 @@ func (p *DeepSeekProvider) chatBatch(ctx context.Context, body io.ReadCloser, st
 }
 
 // chatStream parses an SSE streaming response with real-time callbacks.
-func (p *DeepSeekProvider) chatStream(ctx context.Context, body io.ReadCloser, start time.Time, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
+func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, start time.Time, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
 	defer body.Close()
 
 	result := &types.ChatResponse{}

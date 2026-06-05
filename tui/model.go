@@ -14,6 +14,7 @@ type TuiModel struct {
 	agent    *agent.Agent
 	config   *config.Config
 	registry *agent.Registry
+	provReg  *agent.ProviderRegistry
 
 	// UI
 	ready    bool
@@ -39,7 +40,7 @@ type TuiModel struct {
 }
 
 // NewTUI creates and returns a new TUI model.
-func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry) *TuiModel {
+func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry) *TuiModel {
 	t := textarea.New()
 	t.Placeholder = "Type your request (Alt+Enter to send)..."
 	t.CharLimit = 0
@@ -55,6 +56,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry) *TuiModel 
 		agent:    ag,
 		config:   cfg,
 		registry: reg,
+		provReg:  provReg,
 		input:    t,
 		spinner:  s,
 		modeName: reg.CurrentName(),

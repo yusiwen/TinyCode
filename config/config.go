@@ -13,11 +13,13 @@ import (
 	"path/filepath"
 )
 
-// ProviderConfig holds LLM provider settings.
-type ProviderConfig struct {
-	Name   string `json:"name,omitempty"`
-	Model  string `json:"model,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
+// ProviderRecordConfig holds one provider definition.
+type ProviderRecordConfig struct {
+	Name      string `json:"name,omitempty"`
+	Type      string `json:"type,omitempty"`       // "openai" or "ollama"
+	Model     string `json:"model,omitempty"`
+	BaseURL   string `json:"base_url,omitempty"`
+	APIKeyEnv string `json:"api_key_env,omitempty"` // env var name for API key
 }
 
 // TruncationConfig holds tool output truncation settings.
@@ -35,23 +37,23 @@ type AgentOverride struct {
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 }
 
+// LSPConfig holds LSP integration settings.
+type LSPConfig struct {
+	Enabled bool `json:"enabled,omitempty"`
+}
+
 // Config is the top-level configuration structure.
 type Config struct {
 	DefaultMode  string                  `json:"default_mode,omitempty"`
 	GlamourStyle string                  `json:"glamour_style,omitempty"`
 	ShowThinking *bool                   `json:"show_thinking,omitempty"`
 	Verbose      *bool                   `json:"verbose,omitempty"`
-	Provider     ProviderConfig          `json:"provider,omitempty"`
+	Providers    []ProviderRecordConfig  `json:"providers,omitempty"`
 	Truncation   TruncationConfig        `json:"truncation,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	SessionDir   string                  `json:"session_dir,omitempty"`
 	LSP          LSPConfig               `json:"lsp,omitempty"`
 	LogLevel     string                  `json:"log_level,omitempty"`
-}
-
-// LSPConfig holds LSP integration settings.
-type LSPConfig struct {
-	Enabled bool `json:"enabled,omitempty"`
 }
 
 // DefaultConfig returns the hardcoded default configuration.
@@ -62,9 +64,14 @@ func DefaultConfig() Config {
 		DefaultMode:  "plan",
 		GlamourStyle: "auto",
 		ShowThinking: &showThinking,
-		Provider: ProviderConfig{
-			Name:   "deepseek",
-			BaseURL: "https://api.deepseek.com",
+		Providers: []ProviderRecordConfig{
+			{
+				Name:      "deepseek",
+				Type:      "openai",
+				Model:     "deepseek-v4-flash",
+				BaseURL:   "https://api.deepseek.com",
+				APIKeyEnv: "OPENAI_API_KEY",
+			},
 		},
 		Truncation: TruncationConfig{
 			MaxLines:  2000,
@@ -102,7 +109,6 @@ func loadFile(path string) (Config, error) {
 }
 
 // merge applies overrides from src into dst (non-zero fields override).
-// It returns a new Config without modifying dst or src.
 func merge(dst, src Config) Config {
 	if src.DefaultMode != "" {
 		dst.DefaultMode = src.DefaultMode
@@ -116,14 +122,8 @@ func merge(dst, src Config) Config {
 	if src.Verbose != nil {
 		dst.Verbose = src.Verbose
 	}
-	if src.Provider.Name != "" {
-		dst.Provider.Name = src.Provider.Name
-	}
-	if src.Provider.Model != "" {
-		dst.Provider.Model = src.Provider.Model
-	}
-	if src.Provider.BaseURL != "" {
-		dst.Provider.BaseURL = src.Provider.BaseURL
+	if len(src.Providers) > 0 {
+		dst.Providers = src.Providers
 	}
 	if src.Truncation.MaxLines > 0 {
 		dst.Truncation.MaxLines = src.Truncation.MaxLines
@@ -136,6 +136,12 @@ func merge(dst, src Config) Config {
 	}
 	if src.SessionDir != "" {
 		dst.SessionDir = src.SessionDir
+	}
+	if src.LogLevel != "" {
+		dst.LogLevel = src.LogLevel
+	}
+	if src.LSP.Enabled {
+		dst.LSP.Enabled = true
 	}
 
 	// Merge agent overrides

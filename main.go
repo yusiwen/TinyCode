@@ -51,7 +51,7 @@ func main() {
 				lvl = tlog.ParseLevel(logLevel)
 			}
 			tlog.Init(logDir, lvl)
-			tlog.Info("main", "startup", "version", "dev", "log_level", logLevel)
+			tlog.Info("main", "startup", "version", "dev")
 
 			// Expand $HOME in sessionDir
 			if sessionDir != "" {
@@ -60,34 +60,50 @@ func main() {
 				cfg.SessionDir = os.ExpandEnv(cfg.SessionDir)
 			}
 
-			// Resolve provider settings
-			if apiKey == "" {
-				apiKey = os.Getenv("OPENAI_API_KEY")
-			}
-			if baseURL == "" {
-				baseURL = os.Getenv("OPENAI_BASE_URL")
-				if baseURL == "" {
-					baseURL = cfg.Provider.BaseURL
-					if baseURL == "" {
-						baseURL = "https://api.deepseek.com"
-					}
+			// Build provider registry from config
+			var records []agent.ProviderRecord
+			for i, pc := range cfg.Providers {
+				key := os.Getenv(pc.APIKeyEnv)
+				// CLI flags override the first provider's key (backward compat)
+				if i == 0 && apiKey != "" {
+					key = apiKey
 				}
-			}
-			if model == "" {
-				model = os.Getenv("OPENAI_MODEL")
-				if model == "" {
-					model = cfg.Provider.Model
-					if model == "" {
-						model = "deepseek-v4-flash"
-					}
+				modelName := pc.Model
+				if i == 0 && model != "" {
+					modelName = model
 				}
+				base := pc.BaseURL
+				if i == 0 && baseURL != "" {
+					base = baseURL
+				}
+				if base == "" {
+					base = "https://api.deepseek.com"
+				}
+
+				var prov agent.LLMProvider
+				switch pc.Type {
+				case "ollama":
+					prov = agent.NewOllamaProvider(base, modelName)
+				default:
+					// "openai" or unknown — use OpenAI-compatible provider
+					prov = agent.NewOpenAIProvider(key, base, modelName)
+				}
+				records = append(records, agent.ProviderRecord{
+					Name:     pc.Name,
+					Provider: prov,
+				})
 			}
 
-			if apiKey == "" {
-				return fmt.Errorf("API key not set; use --api-key or OPENAI_API_KEY env")
+			// Fallback: if no providers configured, create a default one
+			if len(records) == 0 {
+				prov := agent.NewOpenAIProvider(apiKey, baseURL, model)
+				records = append(records, agent.ProviderRecord{
+					Name: "default", Provider: prov,
+				})
 			}
 
-			provider := agent.NewDeepSeekProvider(apiKey, baseURL, model)
+			provReg := agent.NewProviderRegistry(records)
+
 			if cfg.LSP.Enabled {
 				lsp.Init(cfg.SessionDir)
 			}
@@ -113,8 +129,9 @@ func main() {
 				reg.Set(cfg.DefaultMode)
 			}
 
-			ag := agent.New(provider)
-			ag.Config = reg.Current()
+			ag := agent.New(provReg.Current())
+			aCfg := reg.Current()
+			ag.Config = aCfg
 			ag.ShowThinking = true
 			if cfg.ShowThinking != nil {
 				ag.ShowThinking = *cfg.ShowThinking
@@ -181,7 +198,7 @@ func main() {
 
 			if prompt != "" {
 				// One-shot mode
-				fmt.Printf("🤖 TinyCode (model: %s)\n", provider.Name())
+				fmt.Printf("🤖 TinyCode (model: %s)\n", provReg.CurrentName())
 				result, err := ag.Run(ctx, prompt)
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
@@ -193,7 +210,7 @@ func main() {
 			}
 
 			// Interactive TUI mode
-			model := tui.NewTUI(ag, &cfg, reg)
+			model := tui.NewTUI(ag, &cfg, reg, provReg)
 			p := tea.NewProgram(model)
 			if _, err := p.Run(); err != nil {
 				return err

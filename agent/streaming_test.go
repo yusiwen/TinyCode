@@ -23,7 +23,7 @@ func TestDeepSeekChatStream_Text(t *testing.T) {
 		OnTextDelta: func(s string) { textParts = append(textParts, s) },
 	}
 
-	provider := &DeepSeekProvider{model: "test-model"}
+	provider := &OpenAIProvider{model: "test-model"}
 	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), cb)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
@@ -53,7 +53,7 @@ func TestDeepSeekChatStream_Reasoning(t *testing.T) {
 		OnTextDelta:      func(s string) { textParts = append(textParts, s) },
 	}
 
-	provider := &DeepSeekProvider{model: "test-model"}
+	provider := &OpenAIProvider{model: "test-model"}
 	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), cb)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
@@ -75,7 +75,7 @@ func TestDeepSeekChatStream_ToolCalls(t *testing.T) {
 		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"path\\\":\\\"main.go\\\"}\"}}]}}]}\n\n" +
 		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
 		"data: [DONE]\n"
-	provider := &DeepSeekProvider{model: "test-model"}
+	provider := &OpenAIProvider{model: "test-model"}
 	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
@@ -95,7 +95,7 @@ func TestDeepSeekChatStream_EmptyResponse(t *testing.T) {
 	input := "" +
 		"data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n" +
 		"data: [DONE]\n"
-	provider := &DeepSeekProvider{model: "test-model"}
+	provider := &OpenAIProvider{model: "test-model"}
 	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
@@ -116,7 +116,7 @@ func TestDeepSeekChatStream_MultipleToolCalls(t *testing.T) {
 		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"{\\\"cmd\\\":\\\"ls\\\"}\"}}]}}]}\n\n" +
 		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
 		"data: [DONE]\n"
-	provider := &DeepSeekProvider{model: "test-model"}
+	provider := &OpenAIProvider{model: "test-model"}
 	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
@@ -199,7 +199,7 @@ func TestOllamaStream_Empty(t *testing.T) {
 func TestAgentEmptyResponseRetry(t *testing.T) {
 	callCount := 0
 	provider := &MockProvider{
-		chatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+		ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 			callCount++
 			if callCount == 1 {
 				return &types.ChatResponse{Content: "", ToolCalls: nil}, nil
@@ -229,7 +229,7 @@ func TestAgentEmptyResponseRetry(t *testing.T) {
 
 func TestAgentEmptyResponseExhausted(t *testing.T) {
 	provider := &MockProvider{
-		chatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+		ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 			return &types.ChatResponse{Content: "", ToolCalls: nil}, nil
 		},
 	}

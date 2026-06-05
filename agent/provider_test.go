@@ -7,26 +7,6 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
-// MockProvider implements LLMProvider for testing.
-type MockProvider struct {
-	chatFunc func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error)
-	name     string
-}
-
-func (m *MockProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
-	if m.chatFunc != nil {
-		return m.chatFunc(ctx, req)
-	}
-	return &types.ChatResponse{Content: "mock response"}, nil
-}
-
-func (m *MockProvider) Name() string {
-	if m.name != "" {
-		return m.name
-	}
-	return "mock"
-}
-
 // compile-time check that MockProvider satisfies LLMProvider.
 var _ LLMProvider = (*MockProvider)(nil)
 
@@ -62,7 +42,7 @@ func TestMockProviderCustomName(t *testing.T) {
 
 func TestMockProviderCustomChat(t *testing.T) {
 	p := &MockProvider{
-		chatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+		ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 			return &types.ChatResponse{Content: "custom reply"}, nil
 		},
 	}

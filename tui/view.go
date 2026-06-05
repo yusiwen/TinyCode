@@ -54,16 +54,12 @@ func (m *TuiModel) View() string {
 	if m.selectingProvider {
 		b.WriteString(headerStyle.Render("Select provider:"))
 		b.WriteString("\n")
-		names := []string{
-			"DeepSeek (deepseek-v4-flash)",
-			"Ollama (qwen3.5:2b @ 192.168.2.41)",
-			"Ollama (qwen3.5:4b @ 192.168.2.41)",
-		}
-		for i, name := range names {
+		for i, rec := range m.provReg.List() {
+			label := fmt.Sprintf("%s (%s)", rec.Name, rec.Provider.Name())
 			if i == m.providerCursor {
-				b.WriteString(headerStyle.Render("> " + name))
+				b.WriteString(headerStyle.Render("> " + label))
 			} else {
-				b.WriteString("  " + name)
+				b.WriteString("  " + label)
 			}
 			b.WriteString("\n")
 		}
