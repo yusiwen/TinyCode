@@ -166,21 +166,22 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				Parameters:  t.Parameters,
 			})
 		}
-		// Call provider
-		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
-			Messages:  messages,
-			Tools:     toolDefs,
-			MaxTokens: a.MaxTokens,
-			StreamCallbacks: &types.StreamCallbacks{
-				OnReasoningDelta: func(text string) {
-					if a.ShowThinking {
-						if !a.ContentStreamed {
-							a.ContentStreamed = true
-							fmt.Print(colorDim + colorYellow + thinkingPrefix)
+			// Call provider
+			var reasoningFirstToken bool
+			resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+				Messages:  messages,
+				Tools:     toolDefs,
+				MaxTokens: a.MaxTokens,
+				StreamCallbacks: &types.StreamCallbacks{
+					OnReasoningDelta: func(text string) {
+						if a.ShowThinking {
+							if !reasoningFirstToken {
+								reasoningFirstToken = true
+								fmt.Print(colorDim + colorYellow + thinkingPrefix)
+							}
+							fmt.Print(text)
 						}
-						fmt.Print(text)
-					}
-				},
+					},
 				OnTextDelta: func(text string) {
 					fmt.Print(text)
 				},
