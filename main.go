@@ -33,7 +33,7 @@ func init() {
 }
 
 func modePrompt(mode string) string {
-	return "\n[" + mode + "]> "
+	return "[" + mode + "]> "
 }
 
 func main() {
