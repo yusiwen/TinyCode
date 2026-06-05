@@ -171,9 +171,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			MaxTokens: a.MaxTokens,
 			StreamCallbacks: &types.StreamCallbacks{
 				OnReasoningDelta: func(text string) {
-					if a.ShowThinking {
-						fmt.Print(text)
-					}
+					// Handled by showThinking() after response completes
 				},
 				OnTextDelta: func(text string) {
 					fmt.Print(text)
