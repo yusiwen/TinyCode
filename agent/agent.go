@@ -171,7 +171,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			MaxTokens: a.MaxTokens,
 			StreamCallbacks: &types.StreamCallbacks{
 				OnReasoningDelta: func(text string) {
-					// Handled by showThinking() after response completes
+					if a.ShowThinking {
+						fmt.Print(text)
+					}
 				},
 				OnTextDelta: func(text string) {
 					fmt.Print(text)
@@ -183,8 +185,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
 
-		// Show reasoning content if enabled
-		a.showThinking(resp.ReasoningContent)
+		// Show reasoning content if enabled — now streamed via OnReasoningDelta callback
+		// a.showThinking(resp.ReasoningContent)
 
 		// No tool calls → final answer
 		if len(resp.ToolCalls) == 0 {
