@@ -31,6 +31,8 @@ type Agent struct {
 	MaxTokens    int
 	Verbose      bool // when true, print detailed tool results
 	ShowThinking bool // when true, display reasoning_content from thinking mode
+
+	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
 }
 
 // ANSI color codes for terminal output.
@@ -162,11 +164,21 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				Parameters:  t.Parameters,
 			})
 		}
-
+		// Call provider
 		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
 			Messages:  messages,
 			Tools:     toolDefs,
 			MaxTokens: a.MaxTokens,
+			StreamCallbacks: &types.StreamCallbacks{
+				OnReasoningDelta: func(text string) {
+					if a.ShowThinking {
+						fmt.Print(text)
+					}
+				},
+				OnTextDelta: func(text string) {
+					fmt.Print(text)
+				},
+			},
 		})
 		if err != nil {
 			tlog.Error("agent.loop", "llm error", "step", step, "error", err)
@@ -192,6 +204,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 
 			tlog.Info("agent.loop", "answer", "step", step, "mode", a.agentPrefix(), "resp_len", len(resp.Content))
+			a.ContentStreamed = true
 			messages = append(messages, types.Message{
 				Role:             types.RoleAssistant,
 				Content:          resp.Content,

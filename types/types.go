@@ -32,11 +32,18 @@ type MemoryStore interface {
 	List() ([]Memory, error)
 }
 
-// ChatRequest bundles a full LLM call.
+// ChatRequest holds parameters for an LLM chat call.
 type ChatRequest struct {
-	Messages  []Message
-	Tools     []ToolDef
+	Messages []Message
+	Tools    []ToolDef
 	MaxTokens int
+	StreamCallbacks *StreamCallbacks // optional SSE callbacks for real-time display
+}
+
+// StreamCallbacks provides real-time streaming callbacks for SSE responses.
+type StreamCallbacks struct {
+	OnReasoningDelta func(text string)
+	OnTextDelta      func(text string)
 }
 
 // ChatResponse is the LLM's reply — either text or tool calls.

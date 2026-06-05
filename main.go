@@ -226,7 +226,9 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
 				}
-				printMarkdown(result, cfg.GlamourStyle)
+				if !ag.ContentStreamed {
+					printMarkdown(result, cfg.GlamourStyle)
+				}
 				return nil
 			}
 
@@ -341,7 +343,9 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					fmt.Printf("⚠️  Error: %v\n", err)
 					continue
 				}
-				printMarkdown(result, cfg.GlamourStyle)
+				if !ag.ContentStreamed {
+					printMarkdown(result, cfg.GlamourStyle)
+				}
 				fmt.Println()
 			}
 			fmt.Println("\nBye!")

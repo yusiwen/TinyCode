@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sashabaranov/go-openai"
@@ -39,9 +41,6 @@ func (p *DeepSeekProvider) Name() string {
 
 func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	// Build messages with reasoning_content support (DeepSeek thinking mode).
-	// go-openai's ChatCompletionMessage doesn't have reasoning_content, so we
-	// use custom serialization via a raw-message struct.
-
 	type rawMsg struct {
 		Role             string             `json:"role"`
 		Content          string             `json:"content"`
@@ -92,7 +91,7 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 		}
 	}
 
-	// Build request body manually for reasoning_content support
+	// Build request body
 	bodyMap := map[string]any{
 		"model":      p.model,
 		"messages":   rawMsgs,
@@ -100,6 +99,13 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 	}
 	if len(openaiTools) > 0 {
 		bodyMap["tools"] = openaiTools
+	}
+
+	// Use streaming if callbacks are provided
+	cb := req.StreamCallbacks
+	if cb != nil {
+		bodyMap["stream"] = true
+		bodyMap["stream_options"] = map[string]any{"include_usage": true}
 	}
 
 	body, err := json.Marshal(bodyMap)
@@ -128,18 +134,28 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 	}
 	defer httpResp.Body.Close()
 
-	respBody, err := io.ReadAll(httpResp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	tlog.Trace("llm.provider", "response", "model", p.model, "status", httpResp.StatusCode, "body", string(respBody))
 	if httpResp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(httpResp.Body)
 		tlog.Error("llm.provider", "api error", "status", httpResp.StatusCode)
 		return nil, fmt.Errorf("deepseek api: status %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
-	// Parse response, extracting reasoning_content
+	// Branch: streaming SSE or batch
+	if cb != nil {
+		return p.chatStream(ctx, httpResp.Body, start, cb)
+	}
+	return p.chatBatch(ctx, httpResp.Body, start)
+}
+
+// chatBatch parses a batch (non-streaming) response.
+func (p *DeepSeekProvider) chatBatch(ctx context.Context, body io.ReadCloser, start time.Time) (*types.ChatResponse, error) {
+	respBody, err := io.ReadAll(body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	tlog.Trace("llm.provider", "response", "model", p.model, "body", string(respBody))
+
 	var rawResp struct {
 		Choices []struct {
 			Message struct {
@@ -154,32 +170,166 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 	if err := json.Unmarshal(respBody, &rawResp); err != nil {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
-
 	if len(rawResp.Choices) == 0 {
 		return nil, fmt.Errorf("no choices returned")
 	}
 
 	choice := rawResp.Choices[0].Message
 	result := &types.ChatResponse{
-		Content: choice.Content,
+		Content:          choice.Content,
+		ReasoningContent: choice.ReasoningContent,
 	}
-
-	// Capture reasoning_content for thinking mode
-	result.ReasoningContent = choice.ReasoningContent
 
 	if len(choice.ToolCalls) > 0 {
 		result.ToolCalls = make([]types.ToolCall, len(choice.ToolCalls))
 		for i, tc := range choice.ToolCalls {
 			result.ToolCalls[i] = types.ToolCall{
-				ID:        tc.ID,
-				Name:      tc.Function.Name,
-				Arguments: tc.Function.Arguments,
+				ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments,
 			}
 		}
 		tlog.Debug("llm.provider", "response", "model", p.model, "tool_calls", len(result.ToolCalls), "duration", time.Since(start).Round(time.Millisecond).String())
 	} else {
 		tlog.Debug("llm.provider", "response", "model", p.model, "content_len", len(result.Content), "duration", time.Since(start).Round(time.Millisecond).String())
 	}
-
 	return result, nil
+}
+
+// chatStream parses an SSE streaming response with real-time callbacks.
+func (p *DeepSeekProvider) chatStream(ctx context.Context, body io.ReadCloser, start time.Time, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
+	defer body.Close()
+
+	result := &types.ChatResponse{}
+	var reasoning strings.Builder
+	var content strings.Builder
+
+	// Tool call accumulation: index → {id, name, arguments}
+	type streamTool struct {
+		id   string
+		name string
+		args strings.Builder
+	}
+	toolByIndex := map[int]*streamTool{}
+	toolIndices := []int{} // insertion order
+
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+	reasoningWritten := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// SSE format: "data: {...}" or "data: [DONE]"
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+
+		// Stream end marker
+		if payload == "[DONE]" {
+			break
+		}
+
+		// Parse the SSE event JSON
+		var event struct {
+			Choices []struct {
+				Delta struct {
+					Role             string            `json:"role,omitempty"`
+					Content          string            `json:"content,omitempty"`
+					ReasoningContent string            `json:"reasoning_content,omitempty"`
+					ToolCalls        []jsonToolCallRef `json:"tool_calls,omitempty"`
+				} `json:"delta"`
+				FinishReason string `json:"finish_reason,omitempty"`
+			} `json:"choices"`
+		}
+
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			tlog.Debug("llm.provider", "sse_parse_error", "line", line, "error", err.Error())
+			continue
+		}
+
+		if len(event.Choices) == 0 {
+			continue
+		}
+
+		delta := event.Choices[0].Delta
+
+		// Reasoning content delta
+		if delta.ReasoningContent != "" {
+			if !reasoningWritten {
+				reasoningWritten = true
+			}
+			reasoning.WriteString(delta.ReasoningContent)
+			if cb.OnReasoningDelta != nil {
+				cb.OnReasoningDelta(delta.ReasoningContent)
+			}
+		}
+
+		// Text content delta
+		if delta.Content != "" {
+			content.WriteString(delta.Content)
+			if cb.OnTextDelta != nil {
+				cb.OnTextDelta(delta.Content)
+			}
+		}
+
+		// Tool call deltas — by index
+		for _, tc := range delta.ToolCalls {
+			existing, ok := toolByIndex[tc.Index]
+			if !ok {
+				// First event for this tool call: has id + name
+				existing = &streamTool{
+					id:   tc.ID,
+					name: tc.Function.Name,
+				}
+				toolByIndex[tc.Index] = existing
+				toolIndices = append(toolIndices, tc.Index)
+			}
+			if tc.Function.Arguments != "" {
+				existing.args.WriteString(tc.Function.Arguments)
+			}
+			if tc.ID != "" {
+				existing.id = tc.ID
+			}
+		}
+
+		// Finish reason — last event before [DONE]
+		if event.Choices[0].FinishReason != "" {
+			// Signal end of real-time output if content was streamed
+			break
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		tlog.Warn("llm.provider", "sse_scan_error", "error", err.Error())
+	}
+
+	result.ReasoningContent = reasoning.String()
+	result.Content = content.String()
+
+	// Build tool calls in insertion order
+	if len(toolIndices) > 0 {
+		result.ToolCalls = make([]types.ToolCall, len(toolIndices))
+		for i, idx := range toolIndices {
+			t := toolByIndex[idx]
+			result.ToolCalls[i] = types.ToolCall{
+				ID: t.id, Name: t.name, Arguments: t.args.String(),
+			}
+		}
+		tlog.Debug("llm.provider", "response", "model", p.model, "tool_calls", len(result.ToolCalls), "duration", time.Since(start).Round(time.Millisecond).String())
+	} else {
+		tlog.Debug("llm.provider", "response", "model", p.model, "content_len", len(result.Content), "duration", time.Since(start).Round(time.Millisecond).String())
+	}
+	return result, nil
+}
+
+// jsonToolCallRef mirrors the streaming tool call delta JSON structure.
+type jsonToolCallRef struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Name      string `json:"name,omitempty"`
+		Arguments string `json:"arguments,omitempty"`
+	} `json:"function"`
 }
