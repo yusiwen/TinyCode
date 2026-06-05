@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ProviderRecordConfig holds one provider definition.
@@ -37,7 +38,17 @@ type AgentOverride struct {
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 }
 
-// LSPConfig holds LSP integration settings.
+// APIKey returns the effective env var name for this provider's API key.
+// Priority: api_key_env (if set) → UPPER(NAME)_API_KEY → OPENAI_API_KEY
+func (p ProviderRecordConfig) APIKey() string {
+	if p.APIKeyEnv != "" {
+		return p.APIKeyEnv
+	}
+	if p.Name != "" {
+		return strings.ToUpper(p.Name) + "_API_KEY"
+	}
+	return "OPENAI_API_KEY"
+}
 type LSPConfig struct {
 	Enabled bool `json:"enabled,omitempty"`
 }

@@ -63,7 +63,7 @@ func main() {
 			// Build provider registry from config
 			var records []agent.ProviderRecord
 			for i, pc := range cfg.Providers {
-				key := os.Getenv(pc.APIKeyEnv)
+				key := os.Getenv(pc.APIKey())
 				// CLI flags override the first provider's key (backward compat)
 				if i == 0 && apiKey != "" {
 					key = apiKey
