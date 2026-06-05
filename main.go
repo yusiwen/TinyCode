@@ -33,7 +33,7 @@ func init() {
 }
 
 func modePrompt(mode string) string {
-	return fmt.Sprintf("[%s]> ", mode)
+	return "\n[" + mode + "]> "
 }
 
 func main() {
@@ -275,7 +275,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 					ag.Config = reg.Current()
 					rl.SetPrompt(modePrompt(newMode))
 					tlog.Info("repl", "mode_switch", "to", newMode, "via", "tab")
-					fmt.Printf("Switched to %s mode\n", newMode)
+					fmt.Printf("\nSwitched to %s mode\n", newMode)
 					rl.Refresh()
 					continue
 				}
