@@ -110,7 +110,6 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 
 			// Create agent registry (registers plan, build, explore agents)
 			reg := agent.NewRegistry()
-			_ = reg // used indirectly via current mode
 
 			// Apply agent overrides from config file
 			for name, override := range cfg.Agents {
@@ -237,8 +236,10 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 			fmt.Printf("🤖 TinyCode (model: %s) — %s mode\n", provider.Name(), modeName)
 			fmt.Println("Type your request, or /exit to quit. Press Tab to toggle plan/build mode.")
 
-			// Readline config with Tab completer for mode switching
-			rl, err := readline.New(modePrompt(modeName))
+			// Readline config
+			rl, err := readline.NewEx(&readline.Config{
+				Prompt: modePrompt(modeName),
+			})
 			if err != nil {
 				return err
 			}
