@@ -19,12 +19,12 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if !m.ready {
-			m.vp = viewport.New(msg.Width, msg.Height-3)
+			m.vp = viewport.New(msg.Width, msg.Height-2)
 			m.vp.YPosition = 0
 			m.ready = true
 		} else {
 			m.vp.Width = msg.Width
-			m.vp.Height = msg.Height - 3 - m.input.Height()
+			m.vp.Height = msg.Height - 2 - m.input.Height()
 		}
 		m.input.SetWidth(msg.Width - 4)
 		return m, nil
@@ -150,7 +150,7 @@ func (m *TuiModel) adjustInputHeight() {
 	if m.input.Height() != wanted {
 		m.input.SetHeight(wanted)
 		if m.ready {
-			m.vp.Height = m.height - 3 - wanted
+			m.vp.Height = m.height - 2 - wanted
 		}
 	}
 }

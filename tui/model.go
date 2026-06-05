@@ -40,6 +40,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry) *TuiModel 
 	t.Placeholder = "Type your request..."
 	t.CharLimit = 0
 	t.SetWidth(80)
+	t.SetHeight(1)
 	t.Focus()
 
 	s := spinner.New()

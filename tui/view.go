@@ -54,7 +54,6 @@ func (m *TuiModel) View() string {
 	if m.status == StatusStreaming {
 		b.WriteString(dimStyle.Render("(processing...)"))
 	} else {
-		b.WriteString(inputPromptStyle.Render("> "))
 		b.WriteString(m.input.View())
 	}
 
