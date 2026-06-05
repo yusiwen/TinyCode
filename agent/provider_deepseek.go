@@ -107,6 +107,8 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
+	tlog.Trace("llm.provider", "request", "model", p.model, "body", string(body))
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		p.baseURL+"/chat/completions",
 		bytes.NewReader(body))
@@ -130,6 +132,8 @@ func (p *DeepSeekProvider) Chat(ctx context.Context, req types.ChatRequest) (*ty
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
+
+	tlog.Trace("llm.provider", "response", "model", p.model, "status", httpResp.StatusCode, "body", string(respBody))
 	if httpResp.StatusCode != 200 {
 		tlog.Error("llm.provider", "api error", "status", httpResp.StatusCode)
 		return nil, fmt.Errorf("deepseek api: status %d: %s", httpResp.StatusCode, string(respBody))

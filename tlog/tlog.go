@@ -17,13 +17,15 @@ import (
 type Level int
 
 const (
-	LevelDebug Level = iota
+	LevelTrace Level = iota - 1 // -1 so 0 = DEBUG
+	LevelDebug
 	LevelInfo
 	LevelWarn
 	LevelError
 )
 
 var levelNames = map[Level]string{
+	LevelTrace: "TRACE",
 	LevelDebug: "DEBUG",
 	LevelInfo:  "INFO",
 	LevelWarn:  "WARN",
@@ -33,6 +35,8 @@ var levelNames = map[Level]string{
 // ParseLevel parses a level name string.
 func ParseLevel(s string) Level {
 	switch strings.ToLower(s) {
+	case "trace":
+		return LevelTrace
 	case "debug":
 		return LevelDebug
 	case "info":
@@ -144,6 +148,11 @@ func Flush() {
 	if defaultLogger.file != nil {
 		defaultLogger.file.Sync()
 	}
+}
+
+// Trace logs at TRACE level.
+func Trace(service string, msg string, keysAndValues ...any) {
+	log(LevelTrace, service, msg, keysAndValues...)
 }
 
 // Debug logs at DEBUG level.
