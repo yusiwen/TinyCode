@@ -196,6 +196,7 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 	defer body.Close()
 
 	result := &types.ChatResponse{}
+	var thinking strings.Builder
 	var content strings.Builder
 	var toolCalls []ollamaToolCall
 
@@ -213,6 +214,7 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 			Message struct {
 				Role      string           `json:"role,omitempty"`
 				Content   string           `json:"content,omitempty"`
+				Thinking  string           `json:"thinking,omitempty"`
 				ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 			} `json:"message,omitempty"`
 			Done bool `json:"done,omitempty"`
@@ -225,6 +227,13 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 
 		if event.Done {
 			break
+		}
+
+		if event.Message.Thinking != "" {
+			thinking.WriteString(event.Message.Thinking)
+			if cb.OnReasoningDelta != nil {
+				cb.OnReasoningDelta(event.Message.Thinking)
+			}
 		}
 
 		if event.Message.Content != "" {
@@ -244,6 +253,7 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 	}
 
 	result.Content = content.String()
+	result.ReasoningContent = thinking.String()
 
 	if len(toolCalls) > 0 {
 		result.ToolCalls = make([]types.ToolCall, len(toolCalls))
