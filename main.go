@@ -41,6 +41,7 @@ func main() {
 	var baseURL string
 	var model string
 	var sessionDir string
+	var logLevel string
 
 	rootCmd := &cobra.Command{
 		Use:   "tinycode",
@@ -53,12 +54,15 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 
 			// Initialize logger
 			logDir := filepath.Join(os.ExpandEnv(cfg.SessionDir), "..", "log")
-			logLevel := tlog.ParseLevel(cfg.LogLevel)
+			lvl := tlog.ParseLevel(cfg.LogLevel)
 			if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
-				logLevel = tlog.ParseLevel(envLevel)
+				lvl = tlog.ParseLevel(envLevel)
 			}
-			tlog.Init(logDir, logLevel)
-			tlog.Info("main", "startup", "version", "dev")
+			if logLevel != "" {
+				lvl = tlog.ParseLevel(logLevel)
+			}
+			tlog.Init(logDir, lvl)
+			tlog.Info("main", "startup", "version", "dev", "log_level", logLevel)
 			tlog.Info("main", "config_loaded", "session_dir", cfg.SessionDir, "log_level", cfg.LogLevel)
 			tlog.Info("main", "provider", "name", "deepseek", "model", model)
 
@@ -349,6 +353,7 @@ It uses a ReAct loop to understand your requests and use tools (shell, filesyste
 	rootCmd.Flags().StringVar(&baseURL, "base-url", "", "API base URL (default: OPENAI_BASE_URL env, fallback https://api.deepseek.com)")
 	rootCmd.Flags().StringVar(&model, "model", "", "Model name (default: OPENAI_MODEL env, fallback deepseek-v4-flash)")
 	rootCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Session storage directory (default: ~/.tinycode/sessions)")
+	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: trace, debug, info, warn, error (default: info)")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
