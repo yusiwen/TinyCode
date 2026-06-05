@@ -172,19 +172,19 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				Messages:  messages,
 				Tools:     toolDefs,
 				MaxTokens: a.MaxTokens,
-				StreamCallbacks: &types.StreamCallbacks{
-					OnReasoningDelta: func(text string) {
-						if a.ShowThinking {
-							if !reasoningFirstToken {
-								reasoningFirstToken = true
-								fmt.Print(colorDim + colorYellow + thinkingPrefix)
+					StreamCallbacks: &types.StreamCallbacks{
+						OnReasoningDelta: func(text string) {
+							if a.ShowThinking {
+								if !reasoningFirstToken {
+									reasoningFirstToken = true
+									fmt.Print(colorDim + colorYellow + thinkingPrefix)
+								}
+								fmt.Print(text)
 							}
-							fmt.Print(text)
-						}
-					},
-				OnTextDelta: func(text string) {
-					fmt.Print(text)
-				},
+						},
+						OnTextDelta: func(text string) {
+							fmt.Print(colorReset + text)
+						},
 			},
 		})
 		if err != nil {
@@ -193,6 +193,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		}
 
 		// Reasoning already handled by streaming callback (OnReasoningDelta)
+		if a.ShowThinking {
+			fmt.Print(colorReset)
+		}
 
 		// No tool calls → final answer
 		if len(resp.ToolCalls) == 0 {
