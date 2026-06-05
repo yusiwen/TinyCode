@@ -178,6 +178,19 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 		// No tool calls → final answer
 		if len(resp.ToolCalls) == 0 {
+			// Degenerate case: empty content with no tool calls
+			// LLM spent all tokens on reasoning and produced nothing.
+			if resp.Content == "" {
+				tlog.Warn("agent.loop", "empty_response", "step", step, "mode", a.agentPrefix(), "reasoning_len", len(resp.ReasoningContent))
+				// Continue the loop to retry rather than returning empty
+				messages = append(messages, types.Message{
+					Role:    types.RoleAssistant,
+					Content: "(model produced no output after thinking)",
+				})
+				step++
+				continue
+			}
+
 			tlog.Info("agent.loop", "answer", "step", step, "mode", a.agentPrefix(), "resp_len", len(resp.Content))
 			messages = append(messages, types.Message{
 				Role:             types.RoleAssistant,
