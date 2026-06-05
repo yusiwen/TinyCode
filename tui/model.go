@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 )
@@ -42,6 +43,8 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry) *TuiModel 
 	t.SetWidth(80)
 	t.ShowLineNumbers = false
 	t.SetHeight(1)
+	t.FocusedStyle.Base = lipgloss.NewStyle().Width(t.Width() - 2)
+	t.BlurredStyle.Base = lipgloss.NewStyle().Width(t.Width() - 2)
 	t.Focus()
 
 	s := spinner.New()
