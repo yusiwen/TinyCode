@@ -163,6 +163,7 @@ func (p *OllamaProvider) ollamaBatch(body io.ReadCloser) (*types.ChatResponse, e
 		Message struct {
 			Role      string           `json:"role"`
 			Content   string           `json:"content"`
+			Thinking  string           `json:"thinking,omitempty"`
 			ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
 	}
@@ -172,7 +173,8 @@ func (p *OllamaProvider) ollamaBatch(body io.ReadCloser) (*types.ChatResponse, e
 	}
 
 	result := &types.ChatResponse{
-		Content: ollamaResp.Message.Content,
+		Content:          ollamaResp.Message.Content,
+		ReasoningContent: ollamaResp.Message.Thinking,
 	}
 
 	if len(ollamaResp.Message.ToolCalls) > 0 {
