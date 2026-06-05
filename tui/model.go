@@ -32,6 +32,10 @@ type TuiModel struct {
 
 	// Input history
 	lastInput string
+
+	// Provider selection dialog
+	selectingProvider bool
+	providerCursor    int
 }
 
 // NewTUI creates and returns a new TUI model.

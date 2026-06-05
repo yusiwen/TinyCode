@@ -30,6 +30,32 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Provider selection dialog mode
+		if m.selectingProvider {
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.providerCursor > 0 {
+					m.providerCursor--
+				}
+			case tea.KeyDown:
+				if m.providerCursor < 2 { // max 2 providers for now
+					m.providerCursor++
+				}
+			case tea.KeyEnter:
+				// Switch to selected provider
+				idx := m.providerCursor
+				m.selectingProvider = false
+				m.messages = append(m.messages, chatMessage{
+					Role: "system", Content: fmt.Sprintf("Switched to provider %s", "provider "+fmt.Sprint(idx)),
+				})
+				return m, nil
+			case tea.KeyEscape, tea.KeyCtrlC:
+				m.selectingProvider = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		// Tab on empty input → mode switch
 		if msg.Type == tea.KeyTab && m.input.Value() == "" {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
@@ -208,6 +234,9 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.agent.Config = m.registry.Current()
 		m.modeName = "build"
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: "Switched to build mode"})
+	case "/model":
+		m.selectingProvider = true
+		m.providerCursor = 0
 	default:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown command: %s", cmd)})
 	}

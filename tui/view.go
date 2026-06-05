@@ -51,7 +51,24 @@ func (m *TuiModel) View() string {
 	b.WriteString("\n")
 
 	// Input area
-	if m.status == StatusStreaming {
+	if m.selectingProvider {
+		b.WriteString(headerStyle.Render("Select provider:"))
+		b.WriteString("\n")
+		names := []string{
+			"DeepSeek (deepseek-v4-flash)",
+			"Ollama (qwen3.5:2b @ 192.168.2.41)",
+			"Ollama (qwen3.5:4b @ 192.168.2.41)",
+		}
+		for i, name := range names {
+			if i == m.providerCursor {
+				b.WriteString(headerStyle.Render("> " + name))
+			} else {
+				b.WriteString("  " + name)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("↑↓ navigate · Enter select · Esc cancel"))
+	} else if m.status == StatusStreaming {
 		b.WriteString(dimStyle.Render("(processing...)"))
 	} else {
 		b.WriteString(m.input.View())
