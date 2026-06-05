@@ -36,7 +36,7 @@ func NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider {
 }
 
 func (p *OpenAIProvider) Name() string {
-	return fmt.Sprintf("deepseek/%s", p.model)
+	return fmt.Sprintf("openai/%s", p.model)
 }
 
 func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
@@ -137,7 +137,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	if httpResp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(httpResp.Body)
 		tlog.Error("llm.provider", "api error", "status", httpResp.StatusCode)
-		return nil, fmt.Errorf("deepseek api: status %d: %s", httpResp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("openai api: status %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
 	// Branch: streaming SSE or batch
