@@ -1,5 +1,5 @@
 {
-  "$comment": "Copy to config.json and set API keys as env vars (see README)",
+  "$comment": "Copy to config.json. API keys are read from env vars, not stored here.",
   "default_mode": "plan",
   "glamour_style": "auto",
   "show_thinking": true,
@@ -50,5 +50,14 @@
   "session_dir": "~/.tinycode/sessions",
   "lsp": {
     "enabled": false
+  },
+
+  "$env_vars_note": {
+    "description": "API keys are loaded from environment variables using the pattern: UPPER(NAME)_API_KEY",
+    "examples": {
+      "DEEPSEEK_API_KEY": "set your DeepSeek API key",
+      "CLAUDE_API_KEY": "set your Anthropic/Claude API key"
+    },
+    "override": "To use a custom env var name, add 'api_key_env' to the provider config, e.g.: { ..., \"api_key_env\": \"MY_CUSTOM_KEY\" }"
   }
 }
