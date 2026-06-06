@@ -209,6 +209,13 @@ func collectListItems(n *ast.List, source []byte, numbered bool) *ContentBlock {
 					Type:   "paragraph",
 					Chunks: chunks,
 				})
+			case *ast.TextBlock:
+				// Simple list items use TextBlock instead of Paragraph
+				chunks := collectInline(b, source)
+				items = append(items, ContentBlock{
+					Type:   "paragraph",
+					Chunks: chunks,
+				})
 			case *ast.FencedCodeBlock:
 				var code strings.Builder
 				lines := b.Lines()
