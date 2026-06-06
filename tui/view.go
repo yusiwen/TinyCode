@@ -48,6 +48,10 @@ func (m *TuiModel) View() string {
 		}
 	}
 	m.vp.SetContent(strings.Join(msgLines, "\n"))
+	// Goto bottom when streaming just finished (content replaced blocks)
+	if m.status == StatusIdle {
+		m.vp.GotoBottom()
+	}
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
 
