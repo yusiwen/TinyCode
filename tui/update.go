@@ -356,7 +356,7 @@ func (m *TuiModel) selectedMessages() string {
 		}
 		if content != "" {
 			b.WriteString(content)
-			b.WriteString("\n\n")
+			b.WriteString("\n")
 		}
 	}
 	return strings.TrimSpace(b.String())
