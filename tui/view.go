@@ -47,8 +47,13 @@ func (m *TuiModel) View() string {
 			}
 		}
 	}
-	m.vp.SetContent(strings.Join(msgLines, "\n"))
-	// Goto bottom when streaming just finished (content replaced blocks)
+	// Wrap all lines to prevent viewport truncation
+	var wrapped []string
+	for _, line := range msgLines {
+		wrapped = append(wrapped, wrapLine(line, m.vp.Width)...)
+	}
+	m.vp.SetContent(strings.Join(wrapped, "\n"))
+	// Goto bottom when streaming just finished
 	if m.status == StatusIdle {
 		m.vp.GotoBottom()
 	}
@@ -132,7 +137,67 @@ func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	return lines
 }
 
-// renderBlocks converts ContentBlocks into terminal lines.
+// wrapLine splits a line into multiple lines, each no wider than maxWidth.
+// Uses lipgloss.Width to properly handle ANSI codes, CJK, and emoji.
+func wrapLine(line string, maxWidth int) []string {
+	if maxWidth < 1 {
+		maxWidth = 1
+	}
+	if lipgloss.Width(line) <= maxWidth {
+		return []string{line}
+	}
+	var lines []string
+	remaining := line
+	for {
+		trimmed := strings.TrimRight(remaining, "\n\r ")
+		if trimmed == "" {
+			break
+		}
+		if lipgloss.Width(trimmed) <= maxWidth {
+			lines = append(lines, trimmed)
+			break
+		}
+		// Find break point: try last space within maxWidth
+		breakPos := -1
+		width := 0
+		runes := []rune(trimmed)
+		for i, r := range runes {
+			rw := lipgloss.Width(string(r))
+			if width+rw > maxWidth {
+				break
+			}
+			width += rw
+			if r == ' ' || r == '\t' {
+				breakPos = i + 1 // include the space
+			}
+		}
+		if breakPos <= 0 {
+			// No space found, hard break at character boundary
+			w := 0
+			for i, r := range runes {
+				rw := lipgloss.Width(string(r))
+				if w+rw > maxWidth {
+					breakPos = i
+					break
+				}
+				w += rw
+				if i == len(runes)-1 {
+					breakPos = len(runes)
+				}
+			}
+		}
+		if breakPos <= 0 || breakPos >= len(runes) {
+			lines = append(lines, trimmed)
+			break
+		}
+		lines = append(lines, string(runes[:breakPos]))
+		remaining = string(runes[breakPos:])
+	}
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return lines
+}
 func renderBlocks(blocks []ContentBlock, sel bool) []string {
 	var lines []string
 
