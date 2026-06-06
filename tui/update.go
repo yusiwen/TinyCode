@@ -2,10 +2,10 @@ package tui
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -142,11 +142,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Ctrl+C: copy | interrupt | double-tap quit
 		if msg.Type == tea.KeyCtrlC {
 			if sel := m.selectedMessages(); sel != "" {
-				if err := clipboard.WriteAll(sel); err == nil {
-					m.messages = append(m.messages, chatMessage{
-						Role: "system", Content: "✓ Copied to clipboard",
-					})
-				}
+				copyToClipboard(sel)
+				m.messages = append(m.messages, chatMessage{
+					Role: "system", Content: "✓ Copied to clipboard",
+				})
 				return m, nil
 			}
 			if m.status == StatusStreaming {
@@ -361,6 +360,15 @@ func (m *TuiModel) selectedMessages() string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// copyToClipboard writes text to the system clipboard via OSC 52 escape sequence.
+func copyToClipboard(text string) {
+	if text == "" {
+		return
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(text))
+	fmt.Printf("\033]52;c;%s\007", encoded)
 }
 
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
