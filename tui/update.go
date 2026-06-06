@@ -264,6 +264,12 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 	if contentLine < 0 || len(m.messages) == 0 {
 		return 0
 	}
+	// Estimate terminal width for wrapping
+	termW := m.width - 6
+	if termW < 20 {
+		termW = 20
+	}
+
 	line := 0
 	for i, msg := range m.messages {
 		var n int
@@ -274,15 +280,16 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			n = 1
 		case "assistant":
 			if msg.ReasoningContent != "" {
-				n += strings.Count(msg.ReasoningContent, "\n") + 1
+				n += estimateLines(msg.ReasoningContent, termW)
 			}
 			n += 1 // label
 			if msg.Rendered != "" {
-				// glamour often appends a trailing newline, trim to avoid overcount
 				trimmed := strings.TrimRight(msg.Rendered, "\n")
-				n += strings.Count(trimmed, "\n") + 1
+				for _, part := range strings.Split(trimmed, "\n") {
+					n += estimateLines(part, termW)
+				}
 			} else if msg.Content != "" {
-				n += strings.Count(msg.Content, "\n") + 1
+				n += estimateLines(msg.Content, termW)
 			}
 		}
 		if contentLine < line+n {
@@ -290,8 +297,29 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 		}
 		line += n
 	}
-	// Past all content: return -1 (no message) so no highlight
 	return -1
+}
+
+// estimateLines estimates how many terminal lines a string occupies given the terminal width.
+func estimateLines(s string, w int) int {
+	if len(s) == 0 {
+		return 1
+	}
+	lines := 1
+	pos := 0
+	for _, r := range s {
+		if r == '\n' {
+			lines++
+			pos = 0
+		} else {
+			pos++
+			if pos >= w {
+				lines++
+				pos = 0
+			}
+		}
+	}
+	return lines
 }
 
 // isSelected returns whether message at index i is currently highlighted.
