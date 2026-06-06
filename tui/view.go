@@ -234,6 +234,17 @@ func renderBlocks(blocks []ContentBlock, sel bool) []string {
 				} else {
 					prefix = "  • "
 				}
+				// Code block inside a list item
+				if item.Type == "code" {
+					for _, codeLine := range strings.Split(item.Code, "\n") {
+						if sel {
+							lines = append(lines, selectedStyle.Render(prefix+codeLine))
+						} else {
+							lines = append(lines, dimStyle.Render(prefix+codeLine))
+						}
+					}
+					continue
+				}
 				text := renderChunks(item.Chunks)
 				if text != "" {
 					if sel {
