@@ -76,6 +76,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// streaming or empty input → let textarea handle the key
 		}
 
+		// Ctrl+J = insert newline (line feed) for terminals that can't send
+		// Shift+Enter or Alt+Enter.
+		if msg.Type == tea.KeyCtrlJ {
+			m.input.SetValue(m.input.Value() + "\n")
+			return m, nil
+		}
+
 		// Ctrl+C to interrupt or quit
 		if msg.Type == tea.KeyCtrlC {
 			if m.status == StatusStreaming {
