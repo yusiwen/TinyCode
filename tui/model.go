@@ -71,6 +71,8 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		modeName: reg.CurrentName(),
 		status:   StatusIdle,
 		streamCh: make(chan tea.Msg, 200),
+		selectStart: -1,
+		selectEnd:   -1,
 	}
 }
 
