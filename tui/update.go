@@ -15,6 +15,15 @@ import (
 // Update handles all events.
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		if msg.Type == tea.MouseWheelUp && m.ready {
+			m.vp.LineUp(3)
+		}
+		if msg.Type == tea.MouseWheelDown && m.ready {
+			m.vp.LineDown(3)
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
