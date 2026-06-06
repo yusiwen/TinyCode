@@ -343,15 +343,20 @@ func (m *TuiModel) selectedMessages() string {
 	}
 	var b strings.Builder
 	for i := start; i <= end && i < len(m.messages); i++ {
-		if m.messages[i].Role != "assistant" {
-			continue
+		if m.messages[i].Role == "assistant" {
+			if m.messages[i].ReasoningContent != "" {
+				b.WriteString(m.messages[i].ReasoningContent)
+				b.WriteString("\n\n")
+			}
 		}
-		if m.messages[i].ReasoningContent != "" {
-			b.WriteString(m.messages[i].ReasoningContent)
-			b.WriteString("\n\n")
+		content := m.messages[i].Content
+		if m.messages[i].Role == "user" {
+			content = "> " + content
+		} else if m.messages[i].Role == "system" {
+			content = "→ " + content
 		}
-		if m.messages[i].Content != "" {
-			b.WriteString(m.messages[i].Content)
+		if content != "" {
+			b.WriteString(content)
 			b.WriteString("\n\n")
 		}
 	}
