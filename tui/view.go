@@ -34,7 +34,11 @@ func (m *TuiModel) View() string {
 			}
 		case "assistant":
 			if msg.ReasoningContent != "" {
-				msgLines = append(msgLines, thinkingStyle.Render("| "+msg.ReasoningContent))
+				if sel {
+					msgLines = append(msgLines, selectedStyle.Render("| "+msg.ReasoningContent))
+				} else {
+					msgLines = append(msgLines, thinkingStyle.Render("| "+msg.ReasoningContent))
+				}
 			}
 			label := "Assistant:"
 			if msg.Streaming {
