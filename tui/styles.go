@@ -26,6 +26,10 @@ var (
 			Foreground(colorYellow).
 			Faint(true)
 
+	selectedStyle = lipgloss.NewStyle().
+			Foreground(colorYellow).
+			Background(lipgloss.Color("#333300"))
+
 	userStyle = lipgloss.NewStyle().
 			Foreground(colorGreen).
 			Bold(true)

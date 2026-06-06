@@ -23,24 +23,40 @@ func (m *TuiModel) View() string {
 
 	// Message area
 	var msgLines []string
-	for _, msg := range m.messages {
+	for i, msg := range m.messages {
+		sel := m.isSelected(i)
 		switch msg.Role {
 		case "user":
-			msgLines = append(msgLines, userStyle.Render("> "+msg.Content))
+			if sel {
+				msgLines = append(msgLines, selectedStyle.Render("> "+msg.Content))
+			} else {
+				msgLines = append(msgLines, userStyle.Render("> "+msg.Content))
+			}
 		case "assistant":
 			if msg.ReasoningContent != "" {
 				msgLines = append(msgLines, thinkingStyle.Render("| "+msg.ReasoningContent))
 			}
-			if msg.Rendered != "" {
-				msgLines = append(msgLines, assistantLabelStyle.Render("Assistant:"))
-				msgLines = append(msgLines, msg.Rendered)
-			} else if msg.Content != "" {
-				label := "Assistant:"
-				if msg.Streaming {
-					label = "Assistant (streaming):"
-				}
+			label := "Assistant:"
+			if msg.Streaming {
+				label = "Assistant (streaming):"
+			}
+			if sel {
+				msgLines = append(msgLines, selectedStyle.Render(label))
+			} else {
 				msgLines = append(msgLines, assistantLabelStyle.Render(label))
-				msgLines = append(msgLines, msg.Content)
+			}
+			if msg.Rendered != "" {
+				if sel {
+					msgLines = append(msgLines, selectedStyle.Render(msg.Rendered))
+				} else {
+					msgLines = append(msgLines, msg.Rendered)
+				}
+			} else if msg.Content != "" {
+				if sel {
+					msgLines = append(msgLines, selectedStyle.Render(msg.Content))
+				} else {
+					msgLines = append(msgLines, msg.Content)
+				}
 			}
 		case "system":
 			msgLines = append(msgLines, dimStyle.Render("→ "+msg.Content))

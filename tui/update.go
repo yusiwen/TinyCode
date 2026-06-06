@@ -16,6 +16,45 @@ import (
 // Update handles all events.
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		if m.ready {
+			// Mouse wheel → scroll viewport
+			if msg.Button == tea.MouseButtonWheelUp {
+				m.vp.LineUp(3)
+				return m, nil
+			}
+			if msg.Button == tea.MouseButtonWheelDown {
+				m.vp.LineDown(3)
+				return m, nil
+			}
+			// Left button → selection
+			if msg.Button == tea.MouseButtonLeft {
+				// Map mouse Y to a line in the viewport content
+				contentLine := msg.Y - 2 + m.vp.YOffset
+				idx := m.messageAtLine(contentLine)
+				if idx < 0 {
+					idx = 0
+				}
+				if idx >= len(m.messages) {
+					idx = len(m.messages) - 1
+				}
+				switch msg.Action {
+				case tea.MouseActionPress:
+					m.selecting = true
+					m.selectStart = idx
+					m.selectEnd = idx
+				case tea.MouseActionMotion:
+					if m.selecting {
+						m.selectEnd = idx
+					}
+				case tea.MouseActionRelease:
+					m.selecting = false
+				}
+				return m, nil
+			}
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -81,21 +120,27 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Ctrl+C: copy last assistant message to clipboard, then quit
+		// Ctrl+C: copy selected text to clipboard, then quit
 		if msg.Type == tea.KeyCtrlC {
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
 				return m, nil
 			}
-			// Copy last assistant response
-			for i := len(m.messages) - 1; i >= 0; i-- {
-				if m.messages[i].Role == "assistant" && m.messages[i].Content != "" {
-					if err := clipboard.WriteAll(m.messages[i].Content); err == nil {
-						m.messages = append(m.messages, chatMessage{
-							Role: "system", Content: "✓ Copied assistant message to clipboard",
-						})
+			// Copy selected messages (or last assistant if nothing selected)
+			text := m.selectedMessages()
+			if text == "" {
+				for i := len(m.messages) - 1; i >= 0; i-- {
+					if m.messages[i].Role == "assistant" && m.messages[i].Content != "" {
+						text = m.messages[i].Content
+						break
 					}
-					break
+				}
+			}
+			if text != "" {
+				if err := clipboard.WriteAll(text); err == nil {
+					m.messages = append(m.messages, chatMessage{
+						Role: "system", Content: "✓ Copied to clipboard",
+					})
 				}
 			}
 			return m, tea.Quit
@@ -199,6 +244,69 @@ func (m *TuiModel) adjustInputHeight() {
 			m.vp.Height = m.height - 1 - wanted
 		}
 	}
+}
+
+// messageAtLine estimates which message index corresponds to a given content line number.
+func (m *TuiModel) messageAtLine(contentLine int) int {
+	if contentLine < 0 || len(m.messages) == 0 {
+		return 0
+	}
+	line := 0
+	for i, msg := range m.messages {
+		var n int
+		switch msg.Role {
+		case "user":
+			n = 1
+		case "system":
+			n = 1
+		case "assistant":
+			if msg.ReasoningContent != "" {
+				n += strings.Count(msg.ReasoningContent, "\n") + 1
+			}
+			n += 1 // label
+			if msg.Rendered != "" {
+				n += strings.Count(msg.Rendered, "\n") + 1
+			} else if msg.Content != "" {
+				n += strings.Count(msg.Content, "\n") + 1
+			}
+		}
+		if contentLine < line+n {
+			return i
+		}
+		line += n
+	}
+	return len(m.messages) - 1
+}
+
+// isSelected returns whether message at index i is currently highlighted.
+func (m *TuiModel) isSelected(i int) bool {
+	if m.selectStart < 0 {
+		return false
+	}
+	start, end := m.selectStart, m.selectEnd
+	if end < start {
+		start, end = end, start
+	}
+	return i >= start && i <= end
+}
+
+// selectedMessages returns the text of all selected assistant messages.
+func (m *TuiModel) selectedMessages() string {
+	start, end := m.selectStart, m.selectEnd
+	if start < 0 {
+		return ""
+	}
+	if end < start {
+		start, end = end, start
+	}
+	var b strings.Builder
+	for i := start; i <= end && i < len(m.messages); i++ {
+		if m.messages[i].Role == "assistant" && m.messages[i].Content != "" {
+			b.WriteString(m.messages[i].Content)
+			b.WriteString("\n\n")
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {

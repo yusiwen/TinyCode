@@ -37,6 +37,11 @@ type TuiModel struct {
 	// Provider selection dialog
 	selectingProvider bool
 	providerCursor    int
+
+	// Mouse selection
+	selecting   bool // currently dragging
+	selectStart int  // index of first selected message (-1 = none)
+	selectEnd   int  // index of last selected message
 }
 
 // NewTUI creates and returns a new TUI model.
