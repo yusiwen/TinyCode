@@ -39,9 +39,10 @@ type TuiModel struct {
 	providerCursor    int
 
 	// Mouse selection
-	selecting   bool // currently dragging
-	selectStart int  // index of first selected message (-1 = none)
-	selectEnd   int  // index of last selected message
+	selecting      bool // currently dragging
+	mouseDrag      bool // true if mouse moved while button held
+	selectStart    int  // index of first selected message (-1 = none)
+	selectEnd      int  // index of last selected message
 
 	// Quit confirmation
 	quitConfirm bool

@@ -29,8 +29,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Left button → selection
 			if msg.Button == tea.MouseButtonLeft {
-				// Map mouse Y to a line in the viewport content
-				// Terminal row 0 = header, row 1+ = viewport content
 				contentLine := msg.Y - 1 + m.vp.YOffset
 				idx := m.messageAtLine(contentLine)
 				if idx < 0 {
@@ -41,14 +39,21 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				switch msg.Action {
 				case tea.MouseActionPress:
+					m.mouseDrag = false
 					m.selecting = true
 					m.selectStart = idx
 					m.selectEnd = idx
 				case tea.MouseActionMotion:
 					if m.selecting {
+						m.mouseDrag = true
 						m.selectEnd = idx
 					}
 				case tea.MouseActionRelease:
+					if !m.mouseDrag {
+						// Click without drag → clear selection
+						m.selectStart = -1
+						m.selectEnd = -1
+					}
 					m.selecting = false
 				}
 				return m, nil
@@ -298,7 +303,8 @@ func (m *TuiModel) isSelected(i int) bool {
 	return i >= start && i <= end
 }
 
-// selectedMessages returns the text of all selected assistant messages.
+// selectedMessages returns the text of all selected assistant messages,
+// including reasoning content.
 func (m *TuiModel) selectedMessages() string {
 	start, end := m.selectStart, m.selectEnd
 	if start < 0 {
@@ -309,7 +315,14 @@ func (m *TuiModel) selectedMessages() string {
 	}
 	var b strings.Builder
 	for i := start; i <= end && i < len(m.messages); i++ {
-		if m.messages[i].Role == "assistant" && m.messages[i].Content != "" {
+		if m.messages[i].Role != "assistant" {
+			continue
+		}
+		if m.messages[i].ReasoningContent != "" {
+			b.WriteString(m.messages[i].ReasoningContent)
+			b.WriteString("\n\n")
+		}
+		if m.messages[i].Content != "" {
 			b.WriteString(m.messages[i].Content)
 			b.WriteString("\n\n")
 		}
