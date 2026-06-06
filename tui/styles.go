@@ -30,8 +30,6 @@ var (
 			Foreground(colorYellow).
 			Background(lipgloss.Color("#333300"))
 
-	defaultStyle = lipgloss.NewStyle()
-
 	userStyle = lipgloss.NewStyle().
 			Foreground(colorGreen).
 			Bold(true)
