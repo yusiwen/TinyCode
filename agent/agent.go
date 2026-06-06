@@ -56,12 +56,19 @@ func (a *Agent) agentPrefix() string {
 }
 
 // stepName prints the step header (always visible) in cyan.
+// In TUI mode (StreamCallbacks set), this is handled by the TUI renderer.
 func (a *Agent) stepName(format string, args ...any) {
+	if a.StreamCallbacks != nil {
+		return // TUI mode — direct stdout bypasses Bubble Tea
+	}
 	fmt.Print("\n" + colorCyan + a.agentPrefix() + " " + fmt.Sprintf(format, args...) + colorReset + "\n")
 }
 
 // stepDetail prints detailed output in gray, only when Verbose is enabled.
 func (a *Agent) stepDetail(format string, args ...any) {
+	if a.StreamCallbacks != nil {
+		return
+	}
 	if a.Verbose {
 		fmt.Print(colorGray + a.agentPrefix() + " " + fmt.Sprintf(format, args...) + colorReset + "\n")
 	}
