@@ -185,18 +185,18 @@ func collectInline(n ast.Node, source []byte) []TextChunk {
 			if entering {
 				flush()
 				link = string(node.Destination)
-				return ast.WalkSkipChildren, nil
+			} else {
+				flush()
+				link = ""
 			}
-			flush()
-			link = ""
 		case *ast.AutoLink:
 			if entering {
 				buf.WriteString(string(node.URL(source)))
 				link = string(node.URL(source))
-				return ast.WalkSkipChildren, nil
+			} else {
+				flush()
+				link = ""
 			}
-			flush()
-			link = ""
 		}
 		return ast.WalkContinue, nil
 	})
@@ -260,14 +260,9 @@ func collectTable(n ast.Node, source []byte) ContentBlock {
 		switch child.Kind() {
 		case extensionast.KindTableHeader:
 			block.Headers = collectTableRowCells(child, source)
-		default:
-			// TableBody (no explicit Kind — it's a regular node)
-			for row := child.FirstChild(); row != nil; row = row.NextSibling() {
-				if row.Kind() == extensionast.KindTableRow {
-					cells := collectTableRowCells(row, source)
-					block.Rows = append(block.Rows, cells)
-				}
-			}
+		case extensionast.KindTableRow:
+			cells := collectTableRowCells(child, source)
+			block.Rows = append(block.Rows, cells)
 		}
 	}
 	return block

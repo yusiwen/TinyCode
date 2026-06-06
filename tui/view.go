@@ -326,8 +326,8 @@ func renderTable(block ContentBlock, sel bool) []string {
 
 	if len(block.Headers) > 0 {
 		var row []cellInfo
-		for _, cell := range block.Headers {
-			text := renderChunks(cell)
+		for _, cellChunks := range block.Headers {
+			text := renderChunks(cellChunks)
 			if text != "" {
 				row = append(row, cellInfo{text: text})
 			}
