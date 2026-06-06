@@ -10,54 +10,67 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
 
-// Update handles all events.
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		if m.ready {
-			// Mouse wheel → scroll viewport
-			if msg.Button == tea.MouseButtonWheelUp {
-				m.vp.LineUp(3)
-				return m, nil
+		if !m.ready {
+			return m, nil
+		}
+		if msg.Button == tea.MouseButtonWheelUp {
+			m.vp.LineUp(3)
+			return m, nil
+		}
+		if msg.Button == tea.MouseButtonWheelDown {
+			m.vp.LineDown(3)
+			return m, nil
+		}
+		if msg.Button == tea.MouseButtonLeft {
+			contentLine := msg.Y - 1 + m.vp.YOffset
+			idx := m.messageAtLine(contentLine)
+			if idx < 0 {
+				idx = 0
 			}
-			if msg.Button == tea.MouseButtonWheelDown {
-				m.vp.LineDown(3)
-				return m, nil
+			if idx >= len(m.messages) {
+				idx = len(m.messages) - 1
 			}
-			// Left button → selection
-			if msg.Button == tea.MouseButtonLeft {
-				contentLine := msg.Y - 1 + m.vp.YOffset
-				idx := m.messageAtLine(contentLine)
-				if idx < 0 {
-					idx = 0
-				}
-				if idx >= len(m.messages) {
-					idx = len(m.messages) - 1
-				}
-				switch msg.Action {
-				case tea.MouseActionPress:
-					m.mouseDrag = false
-					m.selecting = true
-					m.selectStart = idx
+			switch msg.Action {
+			case tea.MouseActionPress:
+				m.mouseDrag = false
+				m.selecting = true
+				m.selectStart = idx
+				m.selectEnd = idx
+				tlog.Debug("mouse.select", "press",
+					"y", msg.Y, "contentLine", contentLine,
+					"yOffset", m.vp.YOffset, "msgIdx", idx,
+					"msgRole", m.messages[idx].Role)
+			case tea.MouseActionMotion:
+				if m.selecting {
+					m.mouseDrag = true
 					m.selectEnd = idx
-				case tea.MouseActionMotion:
-					if m.selecting {
-						m.mouseDrag = true
-						m.selectEnd = idx
-					}
-				case tea.MouseActionRelease:
-					if !m.mouseDrag {
-						// Click without drag → clear selection
-						m.selectStart = -1
-						m.selectEnd = -1
-					}
-					m.selecting = false
+					tlog.Debug("mouse.select", "drag",
+						"y", msg.Y, "contentLine", contentLine,
+						"msgIdx", idx, "range", fmt.Sprintf("[%d,%d]", m.selectStart, m.selectEnd))
 				}
-				return m, nil
+			case tea.MouseActionRelease:
+				if !m.mouseDrag {
+					m.selectStart = -1
+					m.selectEnd = -1
+					tlog.Debug("mouse.select", "click",
+						"y", msg.Y, "contentLine", contentLine,
+						"msgIdx", idx, "msgRole", m.messages[idx].Role,
+						"action", "cleared")
+				} else {
+					tlog.Debug("mouse.select", "release",
+						"y", msg.Y, "contentLine", contentLine,
+						"msgIdx", idx, "range", fmt.Sprintf("[%d,%d]", m.selectStart, m.selectEnd))
+				}
+				m.selecting = false
 			}
+			return m, nil
 		}
 		return m, nil
 
@@ -76,7 +89,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Provider selection dialog mode
 		if m.selectingProvider {
 			switch msg.Type {
 			case tea.KeyUp:
@@ -93,7 +105,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err := m.provReg.SwitchTo(idx); err == nil {
 						m.agent.Provider = m.provReg.Current()
 						m.messages = append(m.messages, chatMessage{
-							Role: "system",
+							Role:    "system",
 							Content: fmt.Sprintf("Switched to %s", m.provReg.CurrentName()),
 						})
 					}
@@ -112,34 +124,30 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
 		}
 
-		// Submit on Enter
+		// Enter → submit
 		if msg.Type == tea.KeyEnter && !msg.Alt {
 			if m.status != StatusStreaming && strings.TrimSpace(m.input.Value()) != "" {
 				return m.submitInput()
 			}
 		}
 
-		// Ctrl+J = insert newline
+		// Ctrl+J → newline
 		if msg.Type == tea.KeyCtrlJ {
 			m.input.SetValue(m.input.Value() + "\n")
 			m.adjustInputHeight()
 			return m, nil
 		}
 
-		// Ctrl+C: copy selection | interrupt stream | double-tap to quit
+		// Ctrl+C: copy | interrupt | double-tap quit
 		if msg.Type == tea.KeyCtrlC {
-			// ① Copy selected text if any
 			if sel := m.selectedMessages(); sel != "" {
 				if err := clipboard.WriteAll(sel); err == nil {
 					m.messages = append(m.messages, chatMessage{
 						Role: "system", Content: "✓ Copied to clipboard",
 					})
 				}
-				// Keep selection visible, don't quit
 				return m, nil
 			}
-
-			// ② Interrupt stream
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
 				m.messages = append(m.messages, chatMessage{
@@ -147,8 +155,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				return m, nil
 			}
-
-			// ③ Double-tap to quit
 			if !m.quitConfirm {
 				m.quitConfirm = true
 				m.messages = append(m.messages, chatMessage{
@@ -159,7 +165,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// Pass all other keys to textarea
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		m.adjustInputHeight()
@@ -174,14 +179,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ChatMsg:
-		m.messages = append(m.messages, chatMessage{
-			Role:    "user",
-			Content: msg.Text,
-		})
-		cur := chatMessage{
-			Role:      "assistant",
-			Streaming: true,
-		}
+		m.messages = append(m.messages, chatMessage{Role: "user", Content: msg.Text})
+		cur := chatMessage{Role: "assistant", Streaming: true}
 		m.messages = append(m.messages, cur)
 		m.curAssistant = &m.messages[len(m.messages)-1]
 		m.status = StatusStreaming
@@ -259,17 +258,15 @@ func (m *TuiModel) adjustInputHeight() {
 	}
 }
 
-// messageAtLine estimates which message index corresponds to a given content line number.
+// messageAtLine returns the message index for a given content line number.
 func (m *TuiModel) messageAtLine(contentLine int) int {
 	if contentLine < 0 || len(m.messages) == 0 {
 		return 0
 	}
-	// Estimate terminal width for wrapping
 	termW := m.width - 6
 	if termW < 20 {
 		termW = 20
 	}
-
 	line := 0
 	for i, msg := range m.messages {
 		var n int
@@ -282,10 +279,9 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			if msg.ReasoningContent != "" {
 				n += estimateLines(msg.ReasoningContent, termW)
 			}
-			n += 1 // label
+			n += 1
 			if msg.Rendered != "" {
-				trimmed := strings.TrimRight(msg.Rendered, "\n")
-				for _, part := range strings.Split(trimmed, "\n") {
+				for _, part := range strings.Split(strings.TrimRight(msg.Rendered, "\n"), "\n") {
 					n += estimateLines(part, termW)
 				}
 			} else if msg.Content != "" {
@@ -300,7 +296,6 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 	return -1
 }
 
-// estimateLines estimates how many terminal lines a string occupies given the terminal width.
 func estimateLines(s string, w int) int {
 	if len(s) == 0 {
 		return 1
@@ -322,7 +317,6 @@ func estimateLines(s string, w int) int {
 	return lines
 }
 
-// isSelected returns whether message at index i is currently highlighted.
 func (m *TuiModel) isSelected(i int) bool {
 	if m.selectStart < 0 {
 		return false
@@ -334,8 +328,6 @@ func (m *TuiModel) isSelected(i int) bool {
 	return i >= start && i <= end
 }
 
-// selectedMessages returns the text of all selected assistant messages,
-// including reasoning content.
 func (m *TuiModel) selectedMessages() string {
 	start, end := m.selectStart, m.selectEnd
 	if start < 0 {
