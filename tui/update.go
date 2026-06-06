@@ -67,12 +67,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
 		}
 
-		// Submit on Alt+Enter (multi-line mode)
-		if msg.Type == tea.KeyEnter && msg.Alt {
-			if m.status == StatusStreaming {
-				return m, nil
+		// Submit on Enter (plain, no Alt): submit if non-empty input, 
+		// otherwise pass to textarea for newline insertion.
+		if msg.Type == tea.KeyEnter && !msg.Alt {
+			if m.status != StatusStreaming && strings.TrimSpace(m.input.Value()) != "" {
+				return m.submitInput()
 			}
-			return m.submitInput()
+			// streaming or empty input → let textarea handle the key
 		}
 
 		// Ctrl+C to interrupt or quit
