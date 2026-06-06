@@ -28,6 +28,9 @@ func (m *TuiModel) View() string {
 		case "user":
 			msgLines = append(msgLines, userStyle.Render("> "+msg.Content))
 		case "assistant":
+			if msg.ReasoningContent != "" {
+				msgLines = append(msgLines, thinkingStyle.Render("| "+msg.ReasoningContent))
+			}
 			if msg.Rendered != "" {
 				msgLines = append(msgLines, assistantLabelStyle.Render("Assistant:"))
 				msgLines = append(msgLines, msg.Rendered)
@@ -38,9 +41,6 @@ func (m *TuiModel) View() string {
 				}
 				msgLines = append(msgLines, assistantLabelStyle.Render(label))
 				msgLines = append(msgLines, msg.Content)
-			}
-			if msg.ReasoningContent != "" {
-				msgLines = append(msgLines, thinkingStyle.Render("| "+msg.ReasoningContent))
 			}
 		case "system":
 			msgLines = append(msgLines, dimStyle.Render("→ "+msg.Content))
