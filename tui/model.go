@@ -46,6 +46,9 @@ type TuiModel struct {
 
 	// Quit confirmation
 	quitConfirm bool
+
+	// Scroll tracking
+	streamDoneNotified bool // true after first GotoBottom on stream completion
 }
 
 // NewTUI creates and returns a new TUI model.

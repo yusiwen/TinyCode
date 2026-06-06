@@ -53,9 +53,10 @@ func (m *TuiModel) View() string {
 		wrapped = append(wrapped, wrapLine(line, m.vp.Width)...)
 	}
 	m.vp.SetContent(strings.Join(wrapped, "\n"))
-	// Goto bottom when streaming just finished
-	if m.status == StatusIdle {
+	// Goto bottom once when streaming just finished
+	if m.status == StatusIdle && !m.streamDoneNotified {
 		m.vp.GotoBottom()
+		m.streamDoneNotified = true
 	}
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")

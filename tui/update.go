@@ -185,6 +185,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messages = append(m.messages, cur)
 		m.curAssistant = &m.messages[len(m.messages)-1]
 		m.status = StatusStreaming
+		m.streamDoneNotified = false
 		go m.runAgent(msg.Text)
 		return m, m.waitForStream()
 
