@@ -30,7 +30,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Left button → selection
 			if msg.Button == tea.MouseButtonLeft {
 				// Map mouse Y to a line in the viewport content
-				contentLine := msg.Y - 2 + m.vp.YOffset
+				// Terminal row 0 = header, row 1+ = viewport content
+				contentLine := msg.Y - 1 + m.vp.YOffset
 				idx := m.messageAtLine(contentLine)
 				if idx < 0 {
 					idx = 0
