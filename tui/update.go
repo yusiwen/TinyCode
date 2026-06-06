@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -50,7 +51,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.providerCursor++
 				}
 			case tea.KeyEnter:
-				// Switch to selected provider
 				idx := m.providerCursor
 				if idx >= 0 && idx < m.provReg.Len() {
 					if err := m.provReg.SwitchTo(idx); err == nil {
@@ -75,39 +75,41 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
 		}
 
-		// Submit on Enter (plain, no Alt): submit if non-empty input, 
-		// otherwise pass to textarea for newline insertion.
+		// Submit on Enter
 		if msg.Type == tea.KeyEnter && !msg.Alt {
 			if m.status != StatusStreaming && strings.TrimSpace(m.input.Value()) != "" {
 				return m.submitInput()
 			}
-			// streaming or empty input → let textarea handle the key
 		}
 
-		// Ctrl+J = insert newline (line feed) for terminals that can't send
-		// Shift+Enter or Alt+Enter.
+		// Ctrl+J = insert newline
 		if msg.Type == tea.KeyCtrlJ {
 			m.input.SetValue(m.input.Value() + "\n")
 			m.adjustInputHeight()
 			return m, nil
 		}
 
-		// Ctrl+C: copy selected text (viewport), or interrupt stream, or quit
+		// Ctrl+C: copy last assistant message to clipboard, then quit
 		if msg.Type == tea.KeyCtrlC {
-			// Delegate to viewport first — it handles copy when text is selected
-			vp, cmd := m.vp.Update(msg)
-			m.vp = vp
-			if cmd != nil {
-				return m, cmd // viewport copied selection to clipboard
-			}
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
 				return m, nil
 			}
+			// Copy last assistant response
+			for i := len(m.messages) - 1; i >= 0; i-- {
+				if m.messages[i].Role == "assistant" && m.messages[i].Content != "" {
+					if err := clipboard.WriteAll(m.messages[i].Content); err == nil {
+						m.messages = append(m.messages, chatMessage{
+							Role: "system", Content: "✓ Copied assistant message to clipboard",
+						})
+					}
+					break
+				}
+			}
 			return m, tea.Quit
 		}
 
-		// Pass all other keys to textarea (including Shift+Enter for newline)
+		// Pass all other keys to textarea
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		m.adjustInputHeight()
@@ -122,13 +124,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ChatMsg:
-		// Add user message
 		m.messages = append(m.messages, chatMessage{
 			Role:    "user",
 			Content: msg.Text,
 		})
-
-		// Add placeholder assistant message
 		cur := chatMessage{
 			Role:      "assistant",
 			Streaming: true,
@@ -136,7 +135,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messages = append(m.messages, cur)
 		m.curAssistant = &m.messages[len(m.messages)-1]
 		m.status = StatusStreaming
-
 		go m.runAgent(msg.Text)
 		return m, m.waitForStream()
 
@@ -204,7 +202,6 @@ func (m *TuiModel) adjustInputHeight() {
 	if m.input.Height() != wanted {
 		val := m.input.Value()
 		m.input.SetHeight(wanted)
-		// Force recalc of internal scroll/view state
 		m.input.SetValue(val)
 		if m.ready {
 			m.vp.Height = m.height - 1 - wanted
@@ -247,6 +244,9 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 			s = "on"
 		}
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Thinking display %s", s)})
+	case "/model":
+		m.selectingProvider = true
+		m.providerCursor = 0
 	case "/plan":
 		if err := m.registry.Set("plan"); err != nil {
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
@@ -263,9 +263,6 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.agent.Config = m.registry.Current()
 		m.modeName = "build"
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: "Switched to build mode"})
-	case "/model":
-		m.selectingProvider = true
-		m.providerCursor = 0
 	default:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown command: %s", cmd)})
 	}
@@ -289,7 +286,7 @@ func (m *TuiModel) runAgent(prompt string) {
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)
-	m.agent.StreamCallbacks = nil // reset for non-TUI usage
+	m.agent.StreamCallbacks = nil
 	m.streamCh <- StreamDone{
 		Content: result,
 		Error:   err,
