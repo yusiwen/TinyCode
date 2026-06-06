@@ -297,7 +297,7 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 // visibleLines estimates terminal lines occupied, using lipgloss.Width
 // to skip ANSI escape codes and handle wide chars (emoji, CJK).
 func visibleLines(s string, termW int) int {
-	if s == "" {
+	if s == "" || termW < 1 {
 		return 0
 	}
 	lines := 0
