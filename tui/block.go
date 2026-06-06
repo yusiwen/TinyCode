@@ -5,6 +5,8 @@ import (
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	extensionast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -19,13 +21,15 @@ type TextChunk struct {
 
 // ContentBlock is a top-level block in the rendered message.
 type ContentBlock struct {
-	Type     string         // "paragraph", "heading", "code", "list", "quote", "hr"
+	Type     string         // "paragraph", "heading", "code", "list", "quote", "hr", "table"
 	Chunks   []TextChunk    // inline content
 	Level    int            // heading level
 	Language string         // code block language
 	Code     string         // raw code text
 	Items    []ContentBlock // list items / quote children
 	Numbered bool           // ordered list
+	Headers  [][]TextChunk  // table header cells
+	Rows     [][][]TextChunk // table body cells
 }
 
 // parseMarkdown converts markdown text into a slice of ContentBlocks.
@@ -35,7 +39,10 @@ func parseMarkdown(md string) []ContentBlock {
 	}
 
 	reader := text.NewReader([]byte(md))
-	doc := goldmark.DefaultParser().Parse(reader)
+	gm := goldmark.New(
+		goldmark.WithExtensions(extension.Table),
+	)
+	doc := gm.Parser().Parse(reader)
 	source := reader.Source()
 
 	var blocks []ContentBlock
@@ -43,6 +50,11 @@ func parseMarkdown(md string) []ContentBlock {
 	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
+		}
+		// Table nodes are registered in extension/ast
+		if n.Kind() == extensionast.KindTable {
+			blocks = append(blocks, collectTable(n, source))
+			return ast.WalkSkipChildren, nil
 		}
 		switch node := n.(type) {
 		case *ast.Paragraph:
@@ -239,4 +251,36 @@ func collectListItems(n *ast.List, source []byte, numbered bool) *ContentBlock {
 		Items:    items,
 		Numbered: numbered,
 	}
+}
+
+// collectTable processes a table AST node and returns a ContentBlock.
+func collectTable(n ast.Node, source []byte) ContentBlock {
+	block := ContentBlock{Type: "table"}
+	for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+		switch child.Kind() {
+		case extensionast.KindTableHeader:
+			block.Headers = collectTableRowCells(child, source)
+		default:
+			// TableBody (no explicit Kind — it's a regular node)
+			for row := child.FirstChild(); row != nil; row = row.NextSibling() {
+				if row.Kind() == extensionast.KindTableRow {
+					cells := collectTableRowCells(row, source)
+					block.Rows = append(block.Rows, cells)
+				}
+			}
+		}
+	}
+	return block
+}
+
+// collectTableRowCells extracts the text from each cell in a table row.
+func collectTableRowCells(n ast.Node, source []byte) [][]TextChunk {
+	var cells [][]TextChunk
+	for cell := n.FirstChild(); cell != nil; cell = cell.NextSibling() {
+		if cell.Kind() == extensionast.KindTableCell {
+			chunks := collectInline(cell, source)
+			cells = append(cells, chunks)
+		}
+	}
+	return cells
 }

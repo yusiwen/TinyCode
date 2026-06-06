@@ -264,6 +264,10 @@ func renderBlocks(blocks []ContentBlock, sel bool) []string {
 			} else {
 				lines = append(lines, dimStyle.Render(rule))
 			}
+
+		case "table":
+			tableLines := renderTable(block, sel)
+			lines = append(lines, tableLines...)
 		}
 	}
 
@@ -305,4 +309,98 @@ func renderChunks(chunks []TextChunk) string {
 		}
 	}
 	return b.String()
+}
+
+// renderTable renders a table block with aligned columns.
+
+
+// renderTable renders a table block with aligned columns.
+func renderTable(block ContentBlock, sel bool) []string {
+	if len(block.Headers) == 0 && len(block.Rows) == 0 {
+		return nil
+	}
+
+	type cellInfo struct{ text string }
+	colCount := 0
+	var allRows [][]cellInfo
+
+	if len(block.Headers) > 0 {
+		var row []cellInfo
+		for _, cell := range block.Headers {
+			text := renderChunks(cell)
+			if text != "" {
+				row = append(row, cellInfo{text: text})
+			}
+		}
+		if len(row) > 0 {
+			allRows = append(allRows, row)
+			colCount = max(colCount, len(row))
+		}
+	}
+	for _, rowCells := range block.Rows {
+		var row []cellInfo
+		for _, cell := range rowCells {
+			text := renderChunks(cell)
+			if text != "" {
+				row = append(row, cellInfo{text: text})
+			}
+		}
+		if len(row) > 0 {
+			allRows = append(allRows, row)
+			colCount = max(colCount, len(row))
+		}
+	}
+
+	colWidths := make([]int, colCount)
+	for _, row := range allRows {
+		for ci, cell := range row {
+			w := lipgloss.Width(cell.text)
+			if w > colWidths[ci] {
+				colWidths[ci] = w
+			}
+		}
+	}
+
+	var lines []string
+	sepStyle := dimStyle
+
+	for ri, row := range allRows {
+		var parts []string
+		for ci := 0; ci < colCount; ci++ {
+			var cellText string
+			if ci < len(row) {
+				cellText = row[ci].text
+			}
+			padded := cellText + strings.Repeat(" ", colWidths[ci]-lipgloss.Width(cellText))
+			parts = append(parts, " "+padded+" ")
+		}
+		line := "│" + strings.Join(parts, "│") + "│"
+		if ri == 0 && len(block.Headers) > 0 {
+			if sel {
+				lines = append(lines, selectedStyle.Render(line))
+			} else {
+				lines = append(lines, assistantLabelStyle.Render(line))
+			}
+			// Separator
+			var sepParts []string
+			for ci := 0; ci < colCount; ci++ {
+				sepParts = append(sepParts, strings.Repeat("─", colWidths[ci]+2))
+			}
+			lines = append(lines, sepStyle.Render("├"+strings.Join(sepParts, "┼")+"┤"))
+		} else {
+			if sel {
+				lines = append(lines, selectedStyle.Render(line))
+			} else {
+				lines = append(lines, line)
+			}
+		}
+	}
+	return lines
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
