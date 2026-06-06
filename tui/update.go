@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -277,15 +278,14 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			n = 1
 		case "assistant":
 			if msg.ReasoningContent != "" {
-				n += estimateLines(msg.ReasoningContent, termW)
+				n += visibleLines(msg.ReasoningContent, termW)
 			}
 			n += 1
 			if msg.Rendered != "" {
-				for _, part := range strings.Split(strings.TrimRight(msg.Rendered, "\n"), "\n") {
-					n += estimateLines(part, termW)
-				}
+				// Glamour output: ANSI codes already handled by lipgloss
+				n += visibleLines(strings.TrimRight(msg.Rendered, "\n"), termW)
 			} else if msg.Content != "" {
-				n += estimateLines(msg.Content, termW)
+				n += visibleLines(msg.Content, termW)
 			}
 		}
 		if contentLine < line+n {
@@ -296,23 +296,23 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 	return -1
 }
 
-func estimateLines(s string, w int) int {
-	if len(s) == 0 {
-		return 1
+// visibleLines estimates terminal lines occupied, using lipgloss.Width
+// to skip ANSI escape codes and handle wide chars (emoji, CJK).
+func visibleLines(s string, termW int) int {
+	if s == "" {
+		return 0
 	}
-	lines := 1
-	pos := 0
-	for _, r := range s {
-		if r == '\n' {
+	lines := 0
+	for _, line := range strings.Split(s, "\n") {
+		w := lipgloss.Width(line)
+		if w == 0 {
 			lines++
-			pos = 0
 		} else {
-			pos++
-			if pos >= w {
-				lines++
-				pos = 0
-			}
+			lines += (w + termW - 1) / termW
 		}
+	}
+	if lines == 0 {
+		lines = 1
 	}
 	return lines
 }
