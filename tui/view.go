@@ -92,6 +92,11 @@ func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 
 	// Blocks (new pipeline)
 	if len(msg.Blocks) > 0 {
+		if !sel {
+			lines = append(lines, assistantLabelStyle.Render("Assistant:"))
+		} else {
+			lines = append(lines, selectedStyle.Render("Assistant:"))
+		}
 		blocksLines := renderBlocks(msg.Blocks, sel)
 		lines = append(lines, blocksLines...)
 		return lines

@@ -154,7 +154,7 @@ func collectInline(n ast.Node, source []byte) []TextChunk {
 			if entering {
 				flush()
 				code = true
-				// CodeSpan contents: get text from child
+				// Read code text from children manually
 				for c := child.FirstChild(); c != nil; c = c.NextSibling() {
 					if t, ok := c.(*ast.Text); ok {
 						buf.Write(t.Segment.Value(source))
@@ -163,26 +163,26 @@ func collectInline(n ast.Node, source []byte) []TextChunk {
 						buf.WriteString(string(s.Value))
 					}
 				}
-			} else {
-				flush()
-				code = false
+				return ast.WalkSkipChildren, nil
 			}
+			flush()
+			code = false
 		case *ast.Link:
 			if entering {
 				flush()
 				link = string(node.Destination)
-			} else {
-				flush()
-				link = ""
+				return ast.WalkSkipChildren, nil
 			}
+			flush()
+			link = ""
 		case *ast.AutoLink:
 			if entering {
 				buf.WriteString(string(node.URL(source)))
 				link = string(node.URL(source))
-			} else {
-				flush()
-				link = ""
+				return ast.WalkSkipChildren, nil
 			}
+			flush()
+			link = ""
 		}
 		return ast.WalkContinue, nil
 	})
