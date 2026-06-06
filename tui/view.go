@@ -59,7 +59,11 @@ func (m *TuiModel) View() string {
 				}
 			}
 		case "system":
-			msgLines = append(msgLines, dimStyle.Render("→ "+msg.Content))
+			if sel {
+				msgLines = append(msgLines, selectedStyle.Render("→ "+msg.Content))
+			} else {
+				msgLines = append(msgLines, dimStyle.Render("→ "+msg.Content))
+			}
 		}
 	}
 	m.vp.SetContent(strings.Join(msgLines, "\n"))
