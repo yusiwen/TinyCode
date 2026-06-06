@@ -120,28 +120,35 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Ctrl+C: copy selected text to clipboard, then quit
+		// Ctrl+C: copy selection | interrupt stream | double-tap to quit
 		if msg.Type == tea.KeyCtrlC {
-			if m.status == StatusStreaming {
-				m.status = StatusIdle
-				return m, nil
-			}
-			// Copy selected messages (or last assistant if nothing selected)
-			text := m.selectedMessages()
-			if text == "" {
-				for i := len(m.messages) - 1; i >= 0; i-- {
-					if m.messages[i].Role == "assistant" && m.messages[i].Content != "" {
-						text = m.messages[i].Content
-						break
-					}
-				}
-			}
-			if text != "" {
-				if err := clipboard.WriteAll(text); err == nil {
+			// ① Copy selected text if any
+			if sel := m.selectedMessages(); sel != "" {
+				if err := clipboard.WriteAll(sel); err == nil {
 					m.messages = append(m.messages, chatMessage{
 						Role: "system", Content: "✓ Copied to clipboard",
 					})
 				}
+				// Keep selection visible, don't quit
+				return m, nil
+			}
+
+			// ② Interrupt stream
+			if m.status == StatusStreaming {
+				m.status = StatusIdle
+				m.messages = append(m.messages, chatMessage{
+					Role: "system", Content: "⏹ Interrupted",
+				})
+				return m, nil
+			}
+
+			// ③ Double-tap to quit
+			if !m.quitConfirm {
+				m.quitConfirm = true
+				m.messages = append(m.messages, chatMessage{
+					Role: "system", Content: "Press Ctrl+C again to quit",
+				})
+				return m, nil
 			}
 			return m, tea.Quit
 		}

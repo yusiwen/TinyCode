@@ -42,6 +42,9 @@ type TuiModel struct {
 	selecting   bool // currently dragging
 	selectStart int  // index of first selected message (-1 = none)
 	selectEnd   int  // index of last selected message
+
+	// Quit confirmation
+	quitConfirm bool
 }
 
 // NewTUI creates and returns a new TUI model.

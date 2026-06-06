@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
@@ -170,26 +167,10 @@ func main() {
 			store := session.NewStore(cfg.SessionDir)
 			sess := store.Create("default")
 			ag.SessionStore = sess
+			defer sess.Flush()
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-			gracefulDone := make(chan struct{})
-			go func() {
-				<-sigCh
-				fmt.Println("\n\nSaving session...")
-				sess.Flush()
-				cancel()
-				close(gracefulDone)
-				select {
-				case <-sigCh:
-					fmt.Println("\nForce exit.")
-					os.Exit(0)
-				case <-time.After(2 * time.Second):
-				}
-			}()
 
 			prompt := ""
 			if len(args) > 0 {
