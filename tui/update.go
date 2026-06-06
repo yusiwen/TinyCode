@@ -143,6 +143,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlC {
 			if sel := m.selectedMessages(); sel != "" {
 				copyToClipboard(sel)
+				m.selectStart = -1
+				m.selectEnd = -1
 				m.messages = append(m.messages, chatMessage{
 					Role: "system", Content: "✓ Copied to clipboard",
 				})
@@ -210,6 +212,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.curAssistant.Streaming = false
 			if msg.Content != "" {
+				m.curAssistant.Blocks = parseMarkdown(msg.Content)
+				// Also keep Rendered for backward compat (View uses Blocks now)
 				rendered, err := glamour.Render(msg.Content, m.config.GlamourStyle)
 				if err == nil {
 					m.curAssistant.Rendered = rendered

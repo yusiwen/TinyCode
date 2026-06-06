@@ -27,7 +27,8 @@ type chatMessage struct {
 	Content          string
 	ReasoningContent string
 	Streaming        bool // true while still receiving deltas
-	Rendered         string // glamour-rendered content (set on StreamDone)
+	Rendered         string // glamour-rendered content (set on StreamDone, deprecated)
+	Blocks           []ContentBlock // structured content (new, replaces Rendered)
 }
 
 // TuiStatus indicates the current TUI state.
