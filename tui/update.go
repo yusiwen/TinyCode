@@ -278,7 +278,9 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			}
 			n += 1 // label
 			if msg.Rendered != "" {
-				n += strings.Count(msg.Rendered, "\n") + 1
+				// glamour often appends a trailing newline, trim to avoid overcount
+				trimmed := strings.TrimRight(msg.Rendered, "\n")
+				n += strings.Count(trimmed, "\n") + 1
 			} else if msg.Content != "" {
 				n += strings.Count(msg.Content, "\n") + 1
 			}
@@ -288,7 +290,8 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 		}
 		line += n
 	}
-	return len(m.messages) - 1
+	// Past all content: return -1 (no message) so no highlight
+	return -1
 }
 
 // isSelected returns whether message at index i is currently highlighted.
