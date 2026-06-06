@@ -16,11 +16,10 @@ import (
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		if msg.Type == tea.MouseWheelUp && m.ready {
-			m.vp.LineUp(3)
-		}
-		if msg.Type == tea.MouseWheelDown && m.ready {
-			m.vp.LineDown(3)
+		if m.ready {
+			var cmd tea.Cmd
+			m.vp, cmd = m.vp.Update(msg)
+			return m, cmd
 		}
 		return m, nil
 
@@ -93,8 +92,14 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Ctrl+C to interrupt or quit
+		// Ctrl+C: copy selected text (viewport), or interrupt stream, or quit
 		if msg.Type == tea.KeyCtrlC {
+			// Delegate to viewport first — it handles copy when text is selected
+			vp, cmd := m.vp.Update(msg)
+			m.vp = vp
+			if cmd != nil {
+				return m, cmd // viewport copied selection to clipboard
+			}
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
 				return m, nil
