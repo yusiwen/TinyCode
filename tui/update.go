@@ -80,6 +80,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Shift+Enter or Alt+Enter.
 		if msg.Type == tea.KeyCtrlJ {
 			m.input.SetValue(m.input.Value() + "\n")
+			m.adjustInputHeight()
 			return m, nil
 		}
 
