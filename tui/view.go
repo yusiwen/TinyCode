@@ -111,16 +111,8 @@ func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 		return lines
 	}
 
-	// Fallback: legacy Rendered content (glamour)
-	if msg.Rendered != "" {
-		if sel {
-			lines = append(lines, assistantLabelStyle.Render("Assistant:"))
-			lines = append(lines, selectedStyle.Render(msg.Rendered))
-		} else {
-			lines = append(lines, assistantLabelStyle.Render("Assistant:"))
-			lines = append(lines, msg.Rendered)
-		}
-	} else if msg.Content != "" {
+	// Streaming content (no blocks yet—still receiving deltas)
+	if msg.Content != "" {
 		label := "Assistant:"
 		if msg.Streaming {
 			label = "Assistant (streaming):"

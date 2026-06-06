@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
@@ -213,13 +212,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.curAssistant.Streaming = false
 			if msg.Content != "" {
 				m.curAssistant.Blocks = parseMarkdown(msg.Content)
-				// Also keep Rendered for backward compat (View uses Blocks now)
-				rendered, err := glamour.Render(msg.Content, m.config.GlamourStyle)
-				if err == nil {
-					m.curAssistant.Rendered = rendered
-				} else {
-					m.curAssistant.Rendered = msg.Content
-				}
 			}
 		}
 		m.curAssistant = nil
@@ -284,9 +276,7 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 				n += visibleLines(msg.ReasoningContent, termW)
 			}
 			n += 1
-			if msg.Rendered != "" {
-				n += visibleLines(strings.TrimRight(msg.Rendered, "\n"), termW)
-			} else if msg.Content != "" {
+			if msg.Content != "" {
 				n += visibleLines(msg.Content, termW)
 			}
 		}
@@ -294,8 +284,7 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			"i", i, "role", msg.Role,
 			"n", n, "line_start", line, "line_end", line+n-1,
 			"width", m.width, "termW", termW,
-			"contentLen", len(msg.Content), "renderedLen", len(msg.Rendered),
-			"reasoningLen", len(msg.ReasoningContent))
+			"contentLen", len(msg.Content), "reasoningLen", len(msg.ReasoningContent))
 		if contentLine < line+n {
 			return i
 		}
