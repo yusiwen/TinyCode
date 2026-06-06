@@ -282,12 +282,17 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			}
 			n += 1
 			if msg.Rendered != "" {
-				// Glamour output: ANSI codes already handled by lipgloss
 				n += visibleLines(strings.TrimRight(msg.Rendered, "\n"), termW)
 			} else if msg.Content != "" {
 				n += visibleLines(msg.Content, termW)
 			}
 		}
+		tlog.Trace("mouse.select", "messageAtLine",
+			"i", i, "role", msg.Role,
+			"n", n, "line_start", line, "line_end", line+n-1,
+			"width", m.width, "termW", termW,
+			"contentLen", len(msg.Content), "renderedLen", len(msg.Rendered),
+			"reasoningLen", len(msg.ReasoningContent))
 		if contentLine < line+n {
 			return i
 		}
