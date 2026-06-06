@@ -76,6 +76,7 @@ func parseMarkdown(md string) []ContentBlock {
 			if listBlock != nil {
 				blocks = append(blocks, *listBlock)
 			}
+			return ast.WalkSkipChildren, nil
 
 		case *ast.Blockquote:
 			var quoteItems []ContentBlock
@@ -93,6 +94,7 @@ func parseMarkdown(md string) []ContentBlock {
 					Items: quoteItems,
 				})
 			}
+			return ast.WalkSkipChildren, nil
 
 		case *ast.ThematicBreak:
 			blocks = append(blocks, ContentBlock{Type: "hr"})
