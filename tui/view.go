@@ -30,7 +30,7 @@ func (m *TuiModel) View() string {
 		chunks := comp.Render(msg, false)
 		startRow := g.RowCount()
 		for _, chunk := range chunks {
-			wrapped := wordWrap(chunk.Text, g.width, DefaultStyle)
+			wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
 			for _, wc := range wrapped {
 				g.AppendChunk(wc)
 			}
