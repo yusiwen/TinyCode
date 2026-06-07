@@ -95,9 +95,9 @@ func (m *TuiModel) View() string {
 
 	// Render grid to viewport
 	rendered := g.Render()
-	wasAtBottom := m.vp.AtBottom()
 	m.vp.SetContent(rendered)
-	if wasAtBottom {
+	// Auto-scroll only if there was previous content (not first render)
+	if m.vp.TotalLineCount() > m.vp.Height && m.vp.AtBottom() {
 		m.vp.GotoBottom()
 	}
 	b.WriteString(m.vp.View())
