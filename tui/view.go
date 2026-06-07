@@ -55,9 +55,6 @@ func (m *TuiModel) View() string {
 			Label:  "Copy",
 			Action: func() {
 				copyToClipboard(msg.Content)
-				m.messages = append(m.messages, chatMessage{
-					Role: "system", Content: "✓ Copied",
-				})
 			},
 		})
 	}
