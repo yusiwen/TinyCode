@@ -12,13 +12,14 @@ import (
 
 func testModelWithMessages(messages []chatMessage) *TuiModel {
 	m := &TuiModel{
-		ready:        true,
-		width:        100,
-		height:       50,
-		messages:     messages,
+		ready:    true,
+		width:    80,
+		height:   40,
+		messages: messages,
 		selectStart: -1,
 		selectEnd:   -1,
-		status:      StatusIdle,
+		charSelStart: selPos{Offset: -1},
+		charSelEnd:   selPos{Offset: -1},
 	}
 	m.vp = viewport.New(100, 40)
 	m.vp.YPosition = 0

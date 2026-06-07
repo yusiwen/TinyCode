@@ -171,8 +171,23 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Ctrl+C: copy | interrupt | double-tap quit
+		// Ctrl+C: copy (char or msg selection) | interrupt | double-tap quit
 		if msg.Type == tea.KeyCtrlC {
+			// Character-level selection copy
+			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 {
+				text := extractSelected(m.charSelStart, m.charSelEnd, m.messages)
+				if text != "" {
+					copyToClipboard(text)
+					m.charSelStart = selPos{Offset: -1}
+					m.charSelEnd = selPos{Offset: -1}
+					m.messages = append(m.messages, chatMessage{
+						Role: "system", Content: "✓ Copied",
+					})
+					m.autoScroll()
+					return m, nil
+				}
+			}
+			// Message-level selection copy (fallback)
 			if sel := m.selectedMessages(); sel != "" {
 				copyToClipboard(sel)
 				m.selectStart = -1

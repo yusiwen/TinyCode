@@ -261,6 +261,43 @@ func posFromCoord(line, col int, srcs []lineSrc) selPos {
 	return selPos{MsgIdx: s.MsgIdx, Offset: col}
 }
 
+// extractSelected extracts the plain text within a character selection range.
+func extractSelected(start, end selPos, messages []chatMessage) string {
+	if start.Offset < 0 || end.Offset < 0 {
+		return ""
+	}
+	// Normalize: always low → high
+	if end.MsgIdx < start.MsgIdx || (end.MsgIdx == start.MsgIdx && end.Offset < start.Offset) {
+		start, end = end, start
+	}
+	var b strings.Builder
+	for i := start.MsgIdx; i <= end.MsgIdx && i < len(messages); i++ {
+		msg := messages[i]
+		text := msg.Content
+		if text == "" {
+			text = msg.ReasoningContent
+		}
+		charStart := 0
+		charEnd := len(text)
+		if i == start.MsgIdx {
+			charStart = start.Offset
+		}
+		if i == end.MsgIdx {
+			charEnd = end.Offset + 1
+			if charEnd > len(text) {
+				charEnd = len(text)
+			}
+		}
+		if charStart < charEnd && charStart >= 0 && charEnd <= len(text) {
+			b.WriteString(text[charStart:charEnd])
+		}
+		if i < end.MsgIdx {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
 // renderAssistantMessageStatic renders an assistant message without model deps.
 func renderAssistantMessageStatic(msg chatMessage) []string {
 	ac := AssistantComponent{}

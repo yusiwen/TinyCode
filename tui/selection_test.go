@@ -164,3 +164,62 @@ func TestPosFromCoordNegativeCol(t *testing.T) {
 		t.Errorf("want offset=0, got %d", pos.Offset)
 	}
 }
+
+// --- extractSelected tests ---
+
+func TestExtractSelectedSingleMsg(t *testing.T) {
+	msgs := []chatMessage{
+		{Role: "user", Content: "Hello World"},
+	}
+	text := extractSelected(selPos{MsgIdx: 0, Offset: 0}, selPos{MsgIdx: 0, Offset: 4}, msgs)
+	if text != "Hello" {
+		t.Errorf("want 'Hello', got %q", text)
+	}
+}
+
+func TestExtractSelectedFullMsg(t *testing.T) {
+	msgs := []chatMessage{
+		{Role: "system", Content: "mode changed"},
+	}
+	text := extractSelected(selPos{MsgIdx: 0, Offset: 0}, selPos{MsgIdx: 0, Offset: 12}, msgs)
+	if text != "mode changed" {
+		t.Errorf("want 'mode changed', got %q", text)
+	}
+}
+
+func TestExtractSelectedCrossMsg(t *testing.T) {
+	msgs := []chatMessage{
+		{Role: "user", Content: "Hello"},
+		{Role: "assistant", Content: "World"},
+	}
+	text := extractSelected(selPos{MsgIdx: 0, Offset: 1}, selPos{MsgIdx: 1, Offset: 2}, msgs)
+	if text != "ello\nWor" {
+		t.Errorf("want 'ello\\nWor', got %q", text)
+	}
+}
+
+func TestExtractSelectedReverse(t *testing.T) {
+	msgs := []chatMessage{
+		{Role: "user", Content: "ABCDEF"},
+	}
+	text := extractSelected(selPos{MsgIdx: 0, Offset: 5}, selPos{MsgIdx: 0, Offset: 1}, msgs)
+	if text != "BCDEF" {
+		t.Errorf("want 'BCDEF' (reversed, inclusive), got %q", text)
+	}
+}
+
+func TestExtractSelectedEmpty(t *testing.T) {
+	msgs := []chatMessage{{Role: "user", Content: "test"}}
+	text := extractSelected(selPos{Offset: -1}, selPos{MsgIdx: 0, Offset: 2}, msgs)
+	if text != "" {
+		t.Errorf("want empty for invalid start, got %q", text)
+	}
+}
+
+func TestExtractSelectedOutOfRange(t *testing.T) {
+	msgs := []chatMessage{{Role: "user", Content: "hi"}}
+	text := extractSelected(selPos{MsgIdx: 5, Offset: 0}, selPos{MsgIdx: 5, Offset: 1}, msgs)
+	if text != "" {
+		t.Errorf("want empty for out-of-range, got %q", text)
+	}
+}
