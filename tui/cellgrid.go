@@ -257,22 +257,34 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 			chunks = append(chunks, CellChunk{Text: "", Style: style})
 			continue
 		}
-		words := splitWords(line)
+		// Preserve leading spaces (indent)
+		trimmed := strings.TrimLeft(line, " ")
+		indent := len(line) - len(trimmed)
+		indentStr := line[:indent]
+		// No text after indent → output indent only
+		if trimmed == "" {
+			chunks = append(chunks, CellChunk{Text: indentStr, Style: style})
+			continue
+		}
+		words := strings.Fields(trimmed)
 		var lineBuilder strings.Builder
 		lineWidth := 0
 		flush := func() {
 			if lineBuilder.Len() > 0 {
-				chunks = append(chunks, CellChunk{Text: lineBuilder.String(), Style: style})
+				chunks = append(chunks, CellChunk{Text: indentStr + lineBuilder.String(), Style: style})
 				lineBuilder.Reset()
 			}
-			lineWidth = 0
+			lineWidth = indent
 		}
+		flush() // initialize lineWidth with indent width
 		for _, word := range words {
 			w := runewidth.StringWidth(word)
-			if lineWidth > 0 && lineWidth+1+w > maxWidth {
-				flush()
+			if lineWidth > indent && lineWidth+1+w > maxWidth {
+				chunks = append(chunks, CellChunk{Text: indentStr + lineBuilder.String(), Style: style})
+				lineBuilder.Reset()
+				lineWidth = indent
 			}
-			if lineWidth > 0 {
+			if lineWidth > indent {
 				lineBuilder.WriteByte(' ')
 				lineWidth++
 			}
@@ -280,13 +292,15 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 			lineWidth += w
 		}
 		if lineBuilder.Len() > 0 {
-			chunks = append(chunks, CellChunk{Text: lineBuilder.String(), Style: style})
+			chunks = append(chunks, CellChunk{Text: indentStr + lineBuilder.String(), Style: style})
 		} else {
-			chunks = append(chunks, CellChunk{Text: "", Style: style})
+			chunks = append(chunks, CellChunk{Text: indentStr, Style: style})
 		}
 	}
 	return chunks
 }
+
+// splitWords splits a line into whitespace-delimited words (preserves leading spaces via wordWrap).
 
 // splitWords splits a line into words (whitespace-delimited).
 func splitWords(s string) []string {
