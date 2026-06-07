@@ -84,7 +84,13 @@ func (m *TuiModel) View() string {
 
 	// Apply character-level selection highlighting
 	if m.charSelStart.Offset >= 0 {
-		// TODO: use CellGrid.Fill for selection
+		sr, sc := m.charSelStartLine, m.charSelStartCol
+		er, ec := m.charSelEndLine, m.charSelEndCol
+		// Normalize: low row/col first
+		if er < sr || (er == sr && ec < sc) {
+			sr, sc, er, ec = er, ec, sr, sc
+		}
+		g.Fill(sr, sc, er, ec, SelectionStyle)
 	}
 
 	// Render grid to viewport
