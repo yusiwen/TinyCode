@@ -98,51 +98,7 @@ func (m *TuiModel) View() string {
 		startCol := m.charSelStartCol
 		endLine := m.charSelEndLine
 		endCol := m.charSelEndCol
-		// Normalize: low line/col first
-		if endLine < startLine || (endLine == startLine && endCol < startCol) {
-			startLine, endLine = endLine, startLine
-			startCol, endCol = endCol, startCol
-		}
-		var display []string
-		for i, line := range wrapped {
-			if i < len(m.lineSrcs) && m.lineSrcs[i].SourceField == "button" {
-				display = append(display, line)
-				continue
-			}
-			if i < startLine || i > endLine {
-				display = append(display, line)
-			} else if i == startLine && i == endLine {
-				// Single line: split into 3 segments
-				if startCol >= len(line) {
-					display = append(display, line)
-				} else if endCol >= len(line) {
-					display = append(display, line[:startCol]+selectedStyle.Render(line[startCol:]))
-				} else {
-					display = append(display,
-						line[:startCol]+
-							selectedStyle.Render(line[startCol:endCol+1])+
-							line[endCol+1:])
-				}
-			} else if i == startLine {
-				// First line of multi-line selection
-				if startCol >= len(line) {
-					display = append(display, line)
-				} else {
-					display = append(display, selectedStyle.Render(line[startCol:]))
-				}
-			} else if i == endLine {
-				// Last line of multi-line selection
-				if endCol >= len(line) {
-					display = append(display, selectedStyle.Render(line))
-				} else {
-					display = append(display, selectedStyle.Render(line[:endCol+1])+line[endCol+1:])
-				}
-			} else {
-				// Middle line: fully selected
-				display = append(display, selectedStyle.Render(line))
-			}
-		}
-		wrapped = display
+		wrapped = highlightSelection(wrapped, m.lineSrcs, startLine, startCol, endLine, endCol)
 	}
 
 	// Save scroll position before content change; scroll only if already at bottom
@@ -343,6 +299,51 @@ func renderAssistantMessageStatic(msg chatMessage) []string {
 func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	answerComponent := AssistantComponent{}
 	return answerComponent.Render(msg, sel)
+}
+
+// highlightSelection applies character-level selection highlighting using (line, col) range.
+func highlightSelection(lines []string, srcs []lineSrc, startLine, startCol, endLine, endCol int) []string {
+	// Normalize: low line/col first
+	if endLine < startLine || (endLine == startLine && endCol < startCol) {
+		startLine, endLine = endLine, startLine
+		startCol, endCol = endCol, startCol
+	}
+	var result []string
+	for i, line := range lines {
+		if i < len(srcs) && srcs[i].SourceField == "button" {
+			result = append(result, line)
+			continue
+		}
+		if i < startLine || i > endLine {
+			result = append(result, line)
+		} else if i == startLine && i == endLine {
+			if startCol >= len(line) {
+				result = append(result, line)
+			} else if endCol >= len(line) {
+				result = append(result, line[:startCol]+selectedStyle.Render(line[startCol:]))
+			} else {
+				result = append(result,
+					line[:startCol]+
+						selectedStyle.Render(line[startCol:endCol+1])+
+						line[endCol+1:])
+			}
+		} else if i == startLine {
+			if startCol >= len(line) {
+				result = append(result, line)
+			} else {
+				result = append(result, selectedStyle.Render(line[startCol:]))
+			}
+		} else if i == endLine {
+			if endCol >= len(line) {
+				result = append(result, selectedStyle.Render(line))
+			} else {
+				result = append(result, selectedStyle.Render(line[:endCol+1])+line[endCol+1:])
+			}
+		} else {
+			result = append(result, selectedStyle.Render(line))
+		}
+	}
+	return result
 }
 
 // wrapLine splits a line into multiple lines, each no wider than maxWidth.
