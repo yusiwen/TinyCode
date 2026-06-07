@@ -55,7 +55,7 @@ func buildMsgLines(m *TuiModel) []string {
 		case "assistant":
 			if msg.ReasoningContent != "" {
 				for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
-					msgLines = append(msgLines, "| "+rLine)
+					msgLines = append(msgLines, rLine)
 				}
 			}
 			msgLines = append(msgLines, "Assistant:")

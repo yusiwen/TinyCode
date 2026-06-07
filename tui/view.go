@@ -93,9 +93,9 @@ func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	if msg.ReasoningContent != "" {
 		for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
 			if sel {
-				lines = append(lines, selectedStyle.Render("| "+rLine))
+				lines = append(lines, selectedStyle.Render(rLine))
 			} else {
-				lines = append(lines, thinkingStyle.Render("| "+rLine))
+				lines = append(lines, thinkingStyle.Render(rLine))
 			}
 		}
 	}
