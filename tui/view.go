@@ -205,14 +205,21 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 			rendered := uc.Render(msg, false)
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
-				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "user", Text: stripANSI(rendered[li-before])})
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "user", Text: stripANSI(rendered[li-before]), ContentOffset: 2})
 			}
 		case "assistant":
 			before := len(msgLines)
 			lines := renderAssistantMessageStatic(msg)
 			msgLines = append(msgLines, lines...)
 			for li := before; li < len(msgLines); li++ {
-				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "content", Text: msgLines[li]})
+				text := stripANSI(msgLines[li])
+				field := "content"
+				offset := 4
+				if strings.Contains(text, "Assistant:") {
+					field = "label"
+					offset = 0
+				}
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: field, Text: text, ContentOffset: offset})
 			}
 			if !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
 				btnLine, _, _ := ButtonComponent{}.Render("Copy", 4, false)
@@ -225,7 +232,7 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 			rendered := sc.Render(msg, false)
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
-				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "system", Text: rendered[li-before]})
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "system", Text: stripANSI(rendered[li-before]), ContentOffset: 4})
 			}
 		}
 	}
@@ -241,14 +248,16 @@ func posFromCoord(line, col int, srcs []lineSrc) selPos {
 	if s.SourceField == "button" {
 		return selPos{Offset: -1}
 	}
-	textLen := len(s.Text)
-	if col >= textLen {
-		col = textLen - 1
+	offset := col - s.ContentOffset
+	if offset < 0 {
+		offset = 0
 	}
-	if col < 0 {
-		col = 0
+	// Use content/reasoning field for text extraction mapping
+	field := "content"
+	if s.SourceField == "reasoning" {
+		field = "reasoning"
 	}
-	return selPos{MsgIdx: s.MsgIdx, Offset: col}
+	return selPos{MsgIdx: s.MsgIdx, Field: field, Offset: offset}
 }
 
 // extractSelected extracts the plain text within a character selection range.
@@ -263,7 +272,13 @@ func extractSelected(start, end selPos, messages []chatMessage) string {
 	var b strings.Builder
 	for i := start.MsgIdx; i <= end.MsgIdx && i < len(messages); i++ {
 		msg := messages[i]
-		text := msg.Content
+		var text string
+		// Pick the right content field based on selection origin
+		if start.Field == "reasoning" || (i == start.MsgIdx && start.Field == "reasoning") {
+			text = msg.ReasoningContent
+		} else {
+			text = msg.Content
+		}
 		if text == "" {
 			text = msg.ReasoningContent
 		}

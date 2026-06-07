@@ -28,12 +28,14 @@ type lineSrc struct {
 	Text        string // plain text for extraction
 	CharStart   int
 	CharEnd     int
+	ContentOffset int // bytes of prefix ("> ", "→ ", "    ") to skip for msg.Content offset
 }
 
 // selPos represents one endpoint of a character-level selection.
 type selPos struct {
 	MsgIdx int
-	Offset int // char offset in Content or ReasoningContent (-1 = none)
+	Field  string // "content" / "reasoning" - which field Offset refers to
+	Offset int    // char offset in the selected content field (-1 = none)
 }
 
 // TuiModel is the main Bubble Tea model for the chat interface.

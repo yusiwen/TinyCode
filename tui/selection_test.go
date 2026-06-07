@@ -130,8 +130,8 @@ func TestPosFromCoordPastEnd(t *testing.T) {
 		{MsgIdx: 0, SourceField: "user", Text: "> Hi"},
 	}
 	pos := posFromCoord(0, 100, srcs)
-	if pos.Offset != 3 {
-		t.Errorf("want offset=3 (last char), got %d", pos.Offset)
+	if pos.Offset != 100 {
+		t.Errorf("want offset=100 (no clamping, col - 0), got %d", pos.Offset)
 	}
 }
 
