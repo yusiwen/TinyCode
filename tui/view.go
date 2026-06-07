@@ -47,6 +47,7 @@ func (m *TuiModel) View() string {
 		btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
 		msgLines = append(msgLines, btnLine)
 		msgIdx := i
+		msgContent := msg.Content
 		m.activeButtons = append(m.activeButtons, Button{
 			MsgIdx: msgIdx,
 			Line:   lineIdx,
@@ -54,9 +55,16 @@ func (m *TuiModel) View() string {
 			Width:  width,
 			Label:  "Copy",
 			Action: func() {
-				copyToClipboard(msg.Content)
+				copyToClipboard(msgContent)
+				m.lastCopiedMsgIdx = msgIdx
 			},
 		})
+	}
+
+	// Show "→ ✓ Copied" feedback at the very bottom
+	if m.lastCopiedMsgIdx >= 0 {
+		msgLines = append(msgLines, dimStyle.Render("→ ✓ Copied"))
+		m.lastCopiedMsgIdx = -1
 	}
 
 	// Wrap all lines to prevent viewport truncation
