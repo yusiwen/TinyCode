@@ -77,7 +77,7 @@ func (m *TuiModel) View() string {
 func (m *TuiModel) renderStatusBar() string {
 	modeIcon := "⚡"
 	spinnerStr := ""
-	if m.status == StatusStreaming {
+	if m.status == StatusStreaming && m.spinner.Spinner.Frames != nil {
 		spinnerStr = " " + m.spinner.View()
 	}
 
@@ -91,9 +91,15 @@ func (m *TuiModel) renderStatusBar() string {
 		modelName = m.registry.CurrentName()
 	}
 
+	// Provider name
+	provName := "unknown"
+	if m.provReg != nil {
+		provName = m.provReg.Current().Name()
+	}
+
 	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s",
 		modeIcon, modelName, spinnerStr,
-		m.providerName(),
+		provName,
 		m.sessionTokens, m.sessionToolCalls, len(m.messages),
 		durStr)
 

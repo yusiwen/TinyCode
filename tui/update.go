@@ -251,7 +251,7 @@ func (m *TuiModel) adjustInputHeight() {
 		m.input.SetHeight(wanted)
 		m.input.SetValue(val)
 		if m.ready {
-			m.vp.Height = m.height - 3 - wanted
+			m.vp.Height = m.height - 1 - wanted
 		}
 	}
 }
