@@ -147,6 +147,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.messages = append(m.messages, chatMessage{
 					Role: "system", Content: "✓ Copied to clipboard",
 				})
+				m.autoScroll()
 				return m, nil
 			}
 			if m.status == StatusStreaming {
@@ -154,13 +155,15 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.messages = append(m.messages, chatMessage{
 					Role: "system", Content: "⏹ Interrupted",
 				})
+				m.autoScroll()
 				return m, nil
-			}
-			if !m.quitConfirm {
+				}
+				if !m.quitConfirm {
 				m.quitConfirm = true
 				m.messages = append(m.messages, chatMessage{
 					Role: "system", Content: "Press Ctrl+C again to quit",
 				})
+				m.autoScroll()
 				return m, nil
 			}
 			return m, tea.Quit
@@ -199,9 +202,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.TextDelta != "" {
 			m.curAssistant.Content += msg.TextDelta
 		}
-		if m.ready {
-			m.vp.GotoBottom()
-		}
+		m.autoScroll()
 		return m, m.waitForStream()
 
 	case StreamDone:
@@ -216,9 +217,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.curAssistant = nil
-		if m.ready {
-			m.vp.GotoBottom()
-		}
+		m.streamDoneNotified = false
+		m.autoScroll()
 		return m, nil
 
 	case modeSwitchMsg:
@@ -228,6 +228,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messages = append(m.messages, chatMessage{
 			Role: "system", Content: fmt.Sprintf("Switched to %s mode", m.modeName),
 		})
+		m.autoScroll()
 		return m, nil
 	}
 
@@ -364,6 +365,12 @@ func copyToClipboard(text string) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(text))
 	fmt.Printf("\033]52;c;%s\007", encoded)
 }
+// autoScroll scrolls to bottom only if user is already at the bottom.
+func (m *TuiModel) autoScroll() {
+	if m.ready && m.vp.AtBottom() {
+		m.vp.GotoBottom()
+	}
+}
 
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
@@ -389,6 +396,7 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 			s = "on"
 		}
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Verbose mode %s", s)})
+		m.autoScroll()
 	case "/thinking":
 		if m.config.ShowThinking == nil {
 			v := false
@@ -400,27 +408,33 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 			s = "on"
 		}
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Thinking display %s", s)})
+		m.autoScroll()
 	case "/model":
 		m.selectingProvider = true
 		m.providerCursor = 0
 	case "/plan":
 		if err := m.registry.Set("plan"); err != nil {
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			m.autoScroll()
 			return m, nil
 		}
 		m.agent.Config = m.registry.Current()
 		m.modeName = "plan"
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: "Switched to plan mode"})
+		m.autoScroll()
 	case "/build":
 		if err := m.registry.Set("build"); err != nil {
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			m.autoScroll()
 			return m, nil
 		}
 		m.agent.Config = m.registry.Current()
 		m.modeName = "build"
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: "Switched to build mode"})
+		m.autoScroll()
 	default:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown command: %s", cmd)})
+		m.autoScroll()
 	}
 	return m, nil
 }
