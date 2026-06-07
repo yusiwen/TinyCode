@@ -13,12 +13,27 @@ import (
 
 // Button represents a clickable region in the message area.
 type Button struct {
-	MsgIdx int    // message index this button belongs to
-	Line   int    // content line in msgLines (set during View)
-	Col    int    // starting column
-	Width  int    // visible character width
+	MsgIdx int
+	Line   int
+	Col    int
+	Width  int
 	Label  string
-	Action func() // executed on click
+	Action func()
+}
+
+// lineSrc records the source of each rendered line in msgLines.
+type lineSrc struct {
+	MsgIdx      int
+	SourceField string // "content" / "reasoning" / "label" / "user" / "system" / "button"
+	Text        string // plain text for extraction
+	CharStart   int
+	CharEnd     int
+}
+
+// selPos represents one endpoint of a character-level selection.
+type selPos struct {
+	MsgIdx int
+	Offset int // char offset in Content or ReasoningContent (-1 = none)
 }
 
 // TuiModel is the main Bubble Tea model for the chat interface.
@@ -50,11 +65,16 @@ type TuiModel struct {
 	selectingProvider bool
 	providerCursor    int
 
-	// Mouse selection
-	selecting      bool // currently dragging
-	mouseDrag      bool // true if mouse moved while button held
-	selectStart    int  // index of first selected message (-1 = none)
-	selectEnd      int  // index of last selected message
+	// Mouse selection (message-level — deprecated, to be replaced)
+	selecting      bool
+	mouseDrag      bool
+	selectStart    int
+	selectEnd      int
+
+	// Character-level selection (new)
+	charSelStart selPos
+	charSelEnd   selPos
+	lineSrcs     []lineSrc
 
 	// Buttons (rebuilt each View)
 	activeButtons []Button

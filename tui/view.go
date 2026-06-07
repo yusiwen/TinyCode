@@ -20,26 +20,42 @@ func (m *TuiModel) View() string {
 	// Message area (no header at top — moved to status bar at bottom)
 	var msgLines []string
 	m.activeButtons = nil
+	m.lineSrcs = nil
 	for i, msg := range m.messages {
-		sel := m.isSelected(i)
-		switch msg.Role {
+			sel := m.isSelected(i)
+			switch msg.Role {
 		case "user":
+			before := len(msgLines)
 			uc := UserComponent{}
-			msgLines = append(msgLines, uc.Render(msg, sel)...)
+			rendered := uc.Render(msg, sel)
+			msgLines = append(msgLines, rendered...)
+			for li := before; li < len(msgLines); li++ {
+				m.lineSrcs = append(m.lineSrcs, lineSrc{
+					MsgIdx: i, SourceField: "user",
+					Text: rendered[li-before],
+				})
+			}
 		case "assistant":
+			before := len(msgLines)
 			msgLines = append(msgLines, m.renderAssistantMessage(msg, sel)...)
-			// Render [Copy] button for completed assistant messages
+			for li := before; li < len(msgLines); li++ {
+				m.lineSrcs = append(m.lineSrcs, lineSrc{
+					MsgIdx: i, SourceField: "content",
+					Text: msgLines[li],
+				})
+			}
+
+			// Render [Copy] button
 			if !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
 				lineIdx := len(msgLines)
 				btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
 				msgLines = append(msgLines, btnLine)
+				m.lineSrcs = append(m.lineSrcs, lineSrc{
+					MsgIdx: i, SourceField: "button", Text: "",
+				})
 				msgContent := msg.Content
 				m.activeButtons = append(m.activeButtons, Button{
-					MsgIdx: i,
-					Line:   lineIdx,
-					Col:    col,
-					Width:  width,
-					Label:  "Copy",
+					MsgIdx: i, Line: lineIdx, Col: col, Width: width, Label: "Copy",
 					Action: func() {
 						copyToClipboard(msgContent)
 						m.messages = append(m.messages, chatMessage{
@@ -49,8 +65,16 @@ func (m *TuiModel) View() string {
 				})
 			}
 		case "system":
+			before := len(msgLines)
 			sc := SystemComponent{}
-			msgLines = append(msgLines, sc.Render(msg, sel)...)
+			rendered := sc.Render(msg, sel)
+			msgLines = append(msgLines, rendered...)
+			for li := before; li < len(msgLines); li++ {
+				m.lineSrcs = append(m.lineSrcs, lineSrc{
+					MsgIdx: i, SourceField: "system",
+					Text: rendered[li-before],
+				})
+			}
 		}
 	}
 
@@ -158,6 +182,51 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm%ds", m, s)
 	}
 	return fmt.Sprintf("%ds", s)
+}
+
+// buildLineSrcs builds rendered lines and their source mappings from messages.
+func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
+	var msgLines []string
+	var srcs []lineSrc
+	for i, msg := range messages {
+		switch msg.Role {
+		case "user":
+			before := len(msgLines)
+			uc := UserComponent{}
+			rendered := uc.Render(msg, false)
+			msgLines = append(msgLines, rendered...)
+			for li := before; li < len(msgLines); li++ {
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "user", Text: rendered[li-before]})
+			}
+		case "assistant":
+			before := len(msgLines)
+			lines := renderAssistantMessageStatic(msg)
+			msgLines = append(msgLines, lines...)
+			for li := before; li < len(msgLines); li++ {
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "content", Text: msgLines[li]})
+			}
+			if !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
+				btnLine, _, _ := ButtonComponent{}.Render("Copy", 4, false)
+				msgLines = append(msgLines, btnLine)
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "button", Text: ""})
+			}
+		case "system":
+			before := len(msgLines)
+			sc := SystemComponent{}
+			rendered := sc.Render(msg, false)
+			msgLines = append(msgLines, rendered...)
+			for li := before; li < len(msgLines); li++ {
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "system", Text: rendered[li-before]})
+			}
+		}
+	}
+	return msgLines, srcs
+}
+
+// renderAssistantMessageStatic renders an assistant message without model deps.
+func renderAssistantMessageStatic(msg chatMessage) []string {
+	ac := AssistantComponent{}
+	return ac.Render(msg, false)
 }
 
 // renderAssistantMessage delegates to the AssistantComponent.
