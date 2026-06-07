@@ -22,12 +22,11 @@ func (m *TuiModel) View() string {
 	m.activeButtons = nil
 	m.lineSrcs = nil
 	for i, msg := range m.messages {
-			sel := m.isSelected(i)
-			switch msg.Role {
+		switch msg.Role {
 		case "user":
 			before := len(msgLines)
 			uc := UserComponent{}
-			rendered := uc.Render(msg, sel)
+			rendered := uc.Render(msg, false)
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
 				m.lineSrcs = append(m.lineSrcs, lineSrc{
@@ -37,7 +36,7 @@ func (m *TuiModel) View() string {
 			}
 		case "assistant":
 			before := len(msgLines)
-			msgLines = append(msgLines, m.renderAssistantMessage(msg, sel)...)
+			msgLines = append(msgLines, m.renderAssistantMessage(msg, false)...)
 			for li := before; li < len(msgLines); li++ {
 				m.lineSrcs = append(m.lineSrcs, lineSrc{
 					MsgIdx: i, SourceField: "content",
@@ -67,7 +66,7 @@ func (m *TuiModel) View() string {
 		case "system":
 			before := len(msgLines)
 			sc := SystemComponent{}
-			rendered := sc.Render(msg, sel)
+			rendered := sc.Render(msg, false)
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
 				m.lineSrcs = append(m.lineSrcs, lineSrc{
@@ -91,6 +90,25 @@ func (m *TuiModel) View() string {
 			wrappedLine += len(wrapLine(msgLines[msgLine], m.vp.Width))
 		}
 		btn.Line = wrappedLine
+	}
+
+	// Apply character-level selection highlighting
+	if m.charSelStart.Offset >= 0 {
+		var display []string
+		for i, line := range wrapped {
+			var s lineSrc
+			if i < len(m.lineSrcs) {
+				s = m.lineSrcs[i]
+			}
+			inRange := s.MsgIdx >= m.charSelStart.MsgIdx && s.MsgIdx <= m.charSelEnd.MsgIdx &&
+				s.SourceField != "button"
+			if inRange {
+				display = append(display, selectedStyle.Render(line))
+			} else {
+				display = append(display, line)
+			}
+		}
+		wrapped = display
 	}
 
 	// Save scroll position before content change; scroll only if already at bottom
