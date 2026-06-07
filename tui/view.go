@@ -205,7 +205,7 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 			rendered := uc.Render(msg, false)
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
-				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "user", Text: rendered[li-before]})
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "user", Text: stripANSI(rendered[li-before])})
 			}
 		case "assistant":
 			before := len(msgLines)
@@ -294,6 +294,82 @@ func renderAssistantMessageStatic(msg chatMessage) []string {
 	return ac.Render(msg, false)
 }
 
+
+// stripANSI removes ANSI escape sequences from a string.
+func stripANSI(s string) string {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			i += 2
+			for i < len(s) && !(s[i] >= 'A' && s[i] <= 'z' || s[i] >= '@' && s[i] <= '~') {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+		} else {
+			b.WriteByte(s[i])
+			i++
+		}
+	}
+	return b.String()
+}
+
+// sliceStyled splits an ANSI-styled string into three parts by visible column range.
+func sliceStyled(styled string, startCol, endCol int) (string, string, string) {
+	if startCol < 0 {
+		startCol = 0
+	}
+	if endCol < 0 || endCol >= len(styled) {
+		endCol = len(styled) - 1
+	}
+	plain := stripANSI(styled)
+	type mapping struct{ plainIdx, styledIdx int }
+	var mappings []mapping
+	si := 0
+	for pi := 0; pi < len(plain); pi++ {
+		for si < len(styled) {
+			if styled[si] == '\x1b' {
+				si++
+				for si < len(styled) && !(styled[si] >= 'A' && styled[si] <= 'z' || styled[si] >= '@' && styled[si] <= '~') {
+					si++
+				}
+				si++
+				continue
+			}
+			if pi < len(plain) && styled[si] == plain[pi] {
+				mappings = append(mappings, mapping{plainIdx: pi, styledIdx: si})
+				si++
+				break
+			}
+		}
+	}
+	if len(mappings) == 0 {
+		return styled, "", ""
+	}
+	if startCol >= len(mappings) {
+		startCol = len(mappings) - 1
+	}
+	if endCol >= len(mappings) {
+		endCol = len(mappings) - 1
+	}
+	startByte := mappings[startCol].styledIdx
+	endByte := mappings[endCol].styledIdx
+	endNext := endByte + 1
+	for endNext < len(styled) {
+		if styled[endNext] == '\x1b' {
+			endNext++
+			for endNext < len(styled) && !(styled[endNext] >= 'A' && styled[endNext] <= 'z' || styled[endNext] >= '@' && styled[endNext] <= '~') {
+				endNext++
+			}
+			endNext++
+			continue
+		}
+		break
+	}
+	return styled[:startByte], stripANSI(styled[startByte:endNext]), styled[endNext:]
+}
 // renderAssistantMessage delegates to the AssistantComponent.
 // Kept for backward compatibility; tests and callers use this function.
 func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
@@ -317,28 +393,14 @@ func highlightSelection(lines []string, srcs []lineSrc, startLine, startCol, end
 		if i < startLine || i > endLine {
 			result = append(result, line)
 		} else if i == startLine && i == endLine {
-			if startCol >= len(line) {
-				result = append(result, line)
-			} else if endCol >= len(line) {
-				result = append(result, line[:startCol]+selectedStyle.Render(line[startCol:]))
-			} else {
-				result = append(result,
-					line[:startCol]+
-						selectedStyle.Render(line[startCol:endCol+1])+
-						line[endCol+1:])
-			}
+			before, selected, after := sliceStyled(line, startCol, endCol)
+			result = append(result, before+selectedStyle.Render(selected)+after)
 		} else if i == startLine {
-			if startCol >= len(line) {
-				result = append(result, line)
-			} else {
-				result = append(result, selectedStyle.Render(line[startCol:]))
-			}
+			before, rest, _ := sliceStyled(line, startCol, len(line))
+			result = append(result, before+selectedStyle.Render(rest))
 		} else if i == endLine {
-			if endCol >= len(line) {
-				result = append(result, selectedStyle.Render(line))
-			} else {
-				result = append(result, selectedStyle.Render(line[:endCol+1])+line[endCol+1:])
-			}
+			_, selRest, after := sliceStyled(line, 0, endCol)
+			result = append(result, selectedStyle.Render(selRest)+after)
 		} else {
 			result = append(result, selectedStyle.Render(line))
 		}
