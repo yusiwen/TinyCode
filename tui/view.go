@@ -89,26 +89,34 @@ func (m *TuiModel) View() string {
 func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	var lines []string
 
-	// Reasoning content
+	// Reasoning content — indented 4 spaces
 	if msg.ReasoningContent != "" {
 		for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
 			if sel {
-				lines = append(lines, selectedStyle.Render(rLine))
+				lines = append(lines, selectedStyle.Render("    "+rLine))
 			} else {
-				lines = append(lines, thinkingStyle.Render(rLine))
+				lines = append(lines, thinkingStyle.Render("    "+rLine))
 			}
 		}
 	}
 
-	// Blocks (new pipeline)
+	// "Assistant:" label — no indent, acts as separator
+	if !sel {
+		lines = append(lines, assistantLabelStyle.Render("Assistant:"))
+	} else {
+		lines = append(lines, selectedStyle.Render("Assistant:"))
+	}
+
+	// Blocks (new pipeline) — indented 4 spaces
 	if len(msg.Blocks) > 0 {
-		if !sel {
-			lines = append(lines, assistantLabelStyle.Render("Assistant:"))
-		} else {
-			lines = append(lines, selectedStyle.Render("Assistant:"))
-		}
 		blocksLines := renderBlocks(msg.Blocks, sel)
-		lines = append(lines, blocksLines...)
+		for _, bl := range blocksLines {
+			if sel {
+				lines = append(lines, selectedStyle.Render("    "+bl))
+			} else {
+				lines = append(lines, "    "+bl)
+			}
+		}
 		return lines
 	}
 
