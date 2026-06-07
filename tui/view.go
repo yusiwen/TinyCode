@@ -92,20 +92,54 @@ func (m *TuiModel) View() string {
 		btn.Line = wrappedLine
 	}
 
-	// Apply character-level selection highlighting
+	// Apply character-level selection highlighting using (line, col) range
 	if m.charSelStart.Offset >= 0 {
+		startLine := m.charSelStartLine
+		startCol := m.charSelStartCol
+		endLine := m.charSelEndLine
+		endCol := m.charSelEndCol
+		// Normalize: low line/col first
+		if endLine < startLine || (endLine == startLine && endCol < startCol) {
+			startLine, endLine = endLine, startLine
+			startCol, endCol = endCol, startCol
+		}
 		var display []string
 		for i, line := range wrapped {
-			var s lineSrc
-			if i < len(m.lineSrcs) {
-				s = m.lineSrcs[i]
-			}
-			inRange := s.MsgIdx >= m.charSelStart.MsgIdx && s.MsgIdx <= m.charSelEnd.MsgIdx &&
-				s.SourceField != "button"
-			if inRange {
-				display = append(display, selectedStyle.Render(line))
-			} else {
+			if i < len(m.lineSrcs) && m.lineSrcs[i].SourceField == "button" {
 				display = append(display, line)
+				continue
+			}
+			if i < startLine || i > endLine {
+				display = append(display, line)
+			} else if i == startLine && i == endLine {
+				// Single line: split into 3 segments
+				if startCol >= len(line) {
+					display = append(display, line)
+				} else if endCol >= len(line) {
+					display = append(display, line[:startCol]+selectedStyle.Render(line[startCol:]))
+				} else {
+					display = append(display,
+						line[:startCol]+
+							selectedStyle.Render(line[startCol:endCol+1])+
+							line[endCol+1:])
+				}
+			} else if i == startLine {
+				// First line of multi-line selection
+				if startCol >= len(line) {
+					display = append(display, line)
+				} else {
+					display = append(display, selectedStyle.Render(line[startCol:]))
+				}
+			} else if i == endLine {
+				// Last line of multi-line selection
+				if endCol >= len(line) {
+					display = append(display, selectedStyle.Render(line))
+				} else {
+					display = append(display, selectedStyle.Render(line[:endCol+1])+line[endCol+1:])
+				}
+			} else {
+				// Middle line: fully selected
+				display = append(display, selectedStyle.Render(line))
 			}
 		}
 		wrapped = display

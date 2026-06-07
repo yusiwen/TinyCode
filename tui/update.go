@@ -49,6 +49,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if pos.Offset >= 0 {
 					m.charSelStart = pos
 					m.charSelEnd = pos
+					m.charSelStartLine = contentLine
+					m.charSelStartCol = contentCol
+					m.charSelEndLine = contentLine
+					m.charSelEndCol = contentCol
 					m.selecting = true
 				}
 			case tea.MouseActionMotion:
@@ -56,6 +60,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					pos := posFromCoord(contentLine, contentCol, m.lineSrcs)
 					if pos.Offset >= 0 {
 						m.charSelEnd = pos
+						m.charSelEndLine = contentLine
+						m.charSelEndCol = contentCol
 					}
 				}
 			case tea.MouseActionRelease:

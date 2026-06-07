@@ -74,6 +74,10 @@ type TuiModel struct {
 	// Character-level selection (new)
 	charSelStart selPos
 	charSelEnd   selPos
+	charSelStartLine int
+	charSelStartCol  int
+	charSelEndLine   int
+	charSelEndCol    int
 	lineSrcs     []lineSrc
 
 	// Buttons (rebuilt each View)
