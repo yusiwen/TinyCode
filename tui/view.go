@@ -52,8 +52,12 @@ func (m *TuiModel) View() string {
 	for _, line := range msgLines {
 		wrapped = append(wrapped, wrapLine(line, m.vp.Width)...)
 	}
+	// Save scroll position before content change; scroll only if already at bottom
+	wasAtBottom := m.vp.AtBottom()
 	m.vp.SetContent(strings.Join(wrapped, "\n"))
-	m.autoScroll()
+	if wasAtBottom {
+		m.vp.GotoBottom()
+	}
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
 
