@@ -26,7 +26,7 @@ func (m *TuiModel) View() string {
 		case "user":
 			before := len(msgLines)
 			uc := UserComponent{}
-			rendered := uc.Render(msg, false)
+			rendered := chunksToStrings(uc.Render(msg, false))
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
 				m.lineSrcs = append(m.lineSrcs, lineSrc{
@@ -66,7 +66,7 @@ func (m *TuiModel) View() string {
 		case "system":
 			before := len(msgLines)
 			sc := SystemComponent{}
-			rendered := sc.Render(msg, false)
+			rendered := chunksToStrings(sc.Render(msg, false))
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
 				m.lineSrcs = append(m.lineSrcs, lineSrc{
@@ -202,14 +202,14 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 		case "user":
 			before := len(msgLines)
 			uc := UserComponent{}
-			rendered := uc.Render(msg, false)
+			rendered := chunksToStrings(uc.Render(msg, false))
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
 				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "user", Text: stripANSI(rendered[li-before]), ContentOffset: 2})
 			}
 		case "assistant":
 			before := len(msgLines)
-			lines := renderAssistantMessageStatic(msg)
+			lines := chunksToStrings(renderAssistantMessageStatic(msg))
 			msgLines = append(msgLines, lines...)
 			for li := before; li < len(msgLines); li++ {
 				text := stripANSI(msgLines[li])
@@ -229,7 +229,7 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 		case "system":
 			before := len(msgLines)
 			sc := SystemComponent{}
-			rendered := sc.Render(msg, false)
+			rendered := chunksToStrings(sc.Render(msg, false))
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
 				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "system", Text: stripANSI(rendered[li-before]), ContentOffset: 4})
@@ -237,6 +237,16 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 		}
 	}
 	return msgLines, srcs
+}
+
+// chunksToStrings converts CellChunks to ANSI-styled strings (transitional).
+func chunksToStrings(chunks []CellChunk) []string {
+	var lines []string
+	for _, c := range chunks {
+		ls := styleToLipgloss(c.Style)
+		lines = append(lines, ls.Render(c.Text))
+	}
+	return lines
 }
 
 // posFromCoord maps a content line and column to a character position.
@@ -305,7 +315,7 @@ func extractSelected(start, end selPos, messages []chatMessage) string {
 }
 
 // renderAssistantMessageStatic renders an assistant message without model deps.
-func renderAssistantMessageStatic(msg chatMessage) []string {
+func renderAssistantMessageStatic(msg chatMessage) []CellChunk {
 	ac := AssistantComponent{}
 	return ac.Render(msg, false)
 }
@@ -393,7 +403,7 @@ func sliceStyled(styled string, startCol, endCol int) (string, string, string) {
 // Kept for backward compatibility; tests and callers use this function.
 func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	answerComponent := AssistantComponent{}
-	return answerComponent.Render(msg, sel)
+	return chunksToStrings(answerComponent.Render(msg, sel))
 }
 
 // highlightSelection applies character-level selection highlighting using (line, col) range.
@@ -492,7 +502,8 @@ func renderBlocks(blocks []ContentBlock, sel bool) []string {
 	var lines []string
 	for _, block := range blocks {
 		if comp, ok := blockComponentMap[block.Type]; ok {
-			lines = append(lines, comp.Render(block, sel)...)
+			chunks := comp.Render(block, sel)
+			lines = append(lines, chunksToStrings(chunks)...)
 		}
 	}
 	return lines

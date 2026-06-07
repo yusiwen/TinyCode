@@ -3,30 +3,26 @@ package tui
 import (
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // MessageComponent is the interface for rendering a single chat message.
 type MessageComponent interface {
-	Render(msg chatMessage, sel bool) []string
+	Render(msg chatMessage, sel bool) []CellChunk
 }
 
 // BlockComponent is the interface for rendering a single ContentBlock.
 type BlockComponent interface {
-	Render(block ContentBlock, sel bool) []string
+	Render(block ContentBlock, sel bool) []CellChunk
 }
 
-// === Component Maps ===
+// --- Component Maps ---
 
-// msgComponentMap maps message roles to their rendering components.
 var msgComponentMap = map[string]MessageComponent{
 	"user":      UserComponent{},
 	"assistant": AssistantComponent{},
 	"system":    SystemComponent{},
 }
 
-// blockComponentMap maps ContentBlock types to their rendering components.
 var blockComponentMap = map[string]BlockComponent{
 	"paragraph": ParagraphComponent{},
 	"heading":   HeadingComponent{},
@@ -37,169 +33,183 @@ var blockComponentMap = map[string]BlockComponent{
 	"table":     TableComponent{},
 }
 
-// === Message Components ===
+// ===== Message Components =====
 
 // UserComponent renders user messages (> prefix, green, bold).
 type UserComponent struct{}
 
-func (UserComponent) Render(msg chatMessage, sel bool) []string {
+func (UserComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	style := UserStyle
 	if sel {
-		return []string{selectedStyle.Render("> " + msg.Content)}
+		style = SelectionStyle
 	}
-	return []string{userStyle.Render("> " + msg.Content)}
+	return []CellChunk{{Text: "> " + msg.Content, Style: style}}
 }
 
 // SystemComponent renders system messages (→ prefix, dim gray).
 type SystemComponent struct{}
 
-func (SystemComponent) Render(msg chatMessage, sel bool) []string {
+func (SystemComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	style := SystemStyle
 	if sel {
-		return []string{selectedStyle.Render("→ " + msg.Content)}
+		style = SelectionStyle
 	}
-	return []string{dimStyle.Render("→ " + msg.Content)}
+	return []CellChunk{{Text: "→ " + msg.Content, Style: style}}
 }
 
 // AssistantComponent renders reasoning + label + answer/streaming.
 type AssistantComponent struct{}
 
-func (AssistantComponent) Render(msg chatMessage, sel bool) []string {
-	var lines []string
+func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	var chunks []CellChunk
 
 	// Reasoning content — indented 4 spaces
 	if msg.ReasoningContent != "" {
 		rc := ReasoningComponent{}
-		lines = append(lines, rc.Render(msg, sel)...)
+		chunks = append(chunks, rc.Render(msg, sel)...)
 	}
 
 	// "Assistant:" label — no indent
-	if !sel {
-		lines = append(lines, assistantLabelStyle.Render("Assistant:"))
-	} else {
-		lines = append(lines, selectedStyle.Render("Assistant:"))
+	labelStyle := AssistantLabel
+	if sel {
+		labelStyle = SelectionStyle
 	}
+	chunks = append(chunks, CellChunk{Text: "Assistant:", Style: labelStyle})
 
 	// Blocks (completed answer) or streaming content
 	if len(msg.Blocks) > 0 {
 		ac := AnswerComponent{}
-		lines = append(lines, ac.Render(msg, sel)...)
+		chunks = append(chunks, ac.Render(msg, sel)...)
 	} else if msg.Content != "" {
 		sc := StreamingComponent{}
-		lines = append(lines, sc.Render(msg, sel)...)
+		chunks = append(chunks, sc.Render(msg, sel)...)
 	}
 
-	return lines
+	return chunks
 }
 
 // ReasoningComponent renders thinking/reasoning text (dark yellow, indented).
 type ReasoningComponent struct{}
 
-func (ReasoningComponent) Render(msg chatMessage, sel bool) []string {
-	var lines []string
-	for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
-		if sel {
-			lines = append(lines, selectedStyle.Render("    "+rLine))
-		} else {
-			lines = append(lines, thinkingStyle.Render("    "+rLine))
-		}
+func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	style := ThinkingStyle
+	if sel {
+		style = SelectionStyle
 	}
-	return lines
+	var chunks []CellChunk
+	for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
+		chunks = append(chunks, CellChunk{Text: "    " + rLine, Style: style})
+	}
+	return chunks
 }
 
 // AnswerComponent renders structured Blocks (indented 4 spaces).
 type AnswerComponent struct{}
 
-func (AnswerComponent) Render(msg chatMessage, sel bool) []string {
-	var lines []string
-	blocksLines := renderBlocks(msg.Blocks, sel)
-	for _, bl := range blocksLines {
-		if sel {
-			lines = append(lines, selectedStyle.Render("    "+bl))
-		} else {
-			lines = append(lines, "    "+bl)
-		}
+func (AnswerComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	// Transition: keep renderBlocks for text content, wrap as CellChunk
+	blocksLines := renderBlocks(msg.Blocks, false)
+	style := DefaultStyle
+	if sel {
+		style = SelectionStyle
 	}
-	return lines
+	var chunks []CellChunk
+	for _, bl := range blocksLines {
+		plain := stripANSI(bl)
+		chunks = append(chunks, CellChunk{Text: "    " + plain, Style: style})
+	}
+	return chunks
 }
 
 // StreamingComponent renders raw markdown text during streaming.
 type StreamingComponent struct{}
 
-func (StreamingComponent) Render(msg chatMessage, sel bool) []string {
+func (StreamingComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	label := "Assistant:"
 	if msg.Streaming {
 		label = "Assistant (streaming):"
 	}
+	labelStyle := AssistantLabel
 	if sel {
-		return []string{
-			selectedStyle.Render(label),
-			selectedStyle.Render(msg.Content),
-		}
+		labelStyle = SelectionStyle
 	}
-	return []string{
-		assistantLabelStyle.Render(label),
-		msg.Content,
+	var chunks []CellChunk
+	chunks = append(chunks, CellChunk{Text: label, Style: labelStyle})
+	contentStyle := DefaultStyle
+	if sel {
+		contentStyle = SelectionStyle
 	}
+	chunks = append(chunks, CellChunk{Text: msg.Content, Style: contentStyle})
+	return chunks
 }
 
-// === Block Components ===
+// ===== Block Components =====
 
 // ParagraphComponent renders a paragraph with inline styling.
 type ParagraphComponent struct{}
 
-func (ParagraphComponent) Render(block ContentBlock, sel bool) []string {
+func (ParagraphComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	text := renderChunks(block.Chunks)
 	if text == "" {
 		return nil
 	}
+	plain := stripANSI(text)
+	style := DefaultStyle
 	if sel {
-		return []string{selectedStyle.Render(text)}
+		style = SelectionStyle
 	}
-	return []string{text}
+	return []CellChunk{{Text: plain, Style: style}}
 }
 
 // HeadingComponent renders a heading (bright white, bold, spacing).
 type HeadingComponent struct{}
 
-func (HeadingComponent) Render(block ContentBlock, sel bool) []string {
+func (HeadingComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	text := renderChunks(block.Chunks)
 	if text == "" {
 		return nil
 	}
-	lines := []string{""} // blank line before
+	plain := stripANSI(text)
+	style := HeadingStyle
 	if sel {
-		lines = append(lines, selectedStyle.Render(text))
-	} else {
-		style := lipgloss.NewStyle().Bold(true).Foreground(colorBrightWhite)
-		lines = append(lines, style.Render(text))
+		style = SelectionStyle
 	}
-	lines = append(lines, "") // blank line after
-	return lines
+	// blank line before, heading, blank line after
+	return []CellChunk{
+		{Text: "", Style: DefaultStyle},
+		{Text: plain, Style: style},
+		{Text: "", Style: DefaultStyle},
+	}
 }
 
 // CodeComponent renders a code block (dim style).
 type CodeComponent struct{}
 
-func (CodeComponent) Render(block ContentBlock, sel bool) []string {
+func (CodeComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	code := block.Code
 	if code == "" {
 		return nil
 	}
-	var lines []string
-	for _, codeLine := range strings.Split(code, "\n") {
-		if sel {
-			lines = append(lines, selectedStyle.Render("  "+codeLine))
-		} else {
-			lines = append(lines, dimStyle.Render("  "+codeLine))
-		}
+	style := DimStyle
+	if sel {
+		style = SelectionStyle
 	}
-	return lines
+	var chunks []CellChunk
+	for _, codeLine := range strings.Split(code, "\n") {
+		chunks = append(chunks, CellChunk{Text: "  " + codeLine, Style: style})
+	}
+	return chunks
 }
 
 // ListComponent renders ordered/unordered lists.
 type ListComponent struct{}
 
-func (ListComponent) Render(block ContentBlock, sel bool) []string {
-	var lines []string
+func (ListComponent) Render(block ContentBlock, sel bool) []CellChunk {
+	style := DefaultStyle
+	if sel {
+		style = SelectionStyle
+	}
+	var chunks []CellChunk
 	for i, item := range block.Items {
 		var prefix string
 		if block.Numbered {
@@ -207,66 +217,70 @@ func (ListComponent) Render(block ContentBlock, sel bool) []string {
 		} else {
 			prefix = "  • "
 		}
-		// Code block inside a list item
 		if item.Type == "code" {
 			for _, codeLine := range strings.Split(item.Code, "\n") {
-				if sel {
-					lines = append(lines, selectedStyle.Render(prefix+codeLine))
-				} else {
-					lines = append(lines, dimStyle.Render(prefix+codeLine))
-				}
+				chunks = append(chunks, CellChunk{Text: prefix + codeLine, Style: DimStyle})
 			}
 			continue
 		}
 		text := renderChunks(item.Chunks)
-		if text != "" {
-			if sel {
-				lines = append(lines, selectedStyle.Render(prefix+text))
-			} else {
-				lines = append(lines, prefix+text)
-			}
+		plain := stripANSI(text)
+		if plain != "" {
+			chunks = append(chunks, CellChunk{Text: prefix + plain, Style: style})
 		}
 	}
-	return lines
+	return chunks
 }
 
 // QuoteComponent renders blockquote content.
 type QuoteComponent struct{}
 
-func (QuoteComponent) Render(block ContentBlock, sel bool) []string {
-	var lines []string
+func (QuoteComponent) Render(block ContentBlock, sel bool) []CellChunk {
+	style := DimStyle
+	if sel {
+		style = SelectionStyle
+	}
+	var chunks []CellChunk
 	for _, item := range block.Items {
 		text := renderChunks(item.Chunks)
-		if text != "" {
-			if sel {
-				lines = append(lines, selectedStyle.Render("> "+text))
-			} else {
-				lines = append(lines, dimStyle.Render("> "+text))
-			}
+		plain := stripANSI(text)
+		if plain != "" {
+			chunks = append(chunks, CellChunk{Text: "> " + plain, Style: style})
 		}
 	}
-	return lines
+	return chunks
 }
 
 // HRComponent renders a horizontal rule.
 type HRComponent struct{}
 
-func (HRComponent) Render(block ContentBlock, sel bool) []string {
+func (HRComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	rule := strings.Repeat("─", 40)
+	style := DimStyle
 	if sel {
-		return []string{selectedStyle.Render(rule)}
+		style = SelectionStyle
 	}
-	return []string{dimStyle.Render(rule)}
+	return []CellChunk{{Text: rule, Style: style}}
 }
 
 // TableComponent renders a table with box-drawing characters.
 type TableComponent struct{}
 
-func (TableComponent) Render(block ContentBlock, sel bool) []string {
-	return renderTable(block, sel)
+func (TableComponent) Render(block ContentBlock, sel bool) []CellChunk {
+	lines := renderTable(block, sel)
+	style := DefaultStyle
+	if sel {
+		style = SelectionStyle
+	}
+	var chunks []CellChunk
+	for _, l := range lines {
+		plain := stripANSI(l)
+		chunks = append(chunks, CellChunk{Text: plain, Style: style})
+	}
+	return chunks
 }
 
-// === Button Component ===
+// ===== Button Component =====
 
 type ButtonComponent struct{}
 
