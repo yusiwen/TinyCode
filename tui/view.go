@@ -272,13 +272,14 @@ func extractSelected(start, end selPos, messages []chatMessage) string {
 	var b strings.Builder
 	for i := start.MsgIdx; i <= end.MsgIdx && i < len(messages); i++ {
 		msg := messages[i]
-		var text string
-		// Pick the right content field based on selection origin
-		if start.Field == "reasoning" || (i == start.MsgIdx && start.Field == "reasoning") {
-			text = msg.ReasoningContent
-		} else {
-			text = msg.Content
+
+		// Include reasoning content first if available
+		if msg.ReasoningContent != "" && msg.Content != "" {
+			b.WriteString(msg.ReasoningContent)
+			b.WriteString("\n")
 		}
+
+		text := msg.Content
 		if text == "" {
 			text = msg.ReasoningContent
 		}
@@ -341,6 +342,7 @@ func sliceStyled(styled string, startCol, endCol int) (string, string, string) {
 	}
 	plain := stripANSI(styled)
 	type mapping struct{ plainIdx, styledIdx int }
+	// Build a mapping from styled to plain positions.
 	var mappings []mapping
 	si := 0
 	for pi := 0; pi < len(plain); pi++ {
