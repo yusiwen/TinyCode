@@ -19,6 +19,7 @@ func (m *TuiModel) View() string {
 
 	// Message area (no header at top — moved to status bar at bottom)
 	var msgLines []string
+	m.activeButtons = nil
 	for i, msg := range m.messages {
 		sel := m.isSelected(i)
 		switch msg.Role {
@@ -27,44 +28,30 @@ func (m *TuiModel) View() string {
 			msgLines = append(msgLines, uc.Render(msg, sel)...)
 		case "assistant":
 			msgLines = append(msgLines, m.renderAssistantMessage(msg, sel)...)
+			// Render [Copy] button for completed assistant messages
+			if !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
+				lineIdx := len(msgLines)
+				btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
+				msgLines = append(msgLines, btnLine)
+				msgContent := msg.Content
+				m.activeButtons = append(m.activeButtons, Button{
+					MsgIdx: i,
+					Line:   lineIdx,
+					Col:    col,
+					Width:  width,
+					Label:  "Copy",
+					Action: func() {
+						copyToClipboard(msgContent)
+						m.messages = append(m.messages, chatMessage{
+							Role: "system", Content: "✓ Copied",
+						})
+					},
+				})
+			}
 		case "system":
 			sc := SystemComponent{}
 			msgLines = append(msgLines, sc.Render(msg, sel)...)
 		}
-	}
-
-	// Buttons: render interactive buttons after their messages
-	m.activeButtons = nil
-	for i, msg := range m.messages {
-		if msg.Role != "assistant" || msg.Streaming {
-			continue
-		}
-		if len(msg.Blocks) == 0 && msg.Content == "" {
-			continue
-		}
-		// Render [Copy] button below this assistant message
-		lineIdx := len(msgLines)
-		btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
-		msgLines = append(msgLines, btnLine)
-		msgIdx := i
-		msgContent := msg.Content
-		m.activeButtons = append(m.activeButtons, Button{
-			MsgIdx: msgIdx,
-			Line:   lineIdx,
-			Col:    col,
-			Width:  width,
-			Label:  "Copy",
-			Action: func() {
-				copyToClipboard(msgContent)
-				m.lastCopiedMsgIdx = msgIdx
-			},
-		})
-	}
-
-	// Show "→ ✓ Copied" feedback at the very bottom
-	if m.lastCopiedMsgIdx >= 0 {
-		msgLines = append(msgLines, dimStyle.Render("→ ✓ Copied"))
-		m.lastCopiedMsgIdx = -1
 	}
 
 	// Wrap all lines to prevent viewport truncation

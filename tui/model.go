@@ -59,9 +59,6 @@ type TuiModel struct {
 	// Buttons (rebuilt each View)
 	activeButtons []Button
 
-	// Copy button feedback (reset in button rendering)
-	lastCopiedMsgIdx int
-
 	// Quit confirmation
 	quitConfirm bool
 
