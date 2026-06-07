@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // --- Builder helpers for ContentBlock ---
@@ -230,4 +232,87 @@ func TestRenderMultipleParagraphs(t *testing.T) {
 	assertContains(t, lines, "First")
 	assertContains(t, lines, "Second")
 	assertContains(t, lines, "Third")
+}
+
+// --- wrapLine edge cases ---
+
+func TestWrapLineShort(t *testing.T) {
+	lines := wrapLine("hello", 80)
+	if len(lines) != 1 || lines[0] != "hello" {
+		t.Errorf("expected ['hello'], got %q", lines)
+	}
+}
+
+func TestWrapLineExactWidth(t *testing.T) {
+	input := strings.Repeat("x", 80)
+	lines := wrapLine(input, 80)
+	if len(lines) != 1 || lines[0] != input {
+		t.Errorf("expected single line of 80 chars, got %d lines", len(lines))
+	}
+}
+
+func TestWrapLineLonger(t *testing.T) {
+	input := strings.Repeat("x", 200)
+	lines := wrapLine(input, 80)
+	if len(lines) != 3 {
+		t.Errorf("expected 3 wrapped lines (200/80=3), got %d", len(lines))
+	}
+}
+
+func TestWrapLineAtSpace(t *testing.T) {
+	input := strings.Repeat("x", 50) + " " + strings.Repeat("y", 50)
+	lines := wrapLine(input, 60)
+	for _, l := range lines {
+		if len(l) > 60 {
+			t.Errorf("line exceeds 60 chars: %q (%d)", l, len(l))
+		}
+	}
+	if !strings.Contains(lines[0], "x") || !strings.Contains(lines[1], "y") {
+		t.Errorf("unexpected split: %q", lines)
+	}
+}
+
+func TestWrapLineSingleWordLong(t *testing.T) {
+	input := strings.Repeat("x", 200)
+	lines := wrapLine(input, 80)
+	if len(lines) < 2 {
+		t.Errorf("expected multiple lines for long single word, got %d", len(lines))
+	}
+	for _, l := range lines {
+		w := lipgloss.Width(l)
+		if w > 80 {
+			t.Errorf("line exceeds 80 visible chars: %d", w)
+		}
+	}
+}
+
+func TestWrapLineEmpty(t *testing.T) {
+	lines := wrapLine("", 80)
+	if len(lines) != 1 || lines[0] != "" {
+		t.Errorf("expected [''], got %q", lines)
+	}
+}
+
+func TestWrapLineZeroWidth(t *testing.T) {
+	lines := wrapLine("hello", 0)
+	if len(lines) != 5 {
+		t.Errorf("expected 5 lines (one per char) for 0-width wrap, got %d", len(lines))
+	}
+	if len(lines) > 0 && lines[0] != "h" {
+		t.Errorf("expected first char 'h', got %q", lines[0])
+	}
+}
+
+func TestWrapLineCJK(t *testing.T) {
+	input := "你好世界" + strings.Repeat("a", 100)
+	lines := wrapLine(input, 80)
+	if len(lines) < 2 {
+		t.Errorf("expected wrapping for long CJK+ASCII line, got %d lines", len(lines))
+	}
+	for _, l := range lines {
+		w := lipgloss.Width(l)
+		if w > 80 {
+			t.Errorf("line exceeds 80 visible chars: %d", w)
+		}
+	}
 }
