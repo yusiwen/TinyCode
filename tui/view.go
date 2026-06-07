@@ -297,11 +297,9 @@ func renderChunks(chunks []TextChunk) string {
 	var b strings.Builder
 	for _, c := range chunks {
 		if c.Code {
-			// Inline code: dim background, light text
+			// Inline code: golden text, no background
 			codeStyle := lipgloss.NewStyle().
-				Background(lipgloss.Color("#333333")).
-				Foreground(lipgloss.Color("#FF9999")).
-				Padding(0, 1)
+				Foreground(lipgloss.Color("#FDD700"))
 			b.WriteString(codeStyle.Render(c.Text))
 		} else if c.Bold && c.Italic {
 			style := lipgloss.NewStyle().Bold(true).Italic(true)
