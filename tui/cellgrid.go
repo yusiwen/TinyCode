@@ -2,7 +2,6 @@ package tui
 
 import (
 	"strings"
-	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -298,28 +297,6 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 		}
 	}
 	return chunks
-}
-
-// splitWords splits a line into whitespace-delimited words (preserves leading spaces via wordWrap).
-
-// splitWords splits a line into words (whitespace-delimited).
-func splitWords(s string) []string {
-	var words []string
-	var buf strings.Builder
-	for _, r := range s {
-		if unicode.IsSpace(r) {
-			if buf.Len() > 0 {
-				words = append(words, buf.String())
-				buf.Reset()
-			}
-		} else {
-			buf.WriteRune(r)
-		}
-	}
-	if buf.Len() > 0 {
-		words = append(words, buf.String())
-	}
-	return words
 }
 
 // --- Default style constructors ---
