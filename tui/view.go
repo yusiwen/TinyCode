@@ -343,6 +343,8 @@ func sliceStyled(styled string, startCol, endCol int) (string, string, string) {
 				si++
 				break
 			}
+			// Skip non-matching characters (control chars, etc.)
+			si++
 		}
 	}
 	if len(mappings) == 0 {
