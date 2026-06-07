@@ -1,0 +1,302 @@
+package tui
+
+import (
+	"strings"
+	"unicode"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
+)
+
+// CellStyle is a compact representation of character styling.
+type CellStyle struct {
+	Bold      bool
+	Italic    bool
+	Underline bool
+	Fg        lipgloss.Color
+	Bg        lipgloss.Color
+}
+
+// Cell is one visible character in the grid.
+type Cell struct {
+	Rune  rune
+	Style CellStyle
+	Width int // 1 for ASCII, 2 for CJK/emoji
+}
+
+// CellChunk is a run of plain text with a single style.
+type CellChunk struct {
+	Text  string
+	Style CellStyle
+}
+
+// CellGrid is a virtual framebuffer: every visible cell in the viewport.
+type CellGrid struct {
+	cells []Cell
+	width int
+	rows  int
+	col   int // current append column
+	row   int // current append row
+}
+
+// NewCellGrid creates a grid with the given width and initial height.
+func NewCellGrid(width, height int) *CellGrid {
+	return &CellGrid{
+		cells: make([]Cell, width*height),
+		width: width,
+		rows:  height,
+	}
+}
+
+// Reset clears the grid for a new frame.
+func (g *CellGrid) Reset() {
+	for i := range g.cells {
+		g.cells[i] = Cell{}
+	}
+	g.col = 0
+	g.row = 0
+}
+
+// cellIndex returns the flat index for (row, col).
+func (g *CellGrid) cellIndex(row, col int) int {
+	return row*g.width + col
+}
+
+// Set places a single cell at the current append position. Advances column.
+// Automatically creates new rows when the current row fills up.
+func (g *CellGrid) Append(runes []rune, style CellStyle) {
+	for _, r := range runes {
+		w := runewidth.RuneWidth(r)
+		if w == 0 {
+			w = 1 // treat zero-width chars as 1
+		}
+		// Wrap if this rune doesn't fit
+		if g.col+w > g.width {
+			g.col = 0
+			g.row++
+		}
+		// Extend grid if needed
+		g.ensureRow(g.row)
+		idx := g.cellIndex(g.row, g.col)
+		g.cells[idx] = Cell{Rune: r, Style: style, Width: w}
+		g.col += w
+	}
+}
+
+// AppendChunk places a CellChunk into the grid. Advances column and row.
+func (g *CellGrid) AppendChunk(chunk CellChunk) {
+	g.Append([]rune(chunk.Text), chunk.Style)
+	g.col = 0
+	g.row++
+}
+
+// AppendChunks places multiple chunks into the grid, each on its own line.
+func (g *CellGrid) AppendChunks(chunks []CellChunk) {
+	for _, c := range chunks {
+		for _, r := range c.Text {
+			g.Append([]rune{r}, c.Style)
+		}
+		g.col = 0
+		g.row++
+	}
+}
+
+// ensureRow grows the grid if row index is beyond current size.
+func (g *CellGrid) ensureRow(row int) {
+	for row >= g.rows {
+		g.cells = append(g.cells, make([]Cell, g.width)...)
+		g.rows++
+	}
+}
+
+// Get returns the cell at (row, col). Returns empty Cell if out of range.
+func (g *CellGrid) Get(row, col int) Cell {
+	if row < 0 || row >= g.rows || col < 0 || col >= g.width {
+		return Cell{}
+	}
+	return g.cells[g.cellIndex(row, col)]
+}
+
+// Fill sets all cells in a rectangular range to a given style.
+// Used for selection highlighting.
+func (g *CellGrid) Fill(startRow, startCol, endRow, endCol int, style CellStyle) {
+	for r := startRow; r <= endRow && r < g.rows; r++ {
+		cStart := startCol
+		cEnd := endCol
+		if r > startRow {
+			cStart = 0
+		}
+		if r < endRow {
+			cEnd = g.width - 1
+		}
+		for c := cStart; c <= cEnd && c < g.width; c++ {
+			idx := g.cellIndex(r, c)
+			if g.cells[idx].Rune != 0 {
+				g.cells[idx].Style = style
+			}
+		}
+	}
+}
+
+// ExtractText returns the plain text within a rectangular cell range.
+func (g *CellGrid) ExtractText(startRow, startCol, endRow, endCol int) string {
+	var b strings.Builder
+	for r := startRow; r <= endRow && r < g.rows; r++ {
+		cStart := startCol
+		cEnd := endCol
+		if r > startRow {
+			cStart = 0
+		}
+		if r < endRow {
+			cEnd = g.width - 1
+		}
+		for c := cStart; c <= cEnd && c < g.width; c++ {
+			cell := g.cells[g.cellIndex(r, c)]
+			if cell.Rune != 0 {
+				b.WriteRune(cell.Rune)
+			} else {
+				b.WriteByte(' ')
+			}
+		}
+		if r < endRow {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// Render produces an ANSI-formatted string for the viewport.
+func (g *CellGrid) Render() string {
+	var b strings.Builder
+	for r := 0; r < g.rows; r++ {
+		col := 0
+		for col < g.width {
+			cell := g.cells[g.cellIndex(r, col)]
+			if cell.Rune == 0 {
+				b.WriteByte(' ')
+				col++
+				continue
+			}
+			// Find continuous run of same-style cells
+			style := cell.Style
+			var text strings.Builder
+			for col < g.width {
+				c := g.cells[g.cellIndex(r, col)]
+				if c.Rune == 0 || c.Style != style {
+					break
+				}
+				text.WriteRune(c.Rune)
+				col += c.Width
+			}
+			// Render styled segment
+			ls := styleToLipgloss(style)
+			b.WriteString(ls.Render(text.String()))
+		}
+		if r < g.rows-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// styleToLipgloss converts CellStyle to a lipgloss.Style for rendering.
+func styleToLipgloss(s CellStyle) lipgloss.Style {
+	ls := lipgloss.NewStyle()
+	if s.Bold {
+		ls = ls.Bold(true)
+	}
+	if s.Italic {
+		ls = ls.Italic(true)
+	}
+	if s.Underline {
+		ls = ls.Underline(true)
+	}
+	if s.Fg != "" {
+		ls = ls.Foreground(s.Fg)
+	}
+	if s.Bg != "" {
+		ls = ls.Background(s.Bg)
+	}
+	return ls
+}
+
+// --- Word wrapping ---
+
+// wordWrap splits text into CellChunks, each no wider than maxWidth.
+// Preserves existing newlines as chunk boundaries.
+// Returns one CellChunk per wrapped line.
+func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
+	if maxWidth < 1 {
+		maxWidth = 1
+	}
+	var chunks []CellChunk
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" {
+			chunks = append(chunks, CellChunk{Text: "", Style: style})
+			continue
+		}
+		words := splitWords(line)
+		var lineBuilder strings.Builder
+		lineWidth := 0
+		flush := func() {
+			if lineBuilder.Len() > 0 {
+				chunks = append(chunks, CellChunk{Text: lineBuilder.String(), Style: style})
+				lineBuilder.Reset()
+			}
+			lineWidth = 0
+		}
+		for _, word := range words {
+			w := runewidth.StringWidth(word)
+			if lineWidth > 0 && lineWidth+1+w > maxWidth {
+				flush()
+			}
+			if lineWidth > 0 {
+				lineBuilder.WriteByte(' ')
+				lineWidth++
+			}
+			lineBuilder.WriteString(word)
+			lineWidth += w
+		}
+		if lineBuilder.Len() > 0 {
+			chunks = append(chunks, CellChunk{Text: lineBuilder.String(), Style: style})
+		} else {
+			chunks = append(chunks, CellChunk{Text: "", Style: style})
+		}
+	}
+	return chunks
+}
+
+// splitWords splits a line into words (whitespace-delimited).
+func splitWords(s string) []string {
+	var words []string
+	var buf strings.Builder
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			if buf.Len() > 0 {
+				words = append(words, buf.String())
+				buf.Reset()
+			}
+		} else {
+			buf.WriteRune(r)
+		}
+	}
+	if buf.Len() > 0 {
+		words = append(words, buf.String())
+	}
+	return words
+}
+
+// --- Default style constructors ---
+
+var (
+	DefaultStyle     = CellStyle{}
+	ThinkingStyle    = CellStyle{Fg: lipgloss.Color("#FFB347")}
+	AssistantLabel   = CellStyle{Fg: lipgloss.Color("#00FFFF"), Bold: true}
+	HeadingStyle     = CellStyle{Fg: lipgloss.Color("#E8E8E8"), Bold: true}
+	DimStyle         = CellStyle{Fg: lipgloss.Color("#888888")}
+	SelectionStyle   = CellStyle{Fg: lipgloss.Color("#FFD700"), Bg: lipgloss.Color("#333300")}
+	UserStyle        = CellStyle{Fg: lipgloss.Color("#00FF00"), Bold: true}
+	CodeStyle        = CellStyle{Fg: lipgloss.Color("#FDD700")}
+	SystemStyle      = CellStyle{Fg: lipgloss.Color("#888888")}
+	StatusBarStyle   = CellStyle{Fg: lipgloss.Color("#AAAAAA")}
+)
