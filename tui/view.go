@@ -29,22 +29,13 @@ func (m *TuiModel) View() string {
 		sel := m.isSelected(i)
 		switch msg.Role {
 		case "user":
-			line := "> " + msg.Content
-			if sel {
-				msgLines = append(msgLines, selectedStyle.Render(line))
-			} else {
-				msgLines = append(msgLines, userStyle.Render(line))
-			}
+			uc := UserComponent{}
+			msgLines = append(msgLines, uc.Render(msg, sel)...)
 		case "assistant":
-			lines := m.renderAssistantMessage(msg, sel)
-			msgLines = append(msgLines, lines...)
+			msgLines = append(msgLines, m.renderAssistantMessage(msg, sel)...)
 		case "system":
-			line := "→ " + msg.Content
-			if sel {
-				msgLines = append(msgLines, selectedStyle.Render(line))
-			} else {
-				msgLines = append(msgLines, dimStyle.Render(line))
-			}
+			sc := SystemComponent{}
+			msgLines = append(msgLines, sc.Render(msg, sel)...)
 		}
 	}
 	// Wrap all lines to prevent viewport truncation
@@ -84,58 +75,11 @@ func (m *TuiModel) View() string {
 	return b.String()
 }
 
-// renderAssistantMessage produces rendered terminal lines from a chatMessage.
-// Uses Blocks when available, falls back to Rendered/Content for legacy messages.
+// renderAssistantMessage delegates to the AssistantComponent.
+// Kept for backward compatibility; tests and callers use this function.
 func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
-	var lines []string
-
-	// Reasoning content — indented 4 spaces
-	if msg.ReasoningContent != "" {
-		for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
-			if sel {
-				lines = append(lines, selectedStyle.Render("    "+rLine))
-			} else {
-				lines = append(lines, thinkingStyle.Render("    "+rLine))
-			}
-		}
-	}
-
-	// "Assistant:" label — no indent, acts as separator
-	if !sel {
-		lines = append(lines, assistantLabelStyle.Render("Assistant:"))
-	} else {
-		lines = append(lines, selectedStyle.Render("Assistant:"))
-	}
-
-	// Blocks (new pipeline) — indented 4 spaces
-	if len(msg.Blocks) > 0 {
-		blocksLines := renderBlocks(msg.Blocks, sel)
-		for _, bl := range blocksLines {
-			if sel {
-				lines = append(lines, selectedStyle.Render("    "+bl))
-			} else {
-				lines = append(lines, "    "+bl)
-			}
-		}
-		return lines
-	}
-
-	// Streaming content (no blocks yet—still receiving deltas)
-	if msg.Content != "" {
-		label := "Assistant:"
-		if msg.Streaming {
-			label = "Assistant (streaming):"
-		}
-		if sel {
-			lines = append(lines, selectedStyle.Render(label))
-			lines = append(lines, selectedStyle.Render(msg.Content))
-		} else {
-			lines = append(lines, assistantLabelStyle.Render(label))
-			lines = append(lines, msg.Content)
-		}
-	}
-
-	return lines
+	answerComponent := AssistantComponent{}
+	return answerComponent.Render(msg, sel)
 }
 
 // wrapLine splits a line into multiple lines, each no wider than maxWidth.
@@ -201,97 +145,11 @@ func wrapLine(line string, maxWidth int) []string {
 }
 func renderBlocks(blocks []ContentBlock, sel bool) []string {
 	var lines []string
-
 	for _, block := range blocks {
-		switch block.Type {
-		case "paragraph":
-			text := renderChunks(block.Chunks)
-			if text != "" {
-				lines = append(lines, text)
-			}
-
-		case "heading":
-			text := renderChunks(block.Chunks)
-			if text != "" {
-				// Blank line before heading
-				lines = append(lines, "")
-				if sel {
-					lines = append(lines, selectedStyle.Render(text))
-				} else {
-					style := lipgloss.NewStyle().Bold(true).Foreground(colorBrightWhite)
-					lines = append(lines, style.Render(text))
-				}
-				// Blank line after heading
-				lines = append(lines, "")
-			}
-
-		case "code":
-			if sel {
-				for _, codeLine := range strings.Split(block.Code, "\n") {
-					lines = append(lines, selectedStyle.Render("  "+codeLine))
-				}
-			} else {
-				for _, codeLine := range strings.Split(block.Code, "\n") {
-					lines = append(lines, dimStyle.Render("  "+codeLine))
-				}
-			}
-
-		case "list":
-			for i, item := range block.Items {
-				var prefix string
-				if block.Numbered {
-					prefix = fmt.Sprintf("  %d. ", i+1)
-				} else {
-					prefix = "  • "
-				}
-				// Code block inside a list item
-				if item.Type == "code" {
-					for _, codeLine := range strings.Split(item.Code, "\n") {
-						if sel {
-							lines = append(lines, selectedStyle.Render(prefix+codeLine))
-						} else {
-							lines = append(lines, dimStyle.Render(prefix+codeLine))
-						}
-					}
-					continue
-				}
-				text := renderChunks(item.Chunks)
-				if text != "" {
-					if sel {
-						lines = append(lines, selectedStyle.Render(prefix+text))
-					} else {
-						lines = append(lines, prefix+text)
-					}
-				}
-			}
-
-		case "quote":
-			for _, item := range block.Items {
-				text := renderChunks(item.Chunks)
-				if text != "" {
-					if sel {
-						lines = append(lines, selectedStyle.Render("> "+text))
-					} else {
-						lines = append(lines, dimStyle.Render("> "+text))
-					}
-				}
-			}
-
-		case "hr":
-			width := 40
-			rule := strings.Repeat("─", width)
-			if sel {
-				lines = append(lines, selectedStyle.Render(rule))
-			} else {
-				lines = append(lines, dimStyle.Render(rule))
-			}
-
-		case "table":
-			tableLines := renderTable(block, sel)
-			lines = append(lines, tableLines...)
+		if comp, ok := blockComponentMap[block.Type]; ok {
+			lines = append(lines, comp.Render(block, sel)...)
 		}
 	}
-
 	return lines
 }
 
