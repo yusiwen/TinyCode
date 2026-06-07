@@ -64,6 +64,15 @@ func (m *TuiModel) View() string {
 	for _, line := range msgLines {
 		wrapped = append(wrapped, wrapLine(line, m.vp.Width)...)
 	}
+	// Remap button lines from msgLines index to wrapped index
+	for i := range m.activeButtons {
+		btn := &m.activeButtons[i]
+		wrappedLine := 0
+		for msgLine := 0; msgLine < len(msgLines) && msgLine < btn.Line; msgLine++ {
+			wrappedLine += len(wrapLine(msgLines[msgLine], m.vp.Width))
+		}
+		btn.Line = wrappedLine
+	}
 	// Save scroll position before content change; scroll only if already at bottom
 	wasAtBottom := m.vp.AtBottom()
 	m.vp.SetContent(strings.Join(wrapped, "\n"))
