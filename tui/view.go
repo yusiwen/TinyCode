@@ -92,6 +92,7 @@ func (m *TuiModel) View() string {
 		}
 		btn.Line = wrappedLine
 	}
+
 	// Save scroll position before content change; scroll only if already at bottom
 	wasAtBottom := m.vp.AtBottom()
 	m.vp.SetContent(strings.Join(wrapped, "\n"))
@@ -221,6 +222,25 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 		}
 	}
 	return msgLines, srcs
+}
+
+// posFromCoord maps a content line and column to a character position.
+func posFromCoord(line, col int, srcs []lineSrc) selPos {
+	if line < 0 || line >= len(srcs) {
+		return selPos{Offset: -1}
+	}
+	s := srcs[line]
+	if s.SourceField == "button" {
+		return selPos{Offset: -1}
+	}
+	textLen := len(s.Text)
+	if col >= textLen {
+		col = textLen - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	return selPos{MsgIdx: s.MsgIdx, Offset: col}
 }
 
 // renderAssistantMessageStatic renders an assistant message without model deps.

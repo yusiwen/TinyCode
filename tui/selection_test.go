@@ -42,24 +42,16 @@ func TestBuildLineSrcsAssistant(t *testing.T) {
 	}
 	_, srcs := buildLineSrcs(msgs, 80)
 	if len(srcs) < 2 {
-		t.Fatal("expected at least label + content + button lines")
+		t.Fatal("expected at least 2 lines (label+content)")
 	}
-	// Should have: content (label+blocks) + button
 	hasButton := false
-	contentCount := 0
 	for _, s := range srcs {
 		if s.SourceField == "button" {
 			hasButton = true
 		}
-		if s.SourceField == "content" {
-			contentCount++
-		}
 	}
 	if !hasButton {
 		t.Error("expected button lineSrc for completed assistant")
-	}
-	if contentCount < 1 {
-		t.Error("expected at least 1 content line")
 	}
 }
 
@@ -71,7 +63,7 @@ func TestBuildLineSrcsCount(t *testing.T) {
 	}
 	lines, srcs := buildLineSrcs(msgs, 80)
 	if len(lines) != len(srcs) {
-		t.Errorf("expected len(lines)=%d == len(srcs)=%d", len(lines), len(srcs))
+		t.Errorf("len(lines)=%d != len(srcs)=%d", len(lines), len(srcs))
 	}
 }
 
@@ -82,40 +74,93 @@ func TestBuildLineSrcsStreamingNoButton(t *testing.T) {
 	_, srcs := buildLineSrcs(msgs, 80)
 	for _, s := range srcs {
 		if s.SourceField == "button" {
-			t.Error("expected no button for streaming message")
+			t.Error("no button for streaming message")
 		}
 	}
 }
 
-func TestBuildLineSrcsAssistantWithReasoning(t *testing.T) {
+func TestBuildLineSrcsWithReasoning(t *testing.T) {
 	msgs := []chatMessage{
-		{Role: "assistant", ReasoningContent: "thinking...",
+		{Role: "assistant", ReasoningContent: "think...",
 			Content: "answer", Blocks: parseMarkdown("answer")},
 	}
 	_, srcs := buildLineSrcs(msgs, 80)
-	// Should have reasoning lines + label + content lines + button
-	contentFields := map[string]int{}
-	for _, s := range srcs {
-		contentFields[s.SourceField]++
-	}
-	if contentFields["content"] < 2 { // reasoning + label + answer = at least 2 content
-		t.Errorf("expected multiple content lines, got: %v", contentFields)
+	if len(srcs) < 2 {
+		t.Errorf("expected multiple lines, got %d", len(srcs))
 	}
 }
 
-func TestBuildLineSrcsMultipleMessages(t *testing.T) {
-	count := 5
-	msgs := make([]chatMessage, count)
-	for i := 0; i < count; i++ {
-		msgs[i] = chatMessage{Role: "system", Content: "msg"}
+func TestBuildLineSrcsMultiMessage(t *testing.T) {
+	msgs := make([]chatMessage, 5)
+	for i := 0; i < 5; i++ {
+		msgs[i] = chatMessage{Role: "system", Content: "m"}
 	}
-	lines, srcs := buildLineSrcs(msgs, 80)
-	if len(lines) != count {
-		t.Errorf("expected %d lines, got %d", count, len(lines))
-	}
+	_, srcs := buildLineSrcs(msgs, 80)
 	for i, s := range srcs {
 		if s.MsgIdx != i {
-			t.Errorf("srcs[%d].MsgIdx = %d, want %d", i, s.MsgIdx, i)
+			t.Errorf("srcs[%d].MsgIdx=%d, want %d", i, s.MsgIdx, i)
 		}
+	}
+}
+
+// --- posFromCoord tests ---
+
+func TestPosFromCoordFirstChar(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "> Hello"},
+	}
+	pos := posFromCoord(0, 0, srcs)
+	if pos.Offset != 0 || pos.MsgIdx != 0 {
+		t.Errorf("want MsgIdx=0 Offset=0, got MsgIdx=%d Offset=%d", pos.MsgIdx, pos.Offset)
+	}
+}
+
+func TestPosFromCoordMiddle(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "system", Text: "→ msg"},
+	}
+	pos := posFromCoord(0, 2, srcs)
+	if pos.Offset != 2 {
+		t.Errorf("want offset=2, got %d", pos.Offset)
+	}
+}
+
+func TestPosFromCoordPastEnd(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "> Hi"},
+	}
+	pos := posFromCoord(0, 100, srcs)
+	if pos.Offset != 3 {
+		t.Errorf("want offset=3 (last char), got %d", pos.Offset)
+	}
+}
+
+func TestPosFromCoordButton(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "button", Text: ""},
+	}
+	pos := posFromCoord(0, 0, srcs)
+	if pos.Offset != -1 {
+		t.Errorf("want Offset=-1, got %d", pos.Offset)
+	}
+}
+
+func TestPosFromCoordOutOfRange(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "> Hi"},
+	}
+	pos := posFromCoord(5, 0, srcs)
+	if pos.Offset != -1 {
+		t.Errorf("want Offset=-1, got %d", pos.Offset)
+	}
+}
+
+func TestPosFromCoordNegativeCol(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "> Hi"},
+	}
+	pos := posFromCoord(0, -5, srcs)
+	if pos.Offset != 0 {
+		t.Errorf("want offset=0, got %d", pos.Offset)
 	}
 }

@@ -42,6 +42,27 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+			// Character-level selection (new)
+			switch msg.Action {
+			case tea.MouseActionPress:
+				pos := posFromCoord(contentLine, contentCol, m.lineSrcs)
+				if pos.Offset >= 0 {
+					m.charSelStart = pos
+					m.charSelEnd = pos
+					m.selecting = true
+				}
+			case tea.MouseActionMotion:
+				if m.selecting {
+					pos := posFromCoord(contentLine, contentCol, m.lineSrcs)
+					if pos.Offset >= 0 {
+						m.charSelEnd = pos
+					}
+				}
+			case tea.MouseActionRelease:
+				m.selecting = false
+			}
+
+			// Legacy message-level selection (old path — kept for backward compat)
 			idx := m.messageAtLine(contentLine)
 			if idx < 0 {
 				idx = 0
