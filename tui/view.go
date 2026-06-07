@@ -17,93 +17,80 @@ func (m *TuiModel) View() string {
 
 	var b strings.Builder
 
-	// Message area (no header at top — moved to status bar at bottom)
-	var msgLines []string
+	// Message area — built with CellGrid
 	m.activeButtons = nil
 	m.lineSrcs = nil
+	g := NewCellGrid(m.vp.Width, 100)
+
 	for i, msg := range m.messages {
-		switch msg.Role {
-		case "user":
-			before := len(msgLines)
-			uc := UserComponent{}
-			rendered := chunksToStrings(uc.Render(msg, false))
-			msgLines = append(msgLines, rendered...)
-			for li := before; li < len(msgLines); li++ {
-				m.lineSrcs = append(m.lineSrcs, lineSrc{
-					MsgIdx: i, SourceField: "user",
-					Text: rendered[li-before],
-				})
+		comp, ok := msgComponentMap[msg.Role]
+		if !ok {
+			continue
+		}
+		chunks := comp.Render(msg, false)
+		startRow := g.RowCount()
+		for _, chunk := range chunks {
+			wrapped := wordWrap(chunk.Text, g.width, DefaultStyle)
+			for _, wc := range wrapped {
+				g.AppendChunk(wc)
 			}
-		case "assistant":
-			before := len(msgLines)
-			msgLines = append(msgLines, m.renderAssistantMessage(msg, false)...)
-			for li := before; li < len(msgLines); li++ {
-				m.lineSrcs = append(m.lineSrcs, lineSrc{
-					MsgIdx: i, SourceField: "content",
-					Text: msgLines[li],
-				})
-			}
+		}
+		endRow := g.RowCount()
 
-			// Render [Copy] button
-			if !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
-				lineIdx := len(msgLines)
-				btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
-				msgLines = append(msgLines, btnLine)
-				m.lineSrcs = append(m.lineSrcs, lineSrc{
-					MsgIdx: i, SourceField: "button", Text: "",
-				})
-				msgContent := msg.Content
-				m.activeButtons = append(m.activeButtons, Button{
-					MsgIdx: i, Line: lineIdx, Col: col, Width: width, Label: "Copy",
-					Action: func() {
-						copyToClipboard(msgContent)
-						m.messages = append(m.messages, chatMessage{
-							Role: "system", Content: "✓ Copied",
-						})
-					},
-				})
+		// Build lineSrcs from grid rows occupied by this message
+		for r := startRow; r < endRow; r++ {
+			text := g.RowText(r)
+			field := "content"
+			offset := 4
+			switch msg.Role {
+			case "user":
+				field = "user"
+				offset = 2
+			case "system":
+				field = "system"
+				offset = 4
+			case "assistant":
+				if text == "Assistant:" {
+					field = "label"
+					offset = 0
+				} else if msg.ReasoningContent != "" && r-startRow == 0 {
+					field = "reasoning"
+				}
 			}
-		case "system":
-			before := len(msgLines)
-			sc := SystemComponent{}
-			rendered := chunksToStrings(sc.Render(msg, false))
-			msgLines = append(msgLines, rendered...)
-			for li := before; li < len(msgLines); li++ {
-				m.lineSrcs = append(m.lineSrcs, lineSrc{
-					MsgIdx: i, SourceField: "system",
-					Text: rendered[li-before],
-				})
-			}
+			m.lineSrcs = append(m.lineSrcs, lineSrc{
+				MsgIdx: i, SourceField: field, Text: text, ContentOffset: offset,
+			})
+		}
+
+		// Render [Copy] button
+		if msg.Role == "assistant" && !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
+			btnRow := g.RowCount()
+			btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
+			plainBtn := stripANSI(btnLine)
+			g.AppendChunk(CellChunk{Text: plainBtn, Style: DimStyle})
+			m.lineSrcs = append(m.lineSrcs, lineSrc{MsgIdx: i, SourceField: "button", Text: ""})
+			msgContent := msg.Content
+			m.activeButtons = append(m.activeButtons, Button{
+				MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: "Copy",
+				Action: func() {
+					copyToClipboard(msgContent)
+					m.messages = append(m.messages, chatMessage{
+						Role: "system", Content: "✓ Copied",
+					})
+				},
+			})
 		}
 	}
 
-	// Wrap all lines to prevent viewport truncation
-	var wrapped []string
-	for _, line := range msgLines {
-		wrapped = append(wrapped, wrapLine(line, m.vp.Width)...)
-	}
-	// Remap button lines from msgLines index to wrapped index
-	for i := range m.activeButtons {
-		btn := &m.activeButtons[i]
-		wrappedLine := 0
-		for msgLine := 0; msgLine < len(msgLines) && msgLine < btn.Line; msgLine++ {
-			wrappedLine += len(wrapLine(msgLines[msgLine], m.vp.Width))
-		}
-		btn.Line = wrappedLine
-	}
-
-	// Apply character-level selection highlighting using (line, col) range
+	// Apply character-level selection highlighting
 	if m.charSelStart.Offset >= 0 {
-		startLine := m.charSelStartLine
-		startCol := m.charSelStartCol
-		endLine := m.charSelEndLine
-		endCol := m.charSelEndCol
-		wrapped = highlightSelection(wrapped, m.lineSrcs, startLine, startCol, endLine, endCol)
+		// TODO: use CellGrid.Fill for selection
 	}
 
-	// Save scroll position before content change; scroll only if already at bottom
+	// Render grid to viewport
+	rendered := g.Render()
 	wasAtBottom := m.vp.AtBottom()
-	m.vp.SetContent(strings.Join(wrapped, "\n"))
+	m.vp.SetContent(rendered)
 	if wasAtBottom {
 		m.vp.GotoBottom()
 	}

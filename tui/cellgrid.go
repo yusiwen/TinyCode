@@ -57,6 +57,28 @@ func (g *CellGrid) Reset() {
 	g.row = 0
 }
 
+// RowCount returns the number of populated rows.
+func (g *CellGrid) RowCount() int {
+	return g.rows
+}
+
+// RowText returns the plain text of a row.
+func (g *CellGrid) RowText(row int) string {
+	if row < 0 || row >= g.rows {
+		return ""
+	}
+	var b strings.Builder
+	for c := 0; c < g.width; c++ {
+		cell := g.cells[g.cellIndex(row, c)]
+		if cell.Rune != 0 {
+			b.WriteRune(cell.Rune)
+		} else {
+			break
+		}
+	}
+	return b.String()
+}
+
 // cellIndex returns the flat index for (row, col).
 func (g *CellGrid) cellIndex(row, col int) int {
 	return row*g.width + col
