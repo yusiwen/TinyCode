@@ -59,7 +59,7 @@ func (g *CellGrid) Reset() {
 
 // RowCount returns the number of populated rows.
 func (g *CellGrid) RowCount() int {
-	return g.rows
+	return g.row
 }
 
 // RowText returns the plain text of a row.
@@ -190,7 +190,7 @@ func (g *CellGrid) ExtractText(startRow, startCol, endRow, endCol int) string {
 // Render produces an ANSI-formatted string for the viewport.
 func (g *CellGrid) Render() string {
 	var b strings.Builder
-	for r := 0; r < g.rows; r++ {
+	for r := 0; r < g.row; r++ {
 		col := 0
 		for col < g.width {
 			cell := g.cells[g.cellIndex(r, col)]
