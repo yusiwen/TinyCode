@@ -29,7 +29,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Button == tea.MouseButtonLeft {
-			contentLine := msg.Y - 1 + m.vp.YOffset
+			contentLine := msg.Y + m.vp.YOffset
 			contentCol := msg.X
 
 			// Check button clicks (Press only)

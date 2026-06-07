@@ -80,7 +80,7 @@ func TestMousePressSelectsFirstMessage(t *testing.T) {
 	m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
-		X:      5, Y: 1,
+		X:      5, Y: 0,
 	})
 	if m.selectStart != 0 {
 		t.Errorf("expected selectStart=0, got %d", m.selectStart)
@@ -99,7 +99,7 @@ func TestMousePressOnSecondMessage(t *testing.T) {
 	m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
-		X:      5, Y: 3,
+		X:      5, Y: 2,
 	})
 	// After the user message (1 line), we reach the assistant message
 	if m.selectStart != 1 {
@@ -123,7 +123,7 @@ func TestMouseDragExtendsSelection(t *testing.T) {
 	m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionMotion,
-		X:      5, Y: 5,
+		X:      5, Y: 4,
 	})
 	if m.selectEnd < 2 {
 		t.Errorf("expected selectEnd >= 2 after drag, got %d", m.selectEnd)
@@ -139,7 +139,7 @@ func TestMouseReleaseWithoutDrag(t *testing.T) {
 	m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionRelease,
-		X:      5, Y: 5,
+		X:      5, Y: 4,
 	})
 	// No drag → selection should be cleared
 	if m.selectStart != -1 {
@@ -156,7 +156,7 @@ func TestMouseReleaseWithDrag(t *testing.T) {
 	m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionRelease,
-		X:      5, Y: 5,
+		X:      5, Y: 4,
 	})
 	// After release, selecting should be false but selection preserved
 	if m.selecting {
@@ -175,7 +175,7 @@ func TestReadyGuard(t *testing.T) {
 	_, cmd := m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
-		X:      5, Y: 2,
+		X:      5, Y: 1,
 	})
 	if cmd != nil {
 		t.Error("expected nil cmd when not ready")
@@ -193,7 +193,7 @@ func TestSelectionClearsOnNewPress(t *testing.T) {
 	m.Update(tea.MouseMsg{
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
-		X:      5, Y: 3,
+		X:      5, Y: 2,
 	})
 	// New press should start fresh selection
 	if m.selectStart != 1 {
