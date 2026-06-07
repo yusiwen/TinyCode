@@ -265,3 +265,17 @@ type TableComponent struct{}
 func (TableComponent) Render(block ContentBlock, sel bool) []string {
 	return renderTable(block, sel)
 }
+
+// === Button Component ===
+
+type ButtonComponent struct{}
+
+func (ButtonComponent) Render(label string, indent int, sel bool) (string, int, int) {
+	text := fmt.Sprintf("%s[ %s ]", strings.Repeat(" ", indent), label)
+	col := indent + 1
+	width := len(label) + 4
+	if sel {
+		return selectedStyle.Render(text), col, width
+	}
+	return dimStyle.Render(text), col, width
+}

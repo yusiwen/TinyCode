@@ -11,7 +11,17 @@ import (
 	"github.com/yusiwen/tinycode/config"
 )
 
-// TuiModel is the main Bubble Tea model for TinyCode.
+// Button represents a clickable region in the message area.
+type Button struct {
+	MsgIdx int    // message index this button belongs to
+	Line   int    // content line in msgLines (set during View)
+	Col    int    // starting column
+	Width  int    // visible character width
+	Label  string
+	Action func() // executed on click
+}
+
+// TuiModel is the main Bubble Tea model for the chat interface.
 type TuiModel struct {
 	agent    *agent.Agent
 	config   *config.Config
@@ -45,6 +55,9 @@ type TuiModel struct {
 	mouseDrag      bool // true if mouse moved while button held
 	selectStart    int  // index of first selected message (-1 = none)
 	selectEnd      int  // index of last selected message
+
+	// Buttons (rebuilt each View)
+	activeButtons []Button
 
 	// Quit confirmation
 	quitConfirm bool

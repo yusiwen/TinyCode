@@ -30,6 +30,18 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Button == tea.MouseButtonLeft {
 			contentLine := msg.Y - 1 + m.vp.YOffset
+			contentCol := msg.X
+
+			// Check button clicks (Press only)
+			if msg.Action == tea.MouseActionPress {
+				for _, btn := range m.activeButtons {
+					if contentLine == btn.Line && contentCol >= btn.Col && contentCol <= btn.Col+btn.Width {
+						btn.Action()
+						return m, nil
+					}
+				}
+			}
+
 			idx := m.messageAtLine(contentLine)
 			if idx < 0 {
 				idx = 0

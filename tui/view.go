@@ -32,6 +32,36 @@ func (m *TuiModel) View() string {
 			msgLines = append(msgLines, sc.Render(msg, sel)...)
 		}
 	}
+
+	// Buttons: render interactive buttons after their messages
+	m.activeButtons = nil
+	for i, msg := range m.messages {
+		if msg.Role != "assistant" || msg.Streaming {
+			continue
+		}
+		if len(msg.Blocks) == 0 && msg.Content == "" {
+			continue
+		}
+		// Render [Copy] button below this assistant message
+		lineIdx := len(msgLines)
+		btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
+		msgLines = append(msgLines, btnLine)
+		msgIdx := i
+		m.activeButtons = append(m.activeButtons, Button{
+			MsgIdx: msgIdx,
+			Line:   lineIdx,
+			Col:    col,
+			Width:  width,
+			Label:  "Copy",
+			Action: func() {
+				copyToClipboard(msg.Content)
+				m.messages = append(m.messages, chatMessage{
+					Role: "system", Content: "✓ Copied",
+				})
+			},
+		})
+	}
+
 	// Wrap all lines to prevent viewport truncation
 	var wrapped []string
 	for _, line := range msgLines {
