@@ -205,14 +205,16 @@ func renderBlocks(blocks []ContentBlock, sel bool) []string {
 		case "heading":
 			text := renderChunks(block.Chunks)
 			if text != "" {
-				prefix := strings.Repeat("#", block.Level) + " "
+				// Blank line before heading
+				lines = append(lines, "")
 				if sel {
-					lines = append(lines, selectedStyle.Render(prefix+text))
+					lines = append(lines, selectedStyle.Render(text))
 				} else {
-					// Heading: bold + larger/brighter
-					style := lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
-					lines = append(lines, style.Render(prefix+text))
+					style := lipgloss.NewStyle().Bold(true).Foreground(colorBrightWhite)
+					lines = append(lines, style.Render(text))
 				}
+				// Blank line after heading
+				lines = append(lines, "")
 			}
 
 		case "code":

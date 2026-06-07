@@ -5,6 +5,7 @@ import "github.com/charmbracelet/lipgloss"
 var (
 	// Colors
 	colorCyan    = lipgloss.Color("#00FFFF")
+	colorBrightWhite = lipgloss.Color("#E8E8E8")
 	colorYellow  = lipgloss.Color("#FFFF00")
 	colorDim     = lipgloss.Color("#888888")
 	colorGreen   = lipgloss.Color("#00FF00")

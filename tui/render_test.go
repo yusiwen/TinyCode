@@ -100,15 +100,22 @@ func TestRenderParagraphWithStyles(t *testing.T) {
 
 func TestRenderHeading(t *testing.T) {
 	lines := renderBlocks([]ContentBlock{heading(1, txt("Title"))}, false)
-	assertContains(t, lines, "# Title")
-	_ = lines
+	assertContains(t, lines, "Title")
 }
 
 func TestRenderHeadingLevels(t *testing.T) {
 	for lvl := 1; lvl <= 3; lvl++ {
-		prefix := strings.Repeat("#", lvl)
 		lines := renderBlocks([]ContentBlock{heading(lvl, txt("test"))}, false)
-		assertContains(t, lines, prefix+" test")
+		assertContains(t, lines, "test")
+		// Should have blank lines around heading
+		if len(lines) >= 3 {
+			if lines[0] != "" {
+				t.Errorf("heading level %d: expected blank line before, first line=%q", lvl, lines[0])
+			}
+			if lines[len(lines)-1] != "" {
+				t.Errorf("heading level %d: expected blank line after, last line=%q", lvl, lines[len(lines)-1])
+			}
+		}
 	}
 }
 
@@ -205,7 +212,7 @@ func TestRenderMultipleBlocks(t *testing.T) {
 		codeBlock("data", ""),
 	}
 	lines := renderBlocks(blocks, false)
-	assertContains(t, lines, "## Section")
+	assertContains(t, lines, "Section")
 	assertContains(t, lines, "Description")
 	assertContains(t, lines, "data")
 }
