@@ -31,6 +31,10 @@ var (
 			Foreground(colorYellow).
 			Background(lipgloss.Color("#333300"))
 
+	statusBarStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#AAAAAA")).
+			Background(lipgloss.Color("#1A1A2E"))
+
 	userStyle = lipgloss.NewStyle().
 			Foreground(colorGreen).
 			Bold(true)

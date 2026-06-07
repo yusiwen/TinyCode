@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -49,6 +51,11 @@ type TuiModel struct {
 
 	// Scroll tracking
 	streamDoneNotified bool // true after first GotoBottom on stream completion
+
+	// Session stats
+	sessionStart      time.Time
+	sessionTokens     int
+	sessionToolCalls  int
 }
 
 // NewTUI creates and returns a new TUI model.
@@ -76,6 +83,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		streamCh: make(chan tea.Msg, 200),
 		selectStart: -1,
 		selectEnd:   -1,
+		sessionStart: time.Now(),
 	}
 }
 

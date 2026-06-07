@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"time"
+
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -15,15 +17,7 @@ func (m *TuiModel) View() string {
 
 	var b strings.Builder
 
-	// Header
-	header := fmt.Sprintf("⚡ %s", m.modeName)
-	if m.status == StatusStreaming {
-		header += fmt.Sprintf(" %s", m.spinner.View())
-	}
-	b.WriteString(headerStyle.Render(header))
-	b.WriteString("\n")
-
-	// Message area
+	// Message area (no header at top — moved to status bar at bottom)
 	var msgLines []string
 	for i, msg := range m.messages {
 		sel := m.isSelected(i)
@@ -72,7 +66,61 @@ func (m *TuiModel) View() string {
 		b.WriteString(m.input.View())
 	}
 
+	// Status bar (bottom)
+	b.WriteString("\n")
+	b.WriteString(m.renderStatusBar())
+
 	return b.String()
+}
+
+// renderStatusBar builds the bottom status line.
+func (m *TuiModel) renderStatusBar() string {
+	modeIcon := "⚡"
+	spinnerStr := ""
+	if m.status == StatusStreaming {
+		spinnerStr = " " + m.spinner.View()
+	}
+
+	// Session duration
+	dur := time.Since(m.sessionStart)
+	durStr := formatDuration(dur)
+
+	// Model name
+	modelName := m.modeName
+	if m.registry != nil {
+		modelName = m.registry.CurrentName()
+	}
+
+	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s",
+		modeIcon, modelName, spinnerStr,
+		m.providerName(),
+		m.sessionTokens, m.sessionToolCalls, len(m.messages),
+		durStr)
+
+	return statusBarStyle.Render(status)
+}
+
+// providerName returns the current provider's display name.
+func (m *TuiModel) providerName() string {
+	if m.provReg == nil {
+		return "unknown"
+	}
+	return m.provReg.Current().Name()
+}
+
+// formatDuration formats a duration like "4h31m" or "32s".
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%dm", h, m)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm%ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 // renderAssistantMessage delegates to the AssistantComponent.
