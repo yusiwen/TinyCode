@@ -116,6 +116,8 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		streamCh: make(chan tea.Msg, 200),
 		selectStart: -1,
 		selectEnd:   -1,
+		charSelStart: selPos{Offset: -1},
+		charSelEnd:   selPos{Offset: -1},
 		sessionStart: time.Now(),
 	}
 }
