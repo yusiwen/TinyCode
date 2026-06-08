@@ -182,8 +182,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.historyPos = -1
 					m.input.SetValue(m.historyDraft)
 				}
+				return m, nil
 			}
-			return m, nil
+			// Not browsing history — let Down pass through to textarea
 		}
 
 		// Tab on empty input → mode switch
