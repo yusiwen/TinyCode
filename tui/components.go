@@ -108,10 +108,17 @@ type AnswerComponent struct{}
 
 func (AnswerComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	var chunks []CellChunk
+	lastBlank := false
 	for _, block := range msg.Blocks {
 		if comp, ok := blockComponentMap[block.Type]; ok {
 			blockChunks := comp.Render(block, false)
 			for _, bc := range blockChunks {
+				// Deduplicate consecutive blank lines
+				thisBlank := strings.TrimSpace(bc.Text) == ""
+				if thisBlank && lastBlank {
+					continue
+				}
+				lastBlank = thisBlank
 				style := bc.Style
 				if sel {
 					style = SelectionStyle
@@ -192,7 +199,6 @@ func (CodeComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	if code == "" {
 		return nil
 	}
-	// Convert tabs to spaces for consistent rendering
 	code = strings.ReplaceAll(code, "	", "    ")
 	style := DimStyle
 	if sel {
@@ -202,6 +208,8 @@ func (CodeComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	for _, codeLine := range strings.Split(code, "\n") {
 		chunks = append(chunks, CellChunk{Text: "  " + codeLine, Style: style})
 	}
+	// Add trailing blank line for visual spacing after code blocks
+	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	return chunks
 }
 
