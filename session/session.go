@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/yusiwen/tinycode/types"
@@ -74,4 +76,20 @@ func (st *Store) Create(id string) *Session {
 
 func (st *Store) Load(id string) (*Session, error) {
 	return Load(id, st.Dir)
+}
+
+// List returns all available session IDs sorted by name (most recent last).
+func (st *Store) List() []string {
+	entries, err := os.ReadDir(st.Dir)
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+			ids = append(ids, strings.TrimSuffix(e.Name(), ".json"))
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }

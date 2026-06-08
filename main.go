@@ -32,6 +32,7 @@ func main() {
 	var sessionDir string
 	var logLevel string
 	var resume string
+	var listSessions bool
 
 	rootCmd := &cobra.Command{
 		Use:   "tinycode",
@@ -170,6 +171,19 @@ func main() {
 			ag.SessionStore = sess
 			defer sess.Flush()
 
+			if listSessions {
+				ids := store.List()
+				if len(ids) == 0 {
+					fmt.Println("No saved sessions found.")
+				} else {
+					fmt.Println("Available sessions:")
+					for _, id := range ids {
+						fmt.Printf("  %s\n", id)
+					}
+				}
+				return nil
+			}
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -209,6 +223,7 @@ func main() {
 	rootCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Session directory")
 	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level")
 	rootCmd.Flags().StringVar(&resume, "resume", "", "Resume a saved session by ID (e.g. TUI-20260607-235959)")
+	rootCmd.Flags().BoolVar(&listSessions, "list-sessions", false, "List saved sessions")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
