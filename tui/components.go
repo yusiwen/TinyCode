@@ -116,12 +116,21 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	chunks = append(chunks, markerChunks...)
 
 	if !msg.ReasoningFolded {
-		// Reasoning content: indented, thinking yellow style
 		contentStyle := ThinkingStyle
 		if sel {
 			contentStyle = SelectionStyle
 		}
-		for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
+		// First line: bracket + first reasoning line on same row, no extra indent
+		lines := strings.Split(msg.ReasoningContent, "\n")
+		if len(lines) > 0 {
+			markerText := "[-]"
+			if firstLine := lines[0]; firstLine != "" {
+				markerText = "[-] " + firstLine
+			}
+			chunks = append(chunks, CellChunk{Text: markerText, Style: bracketStyle})
+		}
+		// Remaining lines: indented 4 spaces
+		for _, rLine := range lines[1:] {
 			chunks = append(chunks, CellChunk{Text: "    " + rLine, Style: contentStyle})
 		}
 	}
