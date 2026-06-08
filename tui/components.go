@@ -196,6 +196,10 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		}
 		chunks = append(chunks, CellChunk{Text: text, Style: style})
 	}
+	// Show running indicator while streaming
+	if msg.Streaming {
+		chunks = append(chunks, CellChunk{Text: "  ⏳ Running...", Style: style})
+	}
 	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	return chunks
 }
