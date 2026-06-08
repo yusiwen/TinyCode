@@ -177,6 +177,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 					// Determine streaming callbacks: use Agent-level if set (TUI mode),
 					// otherwise create default callbacks for terminal display.
 					callbacks := a.StreamCallbacks
+					tlog.Debug("agent.loop", "callbacks_check", "step", step, "has_callbacks", callbacks != nil)
 					if callbacks == nil {
 						var reasoningFirstToken bool
 						callbacks = &types.StreamCallbacks{
@@ -281,6 +282,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 		// Execute each tool call and collect results
 		for _, tc := range toolCalls {
+			tlog.Debug("agent.loop", "tool_check", "step", step, "tool", tc.Name, "has_callbacks", callbacks != nil, "has_ontoolcall", callbacks != nil && callbacks.OnToolCall != nil)
 			if callbacks != nil && callbacks.OnToolCall != nil {
 				// Extract a short argument summary for display
 				argSummary := ""
