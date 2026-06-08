@@ -306,6 +306,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Arg:  msg.Arg,
 			})
 		}
+		tlog.Debug("toolcall.msg", "name", msg.Name, "arg", msg.Arg, "count", len(m.curAssistant.ToolCalls))
 		m.autoScroll()
 		return m, m.waitForStream()
 
