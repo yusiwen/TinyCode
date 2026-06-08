@@ -192,6 +192,8 @@ func (CodeComponent) Render(block ContentBlock, sel bool) []CellChunk {
 	if code == "" {
 		return nil
 	}
+	// Convert tabs to spaces for consistent rendering
+	code = strings.ReplaceAll(code, "	", "    ")
 	style := DimStyle
 	if sel {
 		style = SelectionStyle

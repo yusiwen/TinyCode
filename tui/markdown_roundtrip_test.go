@@ -93,8 +93,8 @@ func TestMarkdownRoundTripCodeBlock(t *testing.T) {
 }
 
 func TestMarkdownRoundTripCodeIndent(t *testing.T) {
-	// Verify code block indentation is preserved through the pipeline
-	md := "```go\npackage main\n\nimport (\n    \"fmt\"\n    \"log\"\n)\n\nfunc main() {\n    log.Println(\"hi\")\n}\n```"
+	// Verify code block indentation is preserved (tabs → spaces)
+	md := "```go\npackage main\n\nimport (\n	\"fmt\"\n	\"log\"\n)\n\nfunc main() {\n	log.Println(\"hi\")\n}\n```"
 	blocks := parseMarkdown(md)
 
 	var rendered strings.Builder
@@ -111,10 +111,15 @@ func TestMarkdownRoundTripCodeIndent(t *testing.T) {
 	}
 	out := rendered.String()
 
+	// Tabs should be converted to 4 spaces
 	for _, s := range []string{`    "fmt"`, `    "log"`, `    log.Println`} {
 		if !strings.Contains(out, s) {
 			t.Errorf("MISSING indented code: %q\nOutput:\n%s", s, out)
 		}
+	}
+	// Tabs should NOT appear in output
+	if strings.Contains(out, "	") {
+		t.Error("tabs should NOT appear in rendered output")
 	}
 }
 
