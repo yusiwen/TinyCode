@@ -35,6 +35,12 @@ func (m *TuiModel) View() string {
 		chunks := comp.Render(msg, false)
 		startRow := g.RowCount()
 		for _, chunk := range chunks {
+			// Skip wordWrap for pre-formatted lines (tables, code, etc.)
+			// that use fixed-width formatting which wordWrap destroys
+			if strings.ContainsAny(chunk.Text, "│─") {
+				g.AppendChunk(chunk)
+				continue
+			}
 			wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
 			for _, wc := range wrapped {
 				g.AppendChunk(wc)
