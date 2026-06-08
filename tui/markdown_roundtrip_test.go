@@ -395,14 +395,14 @@ func TestToolCallRenderInAssistant(t *testing.T) {
 			{Name: "read_file", Arg: "main.go"},
 		},
 	}, false)
-	if len(chunks) < 2 {
+	if len(chunks) < 3 {
 		t.Fatal("expected at least 2 chunks (header + tool)")
 	}
-	header := chunks[0].Text
+	header := chunks[1].Text
 	if !strings.Contains(header, "Calling tools") {
 		t.Errorf("header missing 'Calling tools': %q", header)
 	}
-	toolLine := chunks[1].Text
+	toolLine := chunks[2].Text
 	if !strings.Contains(toolLine, "read_file") {
 		t.Errorf("tool line missing name: %q", toolLine)
 	}

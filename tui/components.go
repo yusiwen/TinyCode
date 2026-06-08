@@ -186,6 +186,8 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		style = SelectionStyle
 	}
 	var chunks []CellChunk
+	// Blank line before tool calls section
+	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	chunks = append(chunks, CellChunk{Text: "  → Calling tools:", Style: style})
 	for _, tc := range msg.ToolCalls {
 		text := "    • " + tc.Name
