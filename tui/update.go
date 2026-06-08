@@ -312,6 +312,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ToolResultMsg:
 		m.autoScroll()
+		return m, m.waitForStream()
 	case StreamMsg:
 		if m.curAssistant == nil {
 			return m, m.waitForStream()
