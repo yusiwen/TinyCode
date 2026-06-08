@@ -93,7 +93,7 @@ func TestMarkdownRoundTripCodeBlock(t *testing.T) {
 }
 
 func TestMarkdownRoundTripNestedList(t *testing.T) {
-	md := "- Level 1\n  - Level 2\n    - Level 3"
+	md := "- Level 1\n  - Level 2\n    - Level 3\n      - Level 4"
 	blocks := parseMarkdown(md)
 
 	var rendered strings.Builder
@@ -110,7 +110,7 @@ func TestMarkdownRoundTripNestedList(t *testing.T) {
 	}
 	out := rendered.String()
 
-	for _, s := range []string{"Level 1", "Level 2", "Level 3"} {
+	for _, s := range []string{"Level 1", "Level 2", "Level 3", "Level 4"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("MISSING: %q", s)
 		}

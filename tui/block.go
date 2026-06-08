@@ -206,6 +206,11 @@ func collectInline(n ast.Node, source []byte) []TextChunk {
 
 // collectListItems processes list nodes and returns a ContentBlock for the list.
 func collectListItems(n *ast.List, source []byte, numbered bool) *ContentBlock {
+	return collectListItemsDepth(n, source, numbered, 0)
+}
+
+func collectListItemsDepth(n *ast.List, source []byte, numbered bool, indent int) *ContentBlock {
+	prefix := strings.Repeat("    ", indent)
 	var items []ContentBlock
 	for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 		li, ok := child.(*ast.ListItem)
@@ -217,13 +222,19 @@ func collectListItems(n *ast.List, source []byte, numbered bool) *ContentBlock {
 			switch b := block.(type) {
 			case *ast.Paragraph:
 				chunks := collectInline(b, source)
+				// Apply indent prefix for this depth level
+				for j := range chunks {
+					chunks[j].Text = prefix + chunks[j].Text
+				}
 				items = append(items, ContentBlock{
 					Type:   "paragraph",
 					Chunks: chunks,
 				})
 			case *ast.TextBlock:
-				// Simple list items use TextBlock instead of Paragraph
 				chunks := collectInline(b, source)
+				for j := range chunks {
+					chunks[j].Text = prefix + chunks[j].Text
+				}
 				items = append(items, ContentBlock{
 					Type:   "paragraph",
 					Chunks: chunks,
@@ -238,18 +249,12 @@ func collectListItems(n *ast.List, source []byte, numbered bool) *ContentBlock {
 				items = append(items, ContentBlock{
 					Type:     "code",
 					Language: string(b.Language(source)),
-					Code:     strings.TrimRight(code.String(), "\n"),
+					Code:     prefix + strings.TrimRight(code.String(), "\n"),
 				})
 			case *ast.List:
 				// Nested list — recurse and flatten into current items
-				if sub := collectListItems(b, source, b.IsOrdered()); sub != nil {
-					for _, si := range sub.Items {
-						// Add extra indent prefix to mark as sub-item
-						for j := range si.Chunks {
-							si.Chunks[j].Text = "    " + si.Chunks[j].Text
-						}
-						items = append(items, si)
-					}
+				if sub := collectListItemsDepth(b, source, b.IsOrdered(), indent+1); sub != nil {
+					items = append(items, sub.Items...)
 				}
 			}
 		}
