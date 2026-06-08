@@ -31,6 +31,7 @@ func main() {
 	var model string
 	var sessionDir string
 	var logLevel string
+	var resume string
 
 	rootCmd := &cobra.Command{
 		Use:   "tinycode",
@@ -191,7 +192,7 @@ func main() {
 			}
 
 			// Interactive TUI mode
-			model := tui.NewTUI(ag, &cfg, reg, provReg)
+			model := tui.NewTUI(ag, &cfg, reg, provReg, resume)
 			p := tea.NewProgram(model, tea.WithMouseAllMotion())
 			if _, err := p.Run(); err != nil {
 				return err
@@ -207,6 +208,7 @@ func main() {
 	rootCmd.Flags().StringVar(&model, "model", "", "Model name")
 	rootCmd.Flags().StringVar(&sessionDir, "session-dir", "", "Session directory")
 	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level")
+	rootCmd.Flags().StringVar(&resume, "resume", "", "Resume a saved session by ID (e.g. TUI-20260607-235959)")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)

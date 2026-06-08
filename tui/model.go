@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/session"
 )
 
 // Button represents a clickable region in the message area.
@@ -106,7 +107,7 @@ type TuiModel struct {
 }
 
 // NewTUI creates and returns a new TUI model.
-func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry) *TuiModel {
+func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, resume ...string) *TuiModel {
 	t := textarea.New()
 	t.Placeholder = "Type your request (Ctrl+J for newline)..."
 	t.CharLimit = 0
@@ -118,7 +119,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	s := spinner.New()
 	s.Style = spinnerStyle
 
-	return &TuiModel{
+	m := &TuiModel{
 		agent:    ag,
 		config:   cfg,
 		registry: reg,
@@ -135,6 +136,27 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		sessionStart: time.Now(),
 		SessionDir:   cfg.SessionDir,
 	}
+
+	// Load session if resume ID provided
+	if len(resume) > 0 && resume[0] != "" {
+		sess, err := session.Load(resume[0], cfg.SessionDir)
+		if err == nil {
+			for _, sm := range sess.Messages {
+				cm := chatMessage{
+					Role:             sm.Role,
+					Content:          sm.Content,
+					ReasoningContent: sm.ReasoningContent,
+				}
+				// Parse markdown for assistant messages with content
+				if sm.Role == "assistant" && sm.Content != "" {
+					cm.Blocks = parseMarkdown(sm.Content)
+				}
+				m.messages = append(m.messages, cm)
+			}
+		}
+	}
+
+	return m
 }
 
 // Init returns the initial commands.
