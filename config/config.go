@@ -65,6 +65,10 @@ type Config struct {
 	SessionDir   string                  `json:"session_dir,omitempty"`
 	LSP          LSPConfig               `json:"lsp,omitempty"`
 	LogLevel     string                  `json:"log_level,omitempty"`
+
+	// Context window and compression
+	ContextLength        int `json:"context_length,omitempty"`
+	CompressionThreshold int `json:"compression_threshold,omitempty"`
 }
 
 // DefaultConfig returns the hardcoded default configuration.
@@ -103,6 +107,8 @@ func DefaultConfig() Config {
 			},
 		},
 		SessionDir: filepath.Join(home, ".tinycode", "sessions"),
+		ContextLength:        1000000, // 1M for DeepSeek V4 Flash
+		CompressionThreshold: 500000,  // 50% of context
 	}
 }
 
@@ -150,6 +156,12 @@ func merge(dst, src Config) Config {
 	}
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
+	}
+	if src.ContextLength > 0 {
+		dst.ContextLength = src.ContextLength
+	}
+	if src.CompressionThreshold > 0 {
+		dst.CompressionThreshold = src.CompressionThreshold
 	}
 	if src.LSP.Enabled {
 		dst.LSP.Enabled = true
