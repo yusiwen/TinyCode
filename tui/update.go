@@ -160,6 +160,32 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Up/Down → browse input history
+		if msg.Type == tea.KeyUp && len(m.inputHistory) > 0 {
+			if m.historyPos < 0 {
+				// Save draft before browsing
+				m.historyDraft = m.input.Value()
+				m.historyPos = len(m.inputHistory) - 1
+			} else if m.historyPos > 0 {
+				m.historyPos--
+			}
+			m.input.SetValue(m.inputHistory[m.historyPos])
+			return m, nil
+		}
+		if msg.Type == tea.KeyDown {
+			if m.historyPos >= 0 {
+				if m.historyPos < len(m.inputHistory)-1 {
+					m.historyPos++
+					m.input.SetValue(m.inputHistory[m.historyPos])
+				} else {
+					// Back to draft
+					m.historyPos = -1
+					m.input.SetValue(m.historyDraft)
+				}
+			}
+			return m, nil
+		}
+
 		// Tab on empty input → mode switch
 		if msg.Type == tea.KeyTab && m.input.Value() == "" {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
@@ -447,6 +473,12 @@ func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	if text == "" {
 		return m, nil
 	}
+	// Save to input history (dedup last entry)
+	if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != text {
+		m.inputHistory = append(m.inputHistory, text)
+	}
+	m.historyPos = -1
+	m.historyDraft = ""
 	m.lastInput = text
 	m.input.Reset()
 	if strings.HasPrefix(text, "/") {

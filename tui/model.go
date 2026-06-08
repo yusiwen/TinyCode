@@ -85,6 +85,11 @@ type TuiModel struct {
 	// Buttons (rebuilt each View)
 	activeButtons []Button
 
+	// Input history (up/down arrows)
+	inputHistory  []string
+	historyPos    int    // -1 = current draft, 0+ = history index
+	historyDraft  string // saved current input when browsing history
+
 	// Quit confirmation
 	quitConfirm bool
 
