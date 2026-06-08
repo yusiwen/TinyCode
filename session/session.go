@@ -7,22 +7,29 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yusiwen/tinycode/types"
 )
 
 // Session stores conversation history.
 type Session struct {
-	mu       sync.Mutex
-	ID       string          `json:"id"`
-	Messages []types.Message `json:"messages"`
-	dir      string
+	mu           sync.Mutex
+	ID           string          `json:"id"`
+	Title        string          `json:"title,omitempty"`
+	Preview      string          `json:"preview,omitempty"`
+	ModelName    string          `json:"model_name,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	MessageCount int             `json:"message_count"`
+	Messages     []types.Message `json:"messages"`
+	dir          string
 }
 
 // New creates a new session.
 func New(id, dir string) *Session {
 	os.MkdirAll(dir, 0755)
-	return &Session{ID: id, dir: dir}
+	return &Session{ID: id, dir: dir, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 }
 
 // Append adds a message to the session.
@@ -33,10 +40,32 @@ func (s *Session) Append(msg types.Message) error {
 	return nil
 }
 
-// Flush persists to disk.
+// Flush persists to disk, deriving metadata from messages.
 func (s *Session) Flush() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.UpdatedAt = time.Now()
+	s.MessageCount = len(s.Messages)
+
+	// Derive title from first user message
+	s.Title = ""
+	for _, m := range s.Messages {
+		if m.Role == "user" && m.Content != "" {
+			s.Title = truncate(m.Content, 80)
+			break
+		}
+	}
+
+	// Derive preview from last assistant content
+	s.Preview = ""
+	for i := len(s.Messages) - 1; i >= 0; i-- {
+		m := s.Messages[i]
+		if m.Role == "assistant" && m.Content != "" {
+			s.Preview = truncate(m.Content, 120)
+			break
+		}
+	}
 
 	path := filepath.Join(s.dir, s.ID+".json")
 	data, err := json.MarshalIndent(s, "", "  ")
@@ -44,6 +73,14 @@ func (s *Session) Flush() error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+func truncate(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "…"
 }
 
 // Load reads a session from disk.
@@ -78,18 +115,45 @@ func (st *Store) Load(id string) (*Session, error) {
 	return Load(id, st.Dir)
 }
 
-// List returns all available session IDs sorted by name (most recent last).
-func (st *Store) List() []string {
+// SessionInfo summarizes a session for display purposes.
+type SessionInfo struct {
+	ID           string    `json:"id"`
+	Title        string    `json:"title,omitempty"`
+	Preview      string    `json:"preview,omitempty"`
+	ModelName    string    `json:"model_name,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	MessageCount int       `json:"message_count"`
+}
+
+// List returns all available session infos sorted by update time (newest last).
+func (st *Store) List() []SessionInfo {
 	entries, err := os.ReadDir(st.Dir)
 	if err != nil {
 		return nil
 	}
-	var ids []string
+	var infos []SessionInfo
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			ids = append(ids, strings.TrimSuffix(e.Name(), ".json"))
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
 		}
+		id := strings.TrimSuffix(e.Name(), ".json")
+		s, err := Load(id, st.Dir)
+		if err != nil {
+			continue
+		}
+		infos = append(infos, SessionInfo{
+			ID:           id,
+			Title:        s.Title,
+			Preview:      s.Preview,
+			ModelName:    s.ModelName,
+			CreatedAt:    s.CreatedAt,
+			UpdatedAt:    s.UpdatedAt,
+			MessageCount: s.MessageCount,
+		})
 	}
-	sort.Strings(ids)
-	return ids
+	sort.Slice(infos, func(i, j int) bool {
+		return infos[i].UpdatedAt.Before(infos[j].UpdatedAt)
+	})
+	return infos
 }

@@ -172,13 +172,24 @@ func main() {
 			defer sess.Flush()
 
 			if listSessions {
-				ids := store.List()
-				if len(ids) == 0 {
+				infos := store.List()
+				if len(infos) == 0 {
 					fmt.Println("No saved sessions found.")
 				} else {
 					fmt.Println("Available sessions:")
-					for _, id := range ids {
-						fmt.Printf("  %s\n", id)
+					for _, info := range infos {
+						when := info.UpdatedAt.Format("2006-01-02 15:04")
+						title := info.Title
+						if title == "" {
+							title = "(no title)"
+						}
+						msgs := fmt.Sprintf("%d msgs", info.MessageCount)
+						model := info.ModelName
+						if model == "" {
+							model = "?"
+						}
+						fmt.Printf("  %-35s %-50s %-12s %s\n",
+							info.ID, title, msgs, when)
 					}
 				}
 				return nil

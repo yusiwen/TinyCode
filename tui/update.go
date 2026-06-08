@@ -268,6 +268,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						ReasoningContent: chatMsg.ReasoningContent,
 					})
 				}
+				if m.provReg != nil {
+					s.ModelName = m.provReg.Current().Name()
+				}
 				s.Flush()
 			}
 			return m, tea.Quit
