@@ -92,6 +92,9 @@ func (g *CellGrid) cellIndex(row, col int) int {
 
 // rowEmpty returns true if the row has no non-zero runes.
 func (g *CellGrid) rowEmpty(row int) bool {
+	if row < 0 || row >= g.rows {
+		return true
+	}
 	for c := 0; c < g.width; c++ {
 		if g.cells[g.cellIndex(row, c)].Rune != 0 {
 			return false
@@ -123,6 +126,7 @@ func (g *CellGrid) Append(runes []rune, style CellStyle) {
 
 // AppendChunk places a CellChunk into the grid. Advances column and row.
 func (g *CellGrid) AppendChunk(chunk CellChunk) {
+	g.ensureRow(g.row)
 	g.Append([]rune(chunk.Text), chunk.Style)
 	g.col = 0
 	g.row++
