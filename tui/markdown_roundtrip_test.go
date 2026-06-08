@@ -92,6 +92,32 @@ func TestMarkdownRoundTripCodeBlock(t *testing.T) {
 	}
 }
 
+func TestMarkdownRoundTripCodeIndent(t *testing.T) {
+	// Verify code block indentation is preserved through the pipeline
+	md := "```go\npackage main\n\nimport (\n    \"fmt\"\n    \"log\"\n)\n\nfunc main() {\n    log.Println(\"hi\")\n}\n```"
+	blocks := parseMarkdown(md)
+
+	var rendered strings.Builder
+	for _, block := range blocks {
+		if comp, ok := blockComponentMap[block.Type]; ok {
+			chunks := comp.Render(block, false)
+			for _, c := range chunks {
+				for _, chunk := range wordWrap(c.Text, 80, c.Style) {
+					rendered.WriteString(chunk.Text)
+					rendered.WriteByte('\n')
+				}
+			}
+		}
+	}
+	out := rendered.String()
+
+	for _, s := range []string{`    "fmt"`, `    "log"`, `    log.Println`} {
+		if !strings.Contains(out, s) {
+			t.Errorf("MISSING indented code: %q\nOutput:\n%s", s, out)
+		}
+	}
+}
+
 func TestMarkdownRoundTripNestedList(t *testing.T) {
 	md := "- Level 1\n  - Level 2\n    - Level 3\n      - Level 4"
 	blocks := parseMarkdown(md)
