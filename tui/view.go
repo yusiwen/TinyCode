@@ -80,7 +80,7 @@ func (m *TuiModel) View() string {
 				field = "system"
 				offset = 4
 			case "assistant":
-				if text == "Assistant:" {
+				if text == "Response:" {
 					field = "label"
 					offset = 0
 				} else if msg.ReasoningContent != "" && r-startRow == 0 {
@@ -245,7 +245,7 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 				text := stripANSI(msgLines[li])
 				field := "content"
 				offset := 4
-				if strings.Contains(text, "Assistant:") {
+							if strings.Contains(text, "Response:") {
 					field = "label"
 					offset = 0
 				}

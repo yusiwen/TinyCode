@@ -69,12 +69,13 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		chunks = append(chunks, rc.Render(msg, sel)...)
 	}
 
-	// "Assistant:" label — no indent
+	// "Response:" label — no indent, with blank line before
+	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	labelStyle := AssistantLabel
 	if sel {
 		labelStyle = SelectionStyle
 	}
-	chunks = append(chunks, CellChunk{Text: "Assistant:", Style: labelStyle})
+	chunks = append(chunks, CellChunk{Text: "Response:", Style: labelStyle})
 
 	// Blocks (completed answer) or streaming content
 	if len(msg.Blocks) > 0 {
@@ -169,9 +170,9 @@ func (AnswerComponent) Render(msg chatMessage, sel bool) []CellChunk {
 type StreamingComponent struct{}
 
 func (StreamingComponent) Render(msg chatMessage, sel bool) []CellChunk {
-	label := "Assistant:"
+	label := "Response:"
 	if msg.Streaming {
-		label = "Assistant (streaming):"
+		label = "Response:"
 	}
 	labelStyle := AssistantLabel
 	if sel {
