@@ -34,9 +34,17 @@ func (m *TuiModel) View() string {
 		}
 		chunks := comp.Render(msg, false)
 		startRow := g.RowCount()
-		for _, chunk := range chunks {
+		// Process chunks, detecting inline pairs (bracket + text on same line)
+		for ci := 0; ci < len(chunks); ci++ {
+			chunk := chunks[ci]
+			// Reasoning marker: bracket + text as inline pair
+			if strings.HasPrefix(chunk.Text, "[") && ci+1 < len(chunks) &&
+				strings.HasPrefix(chunks[ci+1].Text, " ") {
+				g.AppendInline([]CellChunk{chunk, chunks[ci+1]})
+				ci++
+				continue
+			}
 			// Skip wordWrap for pre-formatted lines (tables, code, etc.)
-			// that use fixed-width formatting which wordWrap destroys
 			if strings.ContainsAny(chunk.Text, "│─") {
 				g.AppendChunk(chunk)
 				continue

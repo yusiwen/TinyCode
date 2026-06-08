@@ -135,12 +135,17 @@ func (g *CellGrid) AppendChunk(chunk CellChunk) {
 // AppendChunks places multiple chunks into the grid, each on its own line.
 func (g *CellGrid) AppendChunks(chunks []CellChunk) {
 	for _, c := range chunks {
-		for _, r := range c.Text {
-			g.Append([]rune{r}, c.Style)
-		}
-		g.col = 0
-		g.row++
+		g.AppendChunk(c)
 	}
+}
+
+// AppendInline places chunks on the same line (for multi-style single lines).
+func (g *CellGrid) AppendInline(chunks []CellChunk) {
+	for _, c := range chunks {
+		g.Append([]rune(c.Text), c.Style)
+	}
+	g.col = 0
+	g.row++
 }
 
 // ensureRow grows the grid if row index is beyond current size.

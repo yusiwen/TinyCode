@@ -95,16 +95,21 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	lineCount := strings.Count(msg.ReasoningContent, "\n") + 1
 	var chunks []CellChunk
 
-	// Marker line: no indent, dim gray style
+	// Marker line: brackets in thinking yellow, text in dim gray
 	markerStyle := DimStyle
 	if sel {
 		markerStyle = SelectionStyle
 	}
-	markerText := fmt.Sprintf("[%s] %d lines of reasoning", "+", lineCount)
-	if !msg.ReasoningFolded {
-		markerText = fmt.Sprintf("[-] %d lines of reasoning", lineCount)
+	bracketStyle := ThinkingStyle
+	if sel {
+		bracketStyle = SelectionStyle
 	}
-	chunks = append(chunks, CellChunk{Text: markerText, Style: markerStyle})
+	bracket := "+"
+	if !msg.ReasoningFolded {
+		bracket = "-"
+	}
+	chunks = append(chunks, CellChunk{Text: "[" + bracket + "]", Style: bracketStyle})
+	chunks = append(chunks, CellChunk{Text: fmt.Sprintf(" %d lines of reasoning", lineCount), Style: markerStyle})
 
 	if !msg.ReasoningFolded {
 		// Reasoning content: indented, thinking yellow style
