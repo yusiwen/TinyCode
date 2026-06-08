@@ -53,6 +53,9 @@ func TestViewRendersUserMessage(t *testing.T) {
 
 	output := stripANSIView(m.View())
 
+	if len(output) < 10 {
+		t.Fatal("View() returned too little content, may not be rendering correctly")
+	}
 	if !strings.Contains(output, "Hello from user") {
 		t.Errorf("expected user message in output, got:\n%s", output)
 	}
