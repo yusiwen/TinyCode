@@ -285,6 +285,8 @@ func (TableComponent) Render(block ContentBlock, sel bool) []CellChunk {
 			chunks[i].Style = SelectionStyle
 		}
 	}
+	// Add trailing blank line for visual spacing after tables
+	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	return chunks
 }
 
