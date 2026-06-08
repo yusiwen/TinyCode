@@ -171,28 +171,6 @@ func (AnswerComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	return chunks
 }
 
-// StreamingComponent renders raw markdown text during streaming.
-type StreamingComponent struct{}
-
-func (StreamingComponent) Render(msg chatMessage, sel bool) []CellChunk {
-	label := "Response:"
-	if msg.Streaming {
-		label = "Response:"
-	}
-	labelStyle := ResponseLabel
-	if sel {
-		labelStyle = SelectionStyle
-	}
-	var chunks []CellChunk
-	chunks = append(chunks, CellChunk{Text: label, Style: labelStyle})
-	contentStyle := DefaultStyle
-	if sel {
-		contentStyle = SelectionStyle
-	}
-	chunks = append(chunks, CellChunk{Text: msg.Content, Style: contentStyle})
-	return chunks
-}
-
 // ===== Block Components =====
 
 // ParagraphComponent renders a paragraph with inline styling.
