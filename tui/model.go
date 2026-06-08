@@ -147,11 +147,14 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 					Content:          sm.Content,
 					ReasoningContent: sm.ReasoningContent,
 				}
-				// Parse markdown for assistant messages with content
 				if sm.Role == "assistant" && sm.Content != "" {
 					cm.Blocks = parseMarkdown(sm.Content)
 				}
 				m.messages = append(m.messages, cm)
+			}
+			// Restore provider/model from session
+			if sess.ModelName != "" && m.provReg != nil {
+				m.provReg.SwitchToName(sess.ModelName)
 			}
 		}
 	}

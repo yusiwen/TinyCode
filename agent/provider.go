@@ -83,6 +83,21 @@ func (r *ProviderRegistry) SwitchTo(idx int) error {
 	return nil
 }
 
+// SwitchToName switches to the provider with the given display name.
+// Returns error if no matching provider is found.
+func (r *ProviderRegistry) SwitchToName(name string) error {
+	if r == nil {
+		return fmt.Errorf("nil registry")
+	}
+	for i, rec := range r.records {
+		if rec.Name == name {
+			r.current = i
+			return nil
+		}
+	}
+	return fmt.Errorf("provider %q not found", name)
+}
+
 // Tool is a single action the agent can invoke.
 type Tool struct {
 	Name        string
