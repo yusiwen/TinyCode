@@ -154,11 +154,17 @@ func (m *TuiModel) renderStatusBar() string {
 		provName = m.provReg.Current().Name()
 	}
 
-	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s",
+	// History indicator
+	histStr := ""
+	if m.historyPos >= 0 {
+		histStr = fmt.Sprintf("  hist %d/%d", m.historyPos+1, len(m.inputHistory))
+	}
+
+	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s%s",
 		modeIcon, modelName, spinnerStr,
 		provName,
 		m.sessionTokens, m.sessionToolCalls, len(m.messages),
-		durStr)
+		durStr, histStr)
 
 	return statusBarStyle.Render(status)
 }
