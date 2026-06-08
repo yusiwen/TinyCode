@@ -77,13 +77,18 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	}
 	chunks = append(chunks, CellChunk{Text: "Response:", Style: labelStyle})
 
-	// Blocks (completed answer) or streaming content
-	if len(msg.Blocks) > 0 {
+	// Response/Answer content
+	content := msg.Content
+	if content != "" {
+		// Parse markdown (handles both streaming and completed messages)
+		parsed := parseMarkdown(content)
+		answerMsg := msg
+		answerMsg.Blocks = parsed
+		ac := AnswerComponent{}
+		chunks = append(chunks, ac.Render(answerMsg, sel)...)
+	} else if len(msg.Blocks) > 0 {
 		ac := AnswerComponent{}
 		chunks = append(chunks, ac.Render(msg, sel)...)
-	} else if msg.Content != "" {
-		sc := StreamingComponent{}
-		chunks = append(chunks, sc.Render(msg, sel)...)
 	}
 
 	return chunks

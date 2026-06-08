@@ -298,3 +298,92 @@ func TestMarkdownRoundTripMixed(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownStreamingIncremental(t *testing.T) {
+	partial := "Hello **world"
+	blocks := parseMarkdown(partial)
+	if len(blocks) == 0 {
+		t.Fatal("parseMarkdown should return blocks even for partial content")
+	}
+	var rendered strings.Builder
+	for _, block := range blocks {
+		if comp, ok := blockComponentMap[block.Type]; ok {
+			chunks := comp.Render(block, false)
+			for _, c := range chunks {
+				for _, chunk := range wordWrap(c.Text, 80, c.Style) {
+					chunk := chunk
+					rendered.WriteString(chunk.Text)
+					rendered.WriteString("\n")
+				}
+			}
+		}
+	}
+	out := rendered.String()
+	if !strings.Contains(out, "Hello") {
+		t.Errorf("MISSING: %q", "Hello")
+	}
+	if !strings.Contains(out, "world") {
+		t.Errorf("MISSING: %q", "world")
+	}
+	// Now close the bold
+	full := "Hello **world**"
+	blocks2 := parseMarkdown(full)
+	rendered.Reset()
+	for _, block := range blocks2 {
+		if comp, ok := blockComponentMap[block.Type]; ok {
+			chunks := comp.Render(block, false)
+			for _, c := range chunks {
+				for _, chunk := range wordWrap(c.Text, 80, c.Style) {
+					chunk := chunk
+					rendered.WriteString(chunk.Text)
+					rendered.WriteString("\n")
+				}
+			}
+		}
+	}
+	out2 := rendered.String()
+	if !strings.Contains(out2, "Hello") {
+		t.Errorf("MISSING after close: %q", "Hello")
+	}
+	if !strings.Contains(out2, "world") {
+		t.Errorf("MISSING after close: %q", "world")
+	}
+	if strings.Contains(out2, "**") {
+		t.Errorf("raw ** should not appear after closing bold")
+	}
+}
+
+func TestMarkdownStreamingListItem(t *testing.T) {
+	partial := "- item one\n- item tw"
+	blocks := parseMarkdown(partial)
+	if len(blocks) == 0 {
+		t.Fatal("expected blocks for partial list")
+	}
+	var rendered strings.Builder
+	for _, block := range blocks {
+		if comp, ok := blockComponentMap[block.Type]; ok {
+			chunks := comp.Render(block, false)
+			for _, c := range chunks {
+				for _, chunk := range wordWrap(c.Text, 80, c.Style) {
+					chunk := chunk
+					rendered.WriteString(chunk.Text)
+					rendered.WriteString("\n")
+				}
+			}
+		}
+	}
+	out := rendered.String()
+	if !strings.Contains(out, "item one") {
+		t.Errorf("MISSING: %q", "item one")
+	}
+	if !strings.Contains(out, "item tw") {
+		t.Errorf("MISSING: %q", "item tw")
+	}
+}
+
+func TestMarkdownStreamingEmptyContent(t *testing.T) {
+	blocks := parseMarkdown("")
+	if len(blocks) != 0 {
+		t.Errorf("expected 0 blocks for empty content, got %d", len(blocks))
+	}
+}
