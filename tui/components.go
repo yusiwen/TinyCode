@@ -104,12 +104,16 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if sel {
 		bracketStyle = SelectionStyle
 	}
-	bracket := "+"
+	markerChunks := []CellChunk{CellChunk{Text: "[+]", Style: bracketStyle}}
 	if !msg.ReasoningFolded {
-		bracket = "-"
+		markerChunks = []CellChunk{CellChunk{Text: "[-]", Style: bracketStyle}}
+	} else {
+		markerChunks = []CellChunk{
+			{Text: "[+]", Style: bracketStyle},
+			{Text: fmt.Sprintf(" %d lines of reasoning", lineCount), Style: markerStyle},
+		}
 	}
-	chunks = append(chunks, CellChunk{Text: "[" + bracket + "]", Style: bracketStyle})
-	chunks = append(chunks, CellChunk{Text: fmt.Sprintf(" %d lines of reasoning", lineCount), Style: markerStyle})
+	chunks = append(chunks, markerChunks...)
 
 	if !msg.ReasoningFolded {
 		// Reasoning content: indented, thinking yellow style
