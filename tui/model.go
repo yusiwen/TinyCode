@@ -89,6 +89,9 @@ type TuiModel struct {
 	// CellGrid (reused across renders)
 	grid *CellGrid
 
+	// Status bar message (transient, replaces system messages)
+	statusMsg string
+
 	// Input history (up/down arrows)
 	inputHistory  []string
 	historyPos    int    // -1 = current draft, 0+ = history index

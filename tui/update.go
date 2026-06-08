@@ -241,25 +241,19 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				copyToClipboard(sel)
 				m.selectStart = -1
 				m.selectEnd = -1
-				m.messages = append(m.messages, chatMessage{
-					Role: "system", Content: "✓ Copied to clipboard",
-				})
+				m.statusMsg = "✓ Copied to clipboard"
 				m.autoScroll()
 				return m, nil
 			}
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
-				m.messages = append(m.messages, chatMessage{
-					Role: "system", Content: "⏹ Interrupted",
-				})
+				m.statusMsg = "⏹ Interrupted"
 				m.autoScroll()
 				return m, nil
 				}
 				if !m.quitConfirm {
 				m.quitConfirm = true
-				m.messages = append(m.messages, chatMessage{
-					Role: "system", Content: "Press Ctrl+C again to quit",
-				})
+				m.statusMsg = "Press Ctrl+C again to quit"
 				m.autoScroll()
 				return m, nil
 			}

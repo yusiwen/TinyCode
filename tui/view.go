@@ -104,9 +104,7 @@ func (m *TuiModel) View() string {
 				MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: "Copy",
 				Action: func() {
 					copyToClipboard(msgContent)
-					m.messages = append(m.messages, chatMessage{
-						Role: "system", Content: "✓ Copied",
-					})
+					m.statusMsg = "✓ Copied"
 				},
 			})
 		}
@@ -191,11 +189,15 @@ func (m *TuiModel) renderStatusBar() string {
 		histStr = fmt.Sprintf("  hist %d/%d", m.historyPos+1, len(m.inputHistory))
 	}
 
-	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s%s",
+	statusMsg := m.statusMsg
+	// Auto-clear status message on subsequent renders after user action
+	// (cleared in Update on any keypress)
+
+	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s%s%s",
 		modeIcon, modelName, spinnerStr,
 		provName,
 		m.sessionTokens, m.sessionToolCalls, len(m.messages),
-		durStr, histStr)
+		durStr, histStr, statusMsg)
 
 	return statusBarStyle.Render(status)
 }

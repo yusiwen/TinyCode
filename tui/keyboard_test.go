@@ -26,9 +26,8 @@ func TestCtrlCCopyWhenSelected(t *testing.T) {
 	if m.selectStart != -1 || m.selectEnd != -1 {
 		t.Errorf("expected selection cleared after copy, got start=%d end=%d", m.selectStart, m.selectEnd)
 	}
-	last := m.messages[len(m.messages)-1]
-	if !strings.Contains(last.Content, "Copied") {
-		t.Errorf("expected copy confirmation, got %q", last.Content)
+	if !strings.Contains(m.statusMsg, "Copied") {
+		t.Errorf("expected statusMsg 'Copied', got %q", m.statusMsg)
 	}
 }
 
@@ -48,8 +47,8 @@ func TestCtrlCInterruptWhenStreaming(t *testing.T) {
 		t.Errorf("expected StatusIdle after interrupt, got %v", m.status)
 	}
 	last := m.messages[len(m.messages)-1]
-	if !strings.Contains(last.Content, "Interrupted") {
-		t.Errorf("expected interrupt message, got %q", last.Content)
+	if !strings.Contains(last.Content, "Interrupted") && !strings.Contains(m.statusMsg, "Interrupted") {
+		t.Errorf("expected interrupt message or statusMsg, got content=%q statusMsg=%q", last.Content, m.statusMsg)
 	}
 }
 
@@ -65,9 +64,8 @@ func TestCtrlCFirstTapShowsPrompt(t *testing.T) {
 	if !m.quitConfirm {
 		t.Error("expected quitConfirm=true after first tap")
 	}
-	last := m.messages[len(m.messages)-1]
-	if !strings.Contains(last.Content, "again") {
-		t.Errorf("expected 'Press Ctrl+C again' message, got %q", last.Content)
+	if !strings.Contains(m.statusMsg, "again") {
+		t.Errorf("expected 'Press Ctrl+C again' in statusMsg, got %q", m.statusMsg)
 	}
 }
 
