@@ -132,6 +132,8 @@ func main() {
 			aCfg := reg.Current()
 			ag.Config = aCfg
 			ag.ShowThinking = true
+			ag.CompressionThreshold = 32000 // 50% of 64K context
+			ag.ContextLength = 64000         // DeepSeek V4 Flash default
 			if cfg.ShowThinking != nil {
 				ag.ShowThinking = *cfg.ShowThinking
 			}

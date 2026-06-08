@@ -26,6 +26,10 @@ type Agent struct {
 	}
 	History []types.Message // multi-turn conversation history
 
+	// Compression settings
+	CompressionThreshold int // token threshold to trigger compression (0 = disabled)
+	ContextLength        int // model context window size (0 = unknown)
+
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int
@@ -127,6 +131,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	}
 
 	// Load multi-turn history, skipping messages that would cause API errors
+	// Compress history if it exceeds the threshold
+	compressed, err := a.compressHistory(a.History)
+	if err == nil && compressed != nil {
+		a.History = compressed
+	}
 	for _, msg := range a.History {
 		// Skip assistant messages with neither content nor tool_calls
 		if msg.Role == types.RoleAssistant && msg.Content == "" && len(msg.ToolCalls) == 0 {
