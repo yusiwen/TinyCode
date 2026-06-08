@@ -240,6 +240,17 @@ func collectListItems(n *ast.List, source []byte, numbered bool) *ContentBlock {
 					Language: string(b.Language(source)),
 					Code:     strings.TrimRight(code.String(), "\n"),
 				})
+			case *ast.List:
+				// Nested list — recurse and flatten into current items
+				if sub := collectListItems(b, source, b.IsOrdered()); sub != nil {
+					for _, si := range sub.Items {
+						// Add extra indent prefix to mark as sub-item
+						for j := range si.Chunks {
+							si.Chunks[j].Text = "    " + si.Chunks[j].Text
+						}
+						items = append(items, si)
+					}
+				}
 			}
 		}
 	}
