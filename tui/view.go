@@ -48,6 +48,17 @@ func (m *TuiModel) View() string {
 		}
 		endRow := g.RowCount()
 
+		// If this message has folding reasoning, register fold button
+		if msg.Role == "assistant" && msg.ReasoningContent != "" {
+			foldLine := startRow
+			m.activeButtons = append(m.activeButtons, Button{
+				MsgIdx: i, Line: foldLine, Col: 4, Width: 3, Label: "fold",
+				Action: func() {
+					m.messages[i].ReasoningFolded = !m.messages[i].ReasoningFolded
+				},
+			})
+		}
+
 		// Build lineSrcs from grid rows occupied by this message
 		for r := startRow; r < endRow; r++ {
 			text := g.RowText(r)

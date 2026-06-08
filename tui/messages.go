@@ -26,6 +26,7 @@ type chatMessage struct {
 	Role             string // "user", "assistant"
 	Content          string
 	ReasoningContent string
+	ReasoningFolded  bool // true = collapse reasoning text
 	Streaming        bool // true while still receiving deltas
 	Blocks           []ContentBlock // structured content
 }

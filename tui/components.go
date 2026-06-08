@@ -96,9 +96,19 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if sel {
 		style = SelectionStyle
 	}
+	lineCount := strings.Count(msg.ReasoningContent, "\n") + 1
 	var chunks []CellChunk
-	for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
-		chunks = append(chunks, CellChunk{Text: "    " + rLine, Style: style})
+	if msg.ReasoningFolded {
+		// Folded: show marker only
+		marker := fmt.Sprintf("[+] %d lines of reasoning", lineCount)
+		chunks = append(chunks, CellChunk{Text: "    " + marker, Style: style})
+	} else {
+		// Expanded: show marker + all lines
+		marker := fmt.Sprintf("[-] %d lines of reasoning", lineCount)
+		chunks = append(chunks, CellChunk{Text: "    " + marker, Style: style})
+		for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
+			chunks = append(chunks, CellChunk{Text: "    " + rLine, Style: style})
+		}
 	}
 	return chunks
 }
