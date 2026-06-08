@@ -271,15 +271,11 @@ func (HRComponent) Render(block ContentBlock, sel bool) []CellChunk {
 type TableComponent struct{}
 
 func (TableComponent) Render(block ContentBlock, sel bool) []CellChunk {
-	lines := renderTable(block, sel)
-	style := DefaultStyle
+	chunks := renderTable(block, sel)
 	if sel {
-		style = SelectionStyle
-	}
-	var chunks []CellChunk
-	for _, l := range lines {
-		plain := stripANSI(l)
-		chunks = append(chunks, CellChunk{Text: plain, Style: style})
+		for i := range chunks {
+			chunks[i].Style = SelectionStyle
+		}
 	}
 	return chunks
 }

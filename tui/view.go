@@ -407,22 +407,21 @@ func renderChunks(chunks []TextChunk) string {
 
 
 // renderTable renders a table block with aligned columns.
-func renderTable(block ContentBlock, sel bool) []string {
+func renderTable(block ContentBlock, sel bool) []CellChunk {
 	if len(block.Headers) == 0 && len(block.Rows) == 0 {
 		return nil
 	}
 
-	type cellInfo struct{ text string }
+	// Collect cell texts as plain strings
+	type cellInfo struct{ plainText string }
 	colCount := 0
 	var allRows [][]cellInfo
 
 	if len(block.Headers) > 0 {
 		var row []cellInfo
 		for _, cellChunks := range block.Headers {
-			text := renderChunks(cellChunks)
-			if text != "" {
-				row = append(row, cellInfo{text: text})
-			}
+			plain := stripANSI(renderChunks(cellChunks))
+			row = append(row, cellInfo{plainText: plain})
 		}
 		if len(row) > 0 {
 			allRows = append(allRows, row)
@@ -432,10 +431,8 @@ func renderTable(block ContentBlock, sel bool) []string {
 	for _, rowCells := range block.Rows {
 		var row []cellInfo
 		for _, cell := range rowCells {
-			text := renderChunks(cell)
-			if text != "" {
-				row = append(row, cellInfo{text: text})
-			}
+			plain := stripANSI(renderChunks(cell))
+			row = append(row, cellInfo{plainText: plain})
 		}
 		if len(row) > 0 {
 			allRows = append(allRows, row)
@@ -446,48 +443,45 @@ func renderTable(block ContentBlock, sel bool) []string {
 	colWidths := make([]int, colCount)
 	for _, row := range allRows {
 		for ci, cell := range row {
-			w := lipgloss.Width(cell.text)
+			w := lipgloss.Width(cell.plainText)
 			if w > colWidths[ci] {
 				colWidths[ci] = w
 			}
 		}
 	}
 
-	var lines []string
-	sepStyle := dimStyle
-
+	var chunks []CellChunk
 	for ri, row := range allRows {
 		var parts []string
 		for ci := 0; ci < colCount; ci++ {
-			var cellText string
+			cellText := ""
 			if ci < len(row) {
-				cellText = row[ci].text
+				cellText = row[ci].plainText
 			}
 			padded := cellText + strings.Repeat(" ", colWidths[ci]-lipgloss.Width(cellText))
 			parts = append(parts, " "+padded+" ")
 		}
 		line := "│" + strings.Join(parts, "│") + "│"
+
+		rowStyle := DefaultStyle
+		if sel {
+			rowStyle = SelectionStyle
+		} else if ri == 0 && len(block.Headers) > 0 {
+			rowStyle = AssistantLabel
+		}
+		chunks = append(chunks, CellChunk{Text: line, Style: rowStyle})
+
+		// Separator after header
 		if ri == 0 && len(block.Headers) > 0 {
-			if sel {
-				lines = append(lines, selectedStyle.Render(line))
-			} else {
-				lines = append(lines, assistantLabelStyle.Render(line))
-			}
-			// Separator
 			var sepParts []string
 			for ci := 0; ci < colCount; ci++ {
 				sepParts = append(sepParts, strings.Repeat("─", colWidths[ci]+2))
 			}
-			lines = append(lines, sepStyle.Render("├"+strings.Join(sepParts, "┼")+"┤"))
-		} else {
-			if sel {
-				lines = append(lines, selectedStyle.Render(line))
-			} else {
-				lines = append(lines, line)
-			}
+			sepLine := "├" + strings.Join(sepParts, "┼") + "┤"
+			chunks = append(chunks, CellChunk{Text: sepLine, Style: DimStyle})
 		}
 	}
-	return lines
+	return chunks
 }
 
 func max(a, b int) int {
