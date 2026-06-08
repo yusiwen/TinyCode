@@ -106,7 +106,8 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	}
 	markerChunks := []CellChunk{CellChunk{Text: "[+]", Style: bracketStyle}}
 	if !msg.ReasoningFolded {
-		markerChunks = []CellChunk{CellChunk{Text: "[-]", Style: bracketStyle}}
+		// Expanded: no standalone marker — merge [-] with first line below
+		markerChunks = nil
 	} else {
 		markerChunks = []CellChunk{
 			{Text: "[+]", Style: bracketStyle},
