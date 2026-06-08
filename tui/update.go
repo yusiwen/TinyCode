@@ -160,6 +160,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Escape → exit history browsing
+		if msg.Type == tea.KeyEscape && m.historyPos >= 0 {
+			m.historyPos = -1
+			m.input.SetValue(m.historyDraft)
+			return m, nil
+		}
+
 		// Up/Down → browse input history
 		if msg.Type == tea.KeyUp && len(m.inputHistory) > 0 {
 			if m.historyPos < 0 {
