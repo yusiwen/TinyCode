@@ -212,9 +212,9 @@ func main() {
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
 				}
-				if !ag.ContentStreamed {
-					printMarkdown(result, cfg.GlamourStyle)
-				}
+								if !ag.ContentStreamed {
+									fmt.Println(result)
+								}
 				return nil
 			}
 
