@@ -335,63 +335,6 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
-// sliceStyled splits an ANSI-styled string into three parts by visible column range.
-func sliceStyled(styled string, startCol, endCol int) (string, string, string) {
-	if startCol < 0 {
-		startCol = 0
-	}
-	if endCol < 0 || endCol >= len(styled) {
-		endCol = len(styled) - 1
-	}
-	plain := stripANSI(styled)
-	type mapping struct{ plainIdx, styledIdx int }
-	// Build a mapping from styled to plain positions.
-	var mappings []mapping
-	si := 0
-	for pi := 0; pi < len(plain); pi++ {
-		for si < len(styled) {
-			if styled[si] == '\x1b' {
-				si++
-				for si < len(styled) && !(styled[si] >= 'A' && styled[si] <= 'z' || styled[si] >= '@' && styled[si] <= '~') {
-					si++
-				}
-				si++
-				continue
-			}
-			if pi < len(plain) && styled[si] == plain[pi] {
-				mappings = append(mappings, mapping{plainIdx: pi, styledIdx: si})
-				si++
-				break
-			}
-			// Skip non-matching characters (control chars, etc.)
-			si++
-		}
-	}
-	if len(mappings) == 0 {
-		return styled, "", ""
-	}
-	if startCol >= len(mappings) {
-		startCol = len(mappings) - 1
-	}
-	if endCol >= len(mappings) {
-		endCol = len(mappings) - 1
-	}
-	startByte := mappings[startCol].styledIdx
-	endByte := mappings[endCol].styledIdx
-	endNext := endByte + 1
-	for endNext < len(styled) {
-		if styled[endNext] == '\x1b' {
-			endNext++
-			for endNext < len(styled) && !(styled[endNext] >= 'A' && styled[endNext] <= 'z' || styled[endNext] >= '@' && styled[endNext] <= '~') {
-				endNext++
-			}
-			endNext++
-			continue
-		}
-		break
-	}
-	return styled[:startByte], stripANSI(styled[startByte:endNext]), styled[endNext:]
-}
 // renderAssistantMessage delegates to the AssistantComponent.
 // Kept for backward compatibility; tests and callers use this function.
 func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
@@ -399,98 +342,9 @@ func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	return chunksToStrings(answerComponent.Render(msg, sel))
 }
 
-// highlightSelection applies character-level selection highlighting using (line, col) range.
-func highlightSelection(lines []string, srcs []lineSrc, startLine, startCol, endLine, endCol int) []string {
-	// Normalize: low line/col first
-	if endLine < startLine || (endLine == startLine && endCol < startCol) {
-		startLine, endLine = endLine, startLine
-		startCol, endCol = endCol, startCol
-	}
-	var result []string
-	for i, line := range lines {
-		if i < len(srcs) && srcs[i].SourceField == "button" {
-			result = append(result, line)
-			continue
-		}
-		if i < startLine || i > endLine {
-			result = append(result, line)
-		} else if i == startLine && i == endLine {
-			before, selected, after := sliceStyled(line, startCol, endCol)
-			result = append(result, before+selectedStyle.Render(selected)+after)
-		} else if i == startLine {
-			before, rest, _ := sliceStyled(line, startCol, len(line))
-			result = append(result, before+selectedStyle.Render(rest))
-		} else if i == endLine {
-			_, selRest, after := sliceStyled(line, 0, endCol)
-			result = append(result, selectedStyle.Render(selRest)+after)
-		} else {
-			result = append(result, selectedStyle.Render(line))
-		}
-	}
-	return result
-}
 
 // wrapLine splits a line into multiple lines, each no wider than maxWidth.
 // Uses lipgloss.Width to properly handle ANSI codes, CJK, and emoji.
-func wrapLine(line string, maxWidth int) []string {
-	if maxWidth < 1 {
-		maxWidth = 1
-	}
-	if lipgloss.Width(line) <= maxWidth {
-		return []string{line}
-	}
-	var lines []string
-	remaining := line
-	for {
-		trimmed := strings.TrimRight(remaining, "\n\r ")
-		if trimmed == "" {
-			break
-		}
-		if lipgloss.Width(trimmed) <= maxWidth {
-			lines = append(lines, trimmed)
-			break
-		}
-		// Find break point: try last space within maxWidth
-		breakPos := -1
-		width := 0
-		runes := []rune(trimmed)
-		for i, r := range runes {
-			rw := lipgloss.Width(string(r))
-			if width+rw > maxWidth {
-				break
-			}
-			width += rw
-			if r == ' ' || r == '\t' {
-				breakPos = i + 1 // include the space
-			}
-		}
-		if breakPos <= 0 {
-			// No space found, hard break at character boundary
-			w := 0
-			for i, r := range runes {
-				rw := lipgloss.Width(string(r))
-				if w+rw > maxWidth {
-					breakPos = i
-					break
-				}
-				w += rw
-				if i == len(runes)-1 {
-					breakPos = len(runes)
-				}
-			}
-		}
-		if breakPos <= 0 || breakPos >= len(runes) {
-			lines = append(lines, trimmed)
-			break
-		}
-		lines = append(lines, string(runes[:breakPos]))
-		remaining = string(runes[breakPos:])
-	}
-	if len(lines) == 0 {
-		lines = []string{""}
-	}
-	return lines
-}
 func renderBlocks(blocks []ContentBlock, sel bool) []string {
 	var lines []string
 	for _, block := range blocks {

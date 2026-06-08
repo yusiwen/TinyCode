@@ -29,17 +29,25 @@ func scrollTestModel(msgCount int) *TuiModel {
 	return m
 }
 
-// renderView simulates View() by building msgLines, wrapping, and SetContent.
-// Returns the model after View-side operations.
+// renderView simulates View() by using CellGrid and SetContent.
 func renderView(m *TuiModel) *TuiModel {
-	lines := buildMsgLines(m)
-	var wrapped []string
-	for _, line := range lines {
-		wrapped = append(wrapped, wrapLine(line, m.vp.Width)...)
+	g := NewCellGrid(m.vp.Width, 100)
+	for _, msg := range m.messages {
+		comp, ok := msgComponentMap[msg.Role]
+		if !ok {
+			continue
+		}
+		chunks := comp.Render(msg, false)
+		for _, chunk := range chunks {
+			wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
+			for _, wc := range wrapped {
+				g.AppendChunk(wc)
+			}
+		}
 	}
 	wasAtBottom := m.vp.AtBottom()
-	m.vp.SetContent(strings.Join(wrapped, "\n"))
-	if wasAtBottom {
+	m.vp.SetContent(g.Render())
+	if m.vp.TotalLineCount() > m.vp.Height && wasAtBottom {
 		m.vp.GotoBottom()
 	}
 	return m
