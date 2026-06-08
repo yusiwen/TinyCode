@@ -88,6 +88,9 @@ type TuiModel struct {
 	// Quit confirmation
 	quitConfirm bool
 
+	// Session persistence
+	SessionDir string
+
 	// Scroll tracking
 	streamDoneNotified bool // true after first GotoBottom on stream completion
 
@@ -125,6 +128,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		sessionStart: time.Now(),
+		SessionDir:   cfg.SessionDir,
 	}
 }
 

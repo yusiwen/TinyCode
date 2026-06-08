@@ -5,12 +5,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/tlog"
+	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -219,6 +221,20 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 				m.autoScroll()
 				return m, nil
+			}
+			// Save session before quitting
+			if m.SessionDir != "" && len(m.messages) > 0 {
+				now := time.Now().Format("20060102-150405")
+				sessionID := "TUI-" + now
+				s := session.New(sessionID, m.SessionDir)
+				for _, chatMsg := range m.messages {
+					s.Append(types.Message{
+						Role:             chatMsg.Role,
+						Content:          chatMsg.Content,
+						ReasoningContent: chatMsg.ReasoningContent,
+					})
+				}
+				s.Flush()
 			}
 			return m, tea.Quit
 		}
