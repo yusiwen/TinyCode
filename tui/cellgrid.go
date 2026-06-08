@@ -74,10 +74,17 @@ func (g *CellGrid) RowText(row int) string {
 		return ""
 	}
 	var b strings.Builder
+	skipUntil := 0
 	for c := 0; c < g.width; c++ {
+		if c < skipUntil {
+			continue
+		}
 		cell := g.cells[g.cellIndex(row, c)]
 		if cell.Rune != 0 {
 			b.WriteRune(cell.Rune)
+			if cell.Width > 1 {
+				skipUntil = c + cell.Width
+			}
 		} else {
 			break
 		}
@@ -197,14 +204,24 @@ func (g *CellGrid) ExtractText(startRow, startCol, endRow, endCol int) string {
 		if r < endRow {
 			cEnd = g.width - 1
 		}
+		skipUntil := 0
+		var lineBuf strings.Builder
 		for c := cStart; c <= cEnd && c < g.width; c++ {
+			if c < skipUntil {
+				continue
+			}
 			cell := g.cells[g.cellIndex(r, c)]
 			if cell.Rune != 0 {
-				b.WriteRune(cell.Rune)
+				lineBuf.WriteRune(cell.Rune)
+				if cell.Width > 1 {
+					skipUntil = c + cell.Width
+				}
 			} else {
-				b.WriteByte(' ')
+				lineBuf.WriteByte(' ')
 			}
 		}
+		line := strings.TrimRight(lineBuf.String(), " ")
+		b.WriteString(line)
 		if r < endRow {
 			b.WriteByte('\n')
 		}
