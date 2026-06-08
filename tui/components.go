@@ -71,7 +71,7 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 
 	// "Response:" label — no indent, with blank line before
 	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
-	labelStyle := AssistantLabel
+	labelStyle := ResponseLabel
 	if sel {
 		labelStyle = SelectionStyle
 	}
@@ -174,7 +174,7 @@ func (StreamingComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if msg.Streaming {
 		label = "Response:"
 	}
-	labelStyle := AssistantLabel
+	labelStyle := ResponseLabel
 	if sel {
 		labelStyle = SelectionStyle
 	}

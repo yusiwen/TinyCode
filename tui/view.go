@@ -492,7 +492,7 @@ func renderTable(block ContentBlock, sel bool) []CellChunk {
 		if sel {
 			rowStyle = SelectionStyle
 		} else if ri == 0 && len(block.Headers) > 0 {
-			rowStyle = AssistantLabel
+			rowStyle = ResponseLabel
 		}
 		chunks = append(chunks, CellChunk{Text: line, Style: rowStyle})
 

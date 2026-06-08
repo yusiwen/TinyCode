@@ -351,7 +351,7 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 var (
 	DefaultStyle     = CellStyle{}
 	ThinkingStyle    = CellStyle{Fg: lipgloss.Color("#FFB347")}
-	AssistantLabel   = CellStyle{Fg: lipgloss.Color("#FFD700"), Bold: true}
+	ResponseLabel   = CellStyle{Fg: lipgloss.Color("#FFD700"), Bold: true}
 	HeadingStyle     = CellStyle{Fg: lipgloss.Color("#E8E8E8"), Bold: true}
 	DimStyle         = CellStyle{Fg: lipgloss.Color("#888888")}
 	SelectionStyle   = CellStyle{Fg: lipgloss.Color("#FFD700"), Bg: lipgloss.Color("#333300")}
