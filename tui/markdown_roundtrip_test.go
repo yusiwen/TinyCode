@@ -388,19 +388,111 @@ func TestMarkdownStreamingEmptyContent(t *testing.T) {
 	}
 }
 
-func TestToolCallRendering(t *testing.T) {
-	msg := chatMessage{
-		Role: "assistant",
+func TestToolCallRenderInAssistant(t *testing.T) {
+	tc := ToolCallComponent{}
+	chunks := tc.Render(chatMessage{
 		ToolCalls: []ToolCallInfo{
 			{Name: "read_file", Arg: "main.go"},
-			{Name: "search_files", Arg: "pattern: parseMarkdown"},
 		},
+	}, false)
+	if len(chunks) < 2 {
+		t.Fatal("expected at least 2 chunks (header + tool)")
 	}
-	chunks := ToolCallComponent{}.Render(msg, false)
-	if len(chunks) == 0 {
-		t.Fatal("expected chunks from ToolCallComponent")
+	header := chunks[0].Text
+	if !strings.Contains(header, "Calling tools") {
+		t.Errorf("header missing 'Calling tools': %q", header)
+	}
+	toolLine := chunks[1].Text
+	if !strings.Contains(toolLine, "read_file") {
+		t.Errorf("tool line missing name: %q", toolLine)
+	}
+	if !strings.Contains(toolLine, "main.go") {
+		t.Errorf("tool line missing arg: %q", toolLine)
+	}
+}
+
+func TestToolCallMsgAppendToMessage(t *testing.T) {
+	m := testModelWithMessages([]chatMessage{
+		{Role: "assistant", Content: "", Streaming: true},
+	})
+	m.curAssistant = &m.messages[len(m.messages)-1]
+
+	// Send ToolCallMsg
+	model, cmd := m.Update(ToolCallMsg{
+		MsgIdx: -1,
+		Name:   "read_file",
+		Arg:    "main.go",
+	})
+	m = model.(*TuiModel)
+	if cmd == nil {
+		t.Fatal("expected a command (waitForStream)")
 	}
 
+	// Verify tool call was appended
+	if len(m.messages[0].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(m.messages[0].ToolCalls))
+	}
+	if m.messages[0].ToolCalls[0].Name != "read_file" {
+		t.Errorf("expected name 'read_file', got %q", m.messages[0].ToolCalls[0].Name)
+	}
+	if m.messages[0].ToolCalls[0].Arg != "main.go" {
+		t.Errorf("expected arg 'main.go', got %q", m.messages[0].ToolCalls[0].Arg)
+	}
+
+	// Send a second tool call
+	m.Update(ToolCallMsg{Name: "search_files", Arg: "pattern: parseMarkdown"})
+	if len(m.messages[0].ToolCalls) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(m.messages[0].ToolCalls))
+	}
+	if m.messages[0].ToolCalls[1].Name != "search_files" {
+		t.Errorf("expected name 'search_files', got %q", m.messages[0].ToolCalls[1].Name)
+	}
+
+	// Render the full assistant component and verify tool calls appear
+	chunks := AssistantComponent{}.Render(m.messages[0], false)
+	var rendered strings.Builder
+	for _, c := range chunks {
+		rendered.WriteString(c.Text)
+		rendered.WriteByte('\n')
+	}
+	out := rendered.String()
+	if !strings.Contains(out, "Calling tools") {
+		t.Errorf("missing 'Calling tools' header")
+	}
+	if !strings.Contains(out, "read_file") {
+		t.Errorf("missing 'read_file'")
+	}
+	if !strings.Contains(out, "search_files") {
+		t.Errorf("missing 'search_files'")
+	}
+}
+
+func TestToolCallFlowFull(t *testing.T) {
+	m := testModelWithMessages([]chatMessage{
+		{Role: "assistant", Content: "", Streaming: true},
+	})
+	m.curAssistant = &m.messages[len(m.messages)-1]
+
+	// Simulate: reasoning → tool call → text delta → stream done
+	m.Update(StreamMsg{ReasoningDelta: "Let me check the codebase."})
+	m.Update(ToolCallMsg{Name: "read_file", Arg: "main.go"})
+	m.Update(ToolResultMsg{})
+	m.Update(StreamMsg{TextDelta: "Found it!"})
+	m.Update(StreamDone{Content: "Found it!", Error: nil})
+
+	// Verify final state
+	if len(m.messages[0].ToolCalls) != 1 {
+		t.Errorf("expected 1 tool call, got %d", len(m.messages[0].ToolCalls))
+	}
+	if m.messages[0].Content != "Found it!" {
+		t.Errorf("expected content 'Found it!', got %q", m.messages[0].Content)
+	}
+	if m.messages[0].ReasoningContent != "Let me check the codebase." {
+		t.Errorf("unexpected reasoning: %q", m.messages[0].ReasoningContent)
+	}
+
+	// Render and verify all sections appear
+	chunks := AssistantComponent{}.Render(m.messages[0], false)
 	var rendered strings.Builder
 	for _, c := range chunks {
 		rendered.WriteString(c.Text)
@@ -408,9 +500,16 @@ func TestToolCallRendering(t *testing.T) {
 	}
 	out := rendered.String()
 
-	for _, s := range []string{"Calling tools", "read_file", "main.go", "search_files", "parseMarkdown"} {
-		if !strings.Contains(out, s) {
-						t.Errorf("MISSING: %q", s)
-		}
+	if !strings.Contains(out, "Let me check") {
+		t.Errorf("missing reasoning in render")
+	}
+	if !strings.Contains(out, "Calling tools") {
+		t.Errorf("missing tool call header in render")
+	}
+	if !strings.Contains(out, "read_file") {
+		t.Errorf("missing tool call name in render")
+	}
+	if !strings.Contains(out, "Response:") {
+		t.Errorf("missing Response: label")
 	}
 }
