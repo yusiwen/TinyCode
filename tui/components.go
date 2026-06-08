@@ -107,16 +107,18 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 type AnswerComponent struct{}
 
 func (AnswerComponent) Render(msg chatMessage, sel bool) []CellChunk {
-	// Transition: keep renderBlocks for text content, wrap as CellChunk
-	blocksLines := renderBlocks(msg.Blocks, false)
-	style := DefaultStyle
-	if sel {
-		style = SelectionStyle
-	}
 	var chunks []CellChunk
-	for _, bl := range blocksLines {
-		plain := stripANSI(bl)
-		chunks = append(chunks, CellChunk{Text: "    " + plain, Style: style})
+	for _, block := range msg.Blocks {
+		if comp, ok := blockComponentMap[block.Type]; ok {
+			blockChunks := comp.Render(block, false)
+			for _, bc := range blockChunks {
+				style := bc.Style
+				if sel {
+					style = SelectionStyle
+				}
+				chunks = append(chunks, CellChunk{Text: "    " + bc.Text, Style: style})
+			}
+		}
 	}
 	return chunks
 }
