@@ -92,22 +92,28 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 type ReasoningComponent struct{}
 
 func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
-	style := ThinkingStyle
-	if sel {
-		style = SelectionStyle
-	}
 	lineCount := strings.Count(msg.ReasoningContent, "\n") + 1
 	var chunks []CellChunk
-	if msg.ReasoningFolded {
-		// Folded: show marker only
-		marker := fmt.Sprintf("[+] %d lines of reasoning", lineCount)
-		chunks = append(chunks, CellChunk{Text: "    " + marker, Style: style})
-	} else {
-		// Expanded: show marker + all lines
-		marker := fmt.Sprintf("[-] %d lines of reasoning", lineCount)
-		chunks = append(chunks, CellChunk{Text: "    " + marker, Style: style})
+
+	// Marker line: no indent, dim gray style
+	markerStyle := DimStyle
+	if sel {
+		markerStyle = SelectionStyle
+	}
+	markerText := fmt.Sprintf("[%s] %d lines of reasoning", "+", lineCount)
+	if !msg.ReasoningFolded {
+		markerText = fmt.Sprintf("[-] %d lines of reasoning", lineCount)
+	}
+	chunks = append(chunks, CellChunk{Text: markerText, Style: markerStyle})
+
+	if !msg.ReasoningFolded {
+		// Reasoning content: indented, thinking yellow style
+		contentStyle := ThinkingStyle
+		if sel {
+			contentStyle = SelectionStyle
+		}
 		for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
-			chunks = append(chunks, CellChunk{Text: "    " + rLine, Style: style})
+			chunks = append(chunks, CellChunk{Text: "    " + rLine, Style: contentStyle})
 		}
 	}
 	return chunks

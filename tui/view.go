@@ -51,8 +51,8 @@ func (m *TuiModel) View() string {
 		// If this message has folding reasoning, register fold button
 		if msg.Role == "assistant" && msg.ReasoningContent != "" {
 			foldLine := startRow
-			m.activeButtons = append(m.activeButtons, Button{
-				MsgIdx: i, Line: foldLine, Col: 4, Width: 3, Label: "fold",
+				m.activeButtons = append(m.activeButtons, Button{
+					MsgIdx: i, Line: foldLine, Col: 0, Width: 3, Label: "fold",
 				Action: func() {
 					m.messages[i].ReasoningFolded = !m.messages[i].ReasoningFolded
 				},
