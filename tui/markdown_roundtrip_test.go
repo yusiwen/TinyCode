@@ -387,3 +387,30 @@ func TestMarkdownStreamingEmptyContent(t *testing.T) {
 		t.Errorf("expected 0 blocks for empty content, got %d", len(blocks))
 	}
 }
+
+func TestToolCallRendering(t *testing.T) {
+	msg := chatMessage{
+		Role: "assistant",
+		ToolCalls: []ToolCallInfo{
+			{Name: "read_file", Arg: "main.go"},
+			{Name: "search_files", Arg: "pattern: parseMarkdown"},
+		},
+	}
+	chunks := ToolCallComponent{}.Render(msg, false)
+	if len(chunks) == 0 {
+		t.Fatal("expected chunks from ToolCallComponent")
+	}
+
+	var rendered strings.Builder
+	for _, c := range chunks {
+		rendered.WriteString(c.Text)
+		rendered.WriteByte('\n')
+	}
+	out := rendered.String()
+
+	for _, s := range []string{"Calling tools", "read_file", "main.go", "search_files", "parseMarkdown"} {
+		if !strings.Contains(out, s) {
+						t.Errorf("MISSING: %q", s)
+		}
+	}
+}

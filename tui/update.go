@@ -299,6 +299,18 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		go m.runAgent(msg.Text)
 		return m, m.waitForStream()
 
+	case ToolCallMsg:
+		if m.curAssistant != nil {
+			m.curAssistant.ToolCalls = append(m.curAssistant.ToolCalls, ToolCallInfo{
+				Name: msg.Name,
+				Arg:  msg.Arg,
+			})
+		}
+		m.autoScroll()
+		return m, m.waitForStream()
+
+	case ToolResultMsg:
+		m.autoScroll()
 	case StreamMsg:
 		if m.curAssistant == nil {
 			return m, m.waitForStream()
@@ -566,6 +578,12 @@ func (m *TuiModel) runAgent(prompt string) {
 		},
 		OnTextDelta: func(text string) {
 			m.streamCh <- StreamMsg{TextDelta: text}
+		},
+		OnToolCall: func(name, arg string) {
+			m.streamCh <- ToolCallMsg{MsgIdx: -1, Name: name, Arg: arg}
+		},
+		OnToolResult: func(name string) {
+			m.streamCh <- ToolResultMsg{MsgIdx: -1}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)

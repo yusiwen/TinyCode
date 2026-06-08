@@ -69,6 +69,12 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		chunks = append(chunks, rc.Render(msg, sel)...)
 	}
 
+	// Tool calls — shown before Response: label
+	if len(msg.ToolCalls) > 0 {
+		tc := ToolCallComponent{}
+		chunks = append(chunks, tc.Render(msg, sel)...)
+	}
+
 	// "Response:" label — no indent, with blank line before
 	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	labelStyle := ResponseLabel
@@ -168,6 +174,27 @@ func (AnswerComponent) Render(msg chatMessage, sel bool) []CellChunk {
 			}
 		}
 	}
+	return chunks
+}
+
+// ToolCallComponent renders tool invocations during a message.
+type ToolCallComponent struct{}
+
+func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	style := DimStyle
+	if sel {
+		style = SelectionStyle
+	}
+	var chunks []CellChunk
+	chunks = append(chunks, CellChunk{Text: "  → Calling tools:", Style: style})
+	for _, tc := range msg.ToolCalls {
+		text := "    • " + tc.Name
+		if tc.Arg != "" {
+			text += "    " + tc.Arg
+		}
+		chunks = append(chunks, CellChunk{Text: text, Style: style})
+	}
+	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	return chunks
 }
 

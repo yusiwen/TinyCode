@@ -44,6 +44,8 @@ type ChatRequest struct {
 type StreamCallbacks struct {
 	OnReasoningDelta func(text string)
 	OnTextDelta      func(text string)
+	OnToolCall       func(name string, arg string) // called before each tool execution
+	OnToolResult     func(name string)             // called after each tool result
 }
 
 // ChatResponse is the LLM's reply — either text or tool calls.

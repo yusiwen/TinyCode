@@ -26,9 +26,28 @@ type chatMessage struct {
 	Role             string // "user", "assistant"
 	Content          string
 	ReasoningContent string
-	ReasoningFolded  bool // true = collapse reasoning text
-	Streaming        bool // true while still receiving deltas
-	Blocks           []ContentBlock // structured content
+	ReasoningFolded  bool
+	ToolCalls        []ToolCallInfo // in-order tool calls during this message
+	Streaming        bool
+	Blocks           []ContentBlock
+}
+
+// ToolCallInfo records one tool invocation during a message.
+type ToolCallInfo struct {
+	Name string
+	Arg  string // short summary, e.g. filename or key argument
+}
+
+// ToolCallMsg is sent when the agent invokes a tool.
+type ToolCallMsg struct {
+	MsgIdx int    // assistant message index
+	Name   string
+	Arg    string
+}
+
+// ToolResultMsg is sent when the tool returns (used to track duration).
+type ToolResultMsg struct {
+	MsgIdx int
 }
 
 // TuiStatus indicates the current TUI state.

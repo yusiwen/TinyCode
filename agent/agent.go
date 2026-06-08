@@ -281,6 +281,26 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 		// Execute each tool call and collect results
 		for _, tc := range toolCalls {
+			if callbacks != nil && callbacks.OnToolCall != nil {
+				// Extract a short argument summary for display
+				argSummary := ""
+				if tc.Arguments != "" {
+					var raw map[string]any
+					if err := json.Unmarshal([]byte(tc.Arguments), &raw); err == nil {
+						// Use first string value as summary (e.g. file path, query)
+						for _, v := range raw {
+							if s, ok := v.(string); ok {
+								argSummary = s
+								break
+							}
+						}
+					}
+					if argSummary == "" && len(tc.Arguments) > 60 {
+						argSummary = tc.Arguments[:60] + "..."
+					}
+				}
+				callbacks.OnToolCall(tc.Name, argSummary)
+			}
 			tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
 			var result string
 			found := false
@@ -321,6 +341,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s...", step, tc.Name, len(result), result[:500])
 			} else {
 				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s", step, tc.Name, len(result), result)
+			}
+
+			if callbacks != nil && callbacks.OnToolResult != nil {
+				callbacks.OnToolResult(tc.Name)
 			}
 
 			// Security intercept
