@@ -215,10 +215,15 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ctrl+C: copy (char or msg selection) | interrupt | double-tap quit
 		if msg.Type == tea.KeyCtrlC {
-			// Character-level selection copy
-			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 {
-				tlog.Debug("ctrl-c", "path", "char", "start_offset", m.charSelStart.Offset, "end_offset", m.charSelEnd.Offset, "start_msg", m.charSelStart.MsgIdx, "end_msg", m.charSelEnd.MsgIdx)
-				text := extractSelected(m.charSelStart, m.charSelEnd, m.messages)
+			// Character-level selection copy using CellGrid coordinates
+			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 && m.grid != nil {
+				text := m.grid.ExtractText(
+					m.charSelStartLine, m.charSelStartCol,
+					m.charSelEndLine, m.charSelEndCol,
+				)
+				if text != "" {
+					text = strings.TrimSpace(text)
+				}
 				if text != "" {
 					copyToClipboard(text)
 					m.charSelStart = selPos{Offset: -1}
