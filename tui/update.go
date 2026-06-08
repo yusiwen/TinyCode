@@ -217,6 +217,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyCtrlC {
 			// Character-level selection copy
 			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 {
+				tlog.Debug("ctrl-c", "path", "char", "start_offset", m.charSelStart.Offset, "end_offset", m.charSelEnd.Offset, "start_msg", m.charSelStart.MsgIdx, "end_msg", m.charSelEnd.MsgIdx)
 				text := extractSelected(m.charSelStart, m.charSelEnd, m.messages)
 				if text != "" {
 					copyToClipboard(text)
@@ -231,6 +232,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Message-level selection copy (fallback)
 			if sel := m.selectedMessages(); sel != "" {
+				tlog.Debug("ctrl-c", "path", "msg", "select_start", m.selectStart, "select_end", m.selectEnd)
 				copyToClipboard(sel)
 				m.selectStart = -1
 				m.selectEnd = -1
