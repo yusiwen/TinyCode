@@ -30,6 +30,9 @@ type Agent struct {
 	CompressionThreshold int // token threshold to trigger compression (0 = disabled)
 	ContextLength        int // model context window size (0 = unknown)
 
+	// Discovered context length (lowered after context_length_exceeded errors)
+	discoveredCtxLen int
+
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int
@@ -214,6 +217,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 					})
 		if err != nil {
 			tlog.Error("agent.loop", "llm error", "step", step, "error", err)
+			a.HandleContextError(err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
 
