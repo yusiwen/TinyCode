@@ -2,9 +2,16 @@ package tui
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+)
+
+// styleCache memoizes CellStyle → lipgloss.Style conversions.
+var (
+	styleCache = map[CellStyle]lipgloss.Style{}
+	styleMu    sync.RWMutex
 )
 
 // CellStyle is a compact representation of character styling.
@@ -81,6 +88,16 @@ func (g *CellGrid) RowText(row int) string {
 // cellIndex returns the flat index for (row, col).
 func (g *CellGrid) cellIndex(row, col int) int {
 	return row*g.width + col
+}
+
+// rowEmpty returns true if the row has no non-zero runes.
+func (g *CellGrid) rowEmpty(row int) bool {
+	for c := 0; c < g.width; c++ {
+		if g.cells[g.cellIndex(row, c)].Rune != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Set places a single cell at the current append position. Advances column.
@@ -189,7 +206,12 @@ func (g *CellGrid) ExtractText(startRow, startCol, endRow, endCol int) string {
 // Render produces an ANSI-formatted string for the viewport.
 func (g *CellGrid) Render() string {
 	var b strings.Builder
-	for r := 0; r < g.row; r++ {
+	// Find last non-empty row to skip trailing blanks
+	lastRow := g.row - 1
+	for lastRow >= 0 && g.rowEmpty(lastRow) {
+		lastRow--
+	}
+	for r := 0; r <= lastRow; r++ {
 		col := 0
 		for col < g.width {
 			cell := g.cells[g.cellIndex(r, col)]
@@ -221,7 +243,21 @@ func (g *CellGrid) Render() string {
 }
 
 // styleToLipgloss converts CellStyle to a lipgloss.Style for rendering.
+// Results are cached, so repeated calls for the same style are fast.
 func styleToLipgloss(s CellStyle) lipgloss.Style {
+	styleMu.RLock()
+	if cached, ok := styleCache[s]; ok {
+		styleMu.RUnlock()
+		return cached
+	}
+	styleMu.RUnlock()
+
+	styleMu.Lock()
+	// Double-check after write lock
+	if cached, ok := styleCache[s]; ok {
+		styleMu.Unlock()
+		return cached
+	}
 	ls := lipgloss.NewStyle()
 	if s.Bold {
 		ls = ls.Bold(true)
@@ -238,6 +274,8 @@ func styleToLipgloss(s CellStyle) lipgloss.Style {
 	if s.Bg != "" {
 		ls = ls.Background(s.Bg)
 	}
+	styleCache[s] = ls
+	styleMu.Unlock()
 	return ls
 }
 

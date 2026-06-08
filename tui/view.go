@@ -20,7 +20,12 @@ func (m *TuiModel) View() string {
 	// Message area — built with CellGrid
 	m.activeButtons = nil
 	m.lineSrcs = nil
-	g := NewCellGrid(m.vp.Width, 100)
+	if m.grid == nil || m.grid.width != m.vp.Width {
+		m.grid = NewCellGrid(m.vp.Width, 10)
+	} else {
+		m.grid.Reset()
+	}
+	g := m.grid
 
 	for i, msg := range m.messages {
 		comp, ok := msgComponentMap[msg.Role]

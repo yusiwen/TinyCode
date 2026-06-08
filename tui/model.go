@@ -86,6 +86,9 @@ type TuiModel struct {
 	// Buttons (rebuilt each View)
 	activeButtons []Button
 
+	// CellGrid (reused across renders)
+	grid *CellGrid
+
 	// Input history (up/down arrows)
 	inputHistory  []string
 	historyPos    int    // -1 = current draft, 0+ = history index
