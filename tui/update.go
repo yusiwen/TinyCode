@@ -145,10 +145,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if idx >= 0 && idx < m.provReg.Len() {
 					if err := m.provReg.SwitchTo(idx); err == nil {
 						m.agent.Provider = m.provReg.Current()
-						m.messages = append(m.messages, chatMessage{
-							Role:    "system",
-							Content: fmt.Sprintf("Switched to %s", m.provReg.CurrentName()),
-						})
+						m.statusMsg = m.provReg.CurrentName()
 					}
 				}
 				m.selectingProvider = false
@@ -228,9 +225,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					copyToClipboard(text)
 					m.charSelStart = selPos{Offset: -1}
 					m.charSelEnd = selPos{Offset: -1}
-					m.messages = append(m.messages, chatMessage{
-						Role: "system", Content: "✓ Copied",
-					})
+					m.statusMsg = "✓ Copied"
 					m.autoScroll()
 					return m, nil
 				}
@@ -347,9 +342,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.registry.Switch()
 		m.agent.Config = m.registry.Current()
 		m.modeName = m.registry.CurrentName()
-		m.messages = append(m.messages, chatMessage{
-			Role: "system", Content: fmt.Sprintf("Switched to %s mode", m.modeName),
-		})
+		
 		m.autoScroll()
 		return m, nil
 	}
@@ -548,7 +541,6 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.agent.Config = m.registry.Current()
 		m.modeName = "plan"
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: "Switched to plan mode"})
 		m.autoScroll()
 	case "/build":
 		if err := m.registry.Set("build"); err != nil {
@@ -558,7 +550,6 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.agent.Config = m.registry.Current()
 		m.modeName = "build"
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: "Switched to build mode"})
 		m.autoScroll()
 	default:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown command: %s", cmd)})

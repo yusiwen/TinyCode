@@ -20,9 +20,11 @@ func TestCommandPlan(t *testing.T) {
 	if m.modeName != "plan" {
 		t.Errorf("expected mode=plan, got %q", m.modeName)
 	}
-	last := m.messages[len(m.messages)-1]
-	if !strings.Contains(last.Content, "Switched to plan") {
-		t.Errorf("expected switch message, got %q", last.Content)
+	if len(m.messages) > 0 {
+		last := m.messages[len(m.messages)-1]
+		if strings.Contains(last.Content, "Error") {
+			t.Errorf("unexpected error message: %q", last.Content)
+		}
 	}
 }
 
@@ -38,9 +40,11 @@ func TestCommandBuild(t *testing.T) {
 	if m.modeName != "build" {
 		t.Errorf("expected mode=build, got %q", m.modeName)
 	}
-	last := m.messages[len(m.messages)-1]
-	if !strings.Contains(last.Content, "Switched to build") {
-		t.Errorf("expected switch message, got %q", last.Content)
+	if len(m.messages) > 0 {
+		last := m.messages[len(m.messages)-1]
+		if strings.Contains(last.Content, "Error") {
+			t.Errorf("unexpected error message: %q", last.Content)
+		}
 	}
 }
 
