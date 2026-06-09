@@ -190,6 +190,9 @@ func (m *TuiModel) renderStatusBar() string {
 	}
 
 	statusMsg := m.statusMsg
+	if statusMsg != "" {
+		statusMsg = "  │ " + statusMsg
+	}
 	// Auto-clear status message on subsequent renders after user action
 	// (cleared in Update on any keypress)
 
