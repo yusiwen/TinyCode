@@ -75,8 +75,11 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		chunks = append(chunks, tc.Render(msg, sel)...)
 	}
 
-	// "Response:" label — no indent, with blank line before
-	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
+	// "Response:" label — no indent, with blank line before (avoid double blank)
+	needsBlank := len(chunks) == 0 || strings.TrimSpace(chunks[len(chunks)-1].Text) != ""
+	if needsBlank {
+		chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
+	}
 	labelStyle := ResponseLabel
 	if sel {
 		labelStyle = SelectionStyle

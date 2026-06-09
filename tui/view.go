@@ -28,6 +28,11 @@ func (m *TuiModel) View() string {
 	g := m.grid
 
 	for i, msg := range m.messages {
+		// Blank line between messages for visual spacing
+		if i > 0 {
+			g.AppendChunk(CellChunk{Text: "", Style: DefaultStyle})
+		}
+
 		comp, ok := msgComponentMap[msg.Role]
 		if !ok {
 			continue
