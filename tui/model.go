@@ -101,7 +101,9 @@ type TuiModel struct {
 	quitConfirm bool
 
 	// Session persistence
-	SessionDir string
+	SessionDir      string
+	currentBranch   string // current branch ID (same as main session ID for main)
+	sessionStore    *session.Store
 
 	// Scroll tracking
 	streamDoneNotified bool // true after first GotoBottom on stream completion
@@ -140,7 +142,9 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		sessionStart: time.Now(),
-		SessionDir:   cfg.SessionDir,
+		SessionDir:      cfg.SessionDir,
+		currentBranch:   "", // no session yet
+		sessionStore:    session.NewStore(cfg.SessionDir),
 	}
 
 	// Load session if resume ID provided

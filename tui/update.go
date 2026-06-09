@@ -488,6 +488,25 @@ func copyToClipboard(text string) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(text))
 	fmt.Printf("\033]52;c;%s\007", encoded)
 }
+// saveBranchSession persists the current branch's messages to disk.
+func (m *TuiModel) saveBranchSession() {
+	if m.currentBranch == "" || m.SessionDir == "" {
+		return
+	}
+	s := session.New(m.currentBranch, m.SessionDir)
+	for _, chatMsg := range m.messages {
+		s.Append(types.Message{
+			Role:             chatMsg.Role,
+			Content:          chatMsg.Content,
+			ReasoningContent: chatMsg.ReasoningContent,
+		})
+	}
+	if m.provReg != nil {
+		s.ModelName = m.provReg.Current().Name()
+	}
+	s.Flush()
+}
+
 // autoScroll scrolls to bottom only if user is already at the bottom.
 func (m *TuiModel) autoScroll() {
 	if m.ready && m.vp.AtBottom() {
@@ -552,6 +571,84 @@ Mouse:
 			s = "on"
 		}
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Verbose mode %s", s)})
+		m.autoScroll()
+	case "/fork":
+		parts := strings.Fields(cmd)
+		label := ""
+		if len(parts) > 1 {
+			label = parts[1]
+		}
+		if m.currentBranch == "" {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: "No active session to fork. Start a conversation first."})
+			m.autoScroll()
+			return m, nil
+		}
+		branch, err := m.sessionStore.Fork(m.currentBranch, len(m.messages), label)
+		if err != nil {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Fork error: %v", err)})
+			m.autoScroll()
+			return m, nil
+		}
+		m.messages = nil
+		m.messages = append(m.messages, chatMessage{
+			Role: "system",
+			Content: fmt.Sprintf("Created branch: %s (forked at message %d from %s)", branch.ID, branch.ForkAt, branch.ParentSessionID),
+		})
+		m.currentBranch = branch.ID
+		m.autoScroll()
+	case "/session":
+		parts := strings.Fields(cmd)
+		if len(parts) < 2 {
+			// List all branches/sessions
+			infos := m.sessionStore.List()
+			var sb strings.Builder
+			sb.WriteString("Sessions and branches:\n")
+			for _, info := range infos {
+				mark := "  "
+				if info.ID == m.currentBranch {
+					mark = " *"
+				}
+				title := info.Title
+				if title == "" {
+					title = "(no title)"
+				}
+				msgs := info.MessageCount
+				sb.WriteString(fmt.Sprintf("%s %-40s %s (%d msgs)\n", mark, info.ID, title, msgs))
+			}
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: strings.TrimSpace(sb.String())})
+			m.autoScroll()
+			return m, nil
+		}
+		// Switch to specified branch
+		branchID := parts[1]
+		branch, err := m.sessionStore.Load(branchID)
+		if err != nil {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Session %q not found.", branchID)})
+			m.autoScroll()
+			return m, nil
+		}
+		// Save current session first
+		if m.currentBranch != "" {
+			m.saveBranchSession()
+		}
+		// Load branch messages
+		m.messages = nil
+		for _, sm := range branch.Messages {
+			cm := chatMessage{
+				Role:             sm.Role,
+				Content:          sm.Content,
+				ReasoningContent: sm.ReasoningContent,
+			}
+			if sm.Role == "assistant" && sm.Content != "" {
+				cm.Blocks = parseMarkdown(sm.Content)
+			}
+			m.messages = append(m.messages, cm)
+		}
+		m.currentBranch = branch.ID
+		m.messages = append(m.messages, chatMessage{
+			Role: "system",
+			Content: fmt.Sprintf("Switched to session: %s (%d messages)", branch.ID, len(branch.Messages)),
+		})
 		m.autoScroll()
 	case "/thinking":
 		if m.config.ShowThinking == nil {

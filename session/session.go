@@ -23,6 +23,11 @@ type Session struct {
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 	MessageCount int             `json:"message_count"`
+
+	// Branch tree support
+	ParentSessionID string          `json:"parent_session,omitempty"`
+	ForkAt          int             `json:"fork_at,omitempty"` // message index where fork happened
+
 	Messages     []types.Message `json:"messages"`
 	dir          string
 }
@@ -120,6 +125,61 @@ func (st *Store) Load(id string) (*Session, error) {
 func (st *Store) Delete(id string) error {
 	path := filepath.Join(st.Dir, id+".json")
 	return os.Remove(path)
+}
+
+// Fork creates and persists a new branch session.
+// parentID is the source session. Messages up to forkAt (exclusive) are copied.
+func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, error) {
+	parent, err := st.Load(parentID)
+	if err != nil {
+		return nil, fmt.Errorf("load parent: %w", err)
+	}
+
+	// Build branch ID
+	branchID := parentID + "-" + label
+	if label == "" {
+		entries, err := os.ReadDir(st.Dir)
+		if err != nil {
+			return nil, fmt.Errorf("read session dir: %w", err)
+		}
+		used := make(map[string]bool)
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+				used[strings.TrimSuffix(e.Name(), ".json")] = true
+			}
+		}
+		n := 1
+		for {
+			branchID = fmt.Sprintf("%s-branch-%d", parentID, n)
+			if !used[branchID] {
+				break
+			}
+			n++
+		}
+	}
+
+	// Copy shared messages up to forkAt
+	shared := make([]types.Message, forkAt)
+	copy(shared, parent.Messages[:forkAt])
+
+	branch := &Session{
+		ID:              branchID,
+		ParentSessionID: parentID,
+		ForkAt:          forkAt,
+		Messages:        shared,
+		dir:             st.Dir,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		Title:           parent.Title,
+		ModelName:       parent.ModelName,
+		MessageCount:    forkAt,
+	}
+
+	// Persist immediately so the file exists for subsequent forks
+	if err := branch.Flush(); err != nil {
+		return nil, fmt.Errorf("flush branch: %w", err)
+	}
+	return branch, nil
 }
 
 // Search returns sessions whose content matches the query string.
