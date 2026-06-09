@@ -84,10 +84,14 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selecting = true
 				m.selectStart = idx
 				m.selectEnd = idx
+				roleStr := ""
+				if idx >= 0 && idx < len(m.messages) {
+					roleStr = m.messages[idx].Role
+				}
 				tlog.Debug("mouse.select", "press",
 					"y", msg.Y, "contentLine", contentLine,
 					"yOffset", m.vp.YOffset, "msgIdx", idx,
-					"msgRole", m.messages[idx].Role)
+					"msgRole", roleStr)
 			case tea.MouseActionMotion:
 				if m.selecting {
 					m.mouseDrag = true
@@ -100,9 +104,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.mouseDrag {
 					m.selectStart = -1
 					m.selectEnd = -1
+					clickRole := ""
+					if idx >= 0 && idx < len(m.messages) {
+						clickRole = m.messages[idx].Role
+					}
 					tlog.Debug("mouse.select", "click",
 						"y", msg.Y, "contentLine", contentLine,
-						"msgIdx", idx, "msgRole", m.messages[idx].Role,
+						"msgIdx", idx, "msgRole", clickRole,
 						"action", "cleared")
 				} else {
 					tlog.Debug("mouse.select", "release",
