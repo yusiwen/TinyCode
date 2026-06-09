@@ -53,15 +53,22 @@ type LSPConfig struct {
 	Enabled bool `json:"enabled,omitempty"`
 }
 
+// SandboxConfig holds tool sandbox configuration from config.json.
+type SandboxConfig struct {
+	ProjectRoot      string   `json:"project_root,omitempty"`
+	DenyCommands     []string `json:"deny_commands,omitempty"`
+}
+
 // Config is the top-level configuration structure.
 type Config struct {
-	DefaultMode  string                  `json:"default_mode,omitempty"`
-	ShowThinking *bool                   `json:"show_thinking,omitempty"`
-	Verbose      *bool                   `json:"verbose,omitempty"`
-	Providers    []ProviderRecordConfig  `json:"providers,omitempty"`
-	Truncation   TruncationConfig        `json:"truncation,omitempty"`
+	DefaultMode  string                   `json:"default_mode,omitempty"`
+	ShowThinking *bool                    `json:"show_thinking,omitempty"`
+	Verbose      *bool                    `json:"verbose,omitempty"`
+	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
+	Truncation   TruncationConfig         `json:"truncation,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
-	SessionDir   string                  `json:"session_dir,omitempty"`
+	Sandbox      SandboxConfig            `json:"sandbox,omitempty"`
+	SessionDir   string                   `json:"session_dir,omitempty"`
 	LSP          LSPConfig               `json:"lsp,omitempty"`
 	LogLevel     string                  `json:"log_level,omitempty"`
 

@@ -110,6 +110,15 @@ func main() {
 				lsp.Init(cfg.SessionDir)
 			}
 
+			// Wire sandbox config
+			if cfg.Sandbox.ProjectRoot != "" {
+				tool.DefaultSandbox.ProjectRoot = cfg.Sandbox.ProjectRoot
+			}
+			if len(cfg.Sandbox.DenyCommands) > 0 {
+				tool.DefaultSandbox.CommandDenyList = append(
+					tool.DefaultSandbox.CommandDenyList, cfg.Sandbox.DenyCommands...)
+			}
+
 			reg := agent.NewRegistry()
 			for name, override := range cfg.Agents {
 				if aCfg, err := reg.Get(name); err == nil {
