@@ -534,7 +534,13 @@ func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 }
 
 func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
-	switch cmd {
+	// Extract base command (first word) for switch matching
+	parts := strings.Fields(cmd)
+	base := cmd
+	if len(parts) > 0 {
+		base = parts[0]
+	}
+	switch base {
 	case "/exit", "/quit":
 		return m, tea.Quit
 	case "/help":
@@ -551,6 +557,7 @@ Commands:
   /thinking      Toggle thinking display
   /theme         Switch theme (nord, default)
   /model         Switch provider/model
+
 Keyboard:
   Enter          Submit message
   Ctrl+J         New line (in textarea)
@@ -666,6 +673,23 @@ Mouse:
 	case "/model":
 		m.selectingProvider = true
 		m.providerCursor = 0
+	case "/theme":
+		parts := strings.Fields(cmd)
+		if len(parts) < 2 {
+			names := strings.Join(ThemeNames(), ", ")
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Available themes: %s. Use /theme <name> to switch.", names)})
+			m.autoScroll()
+			return m, nil
+		}
+		theme := LookupTheme(parts[1])
+		if theme == nil {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown theme %q. Available: %s", parts[1], strings.Join(ThemeNames(), ", "))})
+			m.autoScroll()
+			return m, nil
+		}
+		ApplyTheme(*theme)
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
+		m.autoScroll()
 	case "/plan":
 		if err := m.registry.Set("plan"); err != nil {
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
