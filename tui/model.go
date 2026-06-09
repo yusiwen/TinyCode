@@ -89,6 +89,10 @@ type TuiModel struct {
 	// CellGrid (reused across renders)
 	grid *CellGrid
 
+	// Incremental render tracking
+	msgRowCount []int      // rendered row count per message (0 = not yet rendered)
+	msgDirty    []bool     // true = needs re-render
+
 	// Status bar message (transient, replaces system messages)
 	statusMsg string
 
@@ -196,4 +200,26 @@ func (m *TuiModel) sendStreamMsg() tea.Msg {
 // ShowStatus sets a transient status bar message.
 func (m *TuiModel) ShowStatus(msg string) {
 	m.statusMsg = msg
+}
+
+// MarkMsgDirty marks a message and all downstream messages for re-render.
+func (m *TuiModel) MarkMsgDirty(idx int) {
+	for i := idx; i < len(m.msgDirty); i++ {
+		m.msgDirty[i] = true
+	}
+}
+
+// MarkAllDirty marks all messages for re-render (theme switch, branch switch).
+func (m *TuiModel) MarkAllDirty() {
+	for i := range m.msgDirty {
+		m.msgDirty[i] = true
+	}
+}
+
+// ensureMsgTracking ensures msgDirty and msgRowCount arrays match m.messages length.
+func (m *TuiModel) ensureMsgTracking() {
+	for len(m.msgDirty) < len(m.messages) {
+		m.msgDirty = append(m.msgDirty, true)
+		m.msgRowCount = append(m.msgRowCount, 0)
+	}
 }

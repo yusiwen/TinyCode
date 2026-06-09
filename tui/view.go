@@ -19,99 +19,147 @@ func (m *TuiModel) View() string {
 
 	// Message area — built with CellGrid
 	m.activeButtons = nil
-	m.lineSrcs = nil
-	if m.grid == nil || m.grid.width != m.vp.Width {
-		m.grid = NewCellGrid(m.vp.Width, 10)
-	} else {
-		m.grid.Reset()
+	m.ensureMsgTracking()
+
+	// Find first dirty message (recalc start row from previous messages' rowCount)
+	firstDirty := -1
+	for i := range m.messages {
+		if m.msgDirty[i] {
+			firstDirty = i
+			break
+		}
 	}
+
+	if m.grid == nil || m.grid.width != m.vp.Width {
+		// Resize: full rebuild
+		m.grid = NewCellGrid(m.vp.Width, 10)
+		m.lineSrcs = nil
+		m.MarkAllDirty()
+		firstDirty = 0
+	}
+
 	g := m.grid
 
-	for i, msg := range m.messages {
-		// Blank line between messages for visual spacing
-		if i > 0 {
-			g.AppendChunk(CellChunk{Text: "", Style: DefaultStyle})
+	if firstDirty < 0 {
+		// Nothing changed — keep existing grid, don't rebuild. Nothing to do.
+		// lineSrcs from previous frame are still valid.
+	} else {
+		// Compute the grid row where firstDirty starts
+		dirtyStart := 0
+		for j := 0; j < firstDirty; j++ {
+			dirtyStart += m.msgRowCount[j] + 1 // message rows + inter-message blank line
 		}
 
-		comp, ok := msgComponentMap[msg.Role]
-		if !ok {
-			continue
+		// Truncate grid: set g.row back to dirtyStart
+		g.row = dirtyStart
+		g.col = 0
+		// Clear cells from dirtyStart onwards
+		for r := dirtyStart; r < g.rows; r++ {
+			for c := 0; c < g.width; c++ {
+				g.cells[g.cellIndex(r, c)] = Cell{}
+			}
 		}
-		chunks := comp.Render(msg, false)
-		startRow := g.RowCount()
-		// Process chunks, detecting inline pairs (bracket + text on same line)
-		for ci := 0; ci < len(chunks); ci++ {
-			chunk := chunks[ci]
-			// Reasoning marker: bracket + text as inline pair
-			if strings.HasPrefix(chunk.Text, "[") && ci+1 < len(chunks) &&
-				strings.HasPrefix(chunks[ci+1].Text, " ") {
-				g.AppendInline([]CellChunk{chunk, chunks[ci+1]})
-				ci++
+
+		// Truncate lineSrcs back
+		keepLines := 0
+		for j := 0; j < firstDirty; j++ {
+			keepLines += m.msgRowCount[j] + 1
+		}
+		if keepLines < len(m.lineSrcs) {
+			m.lineSrcs = m.lineSrcs[:keepLines]
+		}
+
+		// Iterate messages from firstDirty onwards
+		for i := firstDirty; i < len(m.messages); i++ {
+			msg := m.messages[i]
+
+			// Blank line between messages
+			if i > 0 {
+				g.AppendChunk(CellChunk{Text: "", Style: DefaultStyle})
+			}
+
+			comp, ok := msgComponentMap[msg.Role]
+			if !ok {
+				m.msgRowCount[i] = 0
+				m.msgDirty[i] = false
 				continue
 			}
-			// Skip wordWrap for pre-formatted lines (tables, code, etc.)
-			if strings.ContainsAny(chunk.Text, "│─") {
-				g.AppendChunk(chunk)
-				continue
-			}
-			wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
-			for _, wc := range wrapped {
-				g.AppendChunk(wc)
-			}
-		}
-		endRow := g.RowCount()
-
-		// If this message has folding reasoning, register fold button
-		if msg.Role == "assistant" && msg.ReasoningContent != "" {
-			foldLine := startRow
-				m.activeButtons = append(m.activeButtons, Button{
-					MsgIdx: i, Line: foldLine, Col: 0, Width: 3, Label: "fold",
-				Action: func() {
-					m.messages[i].ReasoningFolded = !m.messages[i].ReasoningFolded
-				},
-			})
-		}
-
-		// Build lineSrcs from grid rows occupied by this message
-		for r := startRow; r < endRow; r++ {
-			text := g.RowText(r)
-			field := "content"
-			offset := 4
-			switch msg.Role {
-			case "user":
-				field = "user"
-				offset = 2
-			case "system":
-				field = "system"
-				offset = 4
-			case "assistant":
-				if text == "Response:" {
-					field = "label"
-					offset = 0
-				} else if msg.ReasoningContent != "" && r-startRow == 0 {
-					field = "reasoning"
+			chunks := comp.Render(msg, false)
+			startRow := g.RowCount()
+			for ci := 0; ci < len(chunks); ci++ {
+				chunk := chunks[ci]
+				if strings.HasPrefix(chunk.Text, "[") && ci+1 < len(chunks) &&
+					strings.HasPrefix(chunks[ci+1].Text, " ") {
+					g.AppendInline([]CellChunk{chunk, chunks[ci+1]})
+					ci++
+					continue
+				}
+				if strings.ContainsAny(chunk.Text, "│─") {
+					g.AppendChunk(chunk)
+					continue
+				}
+				wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
+				for _, wc := range wrapped {
+					g.AppendChunk(wc)
 				}
 			}
-			m.lineSrcs = append(m.lineSrcs, lineSrc{
-				MsgIdx: i, SourceField: field, Text: text, ContentOffset: offset,
-			})
-		}
+			endRow := g.RowCount()
+			m.msgRowCount[i] = endRow - startRow
 
-		// Render [Copy] button
-		if msg.Role == "assistant" && !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
-			btnRow := g.RowCount()
-			btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
-			plainBtn := stripANSI(btnLine)
-			g.AppendChunk(CellChunk{Text: plainBtn, Style: DimStyle})
-			m.lineSrcs = append(m.lineSrcs, lineSrc{MsgIdx: i, SourceField: "button", Text: ""})
-			msgContent := msg.Content
-			m.activeButtons = append(m.activeButtons, Button{
-				MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: "Copy",
-				Action: func() {
-					copyToClipboard(msgContent)
-					m.ShowStatus("✓ Copied")
-				},
-			})
+			// Fold button
+			if msg.Role == "assistant" && msg.ReasoningContent != "" {
+				m.activeButtons = append(m.activeButtons, Button{
+					MsgIdx: i, Line: startRow, Col: 0, Width: 3, Label: "fold",
+					Action: func() {
+						m.messages[i].ReasoningFolded = !m.messages[i].ReasoningFolded
+						m.MarkMsgDirty(i)
+					},
+				})
+			}
+
+			// Build lineSrcs
+			for r := startRow; r < endRow; r++ {
+				text := g.RowText(r)
+				field := "content"
+				offset := 4
+				switch msg.Role {
+				case "user":
+					field = "user"
+					offset = 2
+				case "system":
+					field = "system"
+					offset = 4
+				case "assistant":
+					if text == "Response:" {
+						field = "label"
+						offset = 0
+					} else if msg.ReasoningContent != "" && r-startRow == 0 {
+						field = "reasoning"
+					}
+				}
+				m.lineSrcs = append(m.lineSrcs, lineSrc{
+					MsgIdx: i, SourceField: field, Text: text, ContentOffset: offset,
+				})
+			}
+
+			// [Copy] button
+			if msg.Role == "assistant" && !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
+				btnRow := g.RowCount()
+				btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
+				plainBtn := stripANSI(btnLine)
+				g.AppendChunk(CellChunk{Text: plainBtn, Style: DimStyle})
+				m.lineSrcs = append(m.lineSrcs, lineSrc{MsgIdx: i, SourceField: "button", Text: ""})
+				msgContent := msg.Content
+				m.activeButtons = append(m.activeButtons, Button{
+					MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: "Copy",
+					Action: func() {
+						copyToClipboard(msgContent)
+						m.ShowStatus("✓ Copied")
+					},
+				})
+			}
+
+			m.msgDirty[i] = false
 		}
 	}
 

@@ -692,6 +692,7 @@ Mouse:
 		if err := m.config.Save(); err != nil {
 			tlog.Error("theme.save", "error", err)
 		}
+		m.MarkAllDirty()
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
 		m.autoScroll()
 	case "/plan":
