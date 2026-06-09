@@ -33,6 +33,9 @@ func main() {
 	var logLevel string
 	var resume string
 	var listSessions bool
+	var deleteSession string
+	var exportSession string
+	var searchSessions string
 
 	rootCmd := &cobra.Command{
 		Use:   "tinycode",
@@ -173,6 +176,46 @@ func main() {
 			ag.SessionStore = sess
 			defer sess.Flush()
 
+			if searchSessions != "" {
+				infos := store.Search(searchSessions)
+				if len(infos) == 0 {
+					fmt.Println("No sessions matched.")
+				} else {
+					fmt.Printf("Found %d session(s) matching %q:\n", len(infos), searchSessions)
+					for _, info := range infos {
+						when := info.UpdatedAt.Format("2006-01-02 15:04")
+						title := info.Title
+						if title == "" {
+							title = "(no title)"
+						}
+						fmt.Printf("  %-35s %s (%d msgs, %s)\n", info.ID, title, info.MessageCount, when)
+					}
+				}
+				return nil
+			}
+
+			if deleteSession != "" {
+				if err := store.Delete(deleteSession); err != nil {
+					return fmt.Errorf("delete session: %w", err)
+				}
+				fmt.Printf("Deleted session: %s\n", deleteSession)
+				return nil
+			}
+
+			if exportSession != "" {
+				sess, err := store.Load(exportSession)
+				if err != nil {
+					return fmt.Errorf("load session: %w", err)
+				}
+				md := sess.ExportMarkdown()
+				outPath := exportSession + ".md"
+				if err := os.WriteFile(outPath, []byte(md), 0644); err != nil {
+					return fmt.Errorf("write export: %w", err)
+				}
+				fmt.Printf("Exported session to: %s\n", outPath)
+				return nil
+			}
+
 			if listSessions {
 				infos := store.List()
 				if len(infos) == 0 {
@@ -237,6 +280,9 @@ func main() {
 	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level")
 	rootCmd.Flags().StringVar(&resume, "resume", "", "Resume a saved session by ID (e.g. TUI-20260607-235959)")
 	rootCmd.Flags().BoolVar(&listSessions, "list-sessions", false, "List saved sessions")
+	rootCmd.Flags().StringVar(&deleteSession, "delete-session", "", "Delete a saved session by ID")
+	rootCmd.Flags().StringVar(&exportSession, "export-session", "", "Export a session as Markdown")
+	rootCmd.Flags().StringVar(&searchSessions, "search-sessions", "", "Search session content")
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)

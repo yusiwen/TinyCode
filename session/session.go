@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -113,6 +114,84 @@ func (st *Store) Create(id string) *Session {
 
 func (st *Store) Load(id string) (*Session, error) {
 	return Load(id, st.Dir)
+}
+
+// Delete removes a session from disk.
+func (st *Store) Delete(id string) error {
+	path := filepath.Join(st.Dir, id+".json")
+	return os.Remove(path)
+}
+
+// Search returns sessions whose content matches the query string.
+func (st *Store) Search(query string) []SessionInfo {
+	entries, err := os.ReadDir(st.Dir)
+	if err != nil {
+		return nil
+	}
+	q := strings.ToLower(query)
+	var results []SessionInfo
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".json")
+		s, err := Load(id, st.Dir)
+		if err != nil {
+			continue
+		}
+		matched := strings.Contains(strings.ToLower(s.Title), q) ||
+			strings.Contains(strings.ToLower(s.Preview), q)
+		if !matched {
+			for _, m := range s.Messages {
+				if strings.Contains(strings.ToLower(m.Content), q) ||
+					strings.Contains(strings.ToLower(m.ReasoningContent), q) {
+					matched = true
+					break
+				}
+			}
+		}
+		if matched {
+			results = append(results, SessionInfo{
+				ID:           id,
+				Title:        s.Title,
+				Preview:      s.Preview,
+				ModelName:    s.ModelName,
+				CreatedAt:    s.CreatedAt,
+				UpdatedAt:    s.UpdatedAt,
+				MessageCount: s.MessageCount,
+			})
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+	})
+	return results
+}
+
+// ExportMarkdown returns the conversation as a Markdown string.
+func (s *Session) ExportMarkdown() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("# Session: %s\n\n", s.Title))
+	b.WriteString(fmt.Sprintf("**Model:** %s  \n", s.ModelName))
+	b.WriteString(fmt.Sprintf("**Started:** %s  \n", s.CreatedAt.Format("2006-01-02 15:04:05")))
+	b.WriteString(fmt.Sprintf("**Messages:** %d  \n\n", s.MessageCount))
+	b.WriteString("---\n\n")
+	for _, m := range s.Messages {
+		switch m.Role {
+		case "user":
+			b.WriteString(fmt.Sprintf("**User:**\n%s\n\n", m.Content))
+		case "assistant":
+			if m.ReasoningContent != "" {
+				b.WriteString(fmt.Sprintf("**Reasoning:**\n%s\n\n", m.ReasoningContent))
+			}
+			b.WriteString(fmt.Sprintf("**Assistant:**\n%s\n\n", m.Content))
+		case "tool":
+			b.WriteString(fmt.Sprintf("**Tool (%s):**\n%s\n\n", m.Name, truncate(m.Content, 500)))
+		case "system":
+			b.WriteString(fmt.Sprintf("**System:**\n%s\n\n", m.Content))
+		}
+	}
+	return b.String()
 }
 
 // SessionInfo summarizes a session for display purposes.
