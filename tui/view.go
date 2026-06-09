@@ -47,7 +47,10 @@ func (m *TuiModel) View() string {
 		// Compute the grid row where firstDirty starts
 		dirtyStart := 0
 		for j := 0; j < firstDirty; j++ {
-			dirtyStart += m.msgRowCount[j] + 1 // message rows + inter-message blank line
+			dirtyStart += m.msgRowCount[j]
+			if j > 0 {
+				dirtyStart++ // inter-message blank line (message 0 has no preceding blank)
+			}
 		}
 
 		// Truncate grid: set g.row back to dirtyStart
@@ -63,7 +66,10 @@ func (m *TuiModel) View() string {
 		// Truncate lineSrcs back
 		keepLines := 0
 		for j := 0; j < firstDirty; j++ {
-			keepLines += m.msgRowCount[j] + 1
+			keepLines += m.msgRowCount[j]
+			if j > 0 {
+				keepLines++ // inter-message blank line
+			}
 		}
 		if keepLines < len(m.lineSrcs) {
 			m.lineSrcs = m.lineSrcs[:keepLines]
