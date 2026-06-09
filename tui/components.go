@@ -192,7 +192,7 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	for _, tc := range msg.ToolCalls {
 		text := "    • " + tc.Name
 		if tc.Arg != "" {
-			text += "    " + tc.Arg
+			text += ": " + tc.Arg
 		}
 		chunks = append(chunks, CellChunk{Text: text, Style: style})
 	}

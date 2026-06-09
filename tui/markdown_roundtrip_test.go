@@ -403,7 +403,7 @@ func TestToolCallRenderInAssistant(t *testing.T) {
 		t.Errorf("header missing 'Calling tools': %q", header)
 	}
 	toolLine := chunks[2].Text
-	if !strings.Contains(toolLine, "read_file") {
+	if !strings.Contains(toolLine, "read_file: main.go") {
 		t.Errorf("tool line missing name: %q", toolLine)
 	}
 	if !strings.Contains(toolLine, "main.go") {
