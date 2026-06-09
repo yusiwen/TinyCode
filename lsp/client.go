@@ -39,6 +39,9 @@ func (c *Client) Initialize(rootURI string) error {
 		return fmt.Errorf("initialized notification: %w", err)
 	}
 
+	// Start background reader for notifications (diagnostics)
+	c.conn.StartReader()
+
 	return nil
 }
 

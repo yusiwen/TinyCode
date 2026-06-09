@@ -182,3 +182,39 @@ func (c *Conn) Close() error {
 	c.closed = true
 	return c.stdin.Close()
 }
+
+// StartReader launches a background goroutine that reads messages from
+// the connection and routes notifications (like publishDiagnostics) to
+// the appropriate channels. Call once after Initialize.
+func (c *Conn) StartReader() {
+	go func() {
+		for {
+			body, err := c.readMessage()
+			if err != nil {
+				return
+			}
+			var base struct {
+				ID     any             `json:"id"`
+				Method string          `json:"method"`
+				Params json.RawMessage `json:"params"`
+			}
+			if err := json.Unmarshal(body, &base); err != nil {
+				continue
+			}
+			// Route publishDiagnostics to channel
+			if base.Method == "textDocument/publishDiagnostics" {
+				if c.diagChan == nil {
+					c.diagChan = make(chan diagnosticPush, 10)
+				}
+				var push diagnosticPush
+				if json.Unmarshal(base.Params, &push) == nil {
+					select {
+					case c.diagChan <- push:
+					default:
+					}
+				}
+			}
+			// Ignore other notifications and unexpected responses
+		}
+	}()
+}
