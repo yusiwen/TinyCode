@@ -56,7 +56,6 @@ type LSPConfig struct {
 // Config is the top-level configuration structure.
 type Config struct {
 	DefaultMode  string                  `json:"default_mode,omitempty"`
-	GlamourStyle string                  `json:"glamour_style,omitempty"`
 	ShowThinking *bool                   `json:"show_thinking,omitempty"`
 	Verbose      *bool                   `json:"verbose,omitempty"`
 	Providers    []ProviderRecordConfig  `json:"providers,omitempty"`
@@ -77,7 +76,6 @@ func DefaultConfig() Config {
 	showThinking := true
 	return Config{
 		DefaultMode:  "plan",
-		GlamourStyle: "auto",
 		ShowThinking: &showThinking,
 		Providers: []ProviderRecordConfig{
 			{
@@ -129,9 +127,6 @@ func loadFile(path string) (Config, error) {
 func merge(dst, src Config) Config {
 	if src.DefaultMode != "" {
 		dst.DefaultMode = src.DefaultMode
-	}
-	if src.GlamourStyle != "" {
-		dst.GlamourStyle = src.GlamourStyle
 	}
 	if src.ShowThinking != nil {
 		dst.ShowThinking = src.ShowThinking
