@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-208-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-229-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -36,20 +36,29 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Status bar shows `hist 3/5` during history browsing
 
 ### TUI Features
+- **Incremental CellGrid Rendering** — msgDirty/msgRowCount tracking. View() skips unchanged messages, only re-renders from first dirty onward. CellGrid no longer Reset() every frame. Benchmark: ~2.3ms regardless of message count (10/50/100 tested). (ffbbf22)
 - **Reasoning folding**: click `[+]`/`[-]` markers to expand/collapse LLM reasoning blocks
 - **Tool call display**: `→ Calling tools:` with bullet list and `⏳ Running...` indicator during tool execution
 - **Character-level selection**: drag-select any range of viewport text, Ctrl+C copies rendered text (not raw markdown)
 - **[Copy] buttons**: click to copy assistant response to clipboard
 - **Response label**: gold bold `Response:` with blank line before for visual separation
 - **Auto-scroll**: viewport follows streaming output, pauses when user scrolls up
-- **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration
+- **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration, transient status messages
 
 ### Agent Loop
 - ReAct loop with tool calling support (bash, read_file, search_files, git, LSP tools)
+- Agent integration test framework: 13 tests using MockLLM step-by-step
 - Streaming reasoning + text deltas
 - Tool call lifecycle displayed in real-time
 - Multi-turn history compression: Hermes-style head/tail/middle summarization
 - 1M token context (DeepSeek V4 Flash) with automatic threshold lowering on `context_length_exceeded` errors
+
+### LSP Integration (Phase 2)
+- Long-lived connection via lazyStart() singleton — gopls starts on first LSP use, stays alive until Close()
+- Background diagnostics reader (StartReader) pushes publishDiagnostics to channel
+- 7 language configs with auto-detection: Go, Python, TypeScript/JS, Rust, C++, Java
+- 4 LSP tools exposed to LLM: definition, references, hover, symbols
+- Mock LSP test framework (io.Pipe based, no network, no gopls required)
 
 ---
 
@@ -131,14 +140,20 @@ Error recovery:
 
 # TODO
 
-- [ ] **Agent-level unit testing framework** — mock LLM provider for deterministic test runs
-- [ ] **Multi-agent session tree** — branching conversations with `/continue`
+## Completed
+
+- [x] **Incremental CellGrid Rendering** — msgDirty tracking, View() skips unchanged messages. Benchmark: ~2.3ms regardless of session size. (ffbbf22)
+- [x] **Agent-level unit testing framework** — 13 integration tests using MockLLM step-by-step. (a3868e2)
+- [x] **Multi-agent session tree** — `/fork` + `/session` branching conversations. (93f1665)
+- [x] **Theming** — default + nord palettes, `/theme` command, persists to config.json. (e4bcf85, 533d167)
+- [x] **Session management** — delete, export Markdown, search via CLI flags. (2236e84)
+- [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework. (2ab4338, ace09ff)
+
+## Remaining
+
+- [ ] **Deep LSP Phase 2** — auto-trigger diagnostics after write_file, TUI integration (error lines in viewport), incremental diagnostics (Hermes-style baseline+delta)
+- [ ] **Plugin System** — JSON-RPC subprocess tools
 - [ ] **Line-level code edit** — apply LLM suggestions as diffs to project files
-- [ ] **File watching** — auto-refresh on external file changes
-- [ ] **LSP integration Phase 2** — inline diagnostics, completion, rename
-- [ ] **Auto-formatting** — `gofmt` / `prettier` integration for code blocks
-- [ ] **Session import/export** — JSON / Markdown export of conversation history
-- [ ] **Theming** — customizable color palette via config file
 
 ---
 
