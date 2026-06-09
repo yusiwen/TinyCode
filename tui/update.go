@@ -327,6 +327,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.TextDelta != "" {
 			m.curAssistant.Content += msg.TextDelta
 		}
+		// Mark the streaming message as dirty so View() re-renders it
+		if len(m.msgDirty) > 0 {
+			m.msgDirty[len(m.msgDirty)-1] = true
+		}
 		m.autoScroll()
 		return m, m.waitForStream()
 
