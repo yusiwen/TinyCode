@@ -104,7 +104,7 @@ func (m *TuiModel) View() string {
 				MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: "Copy",
 				Action: func() {
 					copyToClipboard(msgContent)
-					m.statusMsg = "✓ Copied"
+					m.ShowStatus("✓ Copied")
 				},
 			})
 		}

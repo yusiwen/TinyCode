@@ -153,7 +153,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if idx >= 0 && idx < m.provReg.Len() {
 					if err := m.provReg.SwitchTo(idx); err == nil {
 						m.agent.Provider = m.provReg.Current()
-						m.statusMsg = m.provReg.CurrentName()
+						m.ShowStatus(m.provReg.CurrentName())
 					}
 				}
 				m.selectingProvider = false
@@ -233,7 +233,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					copyToClipboard(text)
 					m.charSelStart = selPos{Offset: -1}
 					m.charSelEnd = selPos{Offset: -1}
-					m.statusMsg = "✓ Copied"
+					m.ShowStatus("✓ Copied")
 					m.autoScroll()
 					return m, nil
 				}
@@ -244,13 +244,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				copyToClipboard(sel)
 				m.selectStart = -1
 				m.selectEnd = -1
-				m.statusMsg = "✓ Copied to clipboard"
+				m.ShowStatus("✓ Copied to clipboard")
 				m.autoScroll()
 				return m, nil
 			}
 			if m.status == StatusStreaming {
 				m.status = StatusIdle
-				m.statusMsg = "⏹ Interrupted"
+				m.ShowStatus("⏹ Interrupted")
 				m.autoScroll()
 				return m, nil
 				}
