@@ -688,6 +688,10 @@ Mouse:
 			return m, nil
 		}
 		ApplyTheme(*theme)
+		m.config.Theme = theme.Name
+		if err := m.config.Save(); err != nil {
+			tlog.Error("theme.save", "error", err)
+		}
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
 		m.autoScroll()
 	case "/plan":
