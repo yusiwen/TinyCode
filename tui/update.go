@@ -518,6 +518,33 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	switch cmd {
 	case "/exit", "/quit":
 		return m, tea.Quit
+	case "/help":
+		help := `Available commands and shortcuts:
+
+Commands:
+  /help          Show this help
+  /exit, /quit   Exit TinyCode
+  /plan          Switch to plan mode
+  /build         Switch to build mode
+  /explore       Switch to explore mode
+  /model         Switch provider/model
+  /verbose       Toggle verbose output
+  /thinking      Toggle thinking display
+
+Keyboard:
+  Enter          Submit message
+  Ctrl+J         New line (in textarea)
+  Ctrl+C         Copy selected text / Interrupt streaming / Quit
+  ↑ / ↓          Browse input history
+  Esc            Exit history browsing
+  Tab            Switch modes (when input is empty)
+
+Mouse:
+  Click + drag    Select text range
+  [Copy] button   Copy assistant message to clipboard
+  [−] / [+]      Expand/collapse reasoning block`
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: help})
+		m.autoScroll()
 	case "/verbose":
 		m.agent.Verbose = !m.agent.Verbose
 		s := "off"
