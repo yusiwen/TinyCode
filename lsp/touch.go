@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"fmt"
 	"log"
 	"os/exec"
 	"path/filepath"
@@ -74,10 +75,18 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	return diags, nil
 }
 
-// lazyStart starts the LSP server (gopls) on first use.
+// lazyStart starts the LSP server for the detected project language.
 func lazyStart() error {
 	tlog.Info("lsp.touch", "lazy_start", "root", projectRoot)
-	cmd := exec.Command("gopls")
+	lang := DetectLanguage(projectRoot)
+	if lang == "" {
+		lang = "go" // fallback
+	}
+	cfg := FindConfig(lang)
+	if cfg == nil {
+		return fmt.Errorf("no LSP server configured for %s", lang)
+	}
+	cmd := exec.Command(cfg.Command, cfg.Args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		tlog.Warn("lsp.touch", "stdin_pipe_failed", "error", err.Error())
