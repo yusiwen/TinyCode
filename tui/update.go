@@ -549,7 +549,8 @@ Commands:
   /model         Switch provider/model
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
-
+  /theme         Switch theme (nord, default)
+  /model         Switch provider/model
 Keyboard:
   Enter          Submit message
   Ctrl+J         New line (in textarea)

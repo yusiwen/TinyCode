@@ -423,7 +423,7 @@ func renderChunks(chunks []TextChunk) string {
 			b.WriteString(style.Render(c.Text))
 		} else if c.Link != "" {
 			style := lipgloss.NewStyle().
-				Foreground(colorCyan).
+				Foreground(currentTheme.SystemFg).
 				Underline(true)
 			b.WriteString(style.Render(c.Text))
 		} else {

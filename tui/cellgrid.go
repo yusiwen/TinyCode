@@ -363,17 +363,17 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 	return chunks
 }
 
-// --- Default style constructors ---
+// --- Theme-aware style constructors (updated by ApplyTheme) ---
 
 var (
-	DefaultStyle     = CellStyle{}
-	ThinkingStyle    = CellStyle{Fg: lipgloss.Color("#FFB347")}
-	ResponseLabel   = CellStyle{Fg: lipgloss.Color("#FFD700"), Bold: true}
-	HeadingStyle     = CellStyle{Fg: lipgloss.Color("#E8E8E8"), Bold: true}
-	DimStyle         = CellStyle{Fg: lipgloss.Color("#888888")}
-	SelectionStyle   = CellStyle{Fg: lipgloss.Color("#FFD700"), Bg: lipgloss.Color("#333300")}
-	UserStyle        = CellStyle{Fg: lipgloss.Color("#00FF00"), Bold: true}
-	CodeStyle        = CellStyle{Fg: lipgloss.Color("#FDD700")}
-	SystemStyle      = CellStyle{Fg: lipgloss.Color("#888888")}
-	StatusBarStyle   = CellStyle{Fg: lipgloss.Color("#AAAAAA")}
+	DefaultStyle     CellStyle
+	ThinkingStyle    CellStyle
+	ResponseLabel   CellStyle
+	HeadingStyle     CellStyle
+	DimStyle         CellStyle
+	SelectionStyle   CellStyle
+	UserStyle        CellStyle
+	CodeStyle        CellStyle
+	SystemStyle      CellStyle
+	StatusBarStyle   CellStyle
 )
