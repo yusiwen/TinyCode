@@ -169,6 +169,13 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		}
 	}
 
+	// Apply theme from config
+	if cfg.Theme != "" {
+		if t := LookupTheme(cfg.Theme); t != nil {
+			ApplyTheme(*t)
+		}
+	}
+
 	return m
 }
 

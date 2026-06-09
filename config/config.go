@@ -68,6 +68,7 @@ type Config struct {
 	Truncation   TruncationConfig         `json:"truncation,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox      SandboxConfig            `json:"sandbox,omitempty"`
+	Theme        string                   `json:"theme,omitempty"`
 	SessionDir   string                   `json:"session_dir,omitempty"`
 	LSP          LSPConfig               `json:"lsp,omitempty"`
 	LogLevel     string                  `json:"log_level,omitempty"`
@@ -216,4 +217,18 @@ func LoadConfig() Config {
 	}
 
 	return cfg
+}
+
+// Save persists the configuration to the user's global config file.
+func (cfg Config) Save() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".tinycode", "config.json")
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
