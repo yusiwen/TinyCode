@@ -146,6 +146,15 @@ func main() {
 			ag.ShowThinking = true
 			ag.CompressionThreshold = 500000 // 50% of 1M context for DeepSeek V4 Flash
 			ag.ContextLength = 1000000      // DeepSeek V4 Flash supports 1M tokens
+
+			// Load project context files (AGENTS.md, CLAUDE.md, .tinycode.md)
+			if ctx := loadProjectContext(); ctx != "" {
+				if aCfg.SystemPrompt != "" {
+					aCfg.SystemPrompt += "\n\n<project-context>\n" + ctx + "\n</project-context>"
+				} else {
+					aCfg.SystemPrompt = "Project context:\n\n" + ctx
+				}
+			}
 			if cfg.ShowThinking != nil {
 				ag.ShowThinking = *cfg.ShowThinking
 			}
@@ -296,4 +305,18 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// loadProjectContext reads project-level context files (AGENTS.md, CLAUDE.md, .tinycode.md)
+// from the current working directory. Returns the concatenated content.
+func loadProjectContext() string {
+	// Search order: first match wins
+	names := []string{"AGENTS.md", "CLAUDE.md", ".tinycode.md"}
+	for _, name := range names {
+		path := filepath.Join(".", name)
+		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+			return string(data)
+		}
+	}
+	return ""
 }
