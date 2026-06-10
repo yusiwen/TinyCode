@@ -65,12 +65,12 @@ type Config struct {
 	ShowThinking *bool                    `json:"show_thinking,omitempty"`
 	Verbose      *bool                    `json:"verbose,omitempty"`
 	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
-	Truncation   TruncationConfig         `json:"truncation,omitempty"`
+	Truncation   *TruncationConfig         `json:"truncation,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
-	Sandbox      SandboxConfig            `json:"sandbox,omitempty"`
+	Sandbox      *SandboxConfig            `json:"sandbox,omitempty"`
 	Theme        string                   `json:"theme,omitempty"`
 	SessionDir   string                   `json:"session_dir,omitempty"`
-	LSP          LSPConfig               `json:"lsp,omitempty"`
+	LSP          *LSPConfig               `json:"lsp,omitempty"`
 	LogLevel     string                  `json:"log_level,omitempty"`
 
 	// Context window and compression
@@ -94,7 +94,7 @@ func DefaultConfig() Config {
 				APIKeyEnv: "OPENAI_API_KEY",
 			},
 		},
-		Truncation: TruncationConfig{
+		Truncation: &TruncationConfig{
 			MaxLines:  2000,
 			MaxBytes:  200 * 1024,
 			OutputDir: "/tmp/tinycode/truncated",
