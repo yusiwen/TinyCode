@@ -147,6 +147,11 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("path check: %w", err)
 			}
 
+			if lsp.IsAvailable() {
+				// Snapshot baseline BEFORE write
+				lsp.SnapshotBaseline(path)
+			}
+
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				return "", fmt.Errorf("mkdir: %w", err)
 			}
@@ -158,9 +163,11 @@ func WriteFile() Tool {
 			result := fmt.Sprintf("Wrote %d bytes to %s", len(content), path)
 			tlog.Info("fs.write", "done", "file", path, "bytes", len(content))
 
-			// LSP post-write validation (non-blocking, silent on failure)
-			if diags, err := lsp.TouchFile(path, true); err == nil && len(diags) > 0 {
-				result += lsp.FormatDiagnostics(path, diags)
+			// LSP diagnostics: only new errors introduced by this edit
+			if lsp.IsAvailable() {
+				if newDiags := lsp.GetNewDiagnostics(path); len(newDiags) > 0 {
+					result += lsp.FormatDiagnostics(path, newDiags)
+				}
 			}
 
 			return result, nil

@@ -231,3 +231,56 @@ func TestMockDiagTimeout(t *testing.T) {
 		t.Fatal("test timed out — too slow")
 	}
 }
+
+func TestIncrementalDiagnostics(t *testing.T) {
+	baseline := []Diagnostic{
+		{Severity: 1, Range: Range{Start: Position{Line: 3, Character: 0}}, Message: "pre-existing error"},
+		{Severity: 2, Range: Range{Start: Position{Line: 1, Character: 0}}, Message: "unused variable"},
+	}
+
+	current := []Diagnostic{
+		{Severity: 1, Range: Range{Start: Position{Line: 3, Character: 0}}, Message: "pre-existing error"},
+		{Severity: 1, Range: Range{Start: Position{Line: 5, Character: 0}}, Message: "new error from edit"},
+		{Severity: 2, Range: Range{Start: Position{Line: 8, Character: 0}}, Message: "another warning"},
+	}
+
+	type sig struct{ line, col int; msg string }
+	baselineSet := make(map[sig]bool, len(baseline))
+	for _, d := range baseline {
+		baselineSet[sig{line: d.Range.Start.Line, col: d.Range.Start.Character, msg: d.Message}] = true
+	}
+
+	var newDiags []Diagnostic
+	for _, d := range current {
+		if !baselineSet[sig{line: d.Range.Start.Line, col: d.Range.Start.Character, msg: d.Message}] {
+			newDiags = append(newDiags, d)
+		}
+	}
+
+	if len(newDiags) != 2 {
+		t.Fatalf("expected 2 new diagnostics, got %d", len(newDiags))
+	}
+
+	for _, d := range newDiags {
+		if d.Message == "pre-existing error" {
+			t.Errorf("pre-existing error should be filtered out, got %q", d.Message)
+		}
+	}
+
+	foundNew := false
+	foundWarn := false
+	for _, d := range newDiags {
+		if d.Message == "new error from edit" {
+			foundNew = true
+		}
+		if d.Message == "another warning" {
+			foundWarn = true
+		}
+	}
+	if !foundNew {
+		t.Error("expected 'new error from edit' to be in new diagnostics")
+	}
+	if !foundWarn {
+		t.Error("expected 'another warning' to be in new diagnostics")
+	}
+}

@@ -17,6 +17,7 @@ var (
 	client       *Client
 	conn         *Conn
 	projectRoot  string
+	diagBaselines map[string][]Diagnostic // path → pre-write diagnostics
 )
 
 // Init initializes the LSP system. Call once at startup if LSP is enabled.
@@ -73,6 +74,59 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	}
 	tlog.Debug("lsp.touch", "diag_result", "file", absPath, "count", len(diags))
 	return diags, nil
+}
+
+// SnapshotBaseline captures the current diagnostics for a file before editing.
+// Call before write_file to establish a baseline for delta diagnostics.
+func SnapshotBaseline(path string) {
+	diags, err := TouchFile(path, true)
+	if err != nil {
+		tlog.Debug("lsp.baseline", "snapshot_error", "file", path, "error", err.Error())
+		return
+	}
+	mu.Lock()
+	if diagBaselines == nil {
+		diagBaselines = make(map[string][]Diagnostic)
+	}
+	diagBaselines[path] = diags
+	mu.Unlock()
+	tlog.Debug("lsp.baseline", "snapshot", "file", path, "count", len(diags))
+}
+
+// GetNewDiagnostics compares current diagnostics against the baseline.
+// Returns only diagnostics not in the baseline snapshot.
+// Call after write_file to get only the errors introduced by the edit.
+func GetNewDiagnostics(path string) []Diagnostic {
+	current, err := TouchFile(path, true)
+	if err != nil || len(current) == 0 {
+		return nil
+	}
+	
+	mu.Lock()
+	baseline := diagBaselines[path]
+	mu.Unlock()
+	
+	if len(baseline) == 0 {
+		return current
+	}
+	
+	// Build a set of baseline diagnostic signatures (line:message)
+	type sig struct{ line, col int; msg string }
+	baselineSet := make(map[sig]bool, len(baseline))
+	for _, d := range baseline {
+		baselineSet[sig{line: d.Range.Start.Line, col: d.Range.Start.Character, msg: d.Message}] = true
+	}
+	
+	// Return diagnostics not in the baseline
+	var newDiags []Diagnostic
+	for _, d := range current {
+		if !baselineSet[sig{line: d.Range.Start.Line, col: d.Range.Start.Character, msg: d.Message}] {
+			newDiags = append(newDiags, d)
+		}
+	}
+	
+	tlog.Debug("lsp.baseline", "delta", "file", path, "baseline", len(baseline), "current", len(current), "new", len(newDiags))
+	return newDiags
 }
 
 // lazyStart starts the LSP server for the detected project language.
