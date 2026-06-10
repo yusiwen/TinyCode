@@ -345,6 +345,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.curAssistant.Blocks = parseMarkdown(msg.Content)
 			}
 		}
+		// Mark dirty so View() re-renders the message with [Copy] button
+		if len(m.msgDirty) > 0 {
+			m.msgDirty[len(m.msgDirty)-1] = true
+		}
 		m.curAssistant = nil
 		m.streamDoneNotified = false
 		m.autoScroll()
