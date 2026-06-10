@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-229-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-232-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -53,12 +53,14 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Multi-turn history compression: Hermes-style head/tail/middle summarization
 - 1M token context (DeepSeek V4 Flash) with automatic threshold lowering on `context_length_exceeded` errors
 
-### LSP Integration (Phase 2)
+### LSP Integration (Phase 2 ✅)
 - Long-lived connection via lazyStart() singleton — gopls starts on first LSP use, stays alive until Close()
 - Background diagnostics reader (StartReader) pushes publishDiagnostics to channel
 - 7 language configs with auto-detection: Go, Python, TypeScript/JS, Rust, C++, Java
 - 4 LSP tools exposed to LLM: definition, references, hover, symbols
 - Mock LSP test framework (io.Pipe based, no network, no gopls required)
+- **Incremental Diagnostics** — SnapshotBaseline captures diagnostic state before write_file, GetNewDiagnostics computes delta. write_file tool reports only new errors via LSP, LLM sees focused feedback. (a2e3e07)
+- **TUI Error Tracking** — LSPDiagMsg carries per-file diagnostic sets. Status bar shows "errors: N" with live count. /diagnostics command lists all current file errors in viewport. (290818a)
 
 ---
 
@@ -147,11 +149,10 @@ Error recovery:
 - [x] **Multi-agent session tree** — `/fork` + `/session` branching conversations. (93f1665)
 - [x] **Theming** — default + nord palettes, `/theme` command, persists to config.json. (e4bcf85, 533d167)
 - [x] **Session management** — delete, export Markdown, search via CLI flags. (2236e84)
-- [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework. (2ab4338, ace09ff)
+- [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework, incremental diagnostics (SnapshotBaseline+GetNewDiagnostics), TUI error tracking (LSPDiagMsg, status bar "errors: N", /diagnostics command). (2ab4338, ace09ff, a2e3e07, 290818a)
 
 ## Remaining
 
-- [ ] **Deep LSP Phase 2** — auto-trigger diagnostics after write_file, TUI integration (error lines in viewport), incremental diagnostics (Hermes-style baseline+delta)
 - [ ] **Plugin System** — JSON-RPC subprocess tools
 - [ ] **Line-level code edit** — apply LLM suggestions as diffs to project files
 
