@@ -75,11 +75,8 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		chunks = append(chunks, tc.Render(msg, sel)...)
 	}
 
-	// "Response:" label — no indent, with blank line before (avoid double blank)
-	needsBlank := len(chunks) == 0 || strings.TrimSpace(chunks[len(chunks)-1].Text) != ""
-	if needsBlank {
-		chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
-	}
+	// "Response:" label — with blank line before
+	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	labelStyle := ResponseLabel
 	if sel {
 		labelStyle = SelectionStyle
@@ -203,7 +200,6 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if msg.Streaming {
 		chunks = append(chunks, CellChunk{Text: "  ⏳ Running...", Style: style})
 	}
-	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	return chunks
 }
 
