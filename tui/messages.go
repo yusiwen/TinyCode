@@ -50,6 +50,12 @@ type ToolResultMsg struct {
 	MsgIdx int
 }
 
+// LSPDiagMsg is sent when LSP diagnostics are available.
+type LSPDiagMsg struct {
+	FilePath string
+	Count    int
+}
+
 // TuiStatus indicates the current TUI state.
 type TuiStatus int
 

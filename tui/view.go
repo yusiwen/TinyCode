@@ -248,22 +248,26 @@ func (m *TuiModel) renderStatusBar() string {
 		histStr = fmt.Sprintf("  hist %d/%d", m.historyPos+1, len(m.inputHistory))
 	}
 
+	// Build status bar
+	diagStr := ""
+	if m.diagTotal > 0 {
+		diagStr = fmt.Sprintf("  errors: %d", m.diagTotal)
+	}
+
 	statusMsg := m.statusMsg
 	if statusMsg != "" {
 		statusMsg = "  │ " + statusMsg
 	}
-	// Auto-clear status message on subsequent renders after user action
-	// (cleared in Update on any keypress)
 
-	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d  session: %s%s%s",
+	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d%s  session: %s%s%s",
 		modeIcon, modelName, spinnerStr,
 		provName,
 		m.sessionTokens, m.sessionToolCalls, len(m.messages),
+		diagStr,
 		durStr, histStr, statusMsg)
 
 	return statusBarStyle.Render(status)
 }
-
 // providerName returns the current provider's display name.
 func (m *TuiModel) providerName() string {
 	if m.provReg == nil {

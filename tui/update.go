@@ -317,6 +317,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ToolResultMsg:
 		m.autoScroll()
 		return m, m.waitForStream()
+	case LSPDiagMsg:
+		m.diagTotal = msg.Count
+		m.diagFile = msg.FilePath
+		m.autoScroll()
+		return m, nil
 	case StreamMsg:
 		if m.curAssistant == nil {
 			return m, m.waitForStream()
@@ -564,6 +569,7 @@ Commands:
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
   /theme         Switch theme (nord, default)
+  /diagnostics   Show LSP diagnostics
   /model         Switch provider/model
 
 Keyboard:
@@ -703,6 +709,13 @@ Mouse:
 		m.MarkAllDirty()
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
 		m.autoScroll()
+	case "/diagnostics":
+		if m.diagTotal == 0 {
+			m.ShowStatus("No LSP diagnostics.")
+		} else {
+			m.ShowStatus(fmt.Sprintf("%d LSP errors in %s", m.diagTotal, m.diagFile))
+		}
+		return m, nil
 	case "/plan":
 		if err := m.registry.Set("plan"); err != nil {
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})

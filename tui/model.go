@@ -116,6 +116,10 @@ type TuiModel struct {
 	sessionStart      time.Time
 	sessionTokens     int
 	sessionToolCalls  int
+
+	// LSP diagnostics tracking
+	diagTotal   int    // total errors across all files
+	diagFile    string // most recent file with errors (for display)
 }
 
 // NewTUI creates and returns a new TUI model.
