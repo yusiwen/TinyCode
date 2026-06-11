@@ -25,7 +25,13 @@ run: build
 	./$(BINDIR)/$(NAME) $(PROMPT)
 
 test:
-	go test ./... -v -count=1
+	@go test ./... -count=1 2>&1; status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "=== ALL TESTS PASSED ==="; \
+	else \
+		echo "=== TESTS FAILED (exit $$status) ==="; \
+	fi; \
+	exit $$status
 
 lint:
 	go vet ./...
@@ -50,3 +56,18 @@ darwin-arm64:
 
 all: $(PLATFORM_LIST)
 	@echo "Built all platforms: $(PLATFORM_LIST)"
+
+# Release builds: cross-compile all platforms and create compressed archives
+gz_releases = $(addsuffix .tar.gz, $(PLATFORM_LIST))
+zip_releases = $(addsuffix .zip, $(PLATFORM_LIST))
+
+%.tar.gz: %
+	tar czf $(BINDIR)/$(NAME)-$*.tar.gz -C $(BINDIR) $(NAME)-$*
+	rm -f $(BINDIR)/$(NAME)-$*
+
+%.zip: %
+	cd $(BINDIR) && zip $(NAME)-$*.zip $(NAME)-$*
+	rm -f $(BINDIR)/$(NAME)-$*
+
+releases: $(gz_releases)
+	@echo "Release archives: $(gz_releases)"
