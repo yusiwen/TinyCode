@@ -106,15 +106,15 @@ func main() {
 
 			provReg := agent.NewProviderRegistry(records)
 
-			if cfg.LSP.Enabled {
+			if cfg.LSP != nil && cfg.LSP.Enabled {
 				lsp.Init(cfg.SessionDir)
 			}
 
 			// Wire sandbox config
-			if cfg.Sandbox.ProjectRoot != "" {
+			if cfg.Sandbox != nil && cfg.Sandbox.ProjectRoot != "" {
 				tool.DefaultSandbox.ProjectRoot = cfg.Sandbox.ProjectRoot
 			}
-			if len(cfg.Sandbox.DenyCommands) > 0 {
+			if cfg.Sandbox != nil && len(cfg.Sandbox.DenyCommands) > 0 {
 				tool.DefaultSandbox.CommandDenyList = append(
 					tool.DefaultSandbox.CommandDenyList, cfg.Sandbox.DenyCommands...)
 			}
