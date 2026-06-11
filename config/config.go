@@ -145,14 +145,19 @@ func merge(dst, src Config) Config {
 	if len(src.Providers) > 0 {
 		dst.Providers = src.Providers
 	}
-	if src.Truncation.MaxLines > 0 {
-		dst.Truncation.MaxLines = src.Truncation.MaxLines
-	}
-	if src.Truncation.MaxBytes > 0 {
-		dst.Truncation.MaxBytes = src.Truncation.MaxBytes
-	}
-	if src.Truncation.OutputDir != "" {
-		dst.Truncation.OutputDir = src.Truncation.OutputDir
+	if src.Truncation != nil {
+		if dst.Truncation == nil {
+			dst.Truncation = &TruncationConfig{}
+		}
+		if src.Truncation.MaxLines > 0 {
+			dst.Truncation.MaxLines = src.Truncation.MaxLines
+		}
+		if src.Truncation.MaxBytes > 0 {
+			dst.Truncation.MaxBytes = src.Truncation.MaxBytes
+		}
+		if src.Truncation.OutputDir != "" {
+			dst.Truncation.OutputDir = src.Truncation.OutputDir
+		}
 	}
 	if src.SessionDir != "" {
 		dst.SessionDir = src.SessionDir
@@ -166,8 +171,13 @@ func merge(dst, src Config) Config {
 	if src.CompressionThreshold > 0 {
 		dst.CompressionThreshold = src.CompressionThreshold
 	}
-	if src.LSP.Enabled {
-		dst.LSP.Enabled = true
+	if src.LSP != nil {
+		if dst.LSP == nil {
+			dst.LSP = &LSPConfig{}
+		}
+		if src.LSP.Enabled {
+			dst.LSP.Enabled = true
+		}
 	}
 
 	// Merge agent overrides
