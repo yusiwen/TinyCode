@@ -86,7 +86,7 @@ func DiscoveredNames(cwd string) string {
 	for _, s := range skills {
 		b.WriteString("- " + s.Name + ": " + s.Description + "\n")
 	}
-	b.WriteString("Use /skill <name> to load a skill.")
+	b.WriteString("Use the load_skill tool to load a skill's instructions.")
 	return b.String()
 }
 
@@ -114,6 +114,30 @@ func LoadContent(name string, cwd string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// loaded tracks which skills have been loaded via load_skill tool (cross-session dedup).
+var loaded = make(map[string]bool)
+
+// LoadOnce returns the full SKILL.md content for a skill, but only the first time.
+// The bool return indicates whether this was a fresh load (true) or a repeat (false).
+// Use as the Execute body of the load_skill tool.
+func LoadOnce(name, cwd string) (string, bool) {
+	name = strings.ToLower(name)
+	if loaded[name] {
+		return "", false
+	}
+	content := LoadContent(name, cwd)
+	if content == "" {
+		return "", false
+	}
+	loaded[name] = true
+	return content, true
+}
+
+// ResetLoaded clears the loaded-skills cache (used in tests).
+func ResetLoaded() {
+	loaded = make(map[string]bool)
 }
 
 // --- internal helpers ---

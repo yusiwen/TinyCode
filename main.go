@@ -187,6 +187,11 @@ func main() {
 			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
 			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
 			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
+			ls := tool.LoadSkill()
+			ag.AddTool(agent.Tool{
+				Name: ls.Name, Description: ls.Description,
+				Parameters: ls.Parameters, Execute: ls.Execute,
+			})
 			ag.AddTool(tool.SandboxAllowTool())
 
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"

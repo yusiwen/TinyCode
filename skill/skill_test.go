@@ -45,8 +45,8 @@ func TestDiscoveredNames(t *testing.T) {
 	if !strings.Contains(names, "Available skills") {
 		t.Error("expected 'Available skills' header")
 	}
-	if !strings.Contains(names, "/skill") {
-		t.Error("expected /skill usage hint")
+	if !strings.Contains(names, "load_skill") {
+		t.Error("expected load_skill tool usage hint")
 	}
 }
 
@@ -140,5 +140,42 @@ func TestFindByNameNotFound(t *testing.T) {
 	s := FindByName("nonexistent-skill", "")
 	if s != nil {
 		t.Errorf("expected nil for nonexistent skill, got %v", s)
+	}
+}
+
+func TestLoadOnceFirstCall(t *testing.T) {
+	ResetLoaded()
+	content, fresh := LoadOnce("code-review", "")
+	if content == "" {
+		t.Fatal("expected non-empty content on first load")
+	}
+	if !fresh {
+		t.Error("expected fresh=true on first load")
+	}
+}
+
+func TestLoadOnceDedup(t *testing.T) {
+	ResetLoaded()
+	_, fresh1 := LoadOnce("code-review", "")
+	if !fresh1 {
+		t.Fatal("expected first call to be fresh")
+	}
+	content2, fresh2 := LoadOnce("code-review", "")
+	if content2 != "" {
+		t.Errorf("expected empty content on repeat load, got %q", content2)
+	}
+	if fresh2 {
+		t.Error("expected fresh=false on repeat call")
+	}
+}
+
+func TestLoadOnceNotFound(t *testing.T) {
+	ResetLoaded()
+	content, fresh := LoadOnce("nonexistent-skill", "")
+	if content != "" {
+		t.Errorf("expected empty content for nonexistent skill, got %q", content)
+	}
+	if fresh {
+		t.Error("expected fresh=false for nonexistent skill")
 	}
 }

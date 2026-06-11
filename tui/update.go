@@ -295,8 +295,6 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ChatMsg:
-		// Auto-load skills mentioned in the user's message
-		m.loadMentionedSkills(msg.Text)
 		m.messages = append(m.messages, chatMessage{Role: "user", Content: msg.Text})
 		cur := chatMessage{Role: "assistant", Streaming: true}
 		m.messages = append(m.messages, cur)
@@ -530,35 +528,7 @@ func (m *TuiModel) autoScroll() {
 	}
 }
 
-// loadMentionedSkills scans text for skill names. If found and not yet loaded,
-// injects the full SKILL.md content as a system message. Dedup via loadedSkills.
-func (m *TuiModel) loadMentionedSkills(text string) {
-	skills := skill.Discover(".")
-	if len(skills) == 0 {
-		return
-	}
-	if m.loadedSkills == nil {
-		m.loadedSkills = make(map[string]bool)
-	}
-	for _, s := range skills {
-		if m.loadedSkills[s.Name] {
-			continue
-		}
-		if strings.Contains(strings.ToLower(text), strings.ToLower(s.Name)) {
-			content := skill.LoadContent(s.Name, ".")
-			if content == "" {
-				continue
-			}
-			m.messages = append(m.messages, chatMessage{
-				Role:    "system",
-				Content: fmt.Sprintf("Loaded skill: %s\n\n%s", s.Name, content),
-			})
-			m.loadedSkills[s.Name] = true
-		}
-	}
-}
-
-// submitInput handles user text input submission.
+// submitInput handles user text input (slash commands or normal messages).
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
 	if text == "" {
@@ -762,25 +732,30 @@ Mouse:
 		}
 		name := parts[1]
 		var found *skill.Skill
-		for i := range skills {
-			if skills[i].Name == name {
-				found = &skills[i]
-				break
+			for i := range skills {
+				if skills[i].Name == name {
+					found = &skills[i]
+					break
+				}
 			}
-		}
-		if found == nil {
-			m.ShowStatus(fmt.Sprintf("Skill not found: %s", name))
-			return m, nil
-		}
-		// Load full content
-		content := skill.LoadContent(name, ".")
-		if content == "" {
-			content = found.Description
-		}
-		m.messages = append(m.messages, chatMessage{
-			Role: "system",
-			Content: fmt.Sprintf("Loaded skill: %s\n\n%s", name, content),
-		})
+			if found == nil {
+				m.ShowStatus(fmt.Sprintf("Skill not found: %s", name))
+				return m, nil
+			}
+			// Load full content (uses same dedup as load_skill tool)
+			content, fresh := skill.LoadOnce(name, ".")
+			if content == "" {
+				content = found.Description
+			}
+			msg := "Loaded skill: " + name
+			if !fresh {
+				msg += " (already loaded)"
+			}
+			msg += "\n\n" + content
+			m.messages = append(m.messages, chatMessage{
+				Role:    "system",
+				Content: msg,
+			})
 		m.autoScroll()
 		return m, nil
 	case "/plan":

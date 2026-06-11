@@ -91,10 +91,9 @@ type TuiModel struct {
 	// CellGrid (reused across renders)
 	grid *CellGrid
 
-	// loadedSkills tracks which skills have been loaded into conversation.
+	// Incremental render tracking
 	msgRowCount []int      // rendered row count per message (0 = not yet rendered)
 	msgDirty    []bool     // true = needs re-render
-	loadedSkills map[string]bool // progressive skill loading dedup
 
 	// Status bar message (transient, replaces system messages)
 	statusMsg string
