@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-232-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-247-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -62,6 +62,12 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Incremental Diagnostics** — SnapshotBaseline captures diagnostic state before write_file, GetNewDiagnostics computes delta. write_file tool reports only new errors via LSP, LLM sees focused feedback. (a2e3e07)
 - **TUI Error Tracking** — LSPDiagMsg carries per-file diagnostic sets. Status bar shows "errors: N" with live count. /diagnostics command lists all current file errors in viewport. (290818a)
 
+### Skill System
+- **SKILL.md-based discovery** — three-layer scan: embedded (skill/builtin/) → ~/.tinycode/skills/ → project .tinycode/skills/ (upward search). Later sources override earlier. (cbd6db3)
+- **/skill command in TUI** — /skill lists available skills; /skill <name> loads full SKILL.md content as system message. (cbd6db3)
+- **Skill index auto-injected** into system prompt at startup. Startup shows "13 tools, 2 skills loaded". (8fa8800)
+- **2 builtin skills**: code-review, git-commit (as markdown files in skill/builtin/)
+- **11 new tests** across skill package and tui package — 247 tests total. (cbd6db3)
 ---
 
 # Architecture
@@ -150,6 +156,7 @@ Error recovery:
 - [x] **Theming** — default + nord palettes, `/theme` command, persists to config.json. (e4bcf85, 533d167)
 - [x] **Session management** — delete, export Markdown, search via CLI flags. (2236e84)
 - [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework, incremental diagnostics (SnapshotBaseline+GetNewDiagnostics), TUI error tracking (LSPDiagMsg, status bar "errors: N", /diagnostics command). (2ab4338, ace09ff, a2e3e07, 290818a)
+- [x] **Skill System Refactoring** — SKILL.md-based discovery (embedded → ~/.tinycode/skills/ → project .tinycode/skills/), /skill command in TUI, skill index in system prompt, 2 builtin skills (code-review, git-commit) as .md files, removed old Go skill code. 11 new tests. (cbd6db3, 8fa8800)
 
 ## Remaining
 
