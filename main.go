@@ -74,6 +74,11 @@ func main() {
 			var records []agent.ProviderRecord
 			for i, pc := range cfg.Providers {
 				key := os.Getenv(pc.APIKey())
+				// Fallback: if no explicit api_key_env was set and the derived key is
+				// empty, try OPENAI_API_KEY as a generic fallback.
+				if key == "" && pc.APIKeyEnv == "" {
+					key = os.Getenv("OPENAI_API_KEY")
+				}
 				// CLI flags override the first provider's key (backward compat)
 				if i == 0 && apiKey != "" {
 					key = apiKey

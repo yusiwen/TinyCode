@@ -38,8 +38,9 @@ type AgentOverride struct {
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 }
 
-// APIKey returns the effective env var name for this provider's API key.
-// Priority: api_key_env (if set) → UPPER(NAME)_API_KEY → OPENAI_API_KEY
+// APIKey returns the env var name to look up for this provider's API key.
+// Priority: api_key_env (if set) → UPPER(NAME)_API_KEY
+// Callers should fallback to OPENAI_API_KEY when this returns empty.
 func (p ProviderRecordConfig) APIKey() string {
 	if p.APIKeyEnv != "" {
 		return p.APIKeyEnv
@@ -87,11 +88,10 @@ func DefaultConfig() Config {
 		ShowThinking: &showThinking,
 		Providers: []ProviderRecordConfig{
 			{
-				Name:      "deepseek",
-				Type:      "openai",
-				Model:     "deepseek-v4-flash",
-				BaseURL:   "https://api.deepseek.com",
-				APIKeyEnv: "OPENAI_API_KEY",
+				Name:    "deepseek",
+				Type:    "openai",
+				Model:   "deepseek-v4-flash",
+				BaseURL: "https://api.deepseek.com",
 			},
 		},
 		Truncation: &TruncationConfig{
