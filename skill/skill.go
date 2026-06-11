@@ -1,56 +1,210 @@
 package skill
 
 import (
-	"context"
-
-	"github.com/yusiwen/tinycode/agent"
+	"embed"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
-// Step is a single step in a skill's execution plan.
-type Step struct {
-	ToolName string         `json:"tool_name"`
-	Input    map[string]any `json:"input"`
-}
+//go:embed builtin/*.md
+var builtinFS embed.FS
 
-// Skill is a multi-step, higher-level capability composed of multiple tools.
-// Skills are registered at startup and exposed to the LLM as tools.
+// Skill holds metadata and content for one discovered skill.
 type Skill struct {
 	Name        string
 	Description string
-	Steps       []Step           // ordered steps executed in sequence
-	Handler     func(ctx context.Context, args map[string]any) (string, error)
+	Content     string // full SKILL.md content (including frontmatter)
+	Builtin     bool   // true if compiled into binary
+	Path        string // file path (for user skills) or "builtin"
 }
 
-// Registry manages all registered skills.
-type Registry struct {
-	skills []Skill
+// Discover scans all skill sources and returns the merged list.
+// Order: builtin → global (~/.tinycode/skills/) → project (.tinycode/skills/ from cwd upward).
+// Later sources override earlier ones with the same name.
+func Discover(cwd string) []Skill {
+	var skills []Skill
+
+	// 1. Builtin (embedded)
+	entries, err := builtinFS.ReadDir("builtin")
+	if err == nil {
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			if s := parseFile(e.Name(), readBuiltin(e.Name()), "builtin", true); s != nil {
+				skills = append(skills, *s)
+			}
+		}
+	}
+
+	// 2. Global (~/.tinycode/skills/)
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		globalDir := filepath.Join(home, ".tinycode", "skills")
+		skills = append(skills, scanDir(globalDir, false)...)
+	}
+
+	// 3. Project (.tinycode/skills/ from cwd upward)
+	if cwd != "" {
+		projectDir := findProjectDir(cwd, ".tinycode", "skills")
+		if projectDir != "" {
+			skills = append(skills, scanDir(projectDir, false)...)
+		}
+	}
+
+	// Deduplicate: later sources override earlier ones with the same name
+	seen := map[string]bool{}
+	var deduped []Skill
+	for i := len(skills) - 1; i >= 0; i-- {
+		s := skills[i]
+		if !seen[s.Name] {
+			deduped = append([]Skill{s}, deduped...)
+			seen[s.Name] = true
+		}
+	}
+
+	sort.Slice(deduped, func(i, j int) bool {
+		if deduped[i].Builtin != deduped[j].Builtin {
+			return deduped[i].Builtin // builtin first (if no override exists)
+		}
+		return deduped[i].Name < deduped[j].Name
+	})
+
+	return deduped
 }
 
-// NewRegistry creates an empty skill registry.
-func NewRegistry() *Registry {
-	return &Registry{}
+// DiscoveredNames returns "name — description" lines for system prompt injection.
+func DiscoveredNames(cwd string) string {
+	skills := Discover(cwd)
+	if len(skills) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nAvailable skills:\n")
+	for _, s := range skills {
+		b.WriteString("- " + s.Name + ": " + s.Description + "\n")
+	}
+	b.WriteString("Use /skill <name> to load a skill.")
+	return b.String()
 }
 
-// Register adds a skill.
-func (r *Registry) Register(s Skill) {
-	r.skills = append(r.skills, s)
+// FindByName locates a skill by name across all sources.
+func FindByName(name string, cwd string) *Skill {
+	for _, s := range Discover(cwd) {
+		if strings.EqualFold(s.Name, name) {
+			return &s
+		}
+	}
+	return nil
 }
 
-// List returns all registered skills.
-func (r *Registry) List() []Skill {
-	cp := make([]Skill, len(r.skills))
-	copy(cp, r.skills)
-	return cp
+// LoadContent returns the full SKILL.md content for a skill.
+func LoadContent(name string, cwd string) string {
+	s := FindByName(name, cwd)
+	if s == nil {
+		return ""
+	}
+	if s.Builtin {
+		return readBuiltin(name + ".md")
+	}
+	data, err := os.ReadFile(s.Path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
-// ToTool wraps the Skill into an agent.Tool so it can be registered with the agent.
-// The tool's Execute delegates to the Skill's Handler.
-func (s Skill) ToTool() agent.Tool {
-	params := map[string]any{"type": "object"}
-	return agent.Tool{
-		Name:        s.Name,
-		Description: s.Description,
-		Parameters:  params,
-		Execute:     s.Handler,
+// --- internal helpers ---
+
+func readBuiltin(name string) string {
+	data, err := builtinFS.ReadFile("builtin/" + name)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func scanDir(dir string, builtin bool) []Skill {
+	var skills []Skill
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		mdPath := filepath.Join(dir, e.Name(), "SKILL.md")
+		data, err := os.ReadFile(mdPath)
+		if err != nil {
+			continue
+		}
+		s := parseFile(e.Name(), string(data), mdPath, false)
+		if s != nil {
+			skills = append(skills, *s)
+		}
+	}
+	return skills
+}
+
+func parseFile(filename, content, path string, builtin bool) *Skill {
+	// Extract name from first SKILL.md style frontmatter
+	name := ""
+	desc := ""
+
+	// Try YAML frontmatter: ---\nname: ...\ndescription: ...\n---
+	rest := content
+	if strings.HasPrefix(strings.TrimSpace(rest), "---") {
+		parts := strings.SplitN(rest[3:], "---", 2)
+		if len(parts) == 2 {
+			front := strings.TrimSpace(parts[0])
+			for _, line := range strings.Split(front, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "name:") {
+					name = strings.TrimSpace(line[5:])
+				}
+				if strings.HasPrefix(line, "description:") {
+					desc = strings.TrimSpace(line[12:])
+				}
+			}
+		}
+	}
+
+	// Fallback: derive name from filename (e.g., "code-review.md" → "code-review")
+	if name == "" {
+		name = strings.TrimSuffix(filename, ".md")
+		// If it's in a subdirectory, use the dir name
+	}
+	if name == "" {
+		return nil
+	}
+	if desc == "" {
+		desc = name // fallback
+	}
+
+	return &Skill{
+		Name:        name,
+		Description: desc,
+		Content:     content,
+		Builtin:     builtin,
+		Path:        path,
+	}
+}
+
+// findProjectDir walks upward from start looking for a subdirectory like ".tinycode/skills".
+func findProjectDir(start, subdir, skillDir string) string {
+	dir := start
+	for {
+		candidate := filepath.Join(dir, subdir, skillDir)
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
 	}
 }

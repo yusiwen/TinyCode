@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/types"
@@ -568,6 +569,7 @@ Commands:
   /model         Switch provider/model
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
+  /skill         Load a skill's instructions (e.g. /skill code-review)
   /theme         Switch theme (nord, default)
   /diagnostics   Show LSP diagnostics
   /model         Switch provider/model
@@ -715,6 +717,40 @@ Mouse:
 		} else {
 			m.ShowStatus(fmt.Sprintf("%d LSP errors in %s", m.diagTotal, m.diagFile))
 		}
+		return m, nil
+	case "/skill":
+		parts := strings.Fields(cmd)
+		skills := skill.Discover(".")
+		if len(parts) < 2 {
+			var names []string
+			for _, s := range skills {
+				names = append(names, s.Name)
+			}
+			m.ShowStatus("Usage: /skill <name>. Available: " + strings.Join(names, ", "))
+			return m, nil
+		}
+		name := parts[1]
+		var found *skill.Skill
+		for i := range skills {
+			if skills[i].Name == name {
+				found = &skills[i]
+				break
+			}
+		}
+		if found == nil {
+			m.ShowStatus(fmt.Sprintf("Skill not found: %s", name))
+			return m, nil
+		}
+		// Load full content
+		content := skill.LoadContent(name, ".")
+		if content == "" {
+			content = found.Description
+		}
+		m.messages = append(m.messages, chatMessage{
+			Role: "system",
+			Content: fmt.Sprintf("Loaded skill: %s\n\n%s", name, content),
+		})
+		m.autoScroll()
 		return m, nil
 	case "/plan":
 		if err := m.registry.Set("plan"); err != nil {

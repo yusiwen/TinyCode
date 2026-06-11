@@ -155,6 +155,10 @@ func main() {
 					aCfg.SystemPrompt = "Project context:\n\n" + ctx
 				}
 			}
+			// Inject available skills index into system prompt
+			if skillIndex := skill.DiscoveredNames("."); skillIndex != "" {
+				aCfg.SystemPrompt += skillIndex
+			}
 			if cfg.ShowThinking != nil {
 				ag.ShowThinking = *cfg.ShowThinking
 			}
@@ -179,8 +183,6 @@ func main() {
 				Name: tool.SearchFiles().Name, Description: tool.SearchFiles().Description,
 				Parameters: tool.SearchFiles().Parameters, Execute: tool.SearchFiles().Execute,
 			})
-			ag.AddTool(skill.NewCodeReviewSkill().ToTool())
-			ag.AddTool(skill.NewGitCommitSkill().ToTool())
 			ag.AddTool(lsp.ToolFactory(lsp.ToolGoToDefinition))
 			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
 			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
