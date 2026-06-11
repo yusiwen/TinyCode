@@ -102,7 +102,7 @@ func DefaultConfig() Config {
 		Agents: map[string]AgentOverride{
 			"plan": {
 				MaxSteps:    20,
-				DeniedTools: []string{"write_file", "git_commit", "sandbox_allow", "task"},
+				DeniedTools: []string{"write_file", "git_commit", "sandbox_allow", "task", "skill_manage"},
 			},
 			"build": {
 				MaxSteps: 30,
