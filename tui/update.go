@@ -723,11 +723,18 @@ Mouse:
 		parts := strings.Fields(cmd)
 		skills := skill.Discover(".")
 		if len(parts) < 2 {
-			var names []string
+			var b strings.Builder
+			b.WriteString(fmt.Sprintf("Available skills (%d):\n", len(skills)))
 			for _, s := range skills {
-				names = append(names, s.Name)
+				label := ""
+				if s.Builtin {
+					label = " [builtin]"
+				}
+				b.WriteString(fmt.Sprintf("  %s — %s%s\n", s.Name, s.Description, label))
 			}
-			m.ShowStatus("Usage: /skill <name>. Available: " + strings.Join(names, ", "))
+			b.WriteString("\nUse /skill <name> to load, or the load_skill tool.")
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: b.String()})
+			m.autoScroll()
 			return m, nil
 		}
 		name := parts[1]

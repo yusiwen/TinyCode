@@ -13,9 +13,16 @@ func TestSkillCommandList(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("expected nil cmd for skill list, got %v", cmd)
 	}
-	// Should show usage in status bar
-	if !strings.Contains(m.statusMsg, "code-review") {
-		t.Errorf("expected code-review in skill list, got %q", m.statusMsg)
+	// Should add a system message with the skill list
+	var found bool
+	for _, msg := range m.messages {
+		if strings.Contains(msg.Content, "code-review") && strings.Contains(msg.Content, "Available skills") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected 'code-review' and 'Available skills' in a system message")
 	}
 }
 
