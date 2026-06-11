@@ -295,6 +295,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ChatMsg:
+		// Auto-load skills mentioned in the user's message
+		m.loadMentionedSkills(msg.Text)
 		m.messages = append(m.messages, chatMessage{Role: "user", Content: msg.Text})
 		cur := chatMessage{Role: "assistant", Streaming: true}
 		m.messages = append(m.messages, cur)
@@ -528,6 +530,35 @@ func (m *TuiModel) autoScroll() {
 	}
 }
 
+// loadMentionedSkills scans text for skill names. If found and not yet loaded,
+// injects the full SKILL.md content as a system message. Dedup via loadedSkills.
+func (m *TuiModel) loadMentionedSkills(text string) {
+	skills := skill.Discover(".")
+	if len(skills) == 0 {
+		return
+	}
+	if m.loadedSkills == nil {
+		m.loadedSkills = make(map[string]bool)
+	}
+	for _, s := range skills {
+		if m.loadedSkills[s.Name] {
+			continue
+		}
+		if strings.Contains(strings.ToLower(text), strings.ToLower(s.Name)) {
+			content := skill.LoadContent(s.Name, ".")
+			if content == "" {
+				continue
+			}
+			m.messages = append(m.messages, chatMessage{
+				Role:    "system",
+				Content: fmt.Sprintf("Loaded skill: %s\n\n%s", s.Name, content),
+			})
+			m.loadedSkills[s.Name] = true
+		}
+	}
+}
+
+// submitInput handles user text input submission.
 func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
 	if text == "" {
