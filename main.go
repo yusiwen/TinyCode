@@ -192,6 +192,11 @@ func main() {
 				Name: ls.Name, Description: ls.Description,
 				Parameters: ls.Parameters, Execute: ls.Execute,
 			})
+			sm := tool.SkillManage()
+			ag.AddTool(agent.Tool{
+				Name: sm.Name, Description: sm.Description,
+				Parameters: sm.Parameters, Execute: sm.Execute,
+			})
 			ag.AddTool(tool.SandboxAllowTool())
 
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"

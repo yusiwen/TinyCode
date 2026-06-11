@@ -179,3 +179,118 @@ func TestLoadOnceNotFound(t *testing.T) {
 		t.Error("expected fresh=false for nonexistent skill")
 	}
 }
+
+func TestCreateAndDelete(t *testing.T) {
+	ResetLoaded()
+	content := `---
+name: test-skill
+description: A test skill
+---
+## Steps
+1. Do something
+`
+	if _, err := CreateOne(content); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	defer DeleteOne("test-skill")
+
+	// Verify it was created and can be discovered
+	skills := Discover(".")
+	found := false
+	for _, s := range skills {
+		if s.Name == "test-skill" {
+			found = true
+			if s.Builtin {
+				t.Error("expected created skill to be user (not builtin)")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected test-skill to appear in Discover")
+	}
+
+	// Verify LoadOnce works on created skill
+	ResetOne("test-skill")
+	content2, fresh := LoadOnce("test-skill", ".")
+	if !fresh {
+		t.Error("expected fresh=true after ResetOne")
+	}
+	if !strings.Contains(content2, "Do something") {
+		t.Error("expected content to contain Steps")
+	}
+}
+
+func TestEditOverrideBuiltin(t *testing.T) {
+	ResetLoaded()
+	override := `---
+name: code-review
+description: Custom code review override
+---
+## Custom Steps
+1. User's custom review process
+`
+	isOverride, err := EditOne("code-review", override)
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	if !isOverride {
+		t.Error("expected isOverride=true for builtin skill edit")
+	}
+	defer DeleteOne("code-review")
+
+	// Verify discovery picks up the override
+	skills := Discover(".")
+	for _, s := range skills {
+		if s.Name == "code-review" && !s.Builtin {
+			return // found the user override
+		}
+	}
+	t.Error("expected user override of code-review to be discoverable")
+}
+
+func TestDeleteBuiltinFails(t *testing.T) {
+	err := DeleteOne("code-review")
+	if err == nil {
+		t.Fatal("expected error deleting builtin skill")
+	}
+	if !strings.Contains(err.Error(), "cannot delete builtin") {
+		t.Errorf("expected 'cannot delete builtin' in error, got %q", err)
+	}
+}
+
+func TestDeleteNonexistentFails(t *testing.T) {
+	err := DeleteOne("nonexistent-skill")
+	if err == nil {
+		t.Fatal("expected error deleting nonexistent skill")
+	}
+}
+
+func TestCreateEmptyContentFails(t *testing.T) {
+	_, err := CreateOne("")
+	if err == nil {
+		t.Fatal("expected error with empty content")
+	}
+}
+
+func TestListAll(t *testing.T) {
+	all := ListAll(".")
+	if len(all) < 2 {
+		t.Fatalf("expected at least 2 skills, got %d", len(all))
+	}
+	hasBuiltin := false
+	hasUser := false
+	for _, s := range all {
+		if s.Source == "builtin" {
+			hasBuiltin = true
+		}
+		if s.Source == "user" {
+			hasUser = true
+		}
+	}
+	if !hasBuiltin {
+		t.Error("expected builtin skills in ListAll")
+	}
+	// User skills may or may not exist depending on test environment
+	_ = hasUser
+}

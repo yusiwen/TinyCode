@@ -2,6 +2,7 @@ package skill
 
 import (
 	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -118,6 +119,104 @@ func LoadContent(name string, cwd string) string {
 
 // loaded tracks which skills have been loaded via load_skill tool (cross-session dedup).
 var loaded = make(map[string]bool)
+
+// UserSkillDir returns the user's skill directory (~/.tinycode/skills/).
+func UserSkillDir() string {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".tinycode", "skills")
+}
+
+// ResetOne clears the loaded cache for a single skill, allowing re-load.
+func ResetOne(name string) {
+	delete(loaded, strings.ToLower(name))
+}
+
+// DeleteOne removes a user skill from disk. Returns an error if the skill
+// is builtin (read-only) or does not exist.
+func DeleteOne(name string) error {
+	name = strings.ToLower(name)
+	// Don't allow deleting builtin skills
+	if FindByName(name, "") != nil {
+		s := FindByName(name, "")
+		if s != nil && s.Builtin {
+			return fmt.Errorf("cannot delete builtin skill: %s", name)
+		}
+	}
+	dir := filepath.Join(UserSkillDir(), name)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return fmt.Errorf("skill not found: %s", name)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("delete %s: %w", name, err)
+	}
+	delete(loaded, name)
+	return nil
+}
+
+// CreateOne creates a new user skill from a SKILL.md content string.
+// Returns the name of the created skill.
+func CreateOne(content string) (string, error) {
+	// Parse the frontmatter to extract the name
+	s := parseFile("", content, "", false)
+	if s == nil || s.Name == "" {
+		return "", fmt.Errorf("invalid SKILL.md: missing name in frontmatter")
+	}
+	name := strings.ToLower(s.Name)
+	dir := filepath.Join(UserSkillDir(), name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("write %s/SKILL.md: %w", name, err)
+	}
+	// Clear cache so next LoadOnce re-reads
+	ResetOne(name)
+	return name, nil
+}
+
+// EditOne updates an existing user skill. For builtin skills, creates a user override.
+func EditOne(name string, content string) (isOverride bool, err error) {
+	normalized := strings.ToLower(name)
+	// Check if existing is builtin
+	if FindByName(normalized, "") != nil {
+		if s := FindByName(normalized, ""); s != nil && s.Builtin {
+			// Create user override (don't touch the embedded file)
+			isOverride = true
+		}
+	}
+	dir := filepath.Join(UserSkillDir(), normalized)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return isOverride, fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0644); err != nil {
+		return isOverride, fmt.Errorf("write %s/SKILL.md: %w", normalized, err)
+	}
+	ResetOne(normalized)
+	return isOverride, nil
+}
+
+// ListAll returns all skills with their source type.
+func ListAll(cwd string) []SkillWithSource {
+	skills := Discover(cwd)
+	result := make([]SkillWithSource, len(skills))
+	for i, s := range skills {
+		src := "user"
+		if s.Builtin {
+			src = "builtin"
+		}
+		result[i] = SkillWithSource{Skill: s, Source: src}
+	}
+	return result
+}
+
+// SkillWithSource pairs a Skill with its source label.
+type SkillWithSource struct {
+	Skill  Skill
+	Source string // "builtin" or "user"
+}
 
 // LoadOnce returns the full SKILL.md content for a skill, but only the first time.
 // The bool return indicates whether this was a fresh load (true) or a repeat (false).
