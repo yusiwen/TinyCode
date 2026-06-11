@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -10,6 +11,7 @@ import (
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/session"
+	"github.com/yusiwen/tinycode/skill"
 )
 
 // Button represents a clickable region in the message area.
@@ -182,6 +184,14 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		if t := LookupTheme(cfg.Theme); t != nil {
 			ApplyTheme(*t)
 		}
+	}
+
+	// Startup status message
+	if ag != nil && len(ag.Tools) > 0 {
+		toolCount := len(ag.Tools)
+		skillCount := len(skill.Discover("."))
+		msg := fmt.Sprintf("TinyCode ready — %d tools, %d skills loaded", toolCount, skillCount)
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: msg})
 	}
 
 	return m
