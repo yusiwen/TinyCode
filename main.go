@@ -20,6 +20,13 @@ import (
 	"github.com/yusiwen/tinycode/tui"
 )
 
+// Build-time overrides (set via ldflags in Makefile)
+var (
+	Version   = "dev"
+	CommitSHA = "unknown"
+	BuildTime = "unknown"
+)
+
 func init() {
 	godotenv.Load(filepath.Join(".tinycode", ".env"))
 	godotenv.Load(filepath.Join(os.Getenv("HOME"), ".tinycode", ".env"))
@@ -38,8 +45,9 @@ func main() {
 	var searchSessions string
 
 	rootCmd := &cobra.Command{
-		Use:   "tinycode",
-		Short: "TinyCode - AI coding agent in Go",
+		Use:     "tinycode",
+		Short:   "TinyCode - AI coding agent in Go",
+		Version: fmt.Sprintf("%s (commit %s, built %s)", Version, CommitSHA, BuildTime),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.LoadConfig()
 
