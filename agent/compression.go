@@ -135,6 +135,17 @@ Provide a concise summary in 3-5 sentences.`, middleText.String())
 	compressed = append(compressed, head...)
 	compressed = append(compressed, summaryMsg)
 	compressed = append(compressed, tail...)
+
+	// Inject active todo items after compression so LLM doesn't redo completed work
+	if a.TodoStorer != nil {
+		if snapshot := a.TodoStorer.FormatForInjection(); snapshot != "" {
+			compressed = append(compressed, types.Message{
+				Role:    types.RoleSystem,
+				Content: "[ACTIVE TODO ITEMS]\n" + snapshot,
+			})
+		}
+	}
+
 	return compressed, nil
 }
 

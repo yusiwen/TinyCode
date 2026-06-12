@@ -33,6 +33,9 @@ type Agent struct {
 	// Discovered context length (lowered after context_length_exceeded errors)
 	discoveredCtxLen int
 
+	// TodoStorer (used by compression for active-todo injection)
+	TodoStorer interface{ FormatForInjection() string }
+
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int

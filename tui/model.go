@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -226,6 +227,20 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 			// Restore provider/model from session
 			if sess.ModelName != "" && m.provReg != nil {
 				m.provReg.SwitchToName(sess.ModelName)
+			}
+		}
+	}
+
+	// Recover todo state from session history (find most recent todo result)
+	if todoStore != nil && len(m.messages) > 0 {
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			msg := m.messages[i]
+			if msg.Role == "assistant" && strings.Contains(msg.Content, "\"todos\"") {
+				var result tool.TodoResult
+				if err := json.Unmarshal([]byte(msg.Content), &result); err == nil && len(result.Todos) > 0 {
+					todoStore.Write(result.Todos, false)
+					break
+				}
 			}
 		}
 	}

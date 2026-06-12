@@ -33,8 +33,8 @@ type TodoSummary struct {
 	Cancelled  int `json:"cancelled"`
 }
 
-// todoResult is the structured response returned by the todo tool.
-type todoResult struct {
+	// Todo result type for JSON serialization
+type TodoResult struct {
 	Todos   []TodoItem  `json:"todos"`
 	Summary TodoSummary `json:"summary"`
 }
@@ -211,7 +211,7 @@ func Todo(store *TodoStore) Tool {
 			}
 
 			summary := store.Summary()
-			result := todoResult{
+			result := TodoResult{
 				Todos:   store.Read(),
 				Summary: summary,
 			}

@@ -214,6 +214,7 @@ func main() {
 
 			// Todo tool with shared store
 			todoStore := tool.NewTodoStore()
+			ag.TodoStorer = todoStore
 			td := tool.Todo(todoStore)
 			ag.AddTool(agent.Tool{
 				Name: td.Name, Description: td.Description,

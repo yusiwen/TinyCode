@@ -132,3 +132,82 @@ func TestTokenThresholdUnit(t *testing.T) {
 		t.Error("expected [COMPRESSED HISTORY] message in compressed output")
 	}
 }
+
+// mockTodoStorer implements the TodoStorer interface for testing.
+type mockTodoStorer struct {
+	snapshot string
+}
+
+func (m *mockTodoStorer) FormatForInjection() string {
+	return m.snapshot
+}
+
+func TestCompressTodoInjection(t *testing.T) {
+	a := &Agent{
+		CompressionThreshold: 50,
+		ContextLength:        200,
+		TodoStorer: &mockTodoStorer{
+			snapshot: "[>] Fix bug\n[ ] Write test\n",
+		},
+		Provider: &MockProvider{
+			ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+				return &types.ChatResponse{Content: "Summary."}, nil
+			},
+		},
+	}
+	var history []types.Message
+	for i := 0; i < 8; i++ {
+		history = append(history,
+			types.Message{Role: types.RoleUser, Content: "A long enough user message that accumulates tokens."},
+			types.Message{Role: types.RoleAssistant, Content: "A detailed assistant response with analysis and code."},
+		)
+	}
+	result, err := a.compressHistory(history)
+	if err != nil {
+		t.Fatalf("compress error: %v", err)
+	}
+	// Should contain ACTIVE TODO ITEMS
+	found := false
+	for _, m := range result {
+		if strings.Contains(m.Content, "ACTIVE TODO ITEMS") {
+			found = true
+			if !strings.Contains(m.Content, "Fix bug") || !strings.Contains(m.Content, "Write test") {
+				t.Error("expected todo items in injection")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected [ACTIVE TODO ITEMS] in compressed output")
+	}
+}
+
+func TestCompressNoTodoInjection(t *testing.T) {
+	a := &Agent{
+		CompressionThreshold: 50,
+		ContextLength:        200,
+		TodoStorer:           &mockTodoStorer{snapshot: ""},
+		Provider: &MockProvider{
+			ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+				return &types.ChatResponse{Content: "Summary."}, nil
+			},
+		},
+	}
+	var history []types.Message
+	for i := 0; i < 8; i++ {
+		history = append(history,
+			types.Message{Role: types.RoleUser, Content: "A long enough user message."},
+			types.Message{Role: types.RoleAssistant, Content: "A detailed assistant response."},
+		)
+	}
+	result, err := a.compressHistory(history)
+	if err != nil {
+		t.Fatalf("compress error: %v", err)
+	}
+	for _, m := range result {
+		if strings.Contains(m.Content, "ACTIVE TODO ITEMS") {
+			t.Error("expected no todo injection when storer is empty")
+			break
+		}
+	}
+}

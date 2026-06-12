@@ -20,7 +20,7 @@ func TestTodoCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read error: %v", err)
 	}
-	var res todoResult
+	var res TodoResult
 	json.Unmarshal([]byte(result), &res)
 	if res.Summary.Total != 0 {
 		t.Errorf("expected 0 items, got %d", res.Summary.Total)
@@ -69,7 +69,7 @@ func TestTodoMerge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("merge error: %v", err)
 	}
-	var res todoResult
+	var res TodoResult
 	json.Unmarshal([]byte(result), &res)
 	if res.Summary.Total != 3 {
 		t.Errorf("expected 3 items after merge, got %d", res.Summary.Total)
@@ -136,7 +136,7 @@ func TestTodoCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cancel error: %v", err)
 	}
-	var res todoResult
+	var res TodoResult
 	json.Unmarshal([]byte(result), &res)
 	if res.Summary.Cancelled != 1 {
 		t.Errorf("expected 1 cancelled, got %d", res.Summary.Cancelled)
@@ -155,7 +155,7 @@ func TestTodoNoneTodos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read error: %v", err)
 	}
-	var res todoResult
+	var res TodoResult
 	json.Unmarshal([]byte(result), &res)
 	if res.Summary.Total != 1 {
 		t.Errorf("expected 1 item on read, got %d", res.Summary.Total)
@@ -190,7 +190,7 @@ func TestTodoEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
-	var res todoResult
+	var res TodoResult
 	json.Unmarshal([]byte(result), &res)
 	if res.Summary.Total != 0 {
 		t.Errorf("expected 0 total, got %d", res.Summary.Total)

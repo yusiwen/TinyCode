@@ -395,7 +395,23 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.curAssistant.Streaming = false
 		} else {
 			m.curAssistant.Streaming = false
-			if msg.Content != "" {
+			// Mute if all tool calls are housekeeping (todo, memory, etc.)
+			housekeeping := map[string]bool{"todo": true, "memory": true}
+			if len(m.curAssistant.ToolCalls) > 0 {
+				allHousekeeping := true
+				for _, tc := range m.curAssistant.ToolCalls {
+					if !housekeeping[tc.Name] {
+						allHousekeeping = false
+						break
+					}
+				}
+				if allHousekeeping {
+					m.curAssistant.Content = ""
+					m.curAssistant.Blocks = nil
+					m.curAssistant.ReasoningContent = ""
+				}
+			}
+			if msg.Content != "" && (m.curAssistant == nil || m.curAssistant.Content != "") {
 				m.curAssistant.Blocks = parseMarkdown(msg.Content)
 			}
 		}
@@ -463,7 +479,7 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 				n += visibleLines(msg.ReasoningContent, termW)
 			}
 			n += 1
-			if msg.Content != "" {
+			if msg.Content != "" && (m.curAssistant == nil || m.curAssistant.Content != "") {
 				n += visibleLines(msg.Content, termW)
 			}
 		}
