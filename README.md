@@ -55,7 +55,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Multi-turn history compression: Hermes-style head/tail/middle summarization
 - 1M token context (DeepSeek V4 Flash) with automatic threshold lowering on `context_length_exceeded` errors
 
-### LSP Integration (Phase 2 ✅)
+### LSP Integration
 - Long-lived connection via lazyStart() singleton — gopls starts on first LSP use, stays alive until Close()
 - Background diagnostics reader (StartReader) pushes publishDiagnostics to channel
 - 7 language configs with auto-detection: Go, Python, TypeScript/JS, Rust, C++, Java
@@ -171,7 +171,7 @@ Error recovery:
 - [x] **Multi-agent session tree** — `/fork` + `/session` branching conversations. (93f1665)
 - [x] **Theming** — default + nord palettes, `/theme` command, persists to config.json. (e4bcf85, 533d167)
 - [x] **Session management** — delete, export Markdown, search via CLI flags. (2236e84)
-- [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework, incremental diagnostics (SnapshotBaseline+GetNewDiagnostics), TUI error tracking (LSPDiagMsg, status bar "errors: N", /diagnostics command). (2ab4338, ace09ff, a2e3e07, 290818a)
+- [x] **LSP** — long-lived connection, background diagnostics, mock test framework, incremental diagnostics (SnapshotBaseline+GetNewDiagnostics), TUI error tracking (LSPDiagMsg, status bar "errors: N", /diagnostics command). (2ab4338, ace09ff, a2e3e07, 290818a)
 - [x] **GitHub Actions CI/CD + Makefile improvements** — main.yml (build+lint+test), release.yml (cross-compile+release), Makefile test/releases targets. (ab07697, bddeed5)
 - [x] **Skills & Subagents** — SKILL.md-based discovery + /skill command + 2 builtin skills. 3 new subagents: general (parallel research), compact (history compression), title (session naming). /explore command removed (explore kept as subagent). (cbd6db3, 8fa8800, adfa51b, c0b8ae8)
 - [x] **Todo Feature — P0+P1+P2 Complete** — TodoStore + todo tool + JSON Schema (P0), TUI rendering with [x][>][ ][~] markers (P1), compression protection + housekeeping mute + session recovery (P2). 21 new tests. (2f51d06, 94db0e3, 25caefc)
