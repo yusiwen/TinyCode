@@ -48,6 +48,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 
 ### Agent Loop
 - ReAct loop with tool calling support (bash, read_file, search_files, git, LSP tools)
+- **6 agents**: plan (read-only), build (full access), explore (3 tools), general (all except write), compact (history compression), title (session naming)
 - Agent integration test framework: 13 tests using MockLLM step-by-step
 - Streaming reasoning + text deltas
 - Tool call lifecycle displayed in real-time
@@ -81,7 +82,8 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **/skill command in TUI** — /skill lists available skills; /skill <name> loads full SKILL.md content as system message. (cbd6db3)
 - **Skill index auto-injected** into system prompt at startup. Startup shows "13 tools, 2 skills loaded". (8fa8800)
 - **2 builtin skills**: code-review, git-commit (as markdown files in skill/builtin/)
-- **11 new tests** across skill package and tui package — 266 tests total. (cbd6db3)
+- **6 agents**: plan, build (primary) + explore, general (subagents) + compact, title (hidden)
+- **11 new tests** across skill package and tui package — 291 tests total. (cbd6db3)
 ---
 
 # Architecture
@@ -171,7 +173,7 @@ Error recovery:
 - [x] **Session management** — delete, export Markdown, search via CLI flags. (2236e84)
 - [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework, incremental diagnostics (SnapshotBaseline+GetNewDiagnostics), TUI error tracking (LSPDiagMsg, status bar "errors: N", /diagnostics command). (2ab4338, ace09ff, a2e3e07, 290818a)
 - [x] **GitHub Actions CI/CD + Makefile improvements** — main.yml (build+lint+test), release.yml (cross-compile+release), Makefile test/releases targets. (ab07697, bddeed5)
-- [x] **Skill System Refactoring** — SKILL.md-based discovery (embedded → ~/.tinycode/skills/ → project .tinycode/skills/), /skill command in TUI, skill index in system prompt, 2 builtin skills (code-review, git-commit) as .md files, removed old Go skill code. 11 new tests. (cbd6db3, 8fa8800)
+- [x] **Skills & Subagents** — SKILL.md-based discovery + /skill command + 2 builtin skills. 3 new subagents: general (parallel research), compact (history compression), title (session naming). /explore command removed (explore kept as subagent). (cbd6db3, 8fa8800, adfa51b, c0b8ae8)
 - [x] **Todo Feature — P0+P1+P2 Complete** — TodoStore + todo tool + JSON Schema (P0), TUI rendering with [x][>][ ][~] markers (P1), compression protection + housekeeping mute + session recovery (P2). 21 new tests. (2f51d06, 94db0e3, 25caefc)
 
 ## Remaining
