@@ -632,7 +632,6 @@ Commands:
   /exit, /quit   Exit TinyCode
   /plan          Switch to plan mode
   /build         Switch to build mode
-  /explore       Switch to explore mode
   /model         Switch provider/model
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
