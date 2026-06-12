@@ -12,6 +12,7 @@ const (
 type AgentConfig struct {
 	Name         string
 	Mode         AgentMode
+	Hidden       bool     // hidden from Tab switching and user-facing lists
 	Description  string
 	SystemPrompt string
 	MaxSteps     int       // 0 = unlimited
@@ -61,6 +62,47 @@ func DefaultAgents() map[string]*AgentConfig {
 				"Return a concise summary of what you found. Do NOT modify any files.",
 			MaxSteps: 15,
 			AllowedTools: []string{"bash", "read_file", "search_files"},
+			DeniedTools:  []string{},
+		},
+		"general": {
+			Name:        "general",
+			Mode:        AgentModeSubagent,
+			Description: "General-purpose sub-agent for parallel research. Reads files, searches code, runs commands. Cannot modify files or delegate to other agents.",
+			SystemPrompt: "You are a general-purpose sub-agent. Your job is to research, analyze, " +
+				"and gather information. You have access to most tools including LSP, " +
+				"skill loading, and search, but you CANNOT write files, commit code, " +
+				"change sandbox permissions, or delegate tasks to other agents.\n\n" +
+				"Return a concise summary of your findings. Do NOT produce verbose output.",
+			MaxSteps: 20,
+			AllowedTools: []string{"*"},
+			DeniedTools:  []string{"write_file", "git_commit", "sandbox_allow", "task", "skill_manage"},
+		},
+		"compact": {
+			Name:        "compact",
+			Mode:        AgentModePrimary,
+			Hidden:      true,
+			Description: "Compresses conversation history when it exceeds the token threshold.",
+			SystemPrompt: "You are a conversation summarizer. Given a conversation history, " +
+				"produce a concise summary (3-5 sentences) covering:\n" +
+				"- What tasks were completed\n" +
+				"- What decisions were made\n" +
+				"- What files were modified or created\n" +
+				"- Any pending issues or remaining work\n\n" +
+				"Focus on facts and outcomes. Omit greetings, meta-commentary, and tool output details.",
+			MaxSteps: 1,
+			AllowedTools: []string{},
+			DeniedTools:  []string{},
+		},
+		"title": {
+			Name:        "title",
+			Mode:        AgentModePrimary,
+			Hidden:      true,
+			Description: "Generates a short descriptive title for a conversation.",
+			SystemPrompt: "Generate a short, descriptive title (max 50 chars) for this conversation. " +
+				"Use the format: 'Topic — action'. For example: 'tmux — analyze library dependencies' " +
+				"or 'Todo feature — fix rendering layout'. Return ONLY the title, nothing else.",
+			MaxSteps: 1,
+			AllowedTools: []string{},
 			DeniedTools:  []string{},
 		},
 	}

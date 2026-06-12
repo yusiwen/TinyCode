@@ -69,7 +69,7 @@ func (r *Registry) Switch() string {
 		r.pos = (r.pos + 1) % len(r.order)
 		name := r.order[r.pos]
 		cfg := r.agents[name]
-		if cfg != nil && cfg.Mode == AgentModePrimary {
+		if cfg != nil && cfg.Mode == AgentModePrimary && !cfg.Hidden {
 			r.current = name
 			return name
 		}
@@ -86,6 +86,9 @@ func (r *Registry) Set(name string) error {
 	}
 	if cfg.Mode != AgentModePrimary {
 		return fmt.Errorf("agent %s is a subagent, cannot be a session agent", name)
+	}
+	if cfg.Hidden {
+		return fmt.Errorf("agent %s is hidden, cannot be a session agent", name)
 	}
 	r.current = name
 	// Update position to match
