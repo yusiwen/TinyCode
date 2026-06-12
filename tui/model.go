@@ -129,6 +129,10 @@ type TuiModel struct {
 	// Todo store
 	todoStore *tool.TodoStore
 
+	// Todo rendering tracking (virtual message in CellGrid)
+	todoRowCount int  // rendered row count for todo section (0 = no items)
+	todoDirty    bool // true = todo section needs re-render
+
 	// Command palette
 	cmdPalette      bool   // floating command palette active
 	cmdPaletteInput string // current filter text (without the /)

@@ -149,30 +149,23 @@ func (s *TodoStore) FormatForInjection() string {
 // todoSchema returns the OpenAI function-calling schema for the todo tool.
 func todoSchema() map[string]any {
 	return map[string]any{
-		"type": "function",
-		"function": map[string]any{
-			"name":        "todo",
-			"description": "Manage task list. Use todos array to create or update tasks. Only ONE item in_progress at a time. Mark items completed immediately when done. If something fails, cancel it and add a revised item.",
-			"parameters": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"todos": map[string]any{
-						"type": "array",
-						"items": map[string]any{
-							"type": "object",
-							"properties": map[string]any{
-								"id":      map[string]any{"type": "string"},
-								"content": map[string]any{"type": "string"},
-								"status":  map[string]any{"type": "string", "enum": []string{StatusPending, StatusInProgress, StatusCompleted, StatusCancelled}},
-							},
-						},
-						"description": "Task items to write. Omit to read current list.",
-					},
-					"merge": map[string]any{
-						"type":        "boolean",
-						"description": "true: update existing items by id, add new ones. false (default): replace the entire list.",
+		"type": "object",
+		"properties": map[string]any{
+			"todos": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"id":      map[string]any{"type": "string"},
+						"content": map[string]any{"type": "string"},
+						"status":  map[string]any{"type": "string", "enum": []string{StatusPending, StatusInProgress, StatusCompleted, StatusCancelled}},
 					},
 				},
+				"description": "Task items to write. Omit to read current list.",
+			},
+			"merge": map[string]any{
+				"type":        "boolean",
+				"description": "true: update existing items by id, add new ones. false (default): replace the entire list.",
 			},
 		},
 	}
@@ -183,7 +176,11 @@ func todoSchema() map[string]any {
 func Todo(store *TodoStore) Tool {
 	return Tool{
 		Name:        "todo",
-		Description: "Manage task list: create, update, track progress. Returns JSON with todos and summary.",
+		Description: "Manage task list. Use the todos array to create or update tasks. " +
+			"Only ONE item in_progress at a time. " +
+			"Mark items completed immediately when done. " +
+			"If something fails, cancel it and add a revised item. " +
+			"Returns JSON with todos and summary.",
 		Parameters:  todoSchema(),
 		Execute: func(ctx context.Context, args map[string]any) (string, error) {
 			var todos []TodoItem

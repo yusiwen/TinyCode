@@ -419,6 +419,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.msgDirty) > 0 {
 			m.msgDirty[len(m.msgDirty)-1] = true
 		}
+		// Mark todo dirty so CellGrid re-renders todo in-place
+		m.todoDirty = true
 		m.curAssistant = nil
 		m.streamDoneNotified = false
 		m.autoScroll()

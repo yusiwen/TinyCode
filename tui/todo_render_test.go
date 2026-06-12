@@ -21,6 +21,8 @@ func TestTodoRenderingEmpty(t *testing.T) {
 func TestTodoRenderingWithItems(t *testing.T) {
 	m := newTestTUI()
 	m.ready = true
+	m.vp.Width = 80
+	m.vp.Height = 50
 
 	// Add items to the store
 	store := tool.NewTodoStore()
@@ -30,6 +32,7 @@ func TestTodoRenderingWithItems(t *testing.T) {
 		{ID: "3", Content: "Verify fix", Status: "pending"},
 	}, false)
 	m.todoStore = store
+	m.todoDirty = true
 
 	output := m.View()
 	if !strings.Contains(output, "Todo") {
@@ -58,6 +61,8 @@ func TestTodoRenderingWithItems(t *testing.T) {
 func TestTodoRenderingAllDone(t *testing.T) {
 	m := newTestTUI()
 	m.ready = true
+	m.vp.Width = 80
+	m.vp.Height = 50
 
 	store := tool.NewTodoStore()
 	store.Write([]tool.TodoItem{
@@ -65,6 +70,7 @@ func TestTodoRenderingAllDone(t *testing.T) {
 		{ID: "2", Content: "Task B", Status: "completed"},
 	}, false)
 	m.todoStore = store
+	m.todoDirty = true
 
 	output := m.View()
 	if !strings.Contains(output, "2/2") {

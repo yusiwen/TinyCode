@@ -169,6 +169,60 @@ func (m *TuiModel) View() string {
 		}
 	}
 
+	// Todo section — rendered as virtual message at end of CellGrid
+	if m.todoStore != nil && g.width > 0 {
+		items := m.todoStore.Read()
+		needsUpdate := m.todoDirty || firstDirty >= 0
+		if len(items) > 0 && needsUpdate {
+			// Truncate grid to remove old todo rows
+			if m.todoRowCount > 0 {
+				g.row -= m.todoRowCount
+				for r := g.row; r < g.row+m.todoRowCount && r < g.rows; r++ {
+					for c := 0; c < g.width; c++ {
+						g.cells[g.cellIndex(r, c)] = Cell{}
+					}
+				}
+			}
+			startRow := g.RowCount()
+			summary := m.todoStore.Summary()
+			done := summary.Completed + summary.Cancelled
+			total := summary.Total
+			header := fmt.Sprintf(" Todo (%d/%d)", done, total)
+			g.AppendChunk(CellChunk{Text: header, Style: HeadingStyle})
+			for _, item := range items {
+				marker := "[ ]"
+				style := DefaultStyle
+				switch item.Status {
+				case "in_progress":
+					marker = "[>]"
+					style = DimStyle
+				case "completed":
+					marker = "[x]"
+					style = DimStyle
+				case "cancelled":
+					marker = "[~]"
+					style = DimStyle
+				}
+				line := "  " + marker + " " + item.Content
+				g.AppendChunk(CellChunk{Text: line, Style: style})
+			}
+			m.todoRowCount = g.RowCount() - startRow
+			m.todoDirty = false
+		} else if len(items) == 0 && m.todoRowCount > 0 && needsUpdate {
+			// All done — clear todo rows from grid
+			if m.todoRowCount > 0 {
+				g.row -= m.todoRowCount
+				for r := g.row; r < g.row+m.todoRowCount && r < g.rows; r++ {
+					for c := 0; c < g.width; c++ {
+						g.cells[g.cellIndex(r, c)] = Cell{}
+					}
+				}
+			}
+			m.todoRowCount = 0
+			m.todoDirty = false
+		}
+	}
+
 	// Apply character-level selection highlighting
 	if m.charSelStart.Offset >= 0 {
 		sr, sc := m.charSelStartLine, m.charSelStartCol
@@ -190,38 +244,6 @@ func (m *TuiModel) View() string {
 	}
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
-
-	// Todo status
-	if m.todoStore != nil {
-		items := m.todoStore.Read()
-		if len(items) > 0 {
-			summary := m.todoStore.Summary()
-			done := summary.Completed + summary.Cancelled
-			total := summary.Total
-			b.WriteString(headerStyle.Render(fmt.Sprintf(" Todo (%d/%d)", done, total)))
-			b.WriteString("\n")
-			for _, item := range items {
-				marker := "[ ]"
-				switch item.Status {
-				case "in_progress":
-					marker = "[>]"
-					b.WriteString(dimStyle.Render("  " + marker + " "))
-					b.WriteString(item.Content)
-				case "completed":
-					marker = "[x]"
-					b.WriteString("  " + marker + " ")
-					b.WriteString(dimStyle.Render(item.Content))
-				case "cancelled":
-					marker = "[~]"
-					b.WriteString(dimStyle.Render("  " + marker + " " + item.Content))
-				default:
-					b.WriteString("  " + marker + " ")
-					b.WriteString(item.Content)
-				}
-				b.WriteString("\n")
-			}
-		}
-	}
 
 	// Input area
 	if m.selectingProvider {
