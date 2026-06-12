@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-266-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-291-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -62,6 +62,14 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Mock LSP test framework (io.Pipe based, no network, no gopls required)
 - **Incremental Diagnostics** — SnapshotBaseline captures diagnostic state before write_file, GetNewDiagnostics computes delta. write_file tool reports only new errors via LSP, LLM sees focused feedback. (a2e3e07)
 - **TUI Error Tracking** — LSPDiagMsg carries per-file diagnostic sets. Status bar shows "errors: N" with live count. /diagnostics command lists all current file errors in viewport. (290818a)
+
+### Todo System
+- **TodoStore**: In-memory task list with CRUD (create/read/update/merge/delete/summary). Enforces one `in_progress`, max 256 items, max 4000 chars per task.
+- **todo tool**: OpenAI function-calling schema, registered in all modes. LLM calls it to plan and track multi-step work.
+- **Compression protection**: After context compression, active todo items (pending + in_progress) are re-injected so the LLM doesn't redo completed work.
+- **Housekeeping mute**: When all tool calls are `todo`, the model's text reply is suppressed — no noise, just progress markers.
+- **Session recovery**: On `--resume`, reverse-scans history for the latest todo result and restores the store.
+- **TUI rendering**: `▾ Todo (2/6)` with `[x]` completed, `[>]` in_progress, `[ ]` pending, `[~]` cancelled markers.
 
 ### CI/CD Pipeline
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
@@ -164,6 +172,7 @@ Error recovery:
 - [x] **LSP Phase 2** — long-lived connection, background diagnostics, mock test framework, incremental diagnostics (SnapshotBaseline+GetNewDiagnostics), TUI error tracking (LSPDiagMsg, status bar "errors: N", /diagnostics command). (2ab4338, ace09ff, a2e3e07, 290818a)
 - [x] **GitHub Actions CI/CD + Makefile improvements** — main.yml (build+lint+test), release.yml (cross-compile+release), Makefile test/releases targets. (ab07697, bddeed5)
 - [x] **Skill System Refactoring** — SKILL.md-based discovery (embedded → ~/.tinycode/skills/ → project .tinycode/skills/), /skill command in TUI, skill index in system prompt, 2 builtin skills (code-review, git-commit) as .md files, removed old Go skill code. 11 new tests. (cbd6db3, 8fa8800)
+- [x] **Todo Feature — P0+P1+P2 Complete** — TodoStore + todo tool + JSON Schema (P0), TUI rendering with [x][>][ ][~] markers (P1), compression protection + housekeeping mute + session recovery (P2). 21 new tests. (2f51d06, 94db0e3, 25caefc)
 
 ## Remaining
 
