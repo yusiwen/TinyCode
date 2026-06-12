@@ -212,6 +212,14 @@ func main() {
 			})
 			ag.AddTool(tool.SandboxAllowTool())
 
+			// Todo tool with shared store
+			todoStore := tool.NewTodoStore()
+			td := tool.Todo(todoStore)
+			ag.AddTool(agent.Tool{
+				Name: td.Name, Description: td.Description,
+				Parameters: td.Parameters, Execute: td.Execute,
+			})
+
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
 			store := session.NewStore(cfg.SessionDir)
