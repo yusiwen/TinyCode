@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/tool"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -13,7 +14,7 @@ func newTestTUI() *TuiModel {
 	return NewTUI(agent.New(nil), &config.Config{}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{
 			{Name: "test", Provider: &agent.MockProvider{}},
-		}))
+		}), tool.NewTodoStore())
 }
 
 func TestInitialInputHeight(t *testing.T) {

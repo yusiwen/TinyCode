@@ -313,7 +313,7 @@ func main() {
 			}
 
 			// Interactive TUI mode
-			model := tui.NewTUI(ag, &cfg, reg, provReg, resume)
+			model := tui.NewTUI(ag, &cfg, reg, provReg, todoStore, resume)
 			p := tea.NewProgram(model, tea.WithMouseAllMotion())
 			if _, err := p.Run(); err != nil {
 				return err

@@ -13,6 +13,7 @@ import (
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
+	"github.com/yusiwen/tinycode/tool"
 )
 
 // Button represents a clickable region in the message area.
@@ -124,6 +125,9 @@ type TuiModel struct {
 	diagTotal   int    // total errors across all files
 	diagFile    string // most recent file with errors (for display)
 
+	// Todo store
+	todoStore *tool.TodoStore
+
 	// Command palette
 	cmdPalette      bool   // floating command palette active
 	cmdPaletteInput string // current filter text (without the /)
@@ -171,7 +175,7 @@ func (m *TuiModel) filteredCmds() []cmdEntry {
 }
 
 // NewTUI creates and returns a new TUI model.
-func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, resume ...string) *TuiModel {
+func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, todoStore *tool.TodoStore, resume ...string) *TuiModel {
 	t := textarea.New()
 	t.Placeholder = "Type your request (Ctrl+J for newline)..."
 	t.CharLimit = 0
@@ -184,12 +188,13 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	s.Style = spinnerStyle
 
 	m := &TuiModel{
-		agent:    ag,
-		config:   cfg,
-		registry: reg,
-		provReg:  provReg,
-		input:    t,
-		spinner:  s,
+		agent:     ag,
+		config:    cfg,
+		registry:  reg,
+		provReg:   provReg,
+		input:     t,
+		spinner:   s,
+		todoStore: todoStore,
 		modeName: reg.CurrentName(),
 		status:   StatusIdle,
 		streamCh: make(chan tea.Msg, 200),

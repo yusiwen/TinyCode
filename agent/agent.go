@@ -19,7 +19,7 @@ type Agent struct {
 	Tools      []Tool
 	Memory     types.MemoryStore
 	MemoryMode int // 0=none, 1=auto, 2=on-demand
-
+	// Session persistence
 	SessionStore interface {
 		Append(msg types.Message) error
 		Flush() error

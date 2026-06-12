@@ -191,6 +191,38 @@ func (m *TuiModel) View() string {
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
 
+	// Todo status
+	if m.todoStore != nil {
+		items := m.todoStore.Read()
+		if len(items) > 0 {
+			summary := m.todoStore.Summary()
+			done := summary.Completed + summary.Cancelled
+			total := summary.Total
+			b.WriteString(headerStyle.Render(fmt.Sprintf(" Todo (%d/%d)", done, total)))
+			b.WriteString("\n")
+			for _, item := range items {
+				marker := "[ ]"
+				switch item.Status {
+				case "in_progress":
+					marker = "[>]"
+					b.WriteString(dimStyle.Render("  " + marker + " "))
+					b.WriteString(item.Content)
+				case "completed":
+					marker = "[x]"
+					b.WriteString("  " + marker + " ")
+					b.WriteString(dimStyle.Render(item.Content))
+				case "cancelled":
+					marker = "[~]"
+					b.WriteString(dimStyle.Render("  " + marker + " " + item.Content))
+				default:
+					b.WriteString("  " + marker + " ")
+					b.WriteString(item.Content)
+				}
+				b.WriteString("\n")
+			}
+		}
+	}
+
 	// Input area
 	if m.selectingProvider {
 		b.WriteString(headerStyle.Render("Select provider:"))
