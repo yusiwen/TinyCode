@@ -205,6 +205,25 @@ func (m *TuiModel) View() string {
 			b.WriteString("\n")
 		}
 		b.WriteString(dimStyle.Render("↑↓ navigate · Enter select · Esc cancel"))
+	} else if m.cmdPalette {
+		cmds := m.filteredCmds()
+		b.WriteString(headerStyle.Render("Commands:"))
+		b.WriteString("\n")
+		for i, c := range cmds {
+			if i == m.cmdPaletteSel {
+				b.WriteString("> ")
+				b.WriteString(headerStyle.Render(c.Name))
+				b.WriteString("  ")
+				b.WriteString(dimStyle.Render(c.Desc))
+			} else {
+				b.WriteString("  ")
+				b.WriteString(c.Name)
+				b.WriteString("  ")
+				b.WriteString(dimStyle.Render(c.Desc))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("↑↓ navigate · Enter execute · Esc cancel"))
 	} else if m.status == StatusStreaming {
 		b.WriteString(dimStyle.Render("(processing...)"))
 	} else {

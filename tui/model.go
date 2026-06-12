@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -122,6 +123,51 @@ type TuiModel struct {
 	// LSP diagnostics tracking
 	diagTotal   int    // total errors across all files
 	diagFile    string // most recent file with errors (for display)
+
+	// Command palette
+	cmdPalette      bool   // floating command palette active
+	cmdPaletteInput string // current filter text (without the /)
+	cmdPaletteSel   int    // selected index
+}
+
+// cmdEntry describes one command in the floating palette.
+type cmdEntry struct {
+	Name string
+	Desc string
+}
+
+// commandList returns all available commands for the palette.
+func commandList() []cmdEntry {
+	return []cmdEntry{
+		{"/help", "Show help"},
+		{"/plan", "Plan mode"},
+		{"/build", "Build mode"},
+		{"/verbose", "Toggle verbose output"},
+		{"/thinking", "Toggle thinking display"},
+		{"/theme", "Switch theme"},
+		{"/skill", "Load a skill"},
+		{"/diagnostics", "LSP diagnostics"},
+		{"/model", "Switch model"},
+		{"/fork", "Create session branch"},
+		{"/session", "List/switch branch"},
+		{"/exit", "Exit TinyCode"},
+	}
+}
+
+// filteredCmds returns commands matching the current filter.
+func (m *TuiModel) filteredCmds() []cmdEntry {
+	all := commandList()
+	if !m.cmdPalette || m.cmdPaletteInput == "" {
+		return all
+	}
+	lower := strings.ToLower(m.cmdPaletteInput)
+	var filtered []cmdEntry
+	for _, c := range all {
+		if strings.Contains(strings.ToLower(c.Name), lower) {
+			filtered = append(filtered, c)
+		}
+	}
+	return filtered
 }
 
 // NewTUI creates and returns a new TUI model.

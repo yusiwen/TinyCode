@@ -167,10 +167,58 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Escape → exit history browsing
+		// Command palette active → intercept before history
+		if m.cmdPalette {
+			cmds := m.filteredCmds()
+			switch msg.Type {
+			case tea.KeyUp:
+				if m.cmdPaletteSel > 0 {
+					m.cmdPaletteSel--
+				}
+				return m, nil
+			case tea.KeyDown:
+				if m.cmdPaletteSel < len(cmds)-1 {
+					m.cmdPaletteSel++
+				}
+				return m, nil
+			case tea.KeyEnter:
+				if len(cmds) > 0 {
+					cmd := cmds[m.cmdPaletteSel].Name
+					m.cmdPalette = false
+					m.cmdPaletteInput = ""
+					m.cmdPaletteSel = 0
+					return m.handleCommand(cmd)
+				}
+			case tea.KeyEscape, tea.KeyCtrlC:
+				m.cmdPalette = false
+				m.cmdPaletteInput = ""
+				m.cmdPaletteSel = 0
+				m.input.SetValue("")
+				return m, nil
+			}
+			// Typing — update textarea and sync filter
+			m.input, _ = m.input.Update(msg)
+			val := strings.TrimPrefix(strings.TrimLeft(m.input.Value(), "/"), " ")
+			m.cmdPaletteInput = val
+			m.cmdPaletteSel = 0
+			if val == "" {
+				m.cmdPalette = false
+			}
+			return m, nil
+		}
+
+		// Escape → exit history browsing
 		if msg.Type == tea.KeyEscape && m.historyPos >= 0 {
 			m.historyPos = -1
 			m.input.SetValue(m.historyDraft)
 			return m, nil
+		}
+
+		// "/" on empty input → activate command palette
+		if msg.Type == tea.KeyRunes && string(msg.Runes) == "/" && m.input.Value() == "" {
+			m.cmdPalette = true
+			m.cmdPaletteInput = ""
+			m.cmdPaletteSel = 0
 		}
 
 		// Up/Down → browse input history
