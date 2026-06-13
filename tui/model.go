@@ -120,6 +120,7 @@ type TuiModel struct {
 	// Session stats
 	sessionStart      time.Time
 	sessionTokens     int
+	sessionTitle      string // auto-generated conversation title
 	sessionToolCalls  int
 
 	// LSP diagnostics tracking

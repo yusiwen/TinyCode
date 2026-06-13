@@ -324,6 +324,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.provReg != nil {
 					s.ModelName = m.provReg.Current().Name()
 				}
+				// Apply auto-generated title
+				if m.sessionTitle != "" {
+					s.Title = m.sessionTitle
+				}
 				s.Flush()
 			}
 			return m, tea.Quit
@@ -421,6 +425,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Mark todo dirty so CellGrid re-renders todo in-place
 		m.todoDirty = true
+		// Generate session title after first assistant response
+		m.generateSessionTitle()
 		m.curAssistant = nil
 		m.streamDoneNotified = false
 		m.autoScroll()
@@ -592,6 +598,55 @@ func (m *TuiModel) autoScroll() {
 	if m.ready && m.vp.AtBottom() {
 		m.vp.GotoBottom()
 	}
+}
+
+// generateSessionTitle uses the "title" hidden agent to generate a concise title.
+func (m *TuiModel) generateSessionTitle() {
+	if m.agent == nil || m.agent.Provider == nil || len(m.messages) < 2 || m.sessionTitle != "" {
+		return
+	}
+	cfg, err := m.registry.Get("title")
+	if err != nil {
+		m.sessionTitle = extractFirstUserMsg(m.messages)
+		return
+	}
+	var b strings.Builder
+	b.WriteString(cfg.SystemPrompt)
+	b.WriteString("\n\nConversation so far:\n")
+	for _, msg := range m.messages {
+		content := msg.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		b.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
+	}
+	resp, err := m.agent.Provider.Chat(context.Background(), types.ChatRequest{
+		Messages: []types.Message{
+			{Role: types.RoleUser, Content: b.String()},
+		},
+	})
+	if err != nil || resp.Content == "" {
+		m.sessionTitle = extractFirstUserMsg(m.messages)
+		return
+	}
+	m.sessionTitle = strings.TrimSpace(resp.Content)
+	if len(m.sessionTitle) > 80 {
+		m.sessionTitle = m.sessionTitle[:80]
+	}
+}
+
+// extractFirstUserMsg returns the first user message truncated for use as a title.
+func extractFirstUserMsg(msgs []chatMessage) string {
+	for _, msg := range msgs {
+		if msg.Role == "user" && msg.Content != "" {
+			text := strings.ReplaceAll(msg.Content, "\n", " ")
+			if len(text) > 80 {
+				text = text[:80] + "..."
+			}
+			return text
+		}
+	}
+	return "untitled"
 }
 
 // submitInput handles user text input (slash commands or normal messages).
