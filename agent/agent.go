@@ -398,3 +398,15 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	tlog.Warn("agent.loop", "max steps", "steps", maxSteps)
 	return "", fmt.Errorf("exceeded max steps (%d)", maxSteps)
 }
+
+// CompressHistory compresses a.History in-place using the agent's provider
+// for summarization. Returns true if compression was applied.
+func (a *Agent) CompressHistory() bool {
+	before := len(a.History)
+	compressed, err := a.compressHistory(a.History)
+	if err != nil || compressed == nil {
+		return false
+	}
+	a.History = compressed
+	return len(a.History) < before
+}

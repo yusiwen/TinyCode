@@ -624,6 +624,22 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	switch base {
 	case "/exit", "/quit":
 		return m, tea.Quit
+	case "/compress":
+		if m.agent == nil {
+			m.ShowStatus("No agent available")
+			return m, nil
+		}
+		if m.agent.CompressionThreshold <= 0 {
+			m.ShowStatus("Compression is disabled (CompressionThreshold=0)")
+			return m, nil
+		}
+		if m.agent.CompressHistory() {
+			m.ShowStatus(fmt.Sprintf("Compressed: %d messages remaining", len(m.agent.History)))
+		} else {
+			m.ShowStatus(fmt.Sprintf("No compression needed (%d messages, below threshold)", len(m.agent.History)))
+		}
+		return m, nil
+
 	case "/help":
 		help := `Available commands and shortcuts:
 
@@ -632,6 +648,7 @@ Commands:
   /exit, /quit   Exit TinyCode
   /plan          Switch to plan mode
   /build         Switch to build mode
+  /compress      Manually trigger conversation compression
   /model         Switch provider/model
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
