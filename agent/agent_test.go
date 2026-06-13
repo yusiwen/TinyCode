@@ -272,3 +272,62 @@ func TestAgentContextError(t *testing.T) {
 		t.Errorf("expected threshold 16384, got %d", ag.CompressionThreshold)
 	}
 }
+
+func TestAgentCompressionWithTodoInjection(t *testing.T) {
+	// End-to-end test: low threshold triggers compressHistory inside Run(),
+	// which should inject active todo items into the compressed history.
+	llm := NewMockLLM([]MockStep{
+		{Content: "Summary of the conversation."},
+	})
+	ag := MockAgent(llm, nil)
+	ag.CompressionThreshold = 100
+	ag.ContextLength = 4000
+	ag.TodoStorer = &mockTodoStorer{
+		snapshot: "[>] Fix critical bug\n[ ] Write test\n",
+	}
+	ag.MaxSteps = 5
+
+	// Build history that exceeds threshold
+	for i := 0; i < 10; i++ {
+		ag.History = append(ag.History,
+			types.Message{Role: types.RoleUser, Content: "A long user message that takes up tokens number " + fmt.Sprint(i)},
+			types.Message{Role: types.RoleAssistant, Content: "A long assistant response with lots of content."},
+		)
+	}
+	ag.AddTool(mockTool("mock_tool", "ok"))
+
+	result, err := ag.Run(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == "" {
+		t.Error("expected non-empty result")
+	}
+
+	// History should be compressed (fewer entries than original 21+1)
+	if len(ag.History) >= 22 {
+		t.Errorf("expected compressed history (<22 entries), got %d", len(ag.History))
+	}
+
+	// Should contain ACTIVE TODO ITEMS injection
+	found := false
+	for _, m := range ag.History {
+		if strings.Contains(m.Content, "ACTIVE TODO ITEMS") {
+			found = true
+			if !strings.Contains(m.Content, "Fix critical bug") {
+				t.Errorf("expected 'Fix critical bug' in todo injection, got: %s", m.Content[:min(100, len(m.Content))])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("expected [ACTIVE TODO ITEMS] in compressed history")
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
