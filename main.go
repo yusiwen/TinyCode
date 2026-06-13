@@ -216,6 +216,11 @@ func main() {
 				Parameters: ed.Parameters, Execute: ed.Execute,
 			})
 			ag.AddTool(tool.SandboxAllowTool())
+			ap := tool.ApplyPatch()
+			ag.AddTool(agent.Tool{
+				Name: ap.Name, Description: ap.Description,
+				Parameters: ap.Parameters, Execute: ap.Execute,
+			})
 
 			// Todo tool with shared store
 			todoStore := tool.NewTodoStore()
