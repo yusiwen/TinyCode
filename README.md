@@ -94,62 +94,142 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 
 # Architecture
 
+### System Overview
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                      TinyCode                              │
+├──────────────────────┬───────────────────┬────────────────┤
+│   TUI (Bubble Tea)   │   Agent Layer      │   Tool Layer   │
+│                      │   (ReAct Loop)     │   (17 tools)   │
+│  CellGrid            │                    │                │
+│  Viewport            │  Plan (primary)    │  bash          │
+│  Input Area          │  Build (primary)   │  read_file     │
+│  Status Bar          │  Explore (sub)     │  write_file    │
+│  Command Palette     │  General (sub)     │  edit          │
+│  Todo Display        │  Compact (hidden)  │  apply_patch   │
+│  Reasoning Fold      │  Title (hidden)    │  search_files  │
+│                      │                    │  task          │
+│                      │  Registry:         │  todo          │
+│                      │  Get/Set/Switch    │  memory        │
+│                      │  ToolAllowedFor    │  load_skill    │
+│                      │  Subagent→task     │  skill_manage  │
+│                      │                    │  lsp_* (4)     │
+│                      │                    │  sandbox_allow │
+└──────────────────────┴───────────────────┴────────────────┘
+```
+
+### Multi-Agent System
+
+6 agents configured in `agent/config.go`, managed by `agent/registry.go`:
+
+| Agent | Mode | Hidden | Tools | Steps | Purpose |
+|-------|------|--------|-------|-------|---------|
+| **plan** | primary | | * except {write,git,sandbox,task,skill_manage} | 20 | Read-only analysis |
+| **build** | primary | | * (all) | 30 | Full access implementation |
+| **explore** | subagent | | bash, read_file, search_files | 15 | Fast directory search |
+| **general** | subagent | | * except {write,git,sandbox,task,skill_manage} | 20 | Parallel research |
+| **compact** | primary | ✅ | (no tools) | 1 | History compression |
+| **title** | primary | ✅ | (no tools) | 1 | Session title gen |
+
+- **Primary agents**: user-switchable via Tab or /plan /build
+- **Subagents**: invoked via `task` tool with independent ReAct context
+- **Hidden agents**: pure LLM calls (no tools), used internally
+
 ### CellGrid Rendering Pipeline
 
 ```
-Component → []CellChunk → CellGrid.Append/AppendInline → CellGrid.Render() → viewport
+Component → []CellChunk → wordWrap → Grid.AppendChunk → Grid.Render() → viewport
 ```
 
 - `CellGrid` — flat array of `Cell{ Rune, Style, Width }`, auto-grows as content is added
 - `CellChunk` — struct with `Text string` and `Style CellStyle` (Bold, Italic, Underline, Fg, Bg)
-- `wordWrap` — splits text at width, preserves leading spaces (indent), returns `[]CellChunk`
+- `wordWrap` — splits text at width, preserves leading spaces, returns `[]CellChunk`
 - `Fill` — applies `SelectionStyle` to a rectangular cell range
 - `ExtractText` — returns plain text within a range, handles CJK multi-cell characters
-- `Render` — produces ANSI-formatted string via `styleToLipgloss()` (cached with `sync.RWMutex`)
-- ~8 distinct CellStyles cached after first render
+- **Incremental rendering**: msgDirty/msgRowCount tracking. First dirty → end. ~2.3ms constant.
 
-### Project Structure
+### Tool System
+
+```go
+type Tool struct {
+    Name        string
+    Description string
+    Parameters  map[string]any
+    Execute     func(ctx, args) (string, error)
+}
+```
+
+**Line-level editing (3 tools):**
+- `write_file` — create new files / full rewrites
+- `edit` — search/replace with 7 fuzzy strategies + indentation correction
+- `apply_patch` — V4A multi-file patch (UPDATE/ADD/DELETE)
+
+**Sandbox (3 layers):**
+1. Command blacklist (bash tool)
+2. Path restriction (default: project directory only)
+3. User whitelist (allow/deny/always prompt)
+
+**Permissions:** `ToolAllowedFor(cfg, toolName)` — checked before every tool execution. Plan mode denies write/git/task/skill_manage.
+
+### Provider Abstraction
+
+```go
+type LLMProvider interface {
+    Chat(ctx, ChatRequest) (*ChatResponse, error)
+    Name() string
+}
+```
+
+- **DeepSeek** (default): streaming SSE support, `deepseek-v4-flash`
+- **MockLLM**: step-by-step scripted responses for agent loop testing
+- **ProviderRegistry**: switch providers at runtime via Tab
+
+### Context Compression
 
 ```
-agent/          Agent loop, LLM provider abstraction, context compression
-config/         Config loading (JSON, env, CLI flags)
-session/        Session persistence (JSON files, metadata, listing)
-tool/           Tool definitions (bash, filesystem, sandbox)
-tui/            Bubble Tea TUI with CellGrid, components, key/mouse handling
-types/          Shared types (Message, ToolCall, StreamCallbacks)
-main.go         CLI entry point with cobra
+History threshold: 50% of context window
+  Head: system + first 2 exchanges (preserved)
+  Tail: last 2 exchanges (preserved, anchored on latest user msg)
+  Middle: → LLM summarization → [COMPRESSED HISTORY] system message
+  Active TODO injected: [ACTIVE TODO ITEMS] after compression
 ```
+
+- `/compress` command for manual trigger
+- Auto-recovery: `context_length_exceeded` → lowers threshold
+- Todo protection: active items re-injected in compressed output
 
 ### Data Flow
 
 ```
 User Input (textarea)
   ↓
-ChatMsg → agent.Run() → Agent Loop
-  │                        ├── LLM provider (streaming)
-  │                        ├── Tool execution
-  │                        └── Callbacks (StreamCallbacks)
+ChatMsg → agent.Run() → ReAct Loop
+  │                        ├── LLM provider (streaming SSE)
+  │                        ├── Tool execution (permissions checked)
+  │                        └── No tool call → return final answer
   ↓
 streamCh (buffered 200)
   ↓
-TUI Update()  →  ToolCallMsg / StreamMsg / StreamDone
+TUI Update() → ToolCallMsg / StreamMsg / StreamDone
   ↓
-TUI View()    →  Component.Render() → CellChunks → CellGrid
+TUI View() → Component.Render() → CellChunks → CellGrid
   ↓
 viewport.SetContent() → terminal display
 ```
 
-### Context Compression
+### Project Structure
 
 ```
-History threshold (50% of context window):
-  Head: system + first 2 exchanges (protected)
-  Tail: last 2 exchanges (protected, anchored on latest user msg)
-  Middle: → LLM summarization → [COMPRESSED HISTORY] system message
-
-Error recovery:
-  ParseContextLimitFromError() extracts limit from API error message
-  HandleContextError() lowers EffectiveContextLength + CompressionThreshold
+agent/          Agent loop, LLM provider, context compression, registry
+config/         Config loading (JSON, env, CLI flags)
+lsp/            LSP client (gopls), diagnostics, Formatter, touch
+session/        Session persistence (JSON files, metadata, listing, fork)
+skill/          SKILL.md discovery (3-layer), Load/LoadOnce/CRUD
+tool/           Tool definitions (17 tools: edit, todo, skill, LSP, ...)
+tui/            Bubble Tea TUI (CellGrid, components, key/mouse, cmd palette)
+types/          Shared types (Message, ToolCall, StreamCallbacks)
+main.go         CLI entry point with cobra
 ```
 
 ### Key Dependencies
