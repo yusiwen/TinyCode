@@ -44,10 +44,9 @@ func (m *TuiModel) View() string {
 		// Nothing changed — keep existing grid, don't rebuild. Nothing to do.
 		// lineSrcs from previous frame are still valid.
 	} else {
-		// When only todo is dirty, force full re-render
-		if firstDirty < 0 && m.todoDirty {
-			firstDirty = 0
-			m.todoRowCount = 0 // reset so TODO block starts fresh
+		// When only todo is dirty, re-render only the last message
+		if firstDirty < 0 && m.todoDirty && len(m.messages) > 0 {
+			firstDirty = len(m.messages) - 1
 		}
 
 		// Compute the grid row where firstDirty starts
@@ -86,53 +85,7 @@ func (m *TuiModel) View() string {
 			m.lineSrcs = m.lineSrcs[:keepLines]
 		}
 
-		// 1. Render TODO section at TOP (before messages)
-		if m.todoStore != nil && g.width > 0 {
-			items := m.todoStore.Read()
-			needsUpdate := m.todoDirty || firstDirty >= 0
-			if len(items) > 0 && needsUpdate {
-				// Truncate grid to remove old todo rows (only when not first render)
-				if m.todoRowCount > 0 && firstDirty > 0 {
-					// TODO rows are at top, already handled by dirtyStart
-				}
-				startRow := g.RowCount()
-				summary := m.todoStore.Summary()
-				done := summary.Completed + summary.Cancelled
-				total := summary.Total
-				header := fmt.Sprintf(" Todo (%d/%d)", done, total)
-				g.AppendChunk(CellChunk{Text: header, Style: HeadingStyle})
-				for _, item := range items {
-					marker := "[ ]"
-					style := DefaultStyle
-					switch item.Status {
-					case "in_progress":
-						marker = "[>]"
-						style = DimStyle
-					case "completed":
-						marker = "[x]"
-						style = DimStyle
-					case "cancelled":
-						marker = "[~]"
-						style = DimStyle
-					}
-					line := "  " + marker + " " + item.Content
-					g.AppendChunk(CellChunk{Text: line, Style: style})
-				}
-				m.todoRowCount = g.RowCount() - startRow
-				m.todoDirty = false
-			} else if len(items) == 0 && m.todoRowCount > 0 && needsUpdate {
-				// All done — clear todo rows from grid (rows 0..todoRowCount-1)
-				for r := 0; r < m.todoRowCount && r < g.rows; r++ {
-					for c := 0; c < g.width; c++ {
-						g.cells[g.cellIndex(r, c)] = Cell{}
-					}
-				}
-				m.todoRowCount = 0
-				m.todoDirty = false
-			}
-		}
-
-		// 2. Render messages
+		// Render messages
 		for i := firstDirty; i < len(m.messages); i++ {
 			msg := m.messages[i]
 
@@ -148,6 +101,55 @@ func (m *TuiModel) View() string {
 				continue
 			}
 			chunks := comp.Render(msg, false)
+
+			// Inject TODO into the last assistant message (between reasoning and tool calls)
+			if i == len(m.messages)-1 && msg.Role == "assistant" && len(msg.ToolCalls) > 0 &&
+				m.todoStore != nil && m.todoDirty {
+				items := m.todoStore.Read()
+				if len(items) > 0 {
+					// Find the "→ Calling tools:" index
+					toolCallIdx := -1
+					for ci, ch := range chunks {
+						if strings.Contains(ch.Text, "→ Calling tools:") {
+							toolCallIdx = ci
+							break
+						}
+					}
+					if toolCallIdx > 0 {
+						// Insert TODO chunks before tool calls
+						summary := m.todoStore.Summary()
+						done := summary.Completed + summary.Cancelled
+						total := summary.Total
+						todoChunks := []CellChunk{
+							{Text: "", Style: DefaultStyle},
+							{Text: fmt.Sprintf("  Todo (%d/%d)", done, total), Style: HeadingStyle},
+						}
+						for _, item := range items {
+							marker := "[ ]"
+							style := DefaultStyle
+							switch item.Status {
+							case "in_progress":
+								marker = "[>]"
+								style = DimStyle
+							case "completed":
+								marker = "[x]"
+								style = DimStyle
+							case "cancelled":
+								marker = "[~]"
+								style = DimStyle
+							}
+							line := "    " + marker + " " + item.Content
+							todoChunks = append(todoChunks, CellChunk{Text: line, Style: style})
+						}
+						m.todoRowCount = len(todoChunks) + 1 // +1 for blank line before tool calls
+						m.todoDirty = false
+
+						// Insert todoChunks before toolCallIdx
+						chunks = append(chunks[:toolCallIdx], append(todoChunks, chunks[toolCallIdx:]...)...)
+					}
+				}
+			}
+
 			startRow := g.RowCount()
 			for ci := 0; ci < len(chunks); ci++ {
 				chunk := chunks[ci]

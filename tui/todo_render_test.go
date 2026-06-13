@@ -7,22 +7,36 @@ import (
 	"github.com/yusiwen/tinycode/tool"
 )
 
-func TestTodoRenderingEmpty(t *testing.T) {
-	m := newTestTUI()
-	m.ready = true
-	// No todo items set → should render without todo section
-	output := m.View()
-	if strings.Contains(output, "Todo") {
-		// This is OK if the store is empty — it shouldn't show
-		// but the output might contain "Todo" elsewhere
-	}
-}
-
-func TestTodoRenderingWithItems(t *testing.T) {
+func newModelWithAssistant() *TuiModel {
 	m := newTestTUI()
 	m.ready = true
 	m.vp.Width = 80
 	m.vp.Height = 50
+	// Add a simulated user + assistant message with tool calls
+	m.messages = append(m.messages, chatMessage{Role: "user", Content: "analyze this"})
+	m.messages = append(m.messages, chatMessage{
+		Role:    "assistant",
+		Content: "I found the answer.",
+		ToolCalls: []ToolCallInfo{
+			{Name: "bash", Arg: "find ."},
+		},
+	})
+	m.msgDirty = []bool{true, true}
+	m.msgRowCount = []int{0, 0}
+	return m
+}
+
+func TestTodoRenderingEmpty(t *testing.T) {
+	m := newModelWithAssistant()
+	// No todo items set → should not show todo section
+	output := m.View()
+	if strings.Contains(output, "Todo") {
+		// If viewport is empty-ish, nothing to see — not an error
+	}
+}
+
+func TestTodoRenderingWithItems(t *testing.T) {
+	m := newModelWithAssistant()
 
 	// Add items to the store
 	store := tool.NewTodoStore()
@@ -59,10 +73,7 @@ func TestTodoRenderingWithItems(t *testing.T) {
 }
 
 func TestTodoRenderingAllDone(t *testing.T) {
-	m := newTestTUI()
-	m.ready = true
-	m.vp.Width = 80
-	m.vp.Height = 50
+	m := newModelWithAssistant()
 
 	store := tool.NewTodoStore()
 	store.Write([]tool.TodoItem{
@@ -74,6 +85,6 @@ func TestTodoRenderingAllDone(t *testing.T) {
 
 	output := m.View()
 	if !strings.Contains(output, "2/2") {
-		t.Errorf("expected 2/2 progress, got %q", output)
+		t.Errorf("expected 2/2 progress, got:\n%s", output[:min(len(output), 200)])
 	}
 }
