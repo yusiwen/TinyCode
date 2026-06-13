@@ -210,6 +210,11 @@ func main() {
 				Name: sm.Name, Description: sm.Description,
 				Parameters: sm.Parameters, Execute: sm.Execute,
 			})
+			ed := tool.Edit()
+			ag.AddTool(agent.Tool{
+				Name: ed.Name, Description: ed.Description,
+				Parameters: ed.Parameters, Execute: ed.Execute,
+			})
 			ag.AddTool(tool.SandboxAllowTool())
 
 			// Todo tool with shared store
