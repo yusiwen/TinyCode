@@ -171,3 +171,136 @@ func TestEditMissingPath(t *testing.T) {
 		t.Fatal("expected error for missing path")
 	}
 }
+
+// ── Fuzzy matching tests ──
+
+func TestEditFuzzyLineTrimmed(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.go")
+	os.WriteFile(path, []byte("func main() {\n	return nil  \n}\n"), 0644)
+
+	// Search with no trailing spaces
+	edits := []editOp{{OldString: "	return nil\n", NewString: "	return 42\n"}}
+	b, _ := json.Marshal(edits)
+	tool := Edit()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	})
+	if err != nil {
+		t.Fatalf("edit error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "return 42") {
+		t.Errorf("expected 'return 42', got: %s", string(data))
+	}
+}
+
+func TestEditFuzzyWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.go")
+	os.WriteFile(path, []byte("func  main()	{\n	return\n}\n"), 0644)
+
+	edits := []editOp{{OldString: "func main() {", NewString: "func main() int {"}}
+	b, _ := json.Marshal(edits)
+	tool := Edit()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	})
+	if err != nil {
+		t.Fatalf("edit error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "func main() int {") {
+		t.Errorf("expected 'func main() int {', got: %s", string(data))
+	}
+}
+
+func TestEditFuzzyIndentFlexible(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.go")
+	os.WriteFile(path, []byte("func main() {\n    return\n}\n"), 0644)
+
+	// Search with different indentation (tabs vs spaces)
+	edits := []editOp{{OldString: "	return\n", NewString: "	return 42\n"}}
+	b, _ := json.Marshal(edits)
+	tool := Edit()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	})
+	if err != nil {
+		t.Fatalf("edit error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "return 42") {
+		t.Errorf("expected 'return 42', got: %s", string(data))
+	}
+}
+
+func TestEditFuzzyEscapeNormalized(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.go")
+	os.WriteFile(path, []byte("line one\nline two\n"), 0644)
+
+	// Search with literal \n instead of real newlines
+	edits := []editOp{{OldString: "line one\\nline two", NewString: "line one\\nline 2"}}
+	b, _ := json.Marshal(edits)
+	tool := Edit()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	})
+	if err != nil {
+		t.Fatalf("edit error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "line 2") {
+		t.Errorf("expected 'line 2', got: %s", string(data))
+	}
+}
+
+func TestEditFuzzyUnicodeNormalized(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.go")
+	os.WriteFile(path, []byte("Version: \"1.0\"\n"), 0644)
+
+	// Search with smart quotes
+	edits := []editOp{{OldString: "Version: \u201c1.0\u201d", NewString: "Version: \u201c2.0\u201d"}}
+	b, _ := json.Marshal(edits)
+	tool := Edit()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	})
+	if err != nil {
+		t.Fatalf("edit error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "2.0") {
+		t.Errorf("expected '2.0', got: %s", string(data))
+	}
+}
+
+func TestEditFuzzyIndentationCorrection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.go")
+	os.WriteFile(path, []byte("func test() {\n        return\n}\n"), 0644)
+
+	// Search with tabs, file has spaces — should match fuzzy AND auto-correct indent
+	edits := []editOp{{OldString: "	return\n", NewString: "	return 42\n"}}
+	b, _ := json.Marshal(edits)
+	tool := Edit()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	})
+	if err != nil {
+		t.Fatalf("edit error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "return 42") {
+		t.Errorf("expected 'return 42', got:\n%s", string(data))
+	}
+}
