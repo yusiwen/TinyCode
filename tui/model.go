@@ -188,6 +188,11 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	t.SetWidth(80)
 	t.ShowLineNumbers = false
 	t.SetHeight(1)
+	// Clear textarea background styles so it inherits terminal default (matches message area)
+	t.FocusedStyle.Base = t.FocusedStyle.Base.UnsetBackground()
+	t.FocusedStyle.CursorLine = t.FocusedStyle.CursorLine.UnsetBackground()
+	t.BlurredStyle.Base = t.BlurredStyle.Base.UnsetBackground()
+	t.BlurredStyle.CursorLine = t.BlurredStyle.CursorLine.UnsetBackground()
 	t.Focus()
 
 	s := spinner.New()
