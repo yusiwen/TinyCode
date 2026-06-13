@@ -19,16 +19,17 @@ const (
 )
 
 type patchChunk struct {
-	context string // context line (prefix " ")
-	oldLine string // line to remove (prefix "-")
-	newLine string // line to add (prefix "+")
+	beforeCtx []string // context lines before the removed line (prefix " ")
+	oldLine   string   // line to remove (prefix "-")
+	newLine   string   // line to add (prefix "+")
 }
 
 type patchOp struct {
-	typ    patchOpType
-	path   string
-	chunks []patchChunk
-	newSrc string // for add ops: full content
+	typ        patchOpType
+	path       string
+	chunks     []patchChunk
+	newSrc     string // for add ops: full content
+	pendingCtx []string // context lines being accumulated before the next - line
 }
 
 // ApplyPatch returns a Tool that applies V4A format patches.
@@ -81,15 +82,39 @@ func ApplyPatch() Tool {
 						idx := strings.Index(remaining, chunk.oldLine)
 						if idx < 0 {
 							return "", fmt.Errorf(
-								"validate %s: chunk %d: old line %q not found in file%s",
+								"validate %s: chunk %d: old line %q not found in file — "+
+									"the file may have been modified since the patch was generated. "+
+									"Re-read the file before applying.%s",
 								op.path, ci+1, chunk.oldLine, formatFilePreview(content, chunk.oldLine))
 						}
-						remaining = remaining[idx+len(chunk.oldLine):]
-						// Find the newline after this match for next iteration
-						nlIdx := strings.Index(remaining, "\n")
-						if nlIdx >= 0 {
-							remaining = remaining[nlIdx:]
+
+						// Validate context lines before the removed line
+						if len(chunk.beforeCtx) > 0 {
+							// The section before the match should contain all beforeCtx lines
+							beforeSection := remaining[:idx]
+							for _, ctx := range chunk.beforeCtx {
+								if !strings.Contains(beforeSection, ctx) {
+									// Try line-by-line: find the context line after trimming
+									ctxTrimmed := strings.TrimSpace(ctx)
+									found := false
+									ctxLines := strings.Split(beforeSection, "\n")
+									for _, cl := range ctxLines {
+										if strings.Contains(cl, ctxTrimmed) {
+											found = true
+											break
+										}
+									}
+									if !found {
+										return "", fmt.Errorf(
+											"validate %s: chunk %d: context line %q not found before change — "+
+												"the file has been modified since the patch was generated",
+											op.path, ci+1, ctx)
+									}
+								}
+							}
 						}
+
+						remaining = remaining[idx+len(chunk.oldLine):]
 					}
 				case opAdd:
 					if err := os.MkdirAll(filepath.Dir(op.path), 0755); err != nil {
@@ -240,14 +265,28 @@ func parseV4A(patch string) ([]patchOp, error) {
 			prefix := trimmed[0]
 			rest := ""
 			if len(trimmed) > 1 {
-				rest = trimmed[1:] // including any leading spaces
+				rest = trimmed[1:] // text after the prefix, preserving internal spaces
 			}
 			switch prefix {
 			case ' ':
-				// Context line (not used in hermetic matching)
-				// We only track -/+ lines
+				// Context line — save as pending context for the next - line
+				// We'll flush it into the chunk when we hit a - line
+				// Context lines accumulate in a pending buffer on current patchOp
+				if current.pendingCtx == nil {
+					current.pendingCtx = []string{}
+				}
+				current.pendingCtx = append(current.pendingCtx, rest)
 			case '-':
-				chunk := patchChunk{oldLine: rest + "\n"}
+				chunk := patchChunk{
+					oldLine: rest + "\n",
+				}
+				// Flush pending context into beforeCtx
+				if len(current.pendingCtx) > 0 {
+					chunk.beforeCtx = make([]string, len(current.pendingCtx))
+					copy(chunk.beforeCtx, current.pendingCtx)
+				}
+				// Clear pending — subsequent context lines go to afterCtx
+				current.pendingCtx = nil
 				// Look ahead for + line
 				if i+1 < len(lines) {
 					next := strings.TrimRight(lines[i+1], "\r")
@@ -260,13 +299,12 @@ func parseV4A(patch string) ([]patchOp, error) {
 					}
 				}
 				current.chunks = append(current.chunks, chunk)
+				// After this chunk, any context lines belong to afterCtx
+				// Reset pendingCtx so next iteration accumulates afterCtx lines
+				current.pendingCtx = []string{}
 			case '+':
-				// Only add if not paired with a preceding -
-				// (paired + lines are handled by the - case above)
-				if i == 0 || len(lines[i-1]) == 0 || lines[i-1][0] != '-' {
-					// Standalone + line (for new content in non-update context)
-					// In update context, this shouldn't happen
-				}
+				// Handle standalone + lines without a preceding -
+				// Already handled above via look-ahead
 			}
 		case inUpdate && current != nil && len(trimmed) == 0:
 			// Empty line could be significant (e.g., blank context line)

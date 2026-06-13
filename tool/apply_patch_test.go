@@ -229,3 +229,95 @@ func TestApplyPatchAllOps(t *testing.T) {
 		t.Error("delete failed")
 	}
 }
+
+func TestApplyPatchContextMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.go")
+	// File content where the context before the change is DIFFERENT from the patch
+	os.WriteFile(path, []byte("func main() {\n\treturn\n}\n"), 0644)
+
+	// Patch expects "var x = 1" before "return" but file has "func main() {"
+	patch := `*** Begin Patch
+*** Update File: ` + path + `
+@@ modify @@
+ var x = 1
+-	return
++	return nil
+*** End Patch`
+
+	tool := ApplyPatch()
+	_, err := tool.Execute(context.Background(), map[string]any{
+		"patch_text": patch,
+	})
+	if err == nil {
+		t.Fatal("expected error for context mismatch")
+	}
+	if !strings.Contains(err.Error(), "context line") {
+		t.Errorf("expected 'context line' error, got: %v", err)
+	}
+}
+
+func TestApplyPatchContextMatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.go")
+	// File content matching the context exactly
+	os.WriteFile(path, []byte("var x = 1\n\treturn\n}\n"), 0644)
+
+	// Patch context matches
+	patch := `*** Begin Patch
+*** Update File: ` + path + `
+@@ modify @@
+ var x = 1
+-	return
++	return nil
+*** End Patch`
+
+	tool := ApplyPatch()
+	result, err := tool.Execute(context.Background(), map[string]any{
+		"patch_text": patch,
+	})
+	if err != nil {
+		t.Fatalf("expected success, got: %v", err)
+	}
+	if !strings.Contains(result, "U ") {
+		t.Errorf("expected 'U ' in result, got: %q", result)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "return nil") {
+		t.Errorf("expected 'return nil' in result file")
+	}
+}
+
+func TestApplyPatchMultiChunkContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.go")
+	os.WriteFile(path, []byte("var a = 1\nvar b = 2\nfunc x() {}\nfunc y() {}\n"), 0644)
+
+	// Two chunks, each with context
+	patch := `*** Begin Patch
+*** Update File: ` + path + `
+@@ chunk 1 @@
+ var a = 1
+-var b = 2
++var b = 99
+@@ chunk 2 @@
+ func x() {}
+-func y() {}
++func y() int { return 0 }
+*** End Patch`
+
+	tool := ApplyPatch()
+	result, err := tool.Execute(context.Background(), map[string]any{
+		"patch_text": patch,
+	})
+	if err != nil {
+		t.Fatalf("expected success, got: %v", err)
+	}
+	if !strings.Contains(result, "1 operation") {
+		t.Errorf("expected 1 operation (2 chunks on 1 file), got: %q", result)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "var b = 99") || !strings.Contains(string(data), "func y() int") {
+		t.Errorf("expected both changes in file, got:\n%s", string(data))
+	}
+}
