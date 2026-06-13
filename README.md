@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-309-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-315-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -33,6 +33,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Auto-save conversations on exit (`~/.tinycode/sessions/TUI-*.json`), with title/preview/metadata
 - Resume with `--resume=TUI-20260607-235959`
 - List sessions with `--list-sessions` (shows title, message count, last active time)
+- **AI-generated session titles**: title hidden agent auto-names conversations via LLM. Falls back to first user message. (2deee5e)
 - Input history: Up/Down arrows to recall previous inputs, Esc to exit browse mode
 - Status bar shows `hist 3/5` during history browsing
 
@@ -73,14 +74,14 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **TUI rendering**: `▾ Todo (2/6)` with `[x]` completed, `[>]` in_progress, `[ ]` pending, `[~]` cancelled markers.
 
 ### Line-Level Code Edit
-- **edit tool**: Search/replace editing (old_string + new_string). Validates uniqueness, rejects if not found or ambiguous. Multiple edits per call. LSP integration. 8 tests. (d067156)
+- **edit tool**: Search/replace editing (old_string + new_string). **7 fuzzy strategies** (exact → line-trimmed → ws-normalized → indent-flexible → escape-normalized → unicode-normalized → block-anchor) + indentation correction. Validates uniqueness. Multiple edits per call. LSP integration. 14 tests. (d067156, 34d2c17)
 - **apply_patch tool**: V4A multi-file patch format. Supports UPDATE (line-level -/+ hunks), ADD (create files), DELETE (remove files). Two-phase execution: validate all, then apply. Multi-file in one call. 9 tests. (9045176)
 - **write_file** preserved for creating new files and full rewrites. Three tools form a complementary editing system.
 
 ### CI/CD Pipeline
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **309 tests passing**
+- **315 tests passing**
 
 ### Skill System
 - **SKILL.md-based discovery** — three-layer scan: embedded (skill/builtin/) → ~/.tinycode/skills/ → project .tinycode/skills/ (upward search). Later sources override earlier. (cbd6db3)
@@ -88,7 +89,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Skill index auto-injected** into system prompt at startup. Startup shows "13 tools, 2 skills loaded". (8fa8800)
 - **2 builtin skills**: code-review, git-commit (as markdown files in skill/builtin/)
 - **6 agents**: plan, build (primary) + explore, general (subagents) + compact, title (hidden)
-- **11 new tests** across skill package and tui package — 309 tests total. (cbd6db3)
+- **11 new tests** across skill package and tui package — 315 tests total. (cbd6db3)
 ---
 
 # Architecture
@@ -180,7 +181,9 @@ Error recovery:
 - [x] **GitHub Actions CI/CD + Makefile improvements** — main.yml (build+lint+test), release.yml (cross-compile+release), Makefile test/releases targets. (ab07697, bddeed5)
 - [x] **Skills & Subagents** — SKILL.md-based discovery + /skill command + 2 builtin skills. 3 new subagents: general (parallel research), compact (history compression), title (session naming). /explore command removed (explore kept as subagent). (cbd6db3, 8fa8800, adfa51b, c0b8ae8)
 - [x] **Todo Feature — P0+P1+P2 Complete** — TodoStore + todo tool + JSON Schema (P0), TUI rendering with [x][>][ ][~] markers (P1), compression protection + housekeeping mute + session recovery (P2). 21 new tests. (2f51d06, 94db0e3, 25caefc)
-- [x] **Line-Level Code Edit — edit + apply_patch** — Search/replace edit tool (old_string/new_string), V4A multi-file patch format (UPDATE/ADD/DELETE). Two-phase validation. 17 new tests. (d067156, 9045176)
+- [x] **Line-Level Code Edit — edit + apply_patch** — Search/replace edit tool with 7 fuzzy strategies + indentation correction. V4A multi-file patch format. 23 new tests. (d067156, 9045176, 34d2c17)
+- [x] **Title Agent & Session Titles** — title hidden agent generates conversation titles via LLM after first exchange. Applied on session save. (2deee5e)
+- [x] **Edit Fuzzy Matching** — 7 fallback strategies (line-trimmed, ws-normalized, indent-flexible, escape-normalized, unicode-normalized, block-anchor). Indentation correction. 6 new tests. (34d2c17)
 
 ## Remaining
 
