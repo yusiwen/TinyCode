@@ -136,8 +136,8 @@ func ApplyTheme(t Theme) {
 			Background(t.SelectionBg)
 
 	statusBarStyle = lipgloss.NewStyle().
-			Foreground(t.StatusBarFg).
-			Background(t.StatusBarBg)
+			Foreground(t.StatusBarFg)
+	// Note: no Background() — inherits terminal default (matches message area)
 
 	spinnerStyle = lipgloss.NewStyle().
 			Foreground(t.SpinnerFg)
