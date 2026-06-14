@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -14,6 +15,25 @@ import (
 )
 
 var skipSSRFCheck = false
+
+// browserCommands lists possible Chromium/Chrome binary names to try.
+var browserCommands = []string{
+	"chromium-browser",
+	"chromium",
+	"google-chrome",
+	"google-chrome-stable",
+	"chrome",
+}
+
+// Summarizer is a callback...
+// Set via SetSummarizer. When non-nil, content >5000 chars is summarized.
+var summarizer func(ctx context.Context, content string) (string, error)
+
+// SetSummarizer configures an optional LLM-based summarizer for web_extract.
+// The function receives extracted page content and should return a concise summary.
+func SetSummarizer(fn func(ctx context.Context, content string) (string, error)) {
+	summarizer = fn
+}
 
 func WebExtract() Tool {
 	return Tool{
@@ -62,7 +82,16 @@ func WebExtract() Tool {
 					results = append(results, fmt.Sprintf("=== %s ===\nNo content extracted.", urlStr))
 				} else {
 					if len(content) > 5000 {
-						content = content[:5000] + "\n\n[... content truncated at 5000 chars ...]"
+						if summarizer != nil {
+							summary, err := summarizer(context.Background(), content)
+							if err == nil && len(summary) > 0 && len(summary) < len(content) {
+								content = summary + "\n\n[... LLM-summarized from longer content ...]"
+							} else {
+								content = content[:5000] + "\n\n[... content truncated at 5000 chars ...]"
+							}
+						} else {
+							content = content[:5000] + "\n\n[... content truncated at 5000 chars ...]"
+						}
 					}
 					results = append(results, fmt.Sprintf("=== %s ===\n%s", urlStr, content))
 				}
@@ -107,6 +136,11 @@ func extractURL(ctx context.Context, urlStr string) (string, error) {
 	// 4. Wayback Machine
 	if snapContent := tryWayback(ctx, urlStr); snapContent != "" {
 		return snapContent + "\n\n(来源: Wayback Machine)", nil
+	}
+
+	// 5. Browser rendering (local Chromium) for JS-heavy pages
+	if browserContent := tryBrowser(ctx, urlStr); browserContent != "" {
+		return browserContent + "\n\n(来源: Chromium headless)", nil
 	}
 
 	if err != nil {
@@ -442,4 +476,38 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 			sb.WriteString("\n")
 		}
 	}
+}
+
+// tryBrowser attempts to fetch page content using a headless Chromium browser.
+// Returns empty string if no browser is available or rendering fails.
+func tryBrowser(ctx context.Context, urlStr string) string {
+	// Find available browser
+	browserPath := ""
+	for _, name := range browserCommands {
+		if path, err := exec.LookPath(name); err == nil {
+			browserPath = path
+			break
+		}
+	}
+	if browserPath == "" {
+		return ""
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx2, browserPath,
+		"--headless",
+		"--disable-gpu",
+		"--no-sandbox",
+		"--dump-dom",
+		urlStr,
+	)
+	cmd.Stderr = nil
+	output, err := cmd.Output()
+	if err != nil || len(output) < 200 {
+		return ""
+	}
+
+	return processContent(string(output))
 }

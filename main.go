@@ -16,6 +16,7 @@ import (
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
+	"github.com/yusiwen/tinycode/types"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/tui"
 )
@@ -231,6 +232,31 @@ func main() {
 				Parameters: td.Parameters, Execute: td.Execute,
 			})
 
+			// Web tools
+			ws := tool.WebSearch()
+			ag.AddTool(agent.Tool{
+				Name: ws.Name, Description: ws.Description,
+				Parameters: ws.Parameters, Execute: ws.Execute,
+			})
+			we := tool.WebExtract()
+			ag.AddTool(agent.Tool{
+				Name: we.Name, Description: we.Description,
+				Parameters: we.Parameters, Execute: we.Execute,
+			})
+			// Wire LLM summarizer for web_extract (content >5000 chars)
+			provider := provReg.Current()
+			tool.SetSummarizer(func(ctx context.Context, content string) (string, error) {
+				resp, err := provider.Chat(ctx, types.ChatRequest{
+					Messages: []types.Message{
+						{Role: types.RoleSystem, Content: "Summarize the following web page content in 3-5 sentences. Focus on key facts, data, and conclusions."},
+						{Role: types.RoleUser, Content: content[:8000]},
+					},
+				})
+				if err != nil {
+					return "", err
+				}
+				return resp.Content, nil
+			})
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
 			store := session.NewStore(cfg.SessionDir)
