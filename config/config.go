@@ -77,6 +77,9 @@ type Config struct {
 	// Context window and compression
 	ContextLength        int `json:"context_length,omitempty"`
 	CompressionThreshold int `json:"compression_threshold,omitempty"`
+
+	// Web search backends
+	SearXNGURL string `json:"searxng_url,omitempty"`
 }
 
 // DefaultConfig returns the hardcoded default configuration.
