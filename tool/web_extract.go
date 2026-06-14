@@ -4,19 +4,22 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"golang.org/x/net/html"
 )
 
-// WebExtract returns a Tool that fetches and extracts content from URLs.
+var skipSSRFCheck = false
+
 func WebExtract() Tool {
 	return Tool{
 		Name:        "web_extract",
 		Description: "Fetch and extract content from web page URLs. Returns page content in markdown format. " +
-			"Max 5 URLs per call. Timeout: 30s per URL. Max response: 2MB.",
+			"Max 5 URLs per call. Fallback chain: direct HTTP → Cloudflare retry → Google Cache → Wayback Machine.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -55,7 +58,7 @@ func WebExtract() Tool {
 				content, err := extractURL(ctx, urlStr)
 				if err != nil {
 					results = append(results, fmt.Sprintf("=== %s ===\nError: %s", urlStr, err))
-				} else if content == "" {
+				} else if len(strings.TrimSpace(content)) < 20 {
 					results = append(results, fmt.Sprintf("=== %s ===\nNo content extracted.", urlStr))
 				} else {
 					if len(content) > 5000 {
@@ -71,50 +74,201 @@ func WebExtract() Tool {
 }
 
 func extractURL(ctx context.Context, urlStr string) (string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	if !skipSSRFCheck {
+		if err := checkSSRF(urlStr); err != nil {
+			return "", err
+		}
+	}
 
+	// 1. Direct HTTP
+	content, status, cfBlocked, err := fetchURL(ctx, urlStr, "Mozilla/5.0 (compatible; TinyCode/1.0)")
+	if err == nil && status == 200 {
+		return processContent(content), nil
+	}
+
+	// 2. Cloudflare bypass
+	if cfBlocked {
+		content, status, _, err = fetchURL(ctx, urlStr, "opencode (+https://github.com/opencode-ai)")
+		if err == nil && status == 200 {
+			return processContent(content), nil
+		}
+	}
+
+	// 3. Google Cache
+	cacheURL := fmt.Sprintf("https://webcache.googleusercontent.com/search?q=cache:%s",
+		url.QueryEscape(urlStr))
+	content, _, _, err = fetchURL(ctx, cacheURL, "Mozilla/5.0 (compatible; TinyCode/1.0)")
+	if err == nil && len(content) > 200 {
+		if processed := processContent(content); len(processed) > 50 {
+			return processed + "\n\n(来源: Google Cache)", nil
+		}
+	}
+
+	// 4. Wayback Machine
+	if snapContent := tryWayback(ctx, urlStr); snapContent != "" {
+		return snapContent + "\n\n(来源: Wayback Machine)", nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("all fetch methods failed: %w", err)
+	}
+	return "", fmt.Errorf("all fetch methods failed (status %d)", status)
+}
+
+func fetchURL(ctx context.Context, urlStr, userAgent string) (string, int, bool, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return "", 0, false, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; TinyCode/1.0)")
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("http request: %w", err)
+		return "", 0, false, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	bodyStr := string(data)
+	isCF := resp.StatusCode == 403 && strings.Contains(resp.Header.Get("Server"), "cloudflare")
+
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		return bodyStr, resp.StatusCode, isCF, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-
-	// Limit body size
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
-	}
-
-	contentType := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(contentType, "text/html") &&
-		!strings.HasPrefix(contentType, "application/xhtml") &&
-		contentType == "" {
-		// Non-HTML content — return as plain text
-		return string(body), nil
-	}
-
-	// Parse HTML and extract markdown
-	return htmlToMarkdown(string(body))
+	return bodyStr, 200, false, nil
 }
 
+func processContent(content string) string {
+	contentType := sniffContentType(content)
+	if contentType != "html" {
+		return content
+	}
+	out, err := htmlToMarkdown(content)
+	if err != nil {
+		return content
+	}
+	out = strings.TrimSpace(out)
+	if len(out) < 10 {
+		return ""
+	}
+	if len(out) > 5000 {
+		out = out[:5000] + "\n\n[... content truncated at 5000 chars ...]"
+	}
+	return out
+}
+
+func sniffContentType(body string) string {
+	trimmed := strings.TrimSpace(body)
+	if strings.HasPrefix(trimmed, "<!DOCTYPE") || strings.HasPrefix(trimmed, "<html") ||
+		strings.HasPrefix(trimmed, "<!doctype") {
+		return "html"
+	}
+	return "raw"
+}
+
+func tryWayback(ctx context.Context, urlStr string) string {
+	cdxURL := fmt.Sprintf("https://web.archive.org/cdx/search/cdx?url=%s&output=json&limit=3",
+		url.QueryEscape(urlStr))
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", cdxURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; TinyCode/1.0)")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 65536))
+	lines := strings.Split(string(body), "\n")
+	for i := 1; i < len(lines); i++ {
+		fields := strings.Split(lines[i], " ")
+		if len(fields) < 2 {
+			continue
+		}
+		ts := fields[1]
+		wbURL := fmt.Sprintf("https://web.archive.org/web/%sid_/%s", ts, urlStr)
+		wbContent, _, _, wbErr := fetchURL(ctx, wbURL, "Mozilla/5.0 (compatible; TinyCode/1.0)")
+		if wbErr == nil && len(wbContent) > 200 {
+			return processContent(wbContent)
+		}
+	}
+	return ""
+}
+
+func checkSSRF(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	host := u.Hostname()
+
+	blockedHosts := map[string]bool{
+		"169.254.169.254":          true,
+		"169.254.170.2":            true,
+		"169.254.169.253":          true,
+		"metadata.google.internal": true,
+		"metadata.goog":            true,
+		"100.100.100.200":          true,
+	}
+	if blockedHosts[host] {
+		return fmt.Errorf("SSRF: blocked host %q (cloud metadata)", host)
+	}
+
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("SSRF: DNS resolution failed for %q: %w", host, err)
+	}
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if isPrivateIP(ip) {
+			return fmt.Errorf("SSRF: blocked private IP %q for host %q", ipStr, host)
+		}
+	}
+	return nil
+}
+
+func isPrivateIP(ip net.IP) bool {
+	if ip.IsLoopback() {
+		return true
+	}
+	if ip.IsLinkLocalUnicast() {
+		return true
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		switch {
+		case ip4[0] == 10:
+			return true
+		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
+			return true
+		case ip4[0] == 192 && ip4[1] == 168:
+			return true
+		case ip4[0] == 127:
+			return true
+		}
+	}
+	if ip.To16() != nil {
+		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsPrivate() {
+			return true
+		}
+	}
+	return false
+}
+
+// ── HTML to Markdown converter ──
 func htmlToMarkdown(htmlContent string) (string, error) {
 	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
 		return "", fmt.Errorf("parse html: %w", err)
 	}
 
-	// Find <article> or <main> or fallback to <body>
 	contentNode := findContentNode(doc)
 	if contentNode == nil {
 		contentNode = doc
@@ -126,7 +280,6 @@ func htmlToMarkdown(htmlContent string) (string, error) {
 }
 
 func findContentNode(n *html.Node) *html.Node {
-	// Priority: <article> > <main> > <body>
 	var article, main, body *html.Node
 	var search func(*html.Node)
 	search = func(n *html.Node) {
@@ -168,7 +321,6 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 		if text != "" {
 			sb.WriteString(text)
 		}
-
 	case html.ElementNode:
 		switch n.Data {
 		case "h1", "h2", "h3", "h4", "h5", "h6":
@@ -182,30 +334,25 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 				renderNode(c, sb, depth+1)
 			}
 			sb.WriteString("\n")
-
 		case "p":
 			sb.WriteString("\n\n")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
-
 		case "br":
 			sb.WriteString("\n")
-
 		case "a":
 			href := ""
 			for _, attr := range n.Attr {
 				if attr.Key == "href" {
 					href = attr.Val
-					break
 				}
 			}
-			var text string
 			var textSB strings.Builder
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, &textSB, depth+1)
 			}
-			text = strings.TrimSpace(textSB.String())
+			text := strings.TrimSpace(textSB.String())
 			if text != "" && href != "" && text != href {
 				sb.WriteString(fmt.Sprintf("[%s](%s)", text, href))
 			} else if text != "" {
@@ -213,21 +360,18 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 			} else if href != "" {
 				sb.WriteString(href)
 			}
-
 		case "strong", "b":
 			sb.WriteString("**")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
 			sb.WriteString("**")
-
 		case "em", "i":
 			sb.WriteString("*")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
 			sb.WriteString("*")
-
 		case "code":
 			isInline := n.Parent == nil || n.Parent.Data != "pre"
 			if isInline {
@@ -243,39 +387,32 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 			} else {
 				sb.WriteString("\n```\n")
 			}
-
 		case "pre":
 			sb.WriteString("\n\n")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
 			sb.WriteString("\n")
-
 		case "ul", "ol":
 			sb.WriteString("\n\n")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
-
 		case "li":
 			sb.WriteString("\n- ")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
-
 		case "blockquote":
 			sb.WriteString("\n\n> ")
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
 			sb.WriteString("\n")
-
 		case "hr":
 			sb.WriteString("\n\n---\n")
-
 		case "img":
-			alt := ""
-			src := ""
+			alt, src := "", ""
 			for _, attr := range n.Attr {
 				switch attr.Key {
 				case "alt":
@@ -289,20 +426,14 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 			} else if src != "" {
 				sb.WriteString(fmt.Sprintf("![image](%s)", src))
 			}
-
 		case "script", "style", "nav", "footer", "header", "aside":
-			// Skip non-content elements
 			return
-
 		default:
-			// Skip element wrapper, render children
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				renderNode(c, sb, depth+1)
 			}
 		}
 	}
-
-	// After closing certain block elements, add spacing
 	if n.Type == html.ElementNode {
 		switch n.Data {
 		case "td", "th":
@@ -312,5 +443,3 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 		}
 	}
 }
-
-// sanitize and collapse whitespace
