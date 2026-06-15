@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/TinyCode-v0.0.2-%23FFD700?style=for-the-badge" alt="TinyCode v0.0.2"/>
+  <img src="https://img.shields.io/badge/TinyCode-v0.0.3-%23FFD700?style=for-the-badge" alt="TinyCode v0.0.3"/>
   <img src="https://img.shields.io/badge/Go-1.24-%2300ADD8?style=for-the-badge&logo=go" alt="Go 1.24"/>
   <img src="https://img.shields.io/badge/License-MIT-%23green?style=for-the-badge" alt="MIT License"/>
 </p>
