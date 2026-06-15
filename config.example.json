@@ -1,7 +1,7 @@
 {
   "$comment": "Copy to config.json. API keys are read from env vars, not stored here.",
+
   "default_mode": "plan",
-  "glamour_style": "auto",
   "show_thinking": true,
   "verbose": false,
   "log_level": "info",
@@ -18,14 +18,18 @@
       "type": "openai",
       "model": "claude-sonnet-4-20250514",
       "base_url": "https://api.anthropic.com"
-    },
-    {
-      "name": "local-ollama",
-      "type": "ollama",
-      "model": "qwen3.5:2b",
-      "base_url": "http://localhost:11434"
     }
   ],
+
+  "context_length": 1000000,
+  "compression_threshold": 500000,
+
+  "searxng_url": "https://search.yusiwen.cn",
+
+  "sandbox": {
+    "project_root": "/home/yusiwen/git/ai/TinyCode",
+    "deny_commands": ["rm -rf /", "sudo", "reboot", "shutdown"]
+  },
 
   "truncation": {
     "max_lines": 2000,
@@ -36,7 +40,7 @@
   "agents": {
     "plan": {
       "max_steps": 20,
-      "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task"]
+      "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
     },
     "build": {
       "max_steps": 30
@@ -44,13 +48,20 @@
     "explore": {
       "max_steps": 15,
       "allowed_tools": ["bash", "read_file", "search_files"]
+    },
+    "general": {
+      "max_steps": 20,
+      "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
     }
   },
 
   "session_dir": "~/.tinycode/sessions",
+
   "lsp": {
     "enabled": false
   },
+
+  "theme": "nord",
 
   "$env_vars_note": {
     "description": "API keys are loaded from environment variables using the pattern: UPPER(NAME)_API_KEY",
@@ -58,6 +69,17 @@
       "DEEPSEEK_API_KEY": "set your DeepSeek API key",
       "CLAUDE_API_KEY": "set your Anthropic/Claude API key"
     },
-    "override": "To use a custom env var name, add 'api_key_env' to the provider config, e.g.: { ..., \"api_key_env\": \"MY_CUSTOM_KEY\" }"
+    "override": "To use a custom env var name, add 'api_key_env' to the provider config: { name: 'my', api_key_env: 'MY_KEY' }"
+  },
+
+  "$new_fields": {
+    "searxng_url": "Self-hosted SearXNG fallback for web_search. Remove or set to '' to disable.",
+    "theme": "TUI theme name: 'default' or 'nord'",
+    "context_length": "Maximum context window in tokens (default: 1000000)",
+    "compression_threshold": "Token count threshold to trigger history compression (default: 500000)",
+    "sandbox": {
+      "project_root": "Restrict file tool access to this directory (default: current dir)",
+      "deny_commands": "Shell commands that are always blocked"
+    }
   }
 }
