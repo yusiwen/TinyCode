@@ -23,7 +23,7 @@ import (
 
 // Build-time overrides (set via ldflags in Makefile)
 var (
-	Version   = "dev"
+	Version   = "0.0.4"
 	CommitSHA = "unknown"
 	BuildTime = "unknown"
 )

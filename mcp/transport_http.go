@@ -97,7 +97,7 @@ func (c *HTTPClient) Initialize() (*ServerInfo, error) {
 		"protocolVersion": "2025-03-26",
 		"clientInfo": map[string]string{
 			"name":    "tinycode",
-			"version": "0.0.3",
+			"version": "0.0.4",
 		},
 	}
 	rawParams, _ := json.Marshal(params)

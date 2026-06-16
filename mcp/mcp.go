@@ -118,7 +118,7 @@ func (c *Client) Initialize() (*ServerInfo, error) {
 		"protocolVersion": "2025-03-26",
 		"clientInfo": map[string]string{
 			"name":    "tinycode",
-			"version": "0.0.3",
+			"version": "0.0.4",
 		},
 	}
 	raw, err := c.send("initialize", params)
