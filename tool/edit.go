@@ -109,13 +109,21 @@ func Edit() Tool {
 				// Fuzzy find: try strategies in order
 				result := fuzzyFind(content, edit.OldString)
 				if result.count == 0 {
-					return "", fmt.Errorf("edit %d: old_string not found in file (tried %d strategies) — "+
+					errStr := fmt.Sprintf("edit %d: old_string not found in file (tried %d strategies) — "+
 						"the file may have been modified since you last read it. "+
 						"Try read_file first, then edit again.", applied+1, len(strategies))
+					if applied > 0 {
+						return fmt.Sprintf("Partial success: %d edit(s) applied before error.\n%s", applied, errStr), nil
+					}
+					return "", fmt.Errorf("%s", errStr)
 				}
 				if result.count > 1 {
+					if applied > 0 {
+						return fmt.Sprintf("Partial success: %d edit(s) applied before error.\nEdit %d: old_string appears %d times in the file. Provide more context to make it unique (include surrounding lines). Matched via strategy: %s",
+							applied, applied+1, result.count, result.strategy), nil
+					}
 					return "", fmt.Errorf(
-						"edit %d: old_string appears %d times (strategy: %s) — provide more surrounding context",
+						"edit %d: old_string appears %d times in the file. Provide more context to make it unique (include surrounding lines). Matched via strategy: %s",
 						applied+1, result.count, result.strategy)
 				}
 

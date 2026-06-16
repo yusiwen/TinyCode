@@ -15,6 +15,7 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/types"
+	"github.com/yusiwen/tinycode/lsp"
 )
 
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -850,7 +851,9 @@ Mouse:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
 		m.autoScroll()
 	case "/diagnostics":
-		if m.diagTotal == 0 {
+		if !lsp.IsAvailable() {
+			m.ShowStatus("LSP not available (set lsp.enabled=true in config.json)")
+		} else if m.diagTotal == 0 {
 			m.ShowStatus("No LSP diagnostics.")
 		} else {
 			m.ShowStatus(fmt.Sprintf("%d LSP errors in %s", m.diagTotal, m.diagFile))

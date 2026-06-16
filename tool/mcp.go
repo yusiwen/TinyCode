@@ -87,6 +87,35 @@ func ConnectMCPServers(servers []config.MCPServerConfig) ([]agent.Tool, error) {
 			}
 			allTools = append(allTools, t)
 		}
+
+		// Register resource tools for this server
+		resources, err := client.Client.ListResources()
+		if err == nil && len(resources) > 0 {
+			resName := fmt.Sprintf("mcp_%s_list_resources", s.Name)
+			allTools = append(allTools, agent.Tool{
+				Name:        resName,
+				Description: fmt.Sprintf("List available resources from MCP server %s", s.Name),
+				Parameters: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+				Execute: func(ctx context.Context, args map[string]any) (string, error) {
+					resources, err := client.Client.ListResources()
+					if err != nil {
+						return "", fmt.Errorf("mcp list resources: %w", err)
+					}
+					if len(resources) == 0 {
+						return "No resources available.", nil
+					}
+					var sb strings.Builder
+					sb.WriteString(fmt.Sprintf("%d resources from %s:\n", len(resources), s.Name))
+					for _, r := range resources {
+						sb.WriteString(fmt.Sprintf("  %s: %s (%s)\n", r.URI, r.Name, r.Description))
+					}
+					return strings.TrimSpace(sb.String()), nil
+				},
+			})
+		}
 	}
 
 	return allTools, nil

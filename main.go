@@ -180,7 +180,9 @@ func main() {
 				ag.Verbose = *cfg.Verbose
 			}
 
-			// Register tools
+			// ── Register tools (grouped by category) ──
+
+			// Shell & File system
 			ag.AddTool(agent.Tool{
 				Name: tool.Bash().Name, Description: tool.Bash().Description,
 				Parameters: tool.Bash().Parameters, Execute: tool.Bash().Execute,
@@ -197,39 +199,17 @@ func main() {
 				Name: tool.SearchFiles().Name, Description: tool.SearchFiles().Description,
 				Parameters: tool.SearchFiles().Parameters, Execute: tool.SearchFiles().Execute,
 			})
-			ag.AddTool(lsp.ToolFactory(lsp.ToolGoToDefinition))
-			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
-			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
-			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
-			ls := tool.LoadSkill()
-			ag.AddTool(agent.Tool{
-				Name: ls.Name, Description: ls.Description,
-				Parameters: ls.Parameters, Execute: ls.Execute,
-			})
-			sm := tool.SkillManage()
-			ag.AddTool(agent.Tool{
-				Name: sm.Name, Description: sm.Description,
-				Parameters: sm.Parameters, Execute: sm.Execute,
-			})
+
+			// Line-level editing
 			ed := tool.Edit()
 			ag.AddTool(agent.Tool{
 				Name: ed.Name, Description: ed.Description,
 				Parameters: ed.Parameters, Execute: ed.Execute,
 			})
-			ag.AddTool(tool.SandboxAllowTool())
 			ap := tool.ApplyPatch()
 			ag.AddTool(agent.Tool{
 				Name: ap.Name, Description: ap.Description,
 				Parameters: ap.Parameters, Execute: ap.Execute,
-			})
-
-			// Todo tool with shared store
-			todoStore := tool.NewTodoStore()
-			ag.TodoStorer = todoStore
-			td := tool.Todo(todoStore)
-			ag.AddTool(agent.Tool{
-				Name: td.Name, Description: td.Description,
-				Parameters: td.Parameters, Execute: td.Execute,
 			})
 
 			// Web tools
@@ -248,6 +228,36 @@ func main() {
 				Name: wb.Name, Description: wb.Description,
 				Parameters: wb.Parameters, Execute: wb.Execute,
 			})
+
+			// LSP tools
+			ag.AddTool(lsp.ToolFactory(lsp.ToolGoToDefinition))
+			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
+			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
+			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
+
+			// Skills
+			ls := tool.LoadSkill()
+			ag.AddTool(agent.Tool{
+				Name: ls.Name, Description: ls.Description,
+				Parameters: ls.Parameters, Execute: ls.Execute,
+			})
+			sm := tool.SkillManage()
+			ag.AddTool(agent.Tool{
+				Name: sm.Name, Description: sm.Description,
+				Parameters: sm.Parameters, Execute: sm.Execute,
+			})
+
+			// Todo tool with shared store
+			todoStore := tool.NewTodoStore()
+			ag.TodoStorer = todoStore
+			td := tool.Todo(todoStore)
+			ag.AddTool(agent.Tool{
+				Name: td.Name, Description: td.Description,
+				Parameters: td.Parameters, Execute: td.Execute,
+			})
+
+			// Sandbox
+			ag.AddTool(tool.SandboxAllowTool())
 			// Wire LLM summarizer for web_extract (content >5000 chars)
 			provider := provReg.Current()
 			tool.SetSummarizer(func(ctx context.Context, content string) (string, error) {
