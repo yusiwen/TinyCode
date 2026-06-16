@@ -174,6 +174,8 @@ func fetchURL(ctx context.Context, urlStr, userAgent string) (string, int, bool,
 	return bodyStr, 200, false, nil
 }
 
+var minContentLen = 10
+
 func processContent(content string) string {
 	contentType := sniffContentType(content)
 	if contentType != "html" {
