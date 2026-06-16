@@ -57,13 +57,13 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - 1M token context (DeepSeek V4 Flash) with automatic threshold lowering on `context_length_exceeded` errors
 
 ### LSP Integration
-- Long-lived connection via lazyStart() singleton — gopls starts on first LSP use, stays alive until Close()
-- Background diagnostics reader (StartReader) pushes publishDiagnostics to channel
-- 7 language configs with auto-detection: Go, Python, TypeScript/JS, Rust, C++, Java
-- 4 LSP tools exposed to LLM: definition, references, hover, symbols
-- Mock LSP test framework (io.Pipe based, no network, no gopls required)
-- **Incremental Diagnostics** — SnapshotBaseline captures diagnostic state before write_file, GetNewDiagnostics computes delta. write_file tool reports only new errors via LSP, LLM sees focused feedback. (a2e3e07)
-- **TUI Error Tracking** — LSPDiagMsg carries per-file diagnostic sets. Status bar shows "errors: N" with live count. /diagnostics command lists all current file errors in viewport. (290818a)
+- **Config**: `"lsp": { "enabled": true }` in config.json (default: disabled). 7 supported languages with auto-detection: Go (`gopls`), Python (`pyright`), TypeScript/JS (`typescript-language-server`), Rust (`rust-analyzer`), C++ (`clangd`), Java (Eclipse JDT).
+- **4 tools** exposed to LLM: `lsp_definition` (→ `Definition at path:line:col`), `lsp_references` (→ `Found N references`), `lsp_hover` (→ type info + docs), `lsp_symbols` (→ all symbols in file). All require `file_path`, `line`, `character` (0-indexed).
+- **Architecture**: Each call starts a fresh LSP process: `exec.Command("gopls")` → stdin/stdout pipes → JSON-RPC with Content-Length framing → `Initialize` → `StartReader()` (background diagnostics listener) → tool operation → `Close()`.
+- **Incremental Diagnostics** — `SnapshotBaseline` captures diagnostic state before edit/write_file/apply_patch, `GetNewDiagnostics` computes delta. Tools report only new errors via LSP — LLM sees focused feedback. (a2e3e07)
+- **TUI Error Tracking** — LSPDiagMsg carries per-file diagnostic sets. Status bar shows `errors: N` with live count. `/diagnostics` command lists all current file errors in viewport. (290818a)
+- **Mock test framework** — `io.Pipe` based, no LSP server required, 15+ tests covering all 4 tool types. (8065ae5)
+- **Limitation**: Per-call process startup (~500ms overhead). Not a persistent LSP connection despite the long-lived design intent.
 
 ### Todo System
 - **TodoStore**: In-memory task list with CRUD (create/read/update/merge/delete/summary). Enforces one `in_progress`, max 256 items, max 4000 chars per task.
