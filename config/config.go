@@ -56,8 +56,19 @@ type LSPConfig struct {
 
 // SandboxConfig holds tool sandbox configuration from config.json.
 type SandboxConfig struct {
-	ProjectRoot      string   `json:"project_root,omitempty"`
-	DenyCommands     []string `json:"deny_commands,omitempty"`
+	ProjectRoot  string   `json:"project_root,omitempty"`
+	DenyCommands []string `json:"deny_commands,omitempty"`
+}
+
+// MCPServerConfig defines a single MCP server to connect to.
+type MCPServerConfig struct {
+	Name      string            `json:"name"`
+	Transport string            `json:"transport"` // "stdio" or "http"
+	Command   string            `json:"command,omitempty"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	URL       string            `json:"url,omitempty"` // for http transport
+	Headers   map[string]string `json:"headers,omitempty"` // for http transport
 }
 
 // Config is the top-level configuration structure.
@@ -80,6 +91,9 @@ type Config struct {
 
 	// Web search backends
 	SearXNGURL string `json:"searxng_url,omitempty"`
+
+	// MCP servers
+	MCPServers []MCPServerConfig `json:"mcp_servers,omitempty"`
 }
 
 // DefaultConfig returns the hardcoded default configuration.

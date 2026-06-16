@@ -257,6 +257,15 @@ func main() {
 				}
 				return resp.Content, nil
 			})
+			// Connect MCP servers and register their tools
+			if mcpTools, err := tool.ConnectMCPServers(cfg.MCPServers); err == nil {
+				for _, mt := range mcpTools {
+					ag.AddTool(mt)
+				}
+				if len(mcpTools) > 0 {
+					tlog.Info("main", "mcp tools registered", "count", len(mcpTools))
+				}
+			}
 			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
 
 			store := session.NewStore(cfg.SessionDir)
