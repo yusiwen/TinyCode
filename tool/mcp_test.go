@@ -59,3 +59,36 @@ func TestParseMCPSchemaEmpty(t *testing.T) {
 		t.Errorf("expected nil for nil input, got %v", schema)
 	}
 }
+
+func TestCheckMCPURLLocalhost(t *testing.T) {
+	if err := checkMCPURL("http://localhost:9000/mcp"); err != nil {
+		t.Fatalf("expected no error for localhost, got: %v", err)
+	}
+}
+
+func TestCheckMCPURLPublic(t *testing.T) {
+	if err := checkMCPURL("https://example.com/mcp"); err != nil {
+		t.Fatalf("expected no error for public, got: %v", err)
+	}
+}
+
+func TestCheckMCPURLPrivate(t *testing.T) {
+	err := checkMCPURL("http://192.168.1.1:9000/mcp")
+	if err == nil {
+		t.Fatal("expected error for private IP")
+	}
+}
+
+func TestCheckMCPURLBadScheme(t *testing.T) {
+	err := checkMCPURL("ftp://localhost/mcp")
+	if err == nil {
+		t.Fatal("expected error for non-http scheme")
+	}
+}
+
+func TestCheckMCPURLInvalid(t *testing.T) {
+	err := checkMCPURL(":::not-a-url:::")
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}

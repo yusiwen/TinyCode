@@ -32,6 +32,27 @@ type ToolResultContent struct {
 	Text string `json:"text"`
 }
 
+// Resource represents a resource exposed by an MCP server.
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MIMEType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceResult carries the content of a read resource.
+type ResourceResult struct {
+	Contents []ResourceContent `json:"contents"`
+}
+
+// ResourceContent carries the actual content data.
+type ResourceContent struct {
+	URI     string `json:"uri"`
+	MIMEType string `json:"mimeType,omitempty"`
+	Text    string `json:"text"`
+	Blob    string `json:"blob,omitempty"`
+}
+
 // ServerInfo holds the identification from an MCP server.
 type ServerInfo struct {
 	Name    string `json:"name"`
@@ -62,6 +83,8 @@ type MCPClient interface {
 	Initialize() (*ServerInfo, error)
 	ListTools() ([]Tool, error)
 	CallTool(name string, args map[string]any) (*ToolResult, error)
+	ListResources() ([]Resource, error)
+	ReadResource(uri string) (*ResourceResult, error)
 	Tools() []Tool
 	Info() *ServerInfo
 }
@@ -144,6 +167,39 @@ func (c *Client) CallTool(name string, args map[string]any) (*ToolResult, error)
 	var result ToolResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("parse tools/call result: %w", err)
+	}
+	return &result, nil
+}
+
+// ListResources retrieves the list of resources from the MCP server.
+func (c *Client) ListResources() ([]Resource, error) {
+	raw, err := c.send("resources/list", nil)
+	if err != nil {
+		return nil, fmt.Errorf("resources/list: %w", err)
+	}
+
+	var result struct {
+		Resources []Resource `json:"resources"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/list result: %w", err)
+	}
+	return result.Resources, nil
+}
+
+// ReadResource reads the content of a resource identified by its URI.
+func (c *Client) ReadResource(uri string) (*ResourceResult, error) {
+	params := map[string]any{
+		"uri": uri,
+	}
+	raw, err := c.send("resources/read", params)
+	if err != nil {
+		return nil, fmt.Errorf("resources/read %q: %w", uri, err)
+	}
+
+	var result ResourceResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/read result: %w", err)
 	}
 	return &result, nil
 }

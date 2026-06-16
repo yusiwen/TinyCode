@@ -150,6 +150,33 @@ func (c *HTTPClient) CallTool(name string, args map[string]any) (*ToolResult, er
 	return &result, nil
 }
 
+func (c *HTTPClient) ListResources() ([]Resource, error) {
+	raw, err := c.send("resources/list", nil)
+	if err != nil {
+		return nil, fmt.Errorf("resources/list: %w", err)
+	}
+	var result struct {
+		Resources []Resource `json:"resources"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/list result: %w", err)
+	}
+	return result.Resources, nil
+}
+
+func (c *HTTPClient) ReadResource(uri string) (*ResourceResult, error) {
+	params, _ := json.Marshal(map[string]any{"uri": uri})
+	raw, err := c.send("resources/read", params)
+	if err != nil {
+		return nil, fmt.Errorf("resources/read: %w", err)
+	}
+	var result ResourceResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("parse resources/read result: %w", err)
+	}
+	return &result, nil
+}
+
 func (c *HTTPClient) Tools() []Tool {
 	return c.tools
 }

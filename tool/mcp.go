@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -166,6 +168,10 @@ func parseMCPSchema(raw json.RawMessage) map[string]any {
 
 // connectMCPHTTP connects via HTTP POST to a remote MCP endpoint.
 func connectMCPHTTP(ctx context.Context, cfg *config.MCPServerConfig) (*mcpClient, error) {
+	// SSRF check
+	if err := checkMCPURL(cfg.URL); err != nil {
+		return nil, err
+	}
 	client := mcp.NewHTTPClient(cfg.URL, cfg.Headers)
 
 	if _, err := client.Initialize(); err != nil {
@@ -186,4 +192,37 @@ func connectMCPHTTP(ctx context.Context, cfg *config.MCPServerConfig) (*mcpClien
 		Client:     client,
 		Tools:      tools,
 	}, nil
+}
+
+// checkMCPURL validates an MCP HTTP endpoint URL for SSRF safety.
+// Only allows http/https to non-private IPs.
+func checkMCPURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid MCP URL %q: %w", rawURL, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("MCP URL scheme must be http or https, got %q", u.Scheme)
+	}
+
+	host := u.Hostname()
+	// Quick check: localhost is allowed for MCP (common dev pattern)
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return nil
+	}
+
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("MCP URL DNS lookup failed for %q: %w", host, err)
+	}
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return fmt.Errorf("MCP URL blocked: private IP %q for %q", ipStr, rawURL)
+		}
+	}
+	return nil
 }

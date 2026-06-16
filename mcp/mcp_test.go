@@ -183,3 +183,78 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestMCPResourcesList(t *testing.T) {
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+
+	go func() {
+		defer clientStdinR.Close()
+		defer serverStdoutW.Close()
+
+		msg := readMockMsg(t, clientStdinR)
+		if strings.Contains(msg, `"method":"initialize"`) {
+			writeMockMsg(t, serverStdoutW, `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"t","version":"1"}}}`)
+		}
+
+		msg = readMockMsg(t, clientStdinR)
+		if strings.Contains(msg, `"method":"resources/list"`) {
+			writeMockMsg(t, serverStdoutW, `{"jsonrpc":"2.0","id":2,"result":{"resources":[
+				{"uri":"file:///data/config.json","name":"Config","description":"Server config"},
+				{"uri":"file:///data/log.txt","name":"Log","description":"Server log"}
+			]}}`)
+		}
+	}()
+
+	if _, err := client.Initialize(); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	resources, err := client.ListResources()
+	if err != nil {
+		t.Fatalf("ListResources: %v", err)
+	}
+	if len(resources) != 2 {
+		t.Fatalf("expected 2 resources, got %d", len(resources))
+	}
+	if resources[0].Name != "Config" {
+		t.Errorf("expected 'Config', got %q", resources[0].Name)
+	}
+}
+
+func TestMCPReadResource(t *testing.T) {
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+
+	go func() {
+		defer clientStdinR.Close()
+		defer serverStdoutW.Close()
+
+		msg := readMockMsg(t, clientStdinR)
+		if strings.Contains(msg, `"method":"initialize"`) {
+			writeMockMsg(t, serverStdoutW, `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"t","version":"1"}}}`)
+		}
+
+		msg = readMockMsg(t, clientStdinR)
+		if strings.Contains(msg, `"method":"resources/read"`) {
+			writeMockMsg(t, serverStdoutW, `{"jsonrpc":"2.0","id":2,"result":{"contents":[{"uri":"file:///data/config.json","mimeType":"application/json","text":"{\"key\":\"value\"}"}]}}`)
+		}
+	}()
+
+	if _, err := client.Initialize(); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	result, err := client.ReadResource("file:///data/config.json")
+	if err != nil {
+		t.Fatalf("ReadResource: %v", err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("expected 1 content, got %d", len(result.Contents))
+	}
+	if !strings.Contains(result.Contents[0].Text, "key") {
+		t.Errorf("expected content with 'key', got %q", result.Contents[0].Text)
+	}
+}
