@@ -31,9 +31,10 @@ func ConnectMCPServers(servers []config.MCPServerConfig) ([]agent.Tool, error) {
 	}
 
 	var allTools []agent.Tool
-	timeout := 15 * time.Second
+	timeout := 60 * time.Second
 
 	for _, s := range servers {
+		tlog.Info("tool.mcp", "connecting", "server", s.Name, "transport", s.Transport)
 		client, err := connectMCP(context.Background(), &s, timeout)
 		if err != nil {
 			tlog.Warn("tool.mcp", "connect failed",

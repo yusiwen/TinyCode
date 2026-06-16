@@ -109,6 +109,12 @@ Provide a concise summary in 3-5 sentences.`, middleText.String())
 
 	summarizer := &Agent{
 		Provider: a.Provider,
+		Config: &AgentConfig{
+			Name:    "compact",
+			Mode:    AgentModePrimary,
+			MaxSteps: 1,
+		},
+		Tools: nil,
 	}
 	summarizerReq := types.ChatRequest{
 		Messages: []types.Message{

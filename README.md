@@ -284,7 +284,7 @@ main.go         CLI entry point with cobra
 
 ## Remaining
 
-- [ ] **Plugin System** — JSON-RPC subprocess tools
+*(All planned features have been implemented. MCP client supersedes the original Plugin System proposal.)*
 
 ---
 
