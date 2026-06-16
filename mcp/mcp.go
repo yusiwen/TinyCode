@@ -57,6 +57,15 @@ func (e *jsonrpcError) Error() string {
 	return fmt.Sprintf("JSON-RPC error %d: %s", e.Code, e.Message)
 }
 
+// MCPClient is the interface all MCP transports implement.
+type MCPClient interface {
+	Initialize() (*ServerInfo, error)
+	ListTools() ([]Tool, error)
+	CallTool(name string, args map[string]any) (*ToolResult, error)
+	Tools() []Tool
+	Info() *ServerInfo
+}
+
 // Client manages a JSON-RPC 2.0 connection to an MCP server over stdio.
 type Client struct {
 	stdin  io.Writer

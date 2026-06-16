@@ -17,7 +17,7 @@ import (
 // mcpClient wraps an MCP client with its server name.
 type mcpClient struct {
 	ServerName string
-	Client     *mcp.Client
+	Client     mcp.MCPClient
 	Tools      []mcp.Tool
 }
 
@@ -98,7 +98,7 @@ func connectMCP(ctx context.Context, cfg *config.MCPServerConfig, timeout time.D
 	case "stdio":
 		return connectMCPStdio(ctx2, cfg)
 	case "http":
-		return nil, fmt.Errorf("HTTP transport not yet supported")
+		return connectMCPHTTP(ctx2, cfg)
 	default:
 		return nil, fmt.Errorf("unknown MCP transport: %s", cfg.Transport)
 	}
@@ -162,4 +162,28 @@ func parseMCPSchema(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	return schema
+}
+
+// connectMCPHTTP connects via HTTP POST to a remote MCP endpoint.
+func connectMCPHTTP(ctx context.Context, cfg *config.MCPServerConfig) (*mcpClient, error) {
+	client := mcp.NewHTTPClient(cfg.URL, cfg.Headers)
+
+	if _, err := client.Initialize(); err != nil {
+		return nil, fmt.Errorf("initialize %s: %w", cfg.Name, err)
+	}
+	tools, err := client.ListTools()
+	if err != nil {
+		return nil, fmt.Errorf("list tools %s: %w", cfg.Name, err)
+	}
+
+	tlog.Info("tool.mcp", "connected (HTTP)",
+		"server", cfg.Name,
+		"url", cfg.URL,
+		"tools", len(tools))
+
+	return &mcpClient{
+		ServerName: cfg.Name,
+		Client:     client,
+		Tools:      tools,
+	}, nil
 }
