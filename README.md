@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-337-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-359-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -78,6 +78,14 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **apply_patch tool**: V4A multi-file patch format. Supports UPDATE (line-level -/+ hunks), ADD (create files), DELETE (remove files). Two-phase execution: validate all, then apply. Multi-file in one call. 9 tests. (9045176)
 - **write_file** preserved for creating new files and full rewrites. Three tools form a complementary editing system.
 
+### MCP Client
+- **Native MCP client**: Connect to MCP servers via stdio (subprocess) or HTTP (remote endpoint). Config-driven via `mcp_servers` in config.json.
+- **Auto-discovery**: On startup, connects to all servers, calls `tools/list`, and registers each discovered tool as an independent `mcp_<server>_<tool>` agent tool with its original JSON Schema.
+- **Transport**: stdio (exec.Command with pipes, Content-Length framing) or HTTP POST (configurable headers, JSON-RPC 2.0).
+- **Resources**: `resources/list` and `resources/read` support for MCP resources.
+- **Security**: SSRF protection for HTTP transport — blocks private IPs (RFC 1918/loopback/link-local), fails closed on DNS failure. Localhost allowed for dev use.
+- **Graceful degradation**: Server connection failure logs a warning and skips that server — other servers still work. 22 tests. 359 total. (e31c08b, cc1ba8e, 7b4fe75)
+
 ### Web Tools
 - **web_search**: Searches the web using DuckDuckGo Lite (zero config, no API key). Optional SearXNG fallback configured via `searxng_url` in config.json. Returns numbered results with title, URL, description. (5c90f86, 4cb7ce1, 405bc87)
 - **web_extract**: Fetches and extracts web page content as Markdown. **5-level fallback chain**: direct HTTP → Cloudflare bypass (UA retry) → Google Cache → Wayback Machine (CDX + id_ format) → Chromium headless. **SSRF protection**: DNS resolution + IP blacklist (RFC 1918, loopback, cloud metadata). **LLM summarization**: content >5000 chars auto-summarized via provider. (5c90f86, 4cb7ce1, 4bf27e5)
@@ -85,7 +93,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 ### CI/CD Pipeline
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **337 tests passing**
+- **359 tests passing**
 
 ### Skill System
 - **SKILL.md-based discovery** — three-layer scan: embedded (skill/builtin/) → ~/.tinycode/skills/ → project .tinycode/skills/ (upward search). Later sources override earlier. (cbd6db3)
@@ -93,7 +101,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Skill index auto-injected** into system prompt at startup. Startup shows "13 tools, 2 skills loaded". (8fa8800)
 - **2 builtin skills**: code-review, git-commit (as markdown files in skill/builtin/)
 - **6 agents**: plan, build (primary) + explore, general (subagents) + compact, title (hidden)
-- **11 new tests** across skill package and tui package — 337 tests total. (cbd6db3)
+- **11 new tests** across skill package and tui package — 359 tests total. (cbd6db3)
 ---
 
 # Architecture
@@ -105,7 +113,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 │                      TinyCode                              │
 ├──────────────────────┬───────────────────┬────────────────┤
 │   TUI (Bubble Tea)   │   Agent Layer      │   Tool Layer   │
-│                      │   (ReAct Loop)     │   (21 tools)   │
+│                      │   (ReAct Loop)     │   (21 tools + MCP)│
 │  CellGrid            │                    │                │
 │  Viewport            │  Plan (primary)    │  bash          │
 │  Input Area          │  Build (primary)   │  read_file     │
@@ -232,7 +240,7 @@ config/         Config loading (JSON, env, CLI flags)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
 skill/          SKILL.md discovery (3-layer), Load/LoadOnce/CRUD
-tool/           Tool definitions (21 tools: edit, todo, skill, LSP, web, ...)
+tool/           Tool definitions (21 tools + MCP: edit, todo, skill, LSP, web, mcp)
 tui/            Bubble Tea TUI (CellGrid, components, key/mouse, cmd palette)
 types/          Shared types (Message, ToolCall, StreamCallbacks)
 main.go         CLI entry point with cobra
@@ -272,6 +280,7 @@ main.go         CLI entry point with cobra
 - [x] **Edit Fuzzy Matching** — 7 fallback strategies (line-trimmed, ws-normalized, indent-flexible, escape-normalized, unicode-normalized, block-anchor). Indentation correction. 6 new tests. (34d2c17)
 - [x] **Web Tools Phase 1-3** — web_search (DuckDuckGo Lite + SearXNG), web_extract (HTTP→CF→Cache→Wayback→Chromium, SSRF, LLM summary). 26 new tests. 21 tools total. (5c90f86, 4cb7ce1, 4bf27e5)
 - [x] **SearXNG Config** — `searxng_url` field in config.json, wired via SetSearXNG(). (405bc87)
+- [x] **MCP Client (4 Phases)** — stdio/HTTP transports, auto-discovery, agent.Tool registration, resources, SSRF security. 22 tests. 359 total. (e31c08b, cc1ba8e, 7b4fe75)
 
 ## Remaining
 

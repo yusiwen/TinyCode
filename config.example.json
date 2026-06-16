@@ -61,6 +61,23 @@
     "enabled": false
   },
 
+  "mcp_servers": [
+    {
+      "name": "example-stdio",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"]
+    },
+    {
+      "name": "example-http",
+      "transport": "http",
+      "url": "http://localhost:9000/mcp",
+      "headers": {
+        "Authorization": "Bearer mytoken"
+      }
+    }
+  ],
+
   "theme": "nord",
 
   "$env_vars_note": {
@@ -80,6 +97,7 @@
     "sandbox": {
       "project_root": "Restrict file tool access to this directory (default: current dir)",
       "deny_commands": "Shell commands that are always blocked"
-    }
+    },
+    "mcp_servers": "List of MCP servers. Supported transports: 'stdio' (local subprocess) and 'http' (remote endpoint)."
   }
 }
