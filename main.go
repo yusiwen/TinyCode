@@ -243,6 +243,11 @@ func main() {
 				Name: we.Name, Description: we.Description,
 				Parameters: we.Parameters, Execute: we.Execute,
 			})
+			wb := tool.WebExtractBrowser()
+			ag.AddTool(agent.Tool{
+				Name: wb.Name, Description: wb.Description,
+				Parameters: wb.Parameters, Execute: wb.Execute,
+			})
 			// Wire LLM summarizer for web_extract (content >5000 chars)
 			provider := provReg.Current()
 			tool.SetSummarizer(func(ctx context.Context, content string) (string, error) {
