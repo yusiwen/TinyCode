@@ -16,6 +16,7 @@ import (
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/types"
 	"github.com/yusiwen/tinycode/lsp"
+	"os"
 )
 
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -706,6 +707,7 @@ Commands:
   /build         Switch to build mode
   /compress      Manually trigger conversation compression
   /model         Switch provider/model
+  /sessions      List saved sessions
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
   /skill         Load a skill's instructions (e.g. /skill code-review)
@@ -828,6 +830,33 @@ Mouse:
 	case "/model":
 		m.selectingProvider = true
 		m.providerCursor = 0
+	case "/sessions":
+		infos := m.sessionStore.List()
+		if len(infos) == 0 {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: "No saved sessions."})
+		} else {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("**%d saved sessions:**\n\n", len(infos)))
+			sb.WriteString("| Title | ID | Messages | Model | Last active |\n")
+			sb.WriteString("|-------|-----|----------|-------|-------------|\n")
+			for _, info := range infos {
+				title := info.Title
+				if title == "" {
+					title = "(no title)"
+				}
+				model := info.ModelName
+				if model == "" {
+					model = "?"
+				}
+				when := info.UpdatedAt.Format("2006-01-02 15:04")
+				sb.WriteString(fmt.Sprintf("| %s | `%s` | %d | %s | %s |\n",
+					title, info.ID, info.MessageCount, model, when))
+			}
+			sb.WriteString(fmt.Sprintf("\nUse `%s --resume <ID>` (CLI) to resume a session.", os.Args[0]))
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: sb.String()})
+		}
+		m.autoScroll()
+		return m, nil
 	case "/theme":
 		parts := strings.Fields(cmd)
 		if len(parts) < 2 {
