@@ -192,7 +192,19 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	for _, tc := range msg.ToolCalls {
 		text := "    • " + tc.Name
 		if tc.Arg != "" {
-			text += ": " + tc.Arg
+			// Show only first line + line count for large arguments
+			arg := tc.Arg
+			if len(arg) > 80 {
+				lines := strings.SplitN(arg, "\n", 2)
+				arg = lines[0]
+				if len(lines) > 1 {
+					totalLines := strings.Count(tc.Arg, "\n") + 1
+					arg += fmt.Sprintf(" (%d lines)", totalLines)
+				} else {
+					arg = arg[:77] + "..."
+				}
+			}
+			text += ": " + arg
 		}
 		chunks = append(chunks, CellChunk{Text: text, Style: style})
 	}
