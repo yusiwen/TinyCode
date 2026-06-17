@@ -6,57 +6,62 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/tlog"
 )
 
+// AccessDenied is returned when a file access violates the sandbox policy.
+type AccessDenied struct {
+	Path    string
+	Message string
+}
+
+func (e *AccessDenied) Error() string {
+	return e.Message
+}
+
+// DenyHint returns a prompt message for display.
+func (e *AccessDenied) DenyHint() string {
+	return fmt.Sprintf(`[SECURITY] %s
+
+To allow access, tell me one of:
+  - "allow %s" — permit this one time
+  - "always %s" — permit for this entire session
+  - "deny %s" — block this access`, e.Message, e.Path, e.Path, e.Path)
+}
+
+// ── Pattern D: Permission Caching & Auto-approve ──
+
 // SandboxConfig holds security configuration for tool execution.
 type SandboxConfig struct {
-	// ProjectRoot is the allowed directory for file operations.
-	// Empty means no restriction.
-	ProjectRoot string
+	ProjectRoot string   // allowed directory root
+	DenyCommands []string // command deny list (kept for backward compat)
 
-	// CommandDenyList contains command patterns that are always blocked.
-	CommandDenyList []string
+	// AutoAllowPaths are paths automatically allowed (CWD, parent, etc.)
+	AutoAllowPaths []string
 
 	mu     sync.Mutex
-	// allowedPaths tracks paths the user has approved via "always".
 	allowedPaths map[string]bool
 }
 
 var DefaultSandbox = &SandboxConfig{
-	CommandDenyList: []string{
-		"rm -rf /",
-		"rm -rf /*",
-		"rm -rf --no-preserve-root",
-		"sudo ",
-		"su ",
-		"chmod -R /",
-		"chown -R /",
-		"dd if=",
-		"mkfs.",
-		"fdisk",
-		"mkswap",
-		"shutdown",
-		"reboot",
-		"init 0",
-		"halt",
-		"> /dev/sd",
-		"< /dev/sd",
-		"mkfs",
-		"pvcreate",
-		"vgcreate",
-		"lvcreate",
-		":(){ :|:& };:",  // fork bomb
+	DenyCommands: []string{
+		"rm -rf /", "rm -rf /*", "rm -rf --no-preserve-root",
+		"sudo ", "su ", "chmod -R /", "chown -R /",
+		"dd if=", "mkfs.", "fdisk", "mkswap",
+		"shutdown", "reboot", "init 0", "halt",
+		"> /dev/sd", "< /dev/sd", "mkfs",
+		"pvcreate", "vgcreate", "lvcreate",
+		":(){ :|:& };:", // fork bomb
 	},
 	allowedPaths: make(map[string]bool),
 }
 
-// CheckCommand returns a non-nil error if the command matches a deny pattern.
 func (sc *SandboxConfig) CheckCommand(cmd string) error {
 	cmdLower := strings.ToLower(strings.TrimSpace(cmd))
-	for _, deny := range sc.CommandDenyList {
+	for _, deny := range sc.DenyCommands {
 		if strings.Contains(cmdLower, strings.ToLower(deny)) {
 			tlog.Warn("sandbox", "cmd_blocked", "pattern", deny, "cmd", cmd)
 			return fmt.Errorf("command blocked by security policy (matches: %q)", deny)
@@ -66,38 +71,47 @@ func (sc *SandboxConfig) CheckCommand(cmd string) error {
 }
 
 // CheckPath checks if the given path is allowed. Returns nil if allowed,
-// or an AccessDenied error with instructions for the user to confirm.
+// or an *AccessDenied error. Pattern D auto-rules are checked before rejection.
 func (sc *SandboxConfig) CheckPath(absPath string) error {
 	if sc.ProjectRoot == "" {
-		return nil // no restriction
+		return nil
 	}
 
-	// Resolve to absolute
 	abs, err := filepath.Abs(absPath)
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
 	}
-
 	root, err := filepath.Abs(sc.ProjectRoot)
 	if err != nil {
 		return fmt.Errorf("resolve root: %w", err)
 	}
 
-	// Is it under the project root?
+	// 1) Within project root
 	rel, err := filepath.Rel(root, abs)
-	if err != nil {
-		return err
-	}
-	if !strings.HasPrefix(rel, "..") {
-		return nil // within project root
+	if err == nil && !strings.HasPrefix(rel, "..") {
+		return nil
 	}
 
-	// Check the "always" cache
+	// 2) Cached allow
 	sc.mu.Lock()
 	allowed := sc.allowedPaths[abs]
 	sc.mu.Unlock()
 	if allowed {
 		return nil
+	}
+
+	// 3) Pattern D: auto-allow paths (CWD, parent dir, etc.)
+	for _, permit := range sc.AutoAllowPaths {
+		permitAbs, err := filepath.Abs(permit)
+		if err != nil {
+			continue
+		}
+		pRel, err := filepath.Rel(permitAbs, abs)
+		if err == nil && !strings.HasPrefix(pRel, "..") {
+			// Auto-cache so future checks are instant
+			sc.AllowAlways(abs)
+			return nil
+		}
 	}
 
 	return &AccessDenied{
@@ -106,12 +120,10 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 	}
 }
 
-// AllowOnce permits a single access to the given path.
 func (sc *SandboxConfig) AllowOnce(absPath string) {
-	sc.AllowAlways(absPath) // same effect: add to whitelist
+	sc.AllowAlways(absPath)
 }
 
-// AllowAlways caches a path as permanently allowed for this session.
 func (sc *SandboxConfig) AllowAlways(absPath string) {
 	abs, _ := filepath.Abs(absPath)
 	sc.mu.Lock()
@@ -119,15 +131,106 @@ func (sc *SandboxConfig) AllowAlways(absPath string) {
 	sc.mu.Unlock()
 }
 
-// ResetAllowed clears all session-allowed paths.
 func (sc *SandboxConfig) ResetAllowed() {
 	sc.mu.Lock()
 	sc.allowedPaths = make(map[string]bool)
 	sc.mu.Unlock()
 }
 
-// SandboxAllowTool returns an agent.Tool that lets the LLM allow a path
-// after the user gives permission.
+// ── Pattern C: Interactive Permission Queue ──
+
+// pendingPerm holds the current outstanding permission request.
+var (
+	pendingPerm   *PermissionRequest
+	pendingMu     sync.Mutex
+)
+
+// PermissionRequest is queued when a path needs user approval.
+type PermissionRequest struct {
+	Path    string
+	Allowed bool // set to true by TUI when user approves
+	Mode    string // "once" or "always"
+}
+
+// RequestPermission queues a path for user approval and blocks the
+// calling goroutine until the user responds via ResolvePermission.
+func RequestPermission(ctx context.Context, path string) (bool, string) {
+	pendingMu.Lock()
+	pendingPerm = &PermissionRequest{Path: path, Allowed: false}
+	pendingMu.Unlock()
+
+	tlog.Info("sandbox", "permission_request", "path", path)
+
+	// Block until resolved or context cancelled
+	for {
+		select {
+		case <-ctx.Done():
+			pendingMu.Lock()
+			pendingPerm = nil
+			pendingMu.Unlock()
+			return false, "cancelled"
+		default:
+			pendingMu.Lock()
+			r := pendingPerm
+			allowed := r != nil && r.Allowed
+			mode := ""
+			if r != nil {
+				mode = r.Mode
+			}
+			pendingMu.Unlock()
+			if allowed || r == nil {
+				return allowed, mode
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+}
+
+// HasPendingPermission returns true if a permission request is waiting.
+func HasPendingPermission() bool {
+	pendingMu.Lock()
+	defer pendingMu.Unlock()
+	return pendingPerm != nil && !pendingPerm.Allowed
+}
+
+// PendingPermissionPath returns the path of the pending request, if any.
+func PendingPermissionPath() string {
+	pendingMu.Lock()
+	defer pendingMu.Unlock()
+	if pendingPerm != nil {
+		return pendingPerm.Path
+	}
+	return ""
+}
+
+// ResolvePermission approves or denies a pending permission request.
+// Called from TUI when user types "allow" or "deny".
+func ResolvePermission(path string, allow bool, mode string) bool {
+	pendingMu.Lock()
+	defer pendingMu.Unlock()
+	if pendingPerm == nil {
+		return false // no pending request
+	}
+	if path != "" && pendingPerm.Path != path {
+		return false // path mismatch
+	}
+	pendingPerm.Allowed = allow
+	pendingPerm.Mode = mode
+	if allow {
+		DefaultSandbox.AllowAlways(pendingPerm.Path)
+	}
+	return true
+}
+
+// CancelPendingPermission cancels a pending request (e.g., on interrupt).
+func CancelPendingPermission() {
+	pendingMu.Lock()
+	pendingPerm = nil
+	pendingMu.Unlock()
+}
+
+// SandboxAllowTool returns an agent.Tool that lets the LLM or TUI
+// approve a blocked path.
 func SandboxAllowTool() agent.Tool {
 	return agent.Tool{
 		Name:        "sandbox_allow",
@@ -142,8 +245,8 @@ func SandboxAllowTool() agent.Tool {
 					"description": "Absolute path to allow",
 				},
 				"mode": map[string]any{
-					"type": "string",
-					"enum": []string{"once", "always"},
+					"type":        "string",
+					"enum":        []string{"once", "always"},
 					"description": "'once' for one-time, 'always' for session",
 				},
 			},
@@ -160,27 +263,9 @@ func SandboxAllowTool() agent.Tool {
 			} else {
 				DefaultSandbox.AllowOnce(p)
 			}
+			// Also resolve any pending permission request
+			ResolvePermission(p, true, mode)
 			return fmt.Sprintf("Path %s has been allowed (%s). You may retry the operation.", p, mode), nil
 		},
 	}
-}
-
-// AccessDenied is returned when a file access violates the sandbox policy.
-type AccessDenied struct {
-	Path    string
-	Message string
-}
-
-func (e *AccessDenied) Error() string {
-	return e.Message
-}
-
-// DenyHint returns a prompt message the LLM can show the user for confirmation.
-func (e *AccessDenied) DenyHint() string {
-	return fmt.Sprintf(`[SECURITY] %s
-
-To allow access, tell me one of:
-  - "allow %s" — permit this one time
-  - "always %s" — permit for this entire session
-  - "deny %s" — block this access`, e.Message, e.Path, e.Path, e.Path)
 }

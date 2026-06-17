@@ -139,12 +139,21 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("path is required")
 			}
 
-			// Layer 2: Path restriction check
+			// Layer 2: Path restriction check (with Pattern C interactive prompt)
 			if err := DefaultSandbox.CheckPath(path); err != nil {
 				if ad, ok := err.(*AccessDenied); ok {
-					return ad.DenyHint(), nil
+					allowed, mode := RequestPermission(ctx, ad.Path)
+					if allowed {
+						DefaultSandbox.AllowAlways(path)
+						// User approved — fall through to write below
+					} else if mode == "cancelled" {
+						return "", fmt.Errorf("write cancelled")
+					} else {
+						return ad.DenyHint(), nil
+					}
+				} else {
+					return "", fmt.Errorf("path check: %w", err)
 				}
-				return "", fmt.Errorf("path check: %w", err)
 			}
 
 			if lsp.IsAvailable() {

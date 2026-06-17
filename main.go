@@ -129,8 +129,8 @@ func main() {
 				tool.DefaultSandbox.ProjectRoot = cfg.Sandbox.ProjectRoot
 			}
 			if cfg.Sandbox != nil && len(cfg.Sandbox.DenyCommands) > 0 {
-				tool.DefaultSandbox.CommandDenyList = append(
-					tool.DefaultSandbox.CommandDenyList, cfg.Sandbox.DenyCommands...)
+				tool.DefaultSandbox.DenyCommands = append(
+					tool.DefaultSandbox.DenyCommands, cfg.Sandbox.DenyCommands...)
 			}
 
 			reg := agent.NewRegistry()
@@ -326,6 +326,12 @@ func main() {
 			}
 			if rootDir != "" {
 				tool.DefaultSandbox.ProjectRoot = rootDir
+			}
+
+			// Pattern D: auto-allow CWD and its parent directory
+			if cwd, err := os.Getwd(); err == nil {
+				parent := filepath.Dir(cwd)
+				tool.DefaultSandbox.AutoAllowPaths = []string{cwd, parent}
 			}
 
 			store := session.NewStore(cfg.SessionDir)
