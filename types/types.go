@@ -68,3 +68,7 @@ type ToolCall struct {
 	Name      string
 	Arguments string // raw JSON
 }
+
+// PlanModeWriteRestricted controls whether bash blocks write operations.
+// Set by agent when entering plan mode; checked by bash tool.
+var PlanModeWriteRestricted bool

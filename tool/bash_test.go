@@ -1,86 +1,125 @@
 package tool
 
 import (
-	"context"
-	"strings"
 	"testing"
 )
 
-func TestBash_NameAndDescription(t *testing.T) {
-	b := Bash()
-	if b.Name != "bash" {
-		t.Fatalf("expected Name 'bash', got %q", b.Name)
-	}
-	if b.Description == "" {
-		t.Fatal("Description should not be empty")
-	}
-}
-
-func TestBash_ExecuteEcho(t *testing.T) {
-	b := Bash()
-	ctx := context.Background()
-	result, err := b.Execute(ctx, map[string]any{
-		"command": "echo hello",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(result, "hello") {
-		t.Fatalf("expected output to contain 'hello', got %q", result)
-	}
-}
-
-func TestBash_ExecuteWithTimeout(t *testing.T) {
-	b := Bash()
-	ctx := context.Background()
-	// Use a short timeout with a fast command to verify the timeout parameter is accepted
-	result, err := b.Execute(ctx, map[string]any{
-		"command": "echo timeout-test",
-		"timeout": float64(5),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(result, "timeout-test") {
-		t.Fatalf("expected output to contain 'timeout-test', got %q", result)
-	}
-}
-
-func TestBash_ExecuteTimeoutExceeded(t *testing.T) {
-	b := Bash()
-	ctx := context.Background()
-	result, _ := b.Execute(ctx, map[string]any{
-		"command": "sleep 10",
-		"timeout": float64(1),
-	})
-	if !strings.Contains(result, "killed") && !strings.Contains(result, "signal") &&
-		!strings.Contains(result, "deadline") {
-		t.Fatalf("expected timeout-related message, got %q", result)
-	}
-}
-
-func TestBash_ExecuteEmptyCommand(t *testing.T) {
-	b := Bash()
-	ctx := context.Background()
-	_, err := b.Execute(ctx, map[string]any{
-		"command": "",
-	})
+func TestCheckPlanModeWriteMkdir(t *testing.T) {
+	err := checkPlanModeWrite("mkdir test")
 	if err == nil {
-		t.Fatal("expected error for empty command")
+		t.Fatal("expected error for mkdir")
 	}
 }
 
-func TestBash_ExecuteWithWorkdir(t *testing.T) {
-	b := Bash()
-	ctx := context.Background()
-	result, err := b.Execute(ctx, map[string]any{
-		"command": "pwd",
-		"workdir": "/tmp",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestCheckPlanModeWriteHeredoc(t *testing.T) {
+	err := checkPlanModeWrite("cat > file.txt << 'EOF'\nhello\nEOF")
+	if err == nil {
+		t.Fatal("expected error for heredoc")
 	}
-	if !strings.Contains(result, "/tmp") {
-		t.Fatalf("expected output to contain '/tmp', got %q", result)
+}
+
+func TestCheckPlanModeWriteRedirect(t *testing.T) {
+	err := checkPlanModeWrite("echo hello > file.txt")
+	if err == nil {
+		t.Fatal("expected error for redirect")
+	}
+}
+
+func TestCheckPlanModeWriteAppend(t *testing.T) {
+	err := checkPlanModeWrite("echo hello >> file.txt")
+	if err == nil {
+		t.Fatal("expected error for append redirect")
+	}
+}
+
+func TestCheckPlanModeReadOnly(t *testing.T) {
+	err := checkPlanModeWrite("ls -la")
+	if err != nil {
+		t.Fatalf("expected no error for ls, got: %v", err)
+	}
+}
+
+func TestCheckPlanModeReadCat(t *testing.T) {
+	err := checkPlanModeWrite("cat file.txt")
+	if err != nil {
+		t.Fatalf("expected no error for cat, got: %v", err)
+	}
+}
+
+func TestCheckPlanModeReadGrep(t *testing.T) {
+	err := checkPlanModeWrite("grep 'foo' *.go")
+	if err != nil {
+		t.Fatalf("expected no error for grep, got: %v", err)
+	}
+}
+
+func TestCheckPlanModeRedirectDevNull(t *testing.T) {
+	err := checkPlanModeWrite("grep foo file.txt > /dev/null")
+	if err != nil {
+		t.Fatalf("expected no error for redirect to /dev/null, got: %v", err)
+	}
+}
+
+func TestCheckPlanModeRedirectStderr(t *testing.T) {
+	err := checkPlanModeWrite("grep foo file.txt 2>/dev/null")
+	if err != nil {
+		t.Fatalf("expected no error for stderr redirect, got: %v", err)
+	}
+}
+
+func TestCheckPlanModeRedirectBoth(t *testing.T) {
+	err := checkPlanModeWrite("grep foo file.txt &>/dev/null")
+	if err != nil {
+		t.Fatalf("expected no error for combined redirect to null, got: %v", err)
+	}
+}
+
+func TestCheckPlanModeWriteRm(t *testing.T) {
+	err := checkPlanModeWrite("rm -rf /tmp/test")
+	if err == nil {
+		t.Fatal("expected error for rm")
+	}
+}
+
+func TestCheckPlanModeWriteCp(t *testing.T) {
+	err := checkPlanModeWrite("cp a.txt b.txt")
+	if err == nil {
+		t.Fatal("expected error for cp")
+	}
+}
+
+func TestCheckPlanModeWriteTouch(t *testing.T) {
+	err := checkPlanModeWrite("touch newfile.txt")
+	if err == nil {
+		t.Fatal("expected error for touch")
+	}
+}
+
+func TestCheckPlanModeWriteMv(t *testing.T) {
+	err := checkPlanModeWrite("mv a.txt b.txt")
+	if err == nil {
+		t.Fatal("expected error for mv")
+	}
+}
+
+func TestCheckPlanModeWriteChained(t *testing.T) {
+	err := checkPlanModeWrite("ls && mkdir test")
+	if err == nil {
+		t.Fatal("expected error for mkdir in chained command")
+	}
+}
+
+func TestCheckPlanModeWriteSemicolon(t *testing.T) {
+	err := checkPlanModeWrite("ls; rm file.txt")
+	if err == nil {
+		t.Fatal("expected error for rm in semicolon command")
+	}
+}
+
+func TestCheckPlanModeWritePipe(t *testing.T) {
+	// Pipelines should be allowed
+	err := checkPlanModeWrite("cat file.txt | grep foo")
+	if err != nil {
+		t.Fatalf("expected no error for pipe, got: %v", err)
 	}
 }

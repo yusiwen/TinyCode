@@ -174,6 +174,13 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		maxSteps = a.Config.MaxSteps
 	}
 
+	// Set plan mode write restriction
+	if a.Config != nil && a.Config.Name == "plan" {
+		types.PlanModeWriteRestricted = true
+	} else {
+		types.PlanModeWriteRestricted = false
+	}
+
 	for step < maxSteps {
 		tlog.Info("agent.loop", "llm call", "step", step, "mode", a.agentPrefix())
 
