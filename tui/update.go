@@ -284,6 +284,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					copyToClipboard(text)
 					m.charSelStart = selPos{Offset: -1}
 					m.charSelEnd = selPos{Offset: -1}
+					m.charSelStartLine = 0
+					m.charSelStartCol = 0
+					m.charSelEndLine = 0
+					m.charSelEndCol = 0
 					m.ShowStatus("✓ Copied")
 					m.autoScroll()
 					return m, nil

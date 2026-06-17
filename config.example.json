@@ -62,7 +62,7 @@
       "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
     },
     "build": {
-      "max_steps": 30
+      "max_steps": 50
     },
     "explore": {
       "max_steps": 15,

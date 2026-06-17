@@ -242,7 +242,53 @@ func TestAgentEmptyResponseExhausted(t *testing.T) {
 	}
 
 	_, err := agent.Run(context.Background(), "hello")
-	if err == nil {
-		t.Fatal("expected error (exceeded max steps), got nil")
+	if err != nil {
+		// Max steps now returns a summary instead of error
+		if !strings.Contains(err.Error(), "step limit summary failed") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
+
+func TestAgentMaxStepsReturnsSummary(t *testing.T) {
+	callCount := 0
+	tool := Tool{
+		Name: "bash", Description: "Run a command",
+		Parameters: map[string]any{"type": "object"},
+		Execute: func(ctx context.Context, args map[string]any) (string, error) {
+			callCount++
+			return "output", nil
+		},
+	}
+	provider := &MockProvider{
+		ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+			// First calls: return a tool call
+			if len(req.Tools) > 0 {
+				return &types.ChatResponse{
+					Content: "",
+					ToolCalls: []types.ToolCall{
+						{ID: "c1", Name: "bash", Arguments: `{"command":"echo hello"}`},
+					},
+				}, nil
+			}
+			// Last call (no tools): return summary
+			return &types.ChatResponse{Content: "summary of work done"}, nil
+		},
+	}
+
+	agent := &Agent{
+		Provider:     provider,
+		MaxSteps:     2,
+		MaxTokens:    4096,
+		SystemPrompt: "test",
+		Tools:        []Tool{tool},
+	}
+
+	result, err := agent.Run(context.Background(), "do work")
+	if err != nil {
+		t.Fatalf("expected summary on max steps, got error: %v", err)
+	}
+	if !strings.Contains(result, "summary") {
+		t.Errorf("expected summary in result, got: %s", result)
 	}
 }

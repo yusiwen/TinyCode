@@ -45,16 +45,16 @@ func DefaultAgents() map[string]*AgentConfig {
 				"After analyzing, create a detailed plan for the user and ask them to type /build to execute it.",
 			MaxSteps: 20,
 			AllowedTools: []string{"*"},
-			DeniedTools: []string{"write_file", "git_commit", "sandbox_allow", "task"},
+			DeniedTools: []string{"write_file", "git_commit", "sandbox_allow", "task", "skill_manage"},
 		},
 		"build": {
 			Name:        "build",
 			Mode:        AgentModePrimary,
-			Description: "Build mode — full access. Read, write, edit files, run commands, delegate to sub-agents.",
+			Description: "Build mode — full read/write access. Implement changes, run tests, commit code.",
 			SystemPrompt: "You are TinyCode in BUILD mode. You have full access to all tools " +
 				"including write_file, git_commit, and the task tool for delegating to " +
 				"sub-agents. Use tools to implement changes and verify your work.",
-			MaxSteps:    30,
+			MaxSteps:    50,
 			AllowedTools: []string{"*"},
 			DeniedTools:  []string{},
 		},

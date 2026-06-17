@@ -402,8 +402,32 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		step++
 	}
 
+	// Max steps reached: inject forced summary
 	tlog.Warn("agent.loop", "max steps", "steps", maxSteps)
-	return "", fmt.Errorf("exceeded max steps (%d)", maxSteps)
+	messages = append(messages, types.Message{
+		Role:    types.RoleUser,
+		Content: fmt.Sprintf("You have reached the maximum step limit (%d steps). No more tool calls are allowed. Please summarize what you have accomplished so far and what remains to be done.", maxSteps),
+	})
+	// Force one more LLM call with no tools available
+	resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+		Messages:  messages,
+		Tools:     nil, // no tools — LLM must output text only
+		MaxTokens: a.MaxTokens,
+		StreamCallbacks: &types.StreamCallbacks{
+			OnReasoningDelta: func(text string) {},
+			OnTextDelta: func(text string) {
+				if a.StreamCallbacks != nil && a.StreamCallbacks.OnTextDelta != nil {
+					a.StreamCallbacks.OnTextDelta(text)
+				} else {
+					fmt.Print(text)
+				}
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("step limit summary failed: %w", err)
+	}
+	return resp.Content, nil
 }
 
 // CompressHistory compresses a.History in-place using the agent's provider
