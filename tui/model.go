@@ -262,12 +262,19 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		}
 	}
 
-	// Startup status message
+	// Startup status message — welcome banner for new sessions
 	if ag != nil && len(ag.Tools) > 0 {
 		toolCount := len(ag.Tools)
 		skillCount := len(skill.Discover("."))
-		msg := fmt.Sprintf("TinyCode ready — %d tools, %d skills loaded", toolCount, skillCount)
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: msg})
+		resumed := len(resume) > 0
+		
+		if resumed {
+			msg := fmt.Sprintf("_Resumed session: %s_\n\nTinyCode ready — %d tools, %d skills loaded", resume[0], toolCount, skillCount)
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: msg})
+		} else {
+			msg := fmt.Sprintf("## Welcome to TinyCode\n\n**%d tools · %d skills · %d agents**\n\nGet started:\n- Type a message and press Enter to chat\n- `/help` — show all commands\n- `/model` — switch provider/model\n- `/plan` / `/build` — switch agent mode\n- `Ctrl+J` — new line in input\n\n_Config: ~/.tinycode/config.json_\n_Source: github.com/yusiwen/TinyCode_", toolCount, skillCount, 6)
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: msg})
+		}
 	}
 
 	return m

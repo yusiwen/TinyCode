@@ -14,10 +14,29 @@
       "base_url": "https://api.deepseek.com"
     },
     {
-      "name": "claude",
+      "name": "openai",
       "type": "openai",
-      "model": "claude-sonnet-4-20250514",
-      "base_url": "https://api.anthropic.com"
+      "model": "gpt-4o",
+      "base_url": "https://api.openai.com/v1"
+    },
+    {
+      "name": "openrouter",
+      "type": "openai",
+      "model": "anthropic/claude-sonnet-4",
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    {
+      "name": "groq",
+      "type": "openai",
+      "model": "llama-3.3-70b-versatile",
+      "base_url": "https://api.groq.com/openai/v1"
+    },
+    {
+      "name": "ollama",
+      "type": "openai",
+      "model": "qwen2.5-coder:7b",
+      "base_url": "http://localhost:11434/v1",
+      "api_key_env": "OLLAMA_API_KEY"
     }
   ],
 
@@ -81,12 +100,14 @@
   "theme": "nord",
 
   "$env_vars_note": {
-    "description": "API keys are loaded from environment variables using the pattern: UPPER(NAME)_API_KEY",
+    "description": "API keys are loaded from environment variables. By default, the pattern is UPPER(NAME)_API_KEY. Use 'api_key_env' to specify a custom env var name (e.g., Ollama below).",
     "examples": {
       "DEEPSEEK_API_KEY": "set your DeepSeek API key",
-      "CLAUDE_API_KEY": "set your Anthropic/Claude API key"
+      "OPENAI_API_KEY": "set your OpenAI API key",
+      "OPENROUTER_API_KEY": "set your OpenRouter API key",
+      "GROQ_API_KEY": "set your Groq API key"
     },
-    "override": "To use a custom env var name, add 'api_key_env' to the provider config: { name: 'my', api_key_env: 'MY_KEY' }"
+    "override": "To use a custom env var name, add 'api_key_env' to the provider config. Example: { name: 'ollama', api_key_env: 'OLLAMA_API_KEY' }"
   },
 
   "$new_fields": {

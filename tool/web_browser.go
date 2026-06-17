@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,14 +24,28 @@ func playwrightChromiumPath() string {
 	if err != nil {
 		return ""
 	}
-	playwrightDir := filepath.Join(home, ".cache", "ms-playwright")
+	// Platform-specific Playwright cache directory
+	var playwrightDir string
+	switch runtime.GOOS {
+	case "darwin":
+		playwrightDir = filepath.Join(home, "Library", "Caches", "ms-playwright")
+	default:
+		playwrightDir = filepath.Join(home, ".cache", "ms-playwright")
+	}
 	entries, err := os.ReadDir(playwrightDir)
 	if err != nil {
 		return ""
 	}
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), "chromium-") {
-			sub := filepath.Join(playwrightDir, e.Name(), "chrome-linux", "chrome")
+			// Platform-specific Chrome binary path within Playwright
+			var sub string
+			switch runtime.GOOS {
+			case "darwin":
+				sub = filepath.Join(playwrightDir, e.Name(), "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium")
+			default:
+				sub = filepath.Join(playwrightDir, e.Name(), "chrome-linux", "chrome")
+			}
 			if fi, err := os.Stat(sub); err == nil && fi.Mode().IsRegular() {
 				return sub
 			}
@@ -61,14 +76,17 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	ctx2, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx2, browserPath,
+	args := []string{
 		"--headless",
 		"--disable-gpu",
 		"--no-sandbox",
-		"--disable-dev-shm-usage",
-		"--dump-dom",
-		url,
-	)
+	}
+	// Linux-specific flags for headless server environments
+	if runtime.GOOS == "linux" {
+		args = append(args, "--disable-dev-shm-usage", "--single-process")
+	}
+	args = append(args, "--dump-dom", url)
+	cmd := exec.CommandContext(ctx2, browserPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("exec: %w", err)

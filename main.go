@@ -212,6 +212,33 @@ func main() {
 				Parameters: ap.Parameters, Execute: ap.Execute,
 			})
 
+			// Git
+			gs := tool.GitStatus()
+			ag.AddTool(agent.Tool{
+				Name: gs.Name, Description: gs.Description,
+				Parameters: gs.Parameters, Execute: gs.Execute,
+			})
+			gd := tool.GitDiff()
+			ag.AddTool(agent.Tool{
+				Name: gd.Name, Description: gd.Description,
+				Parameters: gd.Parameters, Execute: gd.Execute,
+			})
+			gc := tool.GitCommit()
+			ag.AddTool(agent.Tool{
+				Name: gc.Name, Description: gc.Description,
+				Parameters: gc.Parameters, Execute: gc.Execute,
+			})
+			gb := tool.GitBranch()
+			ag.AddTool(agent.Tool{
+				Name: gb.Name, Description: gb.Description,
+				Parameters: gb.Parameters, Execute: gb.Execute,
+			})
+			gl := tool.GitLog()
+			ag.AddTool(agent.Tool{
+				Name: gl.Name, Description: gl.Description,
+				Parameters: gl.Parameters, Execute: gl.Execute,
+			})
+
 			// Web tools
 			ws := tool.WebSearch()
 			ag.AddTool(agent.Tool{
