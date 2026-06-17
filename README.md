@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>AI Coding Agent with CellGrid TUI &mdash; markdown-native rendering, reasoning folding, tool call display, session persistence</b>
+  <b>AI coding agent built from scratch in pure Go &mdash; CellGrid TUI, native MCP client, web scraping, and LSP diagnostics in a single binary.</b>
 </p>
 
 <p align="center">
