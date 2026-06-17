@@ -46,7 +46,7 @@
   "searxng_url": "https://search.yusiwen.cn",
 
   "sandbox": {
-    "project_root": "/home/yusiwen/git/ai/TinyCode",
+    "project_root": "<PROJECT_ROOT>",
     "deny_commands": ["rm -rf /", "sudo", "reboot", "shutdown"]
   },
 

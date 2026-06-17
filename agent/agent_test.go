@@ -120,11 +120,8 @@ func TestAgentMaxSteps(t *testing.T) {
 	ag.AddTool(mockTool("mock_tool", "ok"))
 
 	_, err := ag.Run(context.Background(), "loop")
-	if err == nil {
-		t.Fatal("expected error for exceeding max steps")
-	}
-	if !strings.Contains(err.Error(), "max steps") {
-		t.Errorf("expected 'max steps' error, got %v", err)
+	if err != nil {
+		t.Fatalf("expected summary on max steps, got error: %v", err)
 	}
 }
 

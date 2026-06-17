@@ -6,7 +6,18 @@ import (
 	"testing"
 )
 
-const demoProject = "/home/yusiwen/tmp/demo_project"
+// setupDemoProject creates a minimal Go project in t.TempDir() for LSP tests.
+func setupDemoProject(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module demo\n\ngo 1.24\n"), 0644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	return dir
+}
 
 // TestTouchFileNoDiag verifies that a fire-and-forget touch (no diagnostics)
 // completes without error.
@@ -17,15 +28,13 @@ func TestTouchFileNoDiag(t *testing.T) {
 	if os.Getenv("LSP_TEST") == "" {
 		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
 	}
-	if _, err := os.Stat(filepath.Join(demoProject, "main.go")); err != nil {
-		t.Fatalf("demo project not found at %s: %v", demoProject, err)
-	}
+	proj := setupDemoProject(t)
 
-	Init(demoProject)
+	Init(proj)
 	// LSP starts lazily on first TouchFile call
 
 	// Fire-and-forget touch (no diagnostics)
-	diags, err := TouchFile(filepath.Join(demoProject, "main.go"), false)
+	diags, err := TouchFile(filepath.Join(proj, "main.go"), false)
 	if err != nil {
 		t.Fatalf("TouchFile (no diag) failed: %v", err)
 	}
@@ -43,15 +52,13 @@ func TestTouchFileWithDiag(t *testing.T) {
 	if os.Getenv("LSP_TEST") == "" {
 		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
 	}
-	if _, err := os.Stat(filepath.Join(demoProject, "main.go")); err != nil {
-		t.Fatalf("demo project not found at %s: %v", demoProject, err)
-	}
+	proj := setupDemoProject(t)
 
-	Init(demoProject)
+	Init(proj)
 	// LSP starts lazily on first TouchFile call
 
 	// Touch with diagnostics — main.go is valid Go, should have no errors
-	diags, err := TouchFile(filepath.Join(demoProject, "main.go"), true)
+	diags, err := TouchFile(filepath.Join(proj, "main.go"), true)
 	if err != nil {
 		t.Fatalf("TouchFile (with diag) failed: %v", err)
 	}
@@ -71,11 +78,9 @@ func TestTouchFileWithErrors(t *testing.T) {
 	if os.Getenv("LSP_TEST") == "" {
 		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
 	}
-	if _, err := os.Stat(filepath.Join(demoProject, "main.go")); err != nil {
-		t.Fatalf("demo project not found at %s: %v", demoProject, err)
-	}
+	proj := setupDemoProject(t)
 
-	tmpDir := filepath.Join(demoProject, ".lsp_test")
+	tmpDir := filepath.Join(proj, ".lsp_test")
 	os.MkdirAll(tmpDir, 0755)
 	defer os.RemoveAll(tmpDir)
 	errFile := filepath.Join(tmpDir, "broken.go")
@@ -89,7 +94,7 @@ func main() {
 		t.Fatalf("write broken.go: %v", err)
 	}
 
-	Init(demoProject)
+	Init(proj)
 	// LSP starts lazily on first TouchFile call
 
 	diags, err := TouchFile(errFile, true)

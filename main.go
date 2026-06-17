@@ -316,7 +316,17 @@ func main() {
 					fmt.Println("no tools found")
 				}
 			}
-			tool.DefaultSandbox.ProjectRoot = "/home/yusiwen/git/ai/TinyCode"
+			// Sandbox project root: config → CWD
+			rootDir := cfg.Sandbox.ProjectRoot
+			if rootDir == "" {
+				cwd, err := os.Getwd()
+				if err == nil {
+					rootDir = cwd
+				}
+			}
+			if rootDir != "" {
+				tool.DefaultSandbox.ProjectRoot = rootDir
+			}
 
 			store := session.NewStore(cfg.SessionDir)
 			sess := store.Create("default")
