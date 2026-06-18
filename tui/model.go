@@ -288,6 +288,25 @@ func (m *TuiModel) Init() tea.Cmd {
 	)
 }
 
+// clearCharSelection clears the character-level selection highlight from
+// both the model state and the CellGrid cells.
+func (m *TuiModel) clearCharSelection() {
+	if m.grid != nil && m.charSelStart.Offset >= 0 {
+		sr, sc := m.charSelStartLine, m.charSelStartCol
+		er, ec := m.charSelEndLine, m.charSelEndCol
+		if er < sr || (er == sr && ec < sc) {
+			sr, sc, er, ec = er, ec, sr, sc
+		}
+		m.grid.Fill(sr, sc, er, ec, DefaultStyle)
+	}
+	m.charSelStart = selPos{Offset: -1}
+	m.charSelEnd = selPos{Offset: -1}
+	m.charSelStartLine = 0
+	m.charSelStartCol = 0
+	m.charSelEndLine = 0
+	m.charSelEndCol = 0
+}
+
 // sendStreamMsg is a tea.Cmd that reads from the stream channel.
 func (m *TuiModel) sendStreamMsg() tea.Msg {
 	msg := <-m.streamCh

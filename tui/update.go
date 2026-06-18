@@ -106,6 +106,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case tea.MouseActionRelease:
 				if !m.mouseDrag {
+					m.clearCharSelection()
 					m.selectStart = -1
 					m.selectEnd = -1
 					clickRole := ""
@@ -117,6 +118,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						"msgIdx", idx, "msgRole", clickRole,
 						"action", "cleared")
 				} else {
+					m.clearCharSelection()
 					tlog.Debug("mouse.select", "release",
 						"y", msg.Y, "contentLine", contentLine,
 						"msgIdx", idx, "range", fmt.Sprintf("[%d,%d]", m.selectStart, m.selectEnd))
@@ -283,12 +285,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if text != "" {
 					copyToClipboard(text)
-					m.charSelStart = selPos{Offset: -1}
-					m.charSelEnd = selPos{Offset: -1}
-					m.charSelStartLine = 0
-					m.charSelStartCol = 0
-					m.charSelEndLine = 0
-					m.charSelEndCol = 0
+					m.clearCharSelection()
 					m.ShowStatus("✓ Copied")
 					m.autoScroll()
 					return m, nil
