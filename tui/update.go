@@ -51,6 +51,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Character-level selection (new)
 			switch msg.Action {
 			case tea.MouseActionPress:
+				// Clear any previous selection before starting a new one
+				m.clearCharSelection()
 				pos := posFromCoord(contentLine, contentCol, m.lineSrcs)
 				if pos.Offset >= 0 {
 					m.charSelStart = pos
@@ -106,6 +108,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case tea.MouseActionRelease:
 				if !m.mouseDrag {
+					// Click without drag: clear any previous selection
 					m.clearCharSelection()
 					m.selectStart = -1
 					m.selectEnd = -1
@@ -118,7 +121,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						"msgIdx", idx, "msgRole", clickRole,
 						"action", "cleared")
 				} else {
-					m.clearCharSelection()
+					// Drag release: keep selection highlighted for copy
 					tlog.Debug("mouse.select", "release",
 						"y", msg.Y, "contentLine", contentLine,
 						"msgIdx", idx, "range", fmt.Sprintf("[%d,%d]", m.selectStart, m.selectEnd))
