@@ -317,7 +317,10 @@ func main() {
 				}
 			}
 			// Sandbox project root: config → CWD
-			rootDir := cfg.Sandbox.ProjectRoot
+			rootDir := ""
+			if cfg.Sandbox != nil {
+				rootDir = cfg.Sandbox.ProjectRoot
+			}
 			if rootDir == "" {
 				cwd, err := os.Getwd()
 				if err == nil {
