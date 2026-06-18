@@ -375,6 +375,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForStream()
 
 	case ToolResultMsg:
+		// If the completed tool was "todo", mark dirty and save the render
+		// ack channel. The agent goroutine blocks on this channel; View()
+		// signals it after the TODO is injected into the CellGrid.
+		if msg.Name == "todo" {
+			m.todoDirty = true
+			m.renderAckCh = msg.AckCh
+		}
 		m.autoScroll()
 		return m, m.waitForStream()
 	case LSPDiagMsg:
@@ -1010,7 +1017,14 @@ func (m *TuiModel) runAgent(prompt string) {
 			m.streamCh <- ToolCallMsg{MsgIdx: -1, Name: name, Arg: arg}
 		},
 		OnToolResult: func(name string) {
-			m.streamCh <- ToolResultMsg{MsgIdx: -1}
+			var ackCh chan struct{}
+			if name == "todo" {
+				ackCh = make(chan struct{}, 1)
+			}
+			m.streamCh <- ToolResultMsg{MsgIdx: -1, Name: name, AckCh: ackCh}
+			if ackCh != nil {
+				<-ackCh // BLOCK until View() injects TODO into CellGrid
+			}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)

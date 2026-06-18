@@ -134,6 +134,11 @@ type TuiModel struct {
 	todoRowCount int  // rendered row count for todo section (0 = no items)
 	todoDirty    bool // true = todo section needs re-render
 
+	// renderAckCh is set when a todo tool call needs render confirmation.
+	// The agent goroutine blocks on this channel; View() signals it after
+	// the TODO is injected into the CellGrid.
+	renderAckCh chan struct{}
+
 	// Command palette
 	cmdPalette      bool   // floating command palette active
 	cmdPaletteInput string // current filter text (without the /)

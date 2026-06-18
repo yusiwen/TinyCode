@@ -144,6 +144,13 @@ func (m *TuiModel) View() string {
 						m.todoRowCount = len(todoChunks) + 1 // +1 for blank line before tool calls
 						m.todoDirty = false
 
+						// Signal render ack: agent goroutine is waiting for TODO
+						// to be visible in the CellGrid before proceeding.
+						if m.renderAckCh != nil {
+							m.renderAckCh <- struct{}{}
+							m.renderAckCh = nil
+						}
+
 						// Insert todoChunks before toolCallIdx
 						chunks = append(chunks[:toolCallIdx], append(todoChunks, chunks[toolCallIdx:]...)...)
 					}

@@ -48,6 +48,8 @@ type ToolCallMsg struct {
 // ToolResultMsg is sent when the tool returns (used to track duration).
 type ToolResultMsg struct {
 	MsgIdx int
+	Name   string        // tool name, so TUI can react (e.g. mark todoDirty)
+	AckCh  chan struct{} // non-nil for "todo" — agent blocks until render confirmed
 }
 
 // LSPDiagMsg is sent when LSP diagnostics are available.
