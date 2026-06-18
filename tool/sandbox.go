@@ -173,12 +173,13 @@ func RequestPermission(ctx context.Context, path string) (bool, string) {
 			pendingMu.Lock()
 			r := pendingPerm
 			allowed := r != nil && r.Allowed
+			denied := r != nil && r.Mode == "denied"
 			mode := ""
 			if r != nil {
 				mode = r.Mode
 			}
 			pendingMu.Unlock()
-			if allowed || r == nil {
+			if allowed || denied || r == nil {
 				return allowed, mode
 			}
 			time.Sleep(50 * time.Millisecond)
