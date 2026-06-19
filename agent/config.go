@@ -108,18 +108,14 @@ func DefaultAgents() map[string]*AgentConfig {
 		"general": {
 			Name:        "general",
 			Mode:        AgentModeSubagent,
-			Description: "General-purpose sub-agent for parallel research. Reads files, searches code, runs commands. Cannot modify files or delegate to other agents.",
-			SystemPrompt: "You are a general-purpose sub-agent. Your job is to research, analyze, " +
-				"and gather information. You have access to most tools including LSP, " +
-				"skill loading, and search, but you CANNOT write files, commit code, " +
-				"change sandbox permissions, or delegate tasks to other agents.\n\n" +
-				"Return a concise summary of your findings. Do NOT produce verbose output.",
+			Description: "General-purpose sub-agent for parallel task execution. Has full access to most tools including write, bash, edit. Can create and modify files. Cannot delegate tasks or manage skills.",
+			SystemPrompt: "You are a general-purpose sub-agent. Your job is to execute tasks independently. " +
+				"You have full access to most tools including bash, write_file, edit, and git. " +
+				"You CANNOT delegate tasks to other agents or manage skills.\n\n" +
+				"Return a concise summary of your work. Do NOT produce verbose output.",
 			MaxSteps: 20,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
-				{Action: "write_file", Resource: "*", Effect: EffectDeny},
-				{Action: "git_commit", Resource: "*", Effect: EffectDeny},
-				{Action: "sandbox_allow", Resource: "*", Effect: EffectDeny},
 				{Action: "task", Resource: "*", Effect: EffectDeny},
 				{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
 			},

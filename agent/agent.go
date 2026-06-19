@@ -312,7 +312,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				if tc.Arguments != "" {
 					var raw map[string]any
 					if err := json.Unmarshal([]byte(tc.Arguments), &raw); err == nil {
-						// Use first string value as summary (e.g. file path, query)
 						for _, v := range raw {
 							if s, ok := v.(string); ok {
 								argSummary = s
@@ -326,77 +325,105 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				}
 				callbacks.OnToolCall(tc.Name, argSummary)
 			}
-			tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
-			var result string
-			found := false
-			for _, t := range a.Tools {
-				if t.Name == tc.Name {
-					// Runtime permission check (defense-in-depth)
-					if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
-						result = fmt.Sprintf("[DENIED] %s is not available in %s mode.",
-							t.Name, a.Config.Name)
+		}
+		tlog.Info("agent.loop", "tool calls", "step", step, "count", len(toolCalls))
+
+		// Execute all tool calls concurrently
+		type toolResult struct {
+			Index     int
+			Name      string
+			Result    string
+			Truncated string
+			IsBlock   bool
+		}
+		ch := make(chan toolResult, len(toolCalls))
+		for idx, tc := range toolCalls {
+			idx, tc := idx, tc
+			go func() {
+				a.stepDetail("[step %d] calling %s: %s", step, tc.Name, tc.Arguments)
+				if callbacks != nil && callbacks.OnToolCall != nil {
+					callbacks.OnToolCall(tc.Name, "")
+				}
+				tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
+
+				var result string
+				found := false
+				for _, t := range a.Tools {
+					if t.Name == tc.Name {
+						if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
+							result = fmt.Sprintf("[DENIED] %s is not available in %s mode.", t.Name, a.Config.Name)
+							found = true
+							break
+						}
 						found = true
+						var args map[string]any
+						if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+							result = fmt.Sprintf("error parsing args: %v", err)
+						} else {
+							var execErr error
+							result, execErr = t.Execute(ctx, args)
+							if execErr != nil {
+								result = fmt.Sprintf("error: %v", execErr)
+							}
+						}
 						break
 					}
-					found = true
-					var args map[string]any
-					if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
-						result = fmt.Sprintf("error parsing args: %v", err)
-					} else {
-						var execErr error
-						result, execErr = t.Execute(ctx, args)
-						if execErr != nil {
-							result = fmt.Sprintf("error: %v", execErr)
-						}
-					}
-					break
 				}
-			}
-			if !found {
-				result = fmt.Sprintf("unknown tool: %s", tc.Name)
-			}
+				if !found {
+					result = fmt.Sprintf("unknown tool: %s", tc.Name)
+				}
 
-			// Show tool input and result (verbose only)
-			if len(tc.Arguments) > 500 {
-				a.stepDetail("[step %d] tool input (%s):\n%s...", step, tc.Name, tc.Arguments[:500])
+				if callbacks != nil && callbacks.OnToolResult != nil {
+					callbacks.OnToolResult(tc.Name)
+				}
+
+				isBlock := strings.HasPrefix(result, "\n"+securityBlockMarker) ||
+					strings.HasPrefix(result, securityBlockMarker)
+
+				trunc := TruncateOutput(result)
+
+				ch <- toolResult{
+					Index:     idx,
+					Name:      tc.Name,
+					Result:    result,
+					Truncated: trunc.Content,
+					IsBlock:   isBlock,
+				}
+			}()
+		}
+
+		// Collect results in index order
+		results := make([]toolResult, len(toolCalls))
+		for range toolCalls {
+			r := <-ch
+			results[r.Index] = r
+		}
+
+		// Process results in order
+		for _, r := range results {
+			tlog.Debug("agent.loop", "tool result", "step", step, "tool", r.Name, "size", len(r.Result))
+
+			if len(r.Result) > 500 {
+				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s...", step, r.Name, len(r.Result), r.Result[:500])
 			} else {
-				a.stepDetail("[step %d] tool input (%s):\n%s", step, tc.Name, tc.Arguments)
-			}
-			if len(result) > 500 {
-				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s...", step, tc.Name, len(result), result[:500])
-			} else {
-				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s", step, tc.Name, len(result), result)
+				a.stepDetail("[step %d] tool result (%s, %d chars):\n%s", step, r.Name, len(r.Result), r.Result)
 			}
 
-			if callbacks != nil && callbacks.OnToolResult != nil {
-				callbacks.OnToolResult(tc.Name)
-			}
-
-			// Security intercept
-			isSecurityBlock := strings.HasPrefix(result, "\n"+securityBlockMarker) ||
-				strings.HasPrefix(result, securityBlockMarker)
-
-			if isSecurityBlock {
+			if r.IsBlock {
 				a.stepName("[step %d] security block detected, bypassing LLM", step)
 				if a.SessionStore != nil {
 					a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
-					a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: result})
+					a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: r.Result})
 					a.SessionStore.Flush()
 				}
-				return result, nil
+				return r.Result, nil
 			}
-
-			// Truncate large tool output
-			trunc := TruncateOutput(result)
-			truncatedResult := trunc.Content
-
-			tlog.Debug("agent.loop", "tool result", "step", step, "tool", tc.Name, "size", len(result), "truncated", trunc.FullPath != "")
 
 			messages = append(messages, types.Message{
 				Role:        types.RoleTool,
-				Content:     truncatedResult,
-				Name:        tc.Name,
-				ToolCallID:  tc.ID,
+				Content:     r.Truncated,
+				Name:        r.Name,
+				ToolCallID:  toolCalls[r.Index].ID,
 			})
 		}
 		step++
