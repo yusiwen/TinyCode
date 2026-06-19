@@ -723,33 +723,6 @@ func (m *TuiModel) submitInput() (tea.Model, tea.Cmd) {
 	m.lastInput = text
 	m.input.Reset()
 	if strings.HasPrefix(text, "/") {
-		// Check for sandbox permission response before command handling
-		if tool.HasPendingPermission() {
-			parts := strings.Fields(text)
-			if len(parts) >= 2 && (parts[0] == "allow" || parts[0] == "always" || parts[0] == "deny") {
-				path := parts[1]
-				// For multi-word paths, join remaining parts
-				if len(parts) > 2 {
-					path = strings.Join(parts[1:], " ")
-				}
-				mode := parts[0]
-				if mode == "allow" {
-					mode = "once"
-				} else if mode == "deny" {
-					tool.ResolvePermission(path, false, "denied")
-					m.input.SetValue("")
-					return m, nil
-				} else {
-					mode = "always"
-				}
-				if tool.ResolvePermission(path, true, mode) {
-					tlog.Debug("tui.permission", "resolved", "path", path, "mode", mode)
-					m.input.SetValue("")
-					return m, nil
-				}
-			}
-		}
-
 		return m.handleCommand(text)
 	}
 	return m, func() tea.Msg { return ChatMsg{Text: text} }
