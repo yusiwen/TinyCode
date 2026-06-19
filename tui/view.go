@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // View renders the TUI layout.
@@ -641,6 +642,46 @@ func renderTable(block ContentBlock, sel bool) []CellChunk {
 		}
 	}
 
+	// Calculate available width: box-drawing chars + padding per cell
+	// │  ..  │..  │ = colCount*2 + (colCount+1)*2 for bars + padding
+	// Actually: outer │ (1) + indent (1) + inner │ per gap (colCount-1) + inner │ (colCount-1) + 2*colCount for padding
+	// Simplified: each cell adds 2 padding + 1 right border (except last) = 2 + (colCount-1)*1
+	// Outer: 2 (left border + space) + 1 (right border at end)
+	// Let me use a simpler formula:
+	// Total = sum(colWidths) + 3 (outer bars) + 2*colCount (padding) + colCount - 1 (inner bars)
+	boxChars := 3 + 2*colCount + (colCount - 1) // │ + spaces + inner │
+
+	// Truncate cells if total width exceeds available space
+	// Approximate max line width: estimates grid width
+	maxLineWidth := 120 // fallback for colWidths calculation
+	if len(colWidths) > 0 {
+		totalWidth := boxChars
+		for _, w := range colWidths {
+			totalWidth += w
+		}
+		if totalWidth > maxLineWidth {
+			excess := totalWidth - maxLineWidth
+			// Truncate the widest column(s) first
+			for excess > 0 {
+				maxIdx := 0
+				for ci := 1; ci < colCount; ci++ {
+					if colWidths[ci] > colWidths[maxIdx] {
+						maxIdx = ci
+					}
+				}
+				if colWidths[maxIdx] <= 20 {
+					break // don't truncate below 20 chars
+				}
+				trim := excess
+				if colWidths[maxIdx]-20 < trim {
+					trim = colWidths[maxIdx] - 20
+				}
+				colWidths[maxIdx] -= trim
+				excess -= trim
+			}
+		}
+	}
+
 	var chunks []CellChunk
 	for ri, row := range allRows {
 		var parts []string
@@ -648,6 +689,25 @@ func renderTable(block ContentBlock, sel bool) []CellChunk {
 			cellText := ""
 			if ci < len(row) {
 				cellText = row[ci].plainText
+			}
+			// Truncate cell if needed
+			if lipgloss.Width(cellText) > colWidths[ci] {
+				// Truncate with ellipsis
+				truncated := ""
+				w := 0
+				for _, r := range cellText {
+					rw := runewidth.RuneWidth(r)
+					if rw == 0 {
+						rw = 1
+					}
+					if w+rw > colWidths[ci]-1 {
+						truncated += "…"
+						break
+					}
+					truncated += string(r)
+					w += rw
+				}
+				cellText = truncated
 			}
 			padded := cellText + strings.Repeat(" ", colWidths[ci]-lipgloss.Width(cellText))
 			parts = append(parts, " "+padded+" ")
