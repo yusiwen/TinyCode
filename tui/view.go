@@ -257,8 +257,21 @@ func (m *TuiModel) View() string {
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
 
-	// Input area
-	if m.selectingProvider {
+	// Input area — dialog, provider, command palette are mutually exclusive
+	if m.dialogMode {
+		b.WriteString(headerStyle.Render(m.dialogMsg))
+		b.WriteString("\n")
+		for i, item := range m.dialogItems {
+			label := fmt.Sprintf("  [%d] %s", i+1, item)
+			if i == m.dialogSel {
+				b.WriteString(headerStyle.Render("> " + label))
+			} else {
+				b.WriteString("  " + label)
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString(dimStyle.Render("↑↓ navigate · Enter select · 1-9 shortcut · Esc cancel"))
+	} else if m.selectingProvider {
 		b.WriteString(headerStyle.Render("Select provider:"))
 		b.WriteString("\n")
 		for i, rec := range m.provReg.List() {

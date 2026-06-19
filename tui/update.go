@@ -215,6 +215,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Dialog mode — intercept keyboard before normal input
+		if m.dialogMode {
+			return m.handleDialogKey(msg), nil
+		}
+
 		// Escape → exit history browsing
 		if msg.Type == tea.KeyEscape && m.historyPos >= 0 {
 			m.historyPos = -1
@@ -734,6 +739,19 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		} else {
 			m.ShowStatus(fmt.Sprintf("No compression needed (%d messages, below threshold)", len(m.agent.History)))
 		}
+		return m, nil
+
+	case "/dialog":
+		m.showDialog("Test dialog — choose an option:", []string{
+			"Option One",
+			"Option Two",
+			"Option Three",
+		}, func(sel string) {
+			m.messages = append(m.messages, chatMessage{
+				Role:    "system",
+				Content: "Dialog selected: " + sel,
+			})
+		})
 		return m, nil
 
 	case "/help":

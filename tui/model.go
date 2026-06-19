@@ -143,6 +143,14 @@ type TuiModel struct {
 	cmdPalette      bool   // floating command palette active
 	cmdPaletteInput string // current filter text (without the /)
 	cmdPaletteSel   int    // selected index
+
+	// Dialog overlay
+	dialogMode    bool     // test dialog active
+	dialogItems   []string // dialog option labels
+	dialogSel     int      // selected option index
+	dialogResult  string   // selected result or empty
+	dialogMsg     string   // dialog heading message
+	dialogOnDone  func(string) // callback invoked with selected value
 }
 
 // cmdEntry describes one command in the floating palette.
@@ -283,6 +291,64 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	}
 
 	return m
+}
+
+// showDialog activates the dialog overlay with the given items.
+func (m *TuiModel) showDialog(msg string, items []string, onDone func(string)) {
+	m.dialogMsg = msg
+	m.dialogItems = items
+	m.dialogSel = 0
+	m.dialogResult = ""
+	m.dialogOnDone = onDone
+	m.dialogMode = true
+}
+
+// handleDialogKey processes keyboard input while dialog is active.
+func (m *TuiModel) handleDialogKey(msg tea.KeyMsg) tea.Model {
+	switch msg.Type {
+	case tea.KeyUp:
+		if m.dialogSel > 0 {
+			m.dialogSel--
+		}
+		return m
+	case tea.KeyDown:
+		if m.dialogSel < len(m.dialogItems)-1 {
+			m.dialogSel++
+		}
+		return m
+	case tea.KeyEnter:
+		sel := m.dialogSel
+		if sel >= 0 && sel < len(m.dialogItems) {
+			m.dialogResult = m.dialogItems[sel]
+			if m.dialogOnDone != nil {
+				m.dialogOnDone(m.dialogResult)
+			}
+		}
+		m.dialogMode = false
+		m.dialogOnDone = nil
+		return m
+	case tea.KeyEscape, tea.KeyCtrlC:
+		m.dialogResult = ""
+		m.dialogMode = false
+		m.dialogOnDone = nil
+		return m
+	default:
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+			ch := msg.Runes[0]
+			if ch >= '1' && ch <= '9' {
+				idx := int(ch - '1')
+				if idx >= 0 && idx < len(m.dialogItems) {
+					m.dialogResult = m.dialogItems[idx]
+					if m.dialogOnDone != nil {
+						m.dialogOnDone(m.dialogResult)
+					}
+					m.dialogMode = false
+					m.dialogOnDone = nil
+				}
+			}
+		}
+		return m
+	}
 }
 
 // Init returns the initial commands.
