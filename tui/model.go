@@ -145,12 +145,13 @@ type TuiModel struct {
 	cmdPaletteSel   int    // selected index
 
 	// Dialog overlay
-	dialogMode    bool     // test dialog active
-	dialogItems   []string // dialog option labels
-	dialogSel     int      // selected option index
-	dialogResult  string   // selected result or empty
-	dialogMsg     string   // dialog heading message
-	dialogOnDone  func(string) // callback invoked with selected value
+	dialogMode      bool       // test dialog active
+	dialogItems     []string   // dialog option labels
+	dialogSel       int        // selected option index
+	dialogResult    string     // selected result or empty
+	dialogMsg       string     // dialog heading message
+	dialogOnDone    func(string)  // callback invoked with selected value
+	dialogOnCancel  func()        // callback invoked when dialog is cancelled
 }
 
 // cmdEntry describes one command in the floating palette.
@@ -295,11 +296,17 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 
 // showDialog activates the dialog overlay with the given items.
 func (m *TuiModel) showDialog(msg string, items []string, onDone func(string)) {
+	m.showDialogWithCancel(msg, items, onDone, nil)
+}
+
+// showDialogWithCancel is like showDialog but also accepts a cancel callback.
+func (m *TuiModel) showDialogWithCancel(msg string, items []string, onDone func(string), onCancel func()) {
 	m.dialogMsg = msg
 	m.dialogItems = items
 	m.dialogSel = 0
 	m.dialogResult = ""
 	m.dialogOnDone = onDone
+	m.dialogOnCancel = onCancel
 	m.dialogMode = true
 }
 
@@ -329,8 +336,13 @@ func (m *TuiModel) handleDialogKey(msg tea.KeyMsg) tea.Model {
 		return m
 	case tea.KeyEscape, tea.KeyCtrlC:
 		m.dialogResult = ""
+		cb := m.dialogOnCancel
 		m.dialogMode = false
 		m.dialogOnDone = nil
+		m.dialogOnCancel = nil
+		if cb != nil {
+			cb()
+		}
 		return m
 	default:
 		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {

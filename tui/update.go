@@ -220,6 +220,46 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleDialogKey(msg), nil
 		}
 
+		// Auto-show permission dialog when sandbox blocks a path
+		if tool.HasPendingPermission() && !m.dialogMode {
+			path := tool.PendingPermissionPath()
+			if path != "" {
+				// Truncate long paths for display
+				displayPath := path
+				if len(displayPath) > 60 {
+					displayPath = "..." + displayPath[len(displayPath)-57:]
+				}
+				m.showDialogWithCancel("🔒 Write to "+displayPath+"?", []string{
+					"Allow once",
+					"Always allow",
+					"Deny",
+				}, func(sel string) {
+					var allowed bool
+					var mode string
+					switch sel {
+					case "Allow once":
+						allowed = true
+						mode = "once"
+					case "Always allow":
+						allowed = true
+						mode = "always"
+					default:
+						allowed = false
+						mode = "denied"
+					}
+					if tool.ResolvePermission(path, allowed, mode) {
+						tlog.Debug("tui.permission", "resolved", "path", path, "mode", mode)
+					}
+					m.input.SetValue("")
+				}, func() {
+					// Cancel → deny the permission
+					tool.ResolvePermission(path, false, "denied")
+					tlog.Debug("tui.permission", "cancelled", "path", path)
+					m.input.SetValue("")
+				})
+			}
+		}
+
 		// Escape → exit history browsing
 		if msg.Type == tea.KeyEscape && m.historyPos >= 0 {
 			m.historyPos = -1
