@@ -274,6 +274,24 @@ func main() {
 				Parameters: sm.Parameters, Execute: sm.Execute,
 			})
 
+			// Task tool — delegates to sub-agents (explore, general)
+			allToolList := ag.Tools // snapshot of tools registered so far
+			taskTool := tool.TaskTool(&tool.TaskToolDeps{
+				Provider: provReg.Current(),
+				AllTools: allToolList,
+				GetAgentConfig: func(name string) *agent.AgentConfig {
+					cfg, err := reg.Get(name)
+					if err != nil {
+						return nil
+					}
+					return cfg
+				},
+			})
+			ag.AddTool(agent.Tool{
+				Name: taskTool.Name, Description: taskTool.Description,
+				Parameters: taskTool.Parameters, Execute: taskTool.Execute,
+			})
+
 			// Todo tool with shared store
 			todoStore := tool.NewTodoStore()
 			ag.TodoStorer = todoStore

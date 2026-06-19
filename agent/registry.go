@@ -120,7 +120,11 @@ func (r *Registry) ToolAllowed(toolName string) bool {
 
 // ToolAllowedFor checks if a given tool is permitted for a specific agent config.
 func ToolAllowedFor(cfg *AgentConfig, toolName string) bool {
-	// Check denied list first
+	// Phase 3: if Permissions is set, use Ruleset evaluation
+	if len(cfg.Permissions) > 0 {
+		return Evaluate(toolName, "*", cfg.Permissions...) != EffectDeny
+	}
+	// Fallback: check DeniedTools first
 	for _, d := range cfg.DeniedTools {
 		if d == toolName {
 			return false
@@ -135,6 +139,5 @@ func ToolAllowedFor(cfg *AgentConfig, toolName string) bool {
 			return true
 		}
 	}
-	// Not in allowed list and not "*" → denied
 	return false
 }

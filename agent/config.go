@@ -18,6 +18,29 @@ type AgentConfig struct {
 	MaxSteps     int       // 0 = unlimited
 	AllowedTools []string  // tool names allowed ("*" = all)
 	DeniedTools  []string  // tool names explicitly denied
+	Permissions  Ruleset   // permission rules (replaces DeniedTools, Phase 3)
+}
+
+// IsToolAllowed returns true if the named tool is permitted by this config.
+// Checks Permissions first (Phase 3), then falls back to DeniedTools/AllowedTools.
+func (c *AgentConfig) IsToolAllowed(name string) bool {
+	if len(c.Permissions) > 0 {
+		return Evaluate(name, "*", c.Permissions...) != EffectDeny
+	}
+	for _, d := range c.DeniedTools {
+		if d == name {
+			return false
+		}
+	}
+	if c.AllowedTools != nil {
+		for _, a := range c.AllowedTools {
+			if a == name {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 // DefaultAgents returns the built-in agent configurations.
@@ -44,8 +67,14 @@ func DefaultAgents() map[string]*AgentConfig {
 				"IMPORTANT: You CANNOT write files or execute write commands in plan mode. " +
 				"After analyzing, create a detailed plan for the user and ask them to type /build to execute it.",
 			MaxSteps: 20,
-			AllowedTools: []string{"*"},
-			DeniedTools: []string{"write_file", "git_commit", "sandbox_allow", "task", "skill_manage"},
+			Permissions: Ruleset{
+				{Action: "*", Resource: "*", Effect: EffectAllow},
+				{Action: "write_file", Resource: "*", Effect: EffectDeny},
+				{Action: "git_commit", Resource: "*", Effect: EffectDeny},
+				{Action: "sandbox_allow", Resource: "*", Effect: EffectDeny},
+				{Action: "task", Resource: "*", Effect: EffectDeny},
+				{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
+			},
 		},
 		"build": {
 			Name:        "build",
@@ -55,19 +84,23 @@ func DefaultAgents() map[string]*AgentConfig {
 				"including write_file, git_commit, and the task tool for delegating to " +
 				"sub-agents. Use tools to implement changes and verify your work.",
 			MaxSteps:    50,
-			AllowedTools: []string{"*"},
-			DeniedTools:  []string{},
+			Permissions: Ruleset{
+				{Action: "*", Resource: "*", Effect: EffectAllow},
+			},
 		},
 		"explore": {
 			Name:        "explore",
 			Mode:        AgentModeSubagent,
-			Description: "Fast code exploration sub-agent. Searches files, reads code, runs commands. No edit permissions.",
+			Description: "Fast code exploration sub-agent. Searches files, reads code. No edit permissions and no bash.",
 			SystemPrompt: "You are a focused explore sub-agent. Your job is to find information " +
-				"in the codebase. You can use bash, read_file, and search_files. " +
+				"in the codebase. You can use read_file and search_files. " +
 				"Return a concise summary of what you found. Do NOT modify any files.",
 			MaxSteps: 15,
-			AllowedTools: []string{"bash", "read_file", "search_files"},
-			DeniedTools:  []string{},
+			Permissions: Ruleset{
+				{Action: "*", Resource: "*", Effect: EffectDeny},
+				{Action: "read_file", Resource: "*", Effect: EffectAllow},
+				{Action: "search_files", Resource: "*", Effect: EffectAllow},
+			},
 		},
 		"general": {
 			Name:        "general",
@@ -79,8 +112,14 @@ func DefaultAgents() map[string]*AgentConfig {
 				"change sandbox permissions, or delegate tasks to other agents.\n\n" +
 				"Return a concise summary of your findings. Do NOT produce verbose output.",
 			MaxSteps: 20,
-			AllowedTools: []string{"*"},
-			DeniedTools:  []string{"write_file", "git_commit", "sandbox_allow", "task", "skill_manage"},
+			Permissions: Ruleset{
+				{Action: "*", Resource: "*", Effect: EffectAllow},
+				{Action: "write_file", Resource: "*", Effect: EffectDeny},
+				{Action: "git_commit", Resource: "*", Effect: EffectDeny},
+				{Action: "sandbox_allow", Resource: "*", Effect: EffectDeny},
+				{Action: "task", Resource: "*", Effect: EffectDeny},
+				{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
+			},
 		},
 		"compact": {
 			Name:        "compact",
@@ -95,8 +134,9 @@ func DefaultAgents() map[string]*AgentConfig {
 				"- Any pending issues or remaining work\n\n" +
 				"Focus on facts and outcomes. Omit greetings, meta-commentary, and tool output details.",
 			MaxSteps: 1,
-			AllowedTools: []string{},
-			DeniedTools:  []string{},
+			Permissions: Ruleset{
+				{Action: "*", Resource: "*", Effect: EffectDeny},
+			},
 		},
 		"title": {
 			Name:        "title",
@@ -107,8 +147,9 @@ func DefaultAgents() map[string]*AgentConfig {
 				"Use the format: 'Topic — action'. For example: 'tmux — analyze library dependencies' " +
 				"or 'Todo feature — fix rendering layout'. Return ONLY the title, nothing else.",
 			MaxSteps: 1,
-			AllowedTools: []string{},
-			DeniedTools:  []string{},
+			Permissions: Ruleset{
+				{Action: "*", Resource: "*", Effect: EffectDeny},
+			},
 		},
 	}
 }

@@ -59,18 +59,30 @@
   "agents": {
     "plan": {
       "max_steps": 20,
-      "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
+      "permissions": [
+        {"action": "*", "resource": "*", "effect": "allow"},
+        {"action": "write_file", "resource": "*", "effect": "deny"},
+        {"action": "git_commit", "resource": "*", "effect": "deny"},
+        {"action": "sandbox_allow", "resource": "*", "effect": "deny"},
+        {"action": "task", "resource": "*", "effect": "deny"},
+        {"action": "skill_manage", "resource": "*", "effect": "deny"}
+      ]
     },
     "build": {
       "max_steps": 50
     },
     "explore": {
-      "max_steps": 15,
-      "allowed_tools": ["bash", "read_file", "search_files"]
+      "description": "Read-only code search — only read_file and search_files",
+      "max_steps": 15
     },
     "general": {
       "max_steps": 20,
-      "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
+      "permissions": [
+        {"action": "*", "resource": "*", "effect": "allow"},
+        {"action": "write_file", "resource": "*", "effect": "deny"},
+        {"action": "git_commit", "resource": "*", "effect": "deny"},
+        {"action": "task", "resource": "*", "effect": "deny"}
+      ]
     }
   },
 
