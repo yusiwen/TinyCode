@@ -162,3 +162,89 @@ func TestTaskToolTimeout(t *testing.T) {
 	}
 	_ = result
 }
+
+func TestTaskCollectBasic(t *testing.T) {
+	mgr := NewBackgroundTaskManager()
+	processed := make(chan string, 1)
+
+	taskID := mgr.Start(&TaskToolDeps{
+		Provider: &mockTaskProvider{},
+		AllTools: []agent.Tool{{Name: "bash"}, {Name: "read_file"}},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{
+				Name:        name,
+				Mode:        agent.AgentModeSubagent,
+				MaxSteps:    3,
+				DeniedTools: nil,
+			}
+		},
+	}, "explore", "search for config files")
+
+	if taskID == "" {
+		t.Fatal("expected non-empty task ID")
+	}
+
+	if !strings.HasPrefix(taskID, "task_") {
+		t.Fatalf("expected task_ prefix, got %s", taskID)
+	}
+
+	// Wait for background task to complete
+	status := mgr.Status(taskID)
+	t.Logf("initial status: %s", status)
+
+	result, err := mgr.Collect(taskID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, "mock result") {
+		t.Fatalf("expected mock result, got: %s", result)
+	}
+	_ = processed
+}
+
+func TestTaskCollectUnknownTask(t *testing.T) {
+	mgr := NewBackgroundTaskManager()
+	_, err := mgr.Collect("nonexistent")
+	if err == nil || !strings.Contains(err.Error(), "unknown task") {
+		t.Fatalf("expected 'unknown task' error, got: %v", err)
+	}
+}
+
+func TestBgTaskStatus(t *testing.T) {
+	mgr := NewBackgroundTaskManager()
+	taskID := mgr.Start(&TaskToolDeps{
+		Provider: &mockTaskProvider{},
+		AllTools: []agent.Tool{{Name: "bash"}},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{
+				Name:        name,
+				Mode:        agent.AgentModeSubagent,
+				MaxSteps:    3,
+				DeniedTools: nil,
+			}
+		},
+	}, "explore", "search")
+
+	// Immediately after start, status should be "running"
+	status := mgr.Status(taskID)
+	if !strings.Contains(status, "running") {
+		t.Fatalf("expected 'running' status, got: %s", status)
+	}
+
+	// Wait and collect
+	_, err := mgr.Collect(taskID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// After collect, status should be "done"
+	status = mgr.Status(taskID)
+	if !strings.Contains(status, "done") {
+		t.Fatalf("expected 'done' status, got: %s", status)
+	}
+
+	// Unknown task
+	if mgr.Status("nonexistent") != "" {
+		t.Fatal("expected empty status for unknown task")
+	}
+}

@@ -117,6 +117,7 @@ func DefaultAgents() map[string]*AgentConfig {
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
 				{Action: "task", Resource: "*", Effect: EffectDeny},
+				{Action: "task_collect", Resource: "*", Effect: EffectDeny},
 				{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
 			},
 		},

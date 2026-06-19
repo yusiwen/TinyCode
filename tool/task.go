@@ -19,6 +19,8 @@ type TaskToolDeps struct {
 	// GetAgentConfig returns a sub-agent config by name (from DefaultAgents).
 	// Returns nil if the agent is not found or is not a subagent.
 	GetAgentConfig func(name string) *agent.AgentConfig
+	// BgTaskMgr is the shared background task manager.
+	BgTaskMgr *BackgroundTaskManager
 }
 
 // TaskTool creates the task tool for delegating to sub-agents.
@@ -27,19 +29,25 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 		Name:        "task",
 		Description: "Delegate a task to a sub-agent for focused execution. " +
 			"Use explore for read-only codebase searches (files, patterns, content). " +
-			"Use general for multi-step non-write work that needs bash access. " +
+			"Use general for full-execution sub-agent (write, bash, edit). " +
+			"Set bg=true to run in background (returns task_id; use task_collect later). " +
+			"Without bg, blocks until the sub-agent completes. " +
 			"Describe the goal clearly — the sub-agent runs independently.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"agent": map[string]any{
 					"type":        "string",
-					"description": "The sub-agent to use: explore (read-only search) or general (multi-step, has bash)",
+					"description": "The sub-agent to use: explore (read-only) or general (full execution)",
 					"enum":        []string{"explore", "general"},
 				},
 				"goal": map[string]any{
 					"type":        "string",
 					"description": "What the sub-agent should accomplish. Be specific and self-contained.",
+				},
+				"bg": map[string]any{
+					"type":        "boolean",
+					"description": "Run in background (default: false). When true, returns task_id immediately; use task_collect to get results.",
 				},
 			},
 			"required": []string{"agent", "goal"},
@@ -51,32 +59,34 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 				return "", fmt.Errorf("task: agent and goal are required")
 			}
 
-			// Look up sub-agent config
+			// Background mode
+			if bg, _ := args["bg"].(bool); bg && deps.BgTaskMgr != nil {
+				taskID := deps.BgTaskMgr.Start(deps, name, goal)
+				return fmt.Sprintf("[task %s started] %s — %s\nUse task_collect({id: %q}) to retrieve the result.",
+					taskID, name, goal, taskID), nil
+			}
+
+			// Synchronous mode (original behavior)
 			cfg := deps.GetAgentConfig(name)
 			if cfg == nil {
 				return "", fmt.Errorf("task: unknown agent %q", name)
 			}
-
-			// Filter tools by sub-agent permissions
 			var subTools []agent.Tool
 			for _, t := range deps.AllTools {
 				if cfg.IsToolAllowed(t.Name) {
 					subTools = append(subTools, t)
 				}
 			}
-
-			// Create sub-agent with independent execution
 			sub := agent.New(deps.Provider)
 			sub.Config = cfg
 			sub.Tools = subTools
 			sub.MaxSteps = cfg.MaxSteps
-			sub.ShowThinking = false // suppress sub-agent reasoning in output
-			sub.SessionStore = nil   // sub-agent doesn't persist to session
+			sub.ShowThinking = false
+			sub.SessionStore = nil
 
 			tlog.Debug("task", "start", "agent", name, "goal", goal,
 				"tools", len(subTools), "maxSteps", cfg.MaxSteps)
 
-			// Run sub-agent with timeout
 			type result struct {
 				output string
 				err    error
@@ -104,9 +114,39 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 				}
 				return "", fmt.Errorf("task: sub-agent %q failed: %w", name, r.err)
 			}
-
 			tlog.Debug("task", "done", "agent", name, "output_size", len(r.output))
 			return r.output, nil
+		},
+	}
+}
+
+// TaskCollectTool creates the tool for collecting background task results.
+func TaskCollectTool(mgr *BackgroundTaskManager) agent.Tool {
+	return agent.Tool{
+		Name:        "task_collect",
+		Description: "Retrieve results from one or more background tasks started with task(bg=true). " +
+			"Blocks until all specified tasks are complete. " +
+			"Returns the combined results.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id": map[string]any{
+					"type":        "string",
+					"description": "Task ID to collect (e.g., task_1). Use a single ID per call.",
+				},
+			},
+			"required": []string{"id"},
+		},
+		Execute: func(ctx context.Context, args map[string]any) (string, error) {
+			id, _ := args["id"].(string)
+			if id == "" {
+				return "", fmt.Errorf("task_collect: id is required")
+			}
+			result, err := mgr.Collect(id)
+			if err != nil {
+				return "", err
+			}
+			return result, nil
 		},
 	}
 }

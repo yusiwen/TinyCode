@@ -275,10 +275,12 @@ func main() {
 			})
 
 			// Task tool — delegates to sub-agents (explore, general)
+			bgTaskMgr := tool.NewBackgroundTaskManager()
 			allToolList := ag.Tools // snapshot of tools registered so far
 			taskTool := tool.TaskTool(&tool.TaskToolDeps{
 				Provider: provReg.Current(),
 				AllTools: allToolList,
+				BgTaskMgr: bgTaskMgr,
 				GetAgentConfig: func(name string) *agent.AgentConfig {
 					cfg, err := reg.Get(name)
 					if err != nil {
@@ -290,6 +292,12 @@ func main() {
 			ag.AddTool(agent.Tool{
 				Name: taskTool.Name, Description: taskTool.Description,
 				Parameters: taskTool.Parameters, Execute: taskTool.Execute,
+			})
+			// Task collect tool
+			tc := tool.TaskCollectTool(bgTaskMgr)
+			ag.AddTool(agent.Tool{
+				Name: tc.Name, Description: tc.Description,
+				Parameters: tc.Parameters, Execute: tc.Execute,
 			})
 
 			// Todo tool with shared store
