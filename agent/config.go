@@ -51,29 +51,32 @@ func DefaultAgents() map[string]*AgentConfig {
 			Mode:        AgentModePrimary,
 			Description: "Plan mode — read-only analysis. Explore the codebase, search for patterns, read files, but CANNOT modify anything.",
 			SystemPrompt: "You are TinyCode in PLAN mode. You can only read and analyze. " +
-				"All write operations (bash >, mkdir, rm, cat, etc.) are BLOCKED by the system. " +
-				"Write operations that attempt to create or modify files will be rejected with [PLAN MODE BLOCKED].\n\n" +
+				"All write operations are blocked. You have no bash access and no file modification tools.\n\n" +
 				"Your task is to:\n" +
-				"1. Explore the codebase using read-only commands (ls, find, grep, cat without redirect)\n" +
+				"1. Explore the codebase using read_file and search_files\n" +
 				"2. Understand the user's request\n" +
 				"3. Create a clear implementation plan\n" +
 				"4. Present the plan to the user\n" +
 				"5. Ask the user if they want to proceed — tell them to switch to build mode\n\n" +
-				"Strategy for efficient analysis:\n" +
-				"1. First explore the project structure (bash: tree/find/ls)\n" +
-				"2. Read key project files (go.mod, main.go, Makefile, config files)\n" +
-				"3. Read core package files (the main logic)\n" +
-				"4. Only read detail files if needed (implementation details, tests)\n\n" +
-				"IMPORTANT: You CANNOT write files or execute write commands in plan mode. " +
-				"After analyzing, create a detailed plan for the user and ask them to type /build to execute it.",
+				"IMPORTANT: You CANNOT write files, run shell commands, or modify anything. " +
+				"After analyzing, create a detailed plan and ask the user to type /build to execute it.",
 			MaxSteps: 20,
 			Permissions: Ruleset{
-				{Action: "*", Resource: "*", Effect: EffectAllow},
-				{Action: "write_file", Resource: "*", Effect: EffectDeny},
-				{Action: "git_commit", Resource: "*", Effect: EffectDeny},
-				{Action: "sandbox_allow", Resource: "*", Effect: EffectDeny},
-				{Action: "task", Resource: "*", Effect: EffectDeny},
-				{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
+				{Action: "*", Resource: "*", Effect: EffectDeny},
+				{Action: "read_file", Resource: "*", Effect: EffectAllow},
+				{Action: "search_files", Resource: "*", Effect: EffectAllow},
+				{Action: "git_status", Resource: "*", Effect: EffectAllow},
+				{Action: "git_diff", Resource: "*", Effect: EffectAllow},
+				{Action: "git_branch", Resource: "*", Effect: EffectAllow},
+				{Action: "git_log", Resource: "*", Effect: EffectAllow},
+				{Action: "web_search", Resource: "*", Effect: EffectAllow},
+				{Action: "web_extract", Resource: "*", Effect: EffectAllow},
+				{Action: "lsp_go_to_definition", Resource: "*", Effect: EffectAllow},
+				{Action: "lsp_find_references", Resource: "*", Effect: EffectAllow},
+				{Action: "lsp_hover", Resource: "*", Effect: EffectAllow},
+				{Action: "lsp_document_symbols", Resource: "*", Effect: EffectAllow},
+				{Action: "load_skill", Resource: "*", Effect: EffectAllow},
+				{Action: "todo", Resource: "*", Effect: EffectAllow},
 			},
 		},
 		"build": {
