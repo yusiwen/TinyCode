@@ -147,16 +147,32 @@ var (
 
 // PermissionRequest is queued when a path needs user approval.
 type PermissionRequest struct {
-	Path    string
-	Allowed bool // set to true by TUI when user approves
-	Mode    string // "once" or "always"
+	Path       string
+	AgentLabel string // who is asking (e.g. "build", "general")
+	Allowed    bool   // set to true by TUI when user approves
+	Mode       string // "once" or "always"
+}
+
+// currentAgentLabel tracks which agent is the current caller for permission requests.
+var currentAgentLabel string
+var currentAgentMu sync.Mutex
+
+// SetAgentLabel sets the label for the currently active agent (set by task tool).
+func SetAgentLabel(label string) {
+	currentAgentMu.Lock()
+	currentAgentLabel = label
+	currentAgentMu.Unlock()
 }
 
 // RequestPermission queues a path for user approval and blocks the
 // calling goroutine until the user responds via ResolvePermission.
 func RequestPermission(ctx context.Context, path string) (bool, string) {
+	currentAgentMu.Lock()
+	label := currentAgentLabel
+	currentAgentMu.Unlock()
+
 	pendingMu.Lock()
-	pendingPerm = &PermissionRequest{Path: path, Allowed: false}
+	pendingPerm = &PermissionRequest{Path: path, AgentLabel: label, Allowed: false}
 	pendingMu.Unlock()
 
 	tlog.Info("sandbox", "permission_request", "path", path)
@@ -200,6 +216,16 @@ func PendingPermissionPath() string {
 	defer pendingMu.Unlock()
 	if pendingPerm != nil {
 		return pendingPerm.Path
+	}
+	return ""
+}
+
+// PendingPermissionAgentLabel returns the agent label of the pending request.
+func PendingPermissionAgentLabel() string {
+	pendingMu.Lock()
+	defer pendingMu.Unlock()
+	if pendingPerm != nil {
+		return pendingPerm.AgentLabel
 	}
 	return ""
 }

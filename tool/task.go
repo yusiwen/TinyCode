@@ -83,6 +83,8 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 					subTools = append(subTools, t)
 				}
 			}
+			tlog.Debug("task", "agent_label", "agent", name)
+			SetAgentLabel(name)
 			sub := agent.New(deps.Provider)
 			sub.Config = cfg
 			sub.Tools = subTools

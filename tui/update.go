@@ -225,13 +225,17 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Auto-show permission dialog when sandbox blocks a path
 		if tool.HasPendingPermission() && !m.dialogMode {
 			path := tool.PendingPermissionPath()
+			label := tool.PendingPermissionAgentLabel()
 			if path != "" {
-				// Truncate long paths for display
 				displayPath := path
 				if len(displayPath) > 60 {
 					displayPath = "..." + displayPath[len(displayPath)-57:]
 				}
-				m.showDialogWithCancel("🔒 Write to "+displayPath+"?", []string{
+				title := "🔒 Write to " + displayPath + "?"
+				if label != "" {
+					title = "🔒 [" + label + "] Write to " + displayPath + "?"
+				}
+				m.showDialogWithCancel(title, []string{
 					"Allow once",
 					"Always allow",
 					"Deny",
