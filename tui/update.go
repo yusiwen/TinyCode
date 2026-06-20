@@ -195,7 +195,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cmdPalette = false
 					m.cmdPaletteInput = ""
 					m.cmdPaletteSel = 0
-					return m.handleCommand(cmd)
+					m.input.SetValue(cmd)
+					m.input.SetCursor(len(cmd))
+					return m, nil
 				}
 			case tea.KeyEscape, tea.KeyCtrlC:
 				m.cmdPalette = false
