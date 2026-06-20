@@ -27,12 +27,18 @@ type TaskToolDeps struct {
 func TaskTool(deps *TaskToolDeps) agent.Tool {
 	return agent.Tool{
 		Name:        "task",
-		Description: "Delegate a task to a sub-agent for focused execution. " +
-			"Use explore for read-only codebase searches (files, patterns, content). " +
-			"Use general for full-execution sub-agent (write, bash, edit). " +
-			"Set bg=true to run in background (returns task_id; use task_collect later). " +
-			"Without bg, blocks until the sub-agent completes. " +
-			"Describe the goal clearly — the sub-agent runs independently.",
+		Description: "Delegate a unit of work to a sub-agent for focused execution. " +
+			"The sub-agent runs independently and its step count does not count against your step budget.\n\n" +
+			"Use this when a task involves multiple independent work items " +
+			"(e.g. creating separate modules, searching multiple patterns, or running independent builds). " +
+			"Each task call counts as ONE external step regardless of how many internal steps the sub-agent uses.\n\n" +
+			"Available sub-agents:\n" +
+			"- explore: Read-only codebase searches. Use for finding files, searching patterns, reading code.\n" +
+			"- general: Full execution with bash, write, edit. Use for creating files, running commands, modifying code.\n\n" +
+			"Modes:\n" +
+			"- Sync (default): task({agent:'general', goal:'Create module A'}) — blocks until complete\n" +
+			"- Background: task({agent:'general', goal:'Build module B', bg:true}) — returns task_id immediately; " +
+			"use task_collect({id: 'task_1'}) to retrieve the result later",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -124,9 +130,9 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 func TaskCollectTool(mgr *BackgroundTaskManager) agent.Tool {
 	return agent.Tool{
 		Name:        "task_collect",
-		Description: "Retrieve results from one or more background tasks started with task(bg=true). " +
-			"Blocks until all specified tasks are complete. " +
-			"Returns the combined results.",
+		Description: "Retrieve results from background tasks started with task(bg=true). " +
+			"Blocks until the specified task completes. " +
+			"Use this after launching multiple background tasks to collect their results.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

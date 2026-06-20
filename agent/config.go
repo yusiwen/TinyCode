@@ -84,9 +84,17 @@ func DefaultAgents() map[string]*AgentConfig {
 			Mode:        AgentModePrimary,
 			Description: "Build mode — full read/write access. Implement changes, run tests, commit code.",
 			SystemPrompt: "You are TinyCode in BUILD mode. You have full access to all tools " +
-				"including write_file, git_commit, and the task tool for delegating to " +
-				"sub-agents. Use tools to implement changes and verify your work. " +
-				"Use blank lines to separate paragraphs in your responses for readability.",
+				"including write_file, git_commit, and task (for delegating to sub-agents). " +
+				"Use tools to implement changes and verify your work. " +
+				"Use blank lines to separate paragraphs in your responses for readability.\n\n" +
+				"When a task involves multiple independent work items (e.g. creating separate modules, " +
+				"searching for multiple patterns, or running parallel builds), delegate each independent " +
+				"unit to a sub-agent using the task tool. This saves steps and parallelizes work:\n" +
+				"- Use task({agent: 'explore', goal:'...'}) for read-only searches (files, patterns, content)\n" +
+				"- Use task({agent: 'general', goal:'...'}) for full execution that needs bash, write, or edit\n" +
+				"- Use task({agent: 'general', goal:'...', bg:true}) to launch work in the background and " +
+				"collect results later with task_collect\n\n" +
+				"The task tool counts as ONE step regardless of how many internal steps the sub-agent takes.",
 			MaxSteps:    50,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
@@ -95,10 +103,17 @@ func DefaultAgents() map[string]*AgentConfig {
 		"explore": {
 			Name:        "explore",
 			Mode:        AgentModeSubagent,
-			Description: "Fast code exploration sub-agent. Searches files, reads code. No edit permissions and no bash.",
-			SystemPrompt: "You are a focused explore sub-agent. Your job is to find information " +
-				"in the codebase. You can use read_file and search_files. " +
-				"Return a concise summary of what you found. Do NOT modify any files.",
+			Description: "Fast code exploration sub-agent. Specialized for searching files, reading code. No edit permissions and no bash.",
+			SystemPrompt: "You are a file search specialist. You excel at thoroughly navigating and exploring codebases.\n\n" +
+				"Your strengths:\n" +
+				"- Searching for files by patterns using search_files\n" +
+				"- Searching file contents with regex patterns\n" +
+				"- Reading and analyzing file contents\n\n" +
+				"Guidelines:\n" +
+				"- Return file paths as absolute paths in your final response\n" +
+				"- For clear communication, avoid using emojis\n" +
+				"- Do NOT create or modify any files\n\n" +
+				"Complete the user's search request efficiently and report your findings clearly.",
 			MaxSteps: 15,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectDeny},
@@ -109,11 +124,12 @@ func DefaultAgents() map[string]*AgentConfig {
 		"general": {
 			Name:        "general",
 			Mode:        AgentModeSubagent,
-			Description: "General-purpose sub-agent for parallel task execution. Has full access to most tools including write, bash, edit. Can create and modify files. Cannot delegate tasks or manage skills.",
-			SystemPrompt: "You are a general-purpose sub-agent. Your job is to execute tasks independently. " +
+			Description: "General-purpose sub-agent for executing multi-step tasks and parallel work. Has full access to all tools including bash, write_file, edit. Can create and modify files independently. Cannot delegate further.",
+			SystemPrompt: "You are a general-purpose sub-agent for executing independent work units. " +
 				"You have full access to most tools including bash, write_file, edit, and git. " +
+				"Your job is to complete the assigned task efficiently and independently.\n\n" +
 				"You CANNOT delegate tasks to other agents or manage skills.\n\n" +
-				"Return a concise summary of your work. Do NOT produce verbose output.",
+				"Return a concise summary of what you accomplished. Do NOT produce verbose output.",
 			MaxSteps: 20,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
