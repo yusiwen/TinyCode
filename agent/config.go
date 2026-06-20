@@ -94,7 +94,10 @@ func DefaultAgents() map[string]*AgentConfig {
 				"- Use task({agent: 'general', goal:'...'}) for full execution that needs bash, write, or edit\n" +
 				"- Use task({agent: 'general', goal:'...', bg:true}) to launch work in the background and " +
 				"collect results later with task_collect\n\n" +
-				"The task tool counts as ONE step regardless of how many internal steps the sub-agent takes.",
+				"The task tool counts as ONE step regardless of how many internal steps the sub-agent takes.\n\n" +
+				"When delegating to sub-agents via task(), use relative paths (relative to the current " +
+				"working directory), not absolute paths. Sub-agents run in the same project workspace " +
+				"and inherit the working directory from the parent agent.",
 			MaxSteps:    50,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
