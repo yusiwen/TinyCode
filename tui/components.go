@@ -190,6 +190,10 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
 	chunks = append(chunks, CellChunk{Text: "  → Calling tools:", Style: style})
 	for _, tc := range msg.ToolCalls {
+		// Skip todo — rendered separately between reasoning and tool calls
+		if tc.Name == "todo" {
+			continue
+		}
 		text := "    • " + tc.Name
 		if tc.Arg != "" {
 			// Show only first line + line count for large arguments

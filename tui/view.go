@@ -104,8 +104,9 @@ func (m *TuiModel) View() string {
 			chunks := comp.Render(msg, false)
 
 			// Inject TODO into the last assistant message (between reasoning and tool calls)
+			// Always renders when todoStore has items — todoDirty only controls content refresh.
 			if i == len(m.messages)-1 && msg.Role == "assistant" && len(msg.ToolCalls) > 0 &&
-				m.todoStore != nil && m.todoDirty {
+				m.todoStore != nil {
 				items := m.todoStore.Read()
 				if len(items) > 0 {
 					// Find the "→ Calling tools:" index
@@ -117,7 +118,7 @@ func (m *TuiModel) View() string {
 						}
 					}
 					if toolCallIdx > 0 {
-						// Insert TODO chunks before tool calls
+						// Build TODO chunks (rebuild only when dirty, otherwise reuse)
 						summary := m.todoStore.Summary()
 						done := summary.Completed + summary.Cancelled
 						total := summary.Total
@@ -142,15 +143,14 @@ func (m *TuiModel) View() string {
 							line := "    " + marker + " " + item.Content
 							todoChunks = append(todoChunks, CellChunk{Text: line, Style: style})
 						}
-						m.todoRowCount = len(todoChunks) + 1 // +1 for blank line before tool calls
-						m.todoDirty = false
+						m.todoRowCount = len(todoChunks) + 1
 
-						// Signal render ack: agent goroutine is waiting for TODO
-						// to be visible in the CellGrid before proceeding.
-						if m.renderAckCh != nil {
+						// Signal render ack on first render (todoDirty transition)
+						if m.todoDirty && m.renderAckCh != nil {
 							m.renderAckCh <- struct{}{}
 							m.renderAckCh = nil
 						}
+						m.todoDirty = false
 
 						// Insert todoChunks before toolCallIdx
 						chunks = append(chunks[:toolCallIdx], append(todoChunks, chunks[toolCallIdx:]...)...)
