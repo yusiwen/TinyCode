@@ -138,6 +138,8 @@ func (m *TuiModel) View() string {
 							line := "    " + marker + " " + item.Content
 							todoChunks = append(todoChunks, CellChunk{Text: line, Style: style})
 						}
+						// Blank line separator before → Calling tools:
+						todoChunks = append(todoChunks, CellChunk{Text: "", Style: DefaultStyle})
 						m.todoRowCount = len(todoChunks) + 1
 
 						// Signal render ack on first render (todoDirty transition)
