@@ -322,6 +322,14 @@ func (m *TuiModel) renderStatusBar() string {
 		spinnerStr = " " + m.spinner.View()
 	}
 
+	// Processing indicator fallback
+	procStr := ""
+	if m.status == StatusStreaming {
+		if spinnerStr == "" {
+			procStr = " ●"
+		}
+	}
+
 	// Session duration
 	dur := time.Since(m.sessionStart)
 	durStr := formatDuration(dur)
@@ -355,8 +363,8 @@ func (m *TuiModel) renderStatusBar() string {
 		statusMsg = "  │ " + statusMsg
 	}
 
-	status := fmt.Sprintf("%s %s%s  ■ %s  tokens: %d  tools: %d  msgs: %d%s  session: %s%s%s",
-		modeIcon, modelName, spinnerStr,
+	status := fmt.Sprintf("%s %s%s%s  ■ %s  tokens: %d  tools: %d  msgs: %d%s  session: %s%s%s",
+		modeIcon, modelName, spinnerStr, procStr,
 		provName,
 		m.sessionTokens, m.sessionToolCalls, len(m.messages),
 		diagStr,
