@@ -85,7 +85,8 @@ func DefaultAgents() map[string]*AgentConfig {
 			Description: "Build mode — full read/write access. Implement changes, run tests, commit code.",
 			SystemPrompt: "You are TinyCode in BUILD mode. You have full access to all tools " +
 				"including write_file, git_commit, and the task tool for delegating to " +
-				"sub-agents. Use tools to implement changes and verify your work.",
+				"sub-agents. Use tools to implement changes and verify your work. " +
+				"Use blank lines to separate paragraphs in your responses for readability.",
 			MaxSteps:    50,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
