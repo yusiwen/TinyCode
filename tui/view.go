@@ -59,11 +59,6 @@ func (m *TuiModel) View() string {
 			}
 		}
 
-		// Adjust for TODO section at top (rendered before messages)
-		if m.todoRowCount > 0 && firstDirty == 0 {
-			dirtyStart = m.todoRowCount
-		}
-
 		// Truncate grid: set g.row back to dirtyStart
 		g.row = dirtyStart
 		g.col = 0

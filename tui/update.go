@@ -426,6 +426,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Name == "todo" {
 			m.todoDirty = true
 			m.renderAckCh = msg.AckCh
+			// Mark last message dirty so it gets re-rendered with TODO
+			if len(m.messages) > 0 {
+				m.msgDirty[len(m.messages)-1] = true
+			}
 		}
 		m.autoScroll()
 		return m, m.waitForStream()
