@@ -317,7 +317,7 @@ func main() {
 				resp, err := provider.Chat(ctx, types.ChatRequest{
 					Messages: []types.Message{
 						{Role: types.RoleSystem, Content: "Summarize the following web page content in 3-5 sentences. Focus on key facts, data, and conclusions."},
-						{Role: types.RoleUser, Content: content[:8000]},
+						{Role: types.RoleUser, Content: content[:min(len(content), 8000)]},
 					},
 				})
 				if err != nil {
