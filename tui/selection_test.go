@@ -146,12 +146,79 @@ func TestPosFromCoordButton(t *testing.T) {
 }
 
 func TestPosFromCoordOutOfRange(t *testing.T) {
+	// Click beyond srcs should clamp to last valid row
 	srcs := []lineSrc{
 		{MsgIdx: 0, SourceField: "user", Text: "> Hi"},
 	}
+	pos := posFromCoord(5, 2, srcs)
+	if pos.Offset < 0 {
+		t.Errorf("want clamped offset>=0, got %d", pos.Offset)
+	}
+	if pos.Offset != 2 {
+		t.Errorf("want Offset=2 (clamped to row 0, col 2 - ContentOffset 0), got %d", pos.Offset)
+	}
+}
+
+func TestPosFromCoordClampLastLine(t *testing.T) {
+	// Drag past the last content line should clamp to the final valid row
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "Line 1"},
+		{MsgIdx: 0, SourceField: "user", Text: "Line 2"},
+		{MsgIdx: 0, SourceField: "user", Text: "Line 3"},
+	}
 	pos := posFromCoord(5, 0, srcs)
+	if pos.Offset < 0 {
+		t.Errorf("want clamped offset>=0, got %d", pos.Offset)
+	}
+	if pos.MsgIdx != 0 {
+		t.Errorf("want MsgIdx=0, got %d", pos.MsgIdx)
+	}
+}
+
+func TestPosFromCoordNegativeLine(t *testing.T) {
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "> Hi"},
+	}
+	pos := posFromCoord(-1, 0, srcs)
 	if pos.Offset != -1 {
-		t.Errorf("want Offset=-1, got %d", pos.Offset)
+		t.Errorf("want Offset=-1 for negative line, got %d", pos.Offset)
+	}
+}
+
+func TestPosFromCoordLastLine(t *testing.T) {
+	// Last row of a multi-row message should be selectable
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "user", Text: "> Line 1", ContentOffset: 2},
+		{MsgIdx: 0, SourceField: "user", Text: "> Line 2", ContentOffset: 2},
+	}
+	pos := posFromCoord(1, 4, srcs)
+	if pos.Offset != 2 {
+		t.Errorf("want Offset=2 (col 4 - offset 2), got %d", pos.Offset)
+	}
+	if pos.MsgIdx != 0 {
+		t.Errorf("want MsgIdx=0, got %d", pos.MsgIdx)
+	}
+}
+
+func TestPosFromCoordDragToEnd(t *testing.T) {
+	// Simulate drag from first row to last row — both should be valid
+	srcs := []lineSrc{
+		{MsgIdx: 0, SourceField: "assistant", Text: "    First line", ContentOffset: 4},
+		{MsgIdx: 0, SourceField: "assistant", Text: "    Second line", ContentOffset: 4},
+		{MsgIdx: 0, SourceField: "assistant", Text: "    Third line", ContentOffset: 4},
+	}
+	// Start selection on row 0
+	start := posFromCoord(0, 4, srcs)
+	if start.Offset != 0 {
+		t.Errorf("start: want Offset=0, got %d", start.Offset)
+	}
+	// Drag to row 2 (last row)
+	end := posFromCoord(2, 10, srcs)
+	if end.Offset < 0 {
+		t.Errorf("drag endpoint: Offset=-1 (invalid), want valid position")
+	}
+	if end.Offset != 6 {
+		t.Errorf("end: want Offset=6 (col 10 - offset 4), got %d", end.Offset)
 	}
 }
 

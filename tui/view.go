@@ -452,9 +452,13 @@ func chunksToStrings(chunks []CellChunk) []string {
 }
 
 // posFromCoord maps a content line and column to a character position.
+// If line is beyond srcs, clamps to the last row.
 func posFromCoord(line, col int, srcs []lineSrc) selPos {
-	if line < 0 || line >= len(srcs) {
+	if line < 0 || len(srcs) == 0 {
 		return selPos{Offset: -1}
+	}
+	if line >= len(srcs) {
+		line = len(srcs) - 1
 	}
 	s := srcs[line]
 	if s.SourceField == "button" {
