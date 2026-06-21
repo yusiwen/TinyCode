@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-359-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-417-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -48,8 +48,10 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration, transient status messages
 
 ### Agent Loop
-- ReAct loop with tool calling support (bash, read_file, search_files, git, LSP tools)
-- **6 agents**: plan (read-only), build (full access), explore (3 tools), general (all except write), compact (history compression), title (session naming)
+- ReAct loop with tool calling support (24 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, sandbox_allow, load_skill, skill_manage)
+- **6 agents**: plan (read-only whitelist), build (full access), explore (read_file + search_files only), general (full execution sub-agent), compact (history compression), title (session naming)
+- **Permissions engine**: `Ruleset` with last-match-wins `{action, resource, effect}` rules replacing DeniedTools/AllowedTools. Supports whitelist (`*: deny` + specific allows) and blacklist (`*: allow` + specific denies).
+- **Task tool**: Delegate to sub-agents via `task({agent, goal})`. Sync mode (block until done) or bg mode (returns task_id, collect with `task_collect`). Sub-agent steps don't count against parent's step budget.
 - Agent integration test framework: 13 tests using MockLLM step-by-step
 - Streaming reasoning + text deltas
 - Tool call lifecycle displayed in real-time
@@ -139,10 +141,10 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 
 | Agent | Mode | Hidden | Tools | Steps | Purpose |
 |-------|------|--------|-------|-------|---------|
-| **plan** | primary | | * except {write,git,sandbox,task,skill_manage} | 20 | Read-only analysis |
-| **build** | primary | | * (all) | 30 | Full access implementation |
-| **explore** | subagent | | bash, read_file, search_files | 15 | Fast directory search |
-| **general** | subagent | | * except {write,git,sandbox,task,skill_manage} | 20 | Parallel research |
+| **plan** | primary | | read_file, search_files, git_*, web_*, lsp_*, todo, load_skill | 20 | Read-only analysis (whitelist, no bash) |
+| **build** | primary | | * (all 24 tools) | 50 | Full access implementation |
+| **explore** | subagent | | read_file, search_files | 15 | Fast read-only code search |
+| **general** | subagent | | * except {task, task_collect, skill_manage} | 20 | Full-execution parallel sub-agent |
 | **compact** | primary | ✅ | (no tools) | 1 | History compression |
 | **title** | primary | ✅ | (no tools) | 1 | Session title gen |
 
@@ -275,12 +277,21 @@ main.go         CLI entry point with cobra
 - [x] **GitHub Actions CI/CD + Makefile improvements** — main.yml (build+lint+test), release.yml (cross-compile+release), Makefile test/releases targets. (ab07697, bddeed5)
 - [x] **Skills & Subagents** — SKILL.md-based discovery + /skill command + 2 builtin skills. 3 new subagents: general (parallel research), compact (history compression), title (session naming). /explore command removed (explore kept as subagent). (cbd6db3, 8fa8800, adfa51b, c0b8ae8)
 - [x] **Todo Feature — P0+P1+P2 Complete** — TodoStore + todo tool + JSON Schema (P0), TUI rendering with [x][>][ ][~] markers (P1), compression protection + housekeeping mute + session recovery (P2). 21 new tests. (2f51d06, 94db0e3, 25caefc)
-- [x] **Line-Level Code Edit — edit + apply_patch** — Search/replace edit tool with 7 fuzzy strategies + indentation correction. V4A multi-file patch format. 23 new tests. (d067156, 9045176, 34d2c17)
+- [x] **Todo TUI display fixes** — Always render TODO between reasoning and tool calls (not gated by todoDirty). Hide `todo` from tool call list. Persist across CellGrid rebuilds. Add blank line separator between TODO and `→ Calling tools:`. Render-acknowledge gate for concurrency safety. (720c8b6, 12ae5db, 01410a9)
+|- [x] **Line-Level Code Edit — edit + apply_patch** — Search/replace edit tool with 7 fuzzy strategies + indentation correction. V4A multi-file patch format. 23 new tests. (d067156, 9045176, 34d2c17)
 - [x] **Title Agent & Session Titles** — title hidden agent generates conversation titles via LLM after first exchange. Applied on session save. (2deee5e)
 - [x] **Edit Fuzzy Matching** — 7 fallback strategies (line-trimmed, ws-normalized, indent-flexible, escape-normalized, unicode-normalized, block-anchor). Indentation correction. 6 new tests. (34d2c17)
 - [x] **Web Tools Phase 1-3** — web_search (DuckDuckGo Lite + SearXNG), web_extract (HTTP→CF→Cache→Wayback→Chromium, SSRF, LLM summary). 26 new tests. 21 tools total. (5c90f86, 4cb7ce1, 4bf27e5)
 - [x] **SearXNG Config** — `searxng_url` field in config.json, wired via SetSearXNG(). (405bc87)
 - [x] **MCP Client (4 Phases)** — stdio/HTTP transports, auto-discovery, agent.Tool registration, resources, SSRF security. 22 tests. 359 total. (e31c08b, cc1ba8e, 7b4fe75)
+- [x] **Permissions engine (Ruleset)** — Replaced DeniedTools/AllowedTools with `{action, resource, effect}` Ruleset. Last-match-wins evaluation. Whitelist mode (`*: deny` + specific allows). FilterTools for sub-agent creation. (378a0fd)
+- [x] **Async task + task_collect** — Background task manager for parallel sub-agent execution. `task({..., bg:true})` returns task_id immediately. `task_collect({id})` waits for completion. (dd1688f)
+- [x] **Concurrent tool execution** — Multiple tool calls in the same step run concurrently via goroutines + result channel. Agent waits for all to complete before next step. (e5fd457)
+- [x] **Sub-agent sandbox propagation** — `PermissionRequest.AgentLabel` tracks which agent requested path access. TUI dialog shows `[general] Write to /path?`. `SetAgentLabel()` called before sub-agent creation. (d0653ee)
+- [x] **Prompt improvements** — Build mode system prompt guides LLM to use `task()` for parallel delegation, use relative paths, and separate paragraphs with blank lines. Explore agent has dedicated PROMPT_EXPLORE-style prompt. (effbe2c, a02d894, f66f151)
+- [x] **Command palette UX fix** — Selecting a command from palette fills the input box. User presses Enter again to execute. No more immediate execution + stale text. (118e938)
+- [x] **Status bar processing indicator** — Animated dot spinner + ● fallback indicator during streaming. Shows when agent is actively processing. (6adfda0)
+- [x] **Mouse selection clamp** — `posFromCoord` clamps to last valid row instead of returning `Offset: -1` when dragging past content end. 5 new tests. (39e80e5)
 
 ## Remaining
 
