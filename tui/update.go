@@ -331,7 +331,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Always clear stale selection state on Ctrl+C
 			m.selecting = false
 			// Character-level selection copy using CellGrid coordinates
-			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 && m.grid != nil {
+			// Only copy if the selection spans at least one character (start != end)
+			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 && m.grid != nil &&
+				(m.charSelStartLine != m.charSelEndLine || m.charSelStartCol != m.charSelEndCol) {
 				text := m.grid.ExtractText(
 					m.charSelStartLine, m.charSelStartCol,
 					m.charSelEndLine, m.charSelEndCol,
