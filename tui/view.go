@@ -301,8 +301,6 @@ func (m *TuiModel) View() string {
 			b.WriteString("\n")
 		}
 		b.WriteString(dimStyle.Render("↑↓ navigate · Enter execute · Esc cancel"))
-	} else if m.status == StatusStreaming {
-		b.WriteString(dimStyle.Render("(processing...)"))
 	} else {
 		b.WriteString(m.input.View())
 	}
