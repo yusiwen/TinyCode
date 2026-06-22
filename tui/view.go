@@ -228,6 +228,8 @@ func (m *TuiModel) View() string {
 					},
 				})
 			}
+			// Include [Copy] button in msgRowCount for correct dirtyStart
+			m.msgRowCount[i] = g.RowCount() - startRow
 
 			m.msgDirty[i] = false
 		}
