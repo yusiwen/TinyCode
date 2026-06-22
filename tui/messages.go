@@ -13,6 +13,7 @@ type StreamDone struct {
 	Content          string
 	ReasoningContent string
 	Error            error
+	IsIntermediate   bool // true: more steps to follow, false: final response
 }
 
 // ChatMsg is sent when the user submits input.

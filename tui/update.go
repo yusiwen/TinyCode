@@ -461,17 +461,19 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StreamDone:
 		m.status = StatusIdle
-		// Check if this step had tool calls — if so, a new assistant message
-		// is needed for the next step (multi-step message splitting)
-		hasToolCalls := m.curAssistant != nil && len(m.curAssistant.ToolCalls) > 0
-		housekeeping := map[string]bool{"todo": true, "memory": true}
+		// Check if this is an intermediate step (more to come) or the final response
+		isIntermediate := msg.IsIntermediate || (m.curAssistant != nil && len(m.curAssistant.ToolCalls) > 0)
 		if msg.Error != nil {
 			m.curAssistant.Content = fmt.Sprintf("Error: %v", msg.Error)
+			m.curAssistant.Streaming = false
+		} else if msg.IsIntermediate {
+			// Intermediate step: just finalize, don't set Blocks (no text response)
 			m.curAssistant.Streaming = false
 		} else {
 			m.curAssistant.Streaming = false
 			// Mute if all tool calls are housekeeping (todo, memory, etc.)
-			if hasToolCalls {
+			housekeeping := map[string]bool{"todo": true, "memory": true}
+			if len(m.curAssistant.ToolCalls) > 0 {
 				allHousekeeping := true
 				for _, tc := range m.curAssistant.ToolCalls {
 					if !housekeeping[tc.Name] {
@@ -498,11 +500,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.curAssistant.TodoSnapshot = m.todoStore.Read()
 		}
 		// Generate session title after first assistant response (not on intermediate steps)
-		if !hasToolCalls {
+		if !isIntermediate {
 			m.generateSessionTitle()
 		}
-		// If this step had tool calls, prepare a new assistant message for the next step
-		if hasToolCalls {
+		// If this is an intermediate step, prepare a new assistant message for the next step
+		if isIntermediate {
 			cur := chatMessage{Role: "assistant", Streaming: true}
 			m.messages = append(m.messages, cur)
 			m.curAssistant = &m.messages[len(m.messages)-1]
@@ -1078,6 +1080,9 @@ func (m *TuiModel) runAgent(prompt string) {
 			if ackCh != nil {
 				<-ackCh // BLOCK until View() injects TODO into CellGrid
 			}
+		},
+		OnStepDone: func() {
+			m.streamCh <- StreamDone{IsIntermediate: true}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)

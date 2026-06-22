@@ -46,6 +46,7 @@ type StreamCallbacks struct {
 	OnTextDelta      func(text string)
 	OnToolCall       func(name string, arg string) // called before each tool execution
 	OnToolResult     func(name string)             // called after each tool result
+	OnStepDone       func()                        // called after all tools complete for one step
 }
 
 // ChatResponse is the LLM's reply — either text or tool calls.

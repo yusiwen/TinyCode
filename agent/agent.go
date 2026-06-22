@@ -426,6 +426,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				ToolCallID:  toolCalls[r.Index].ID,
 			})
 		}
+		// Step boundary — signal the TUI to prepare a new message for the next step
+		if callbacks != nil && callbacks.OnStepDone != nil {
+			callbacks.OnStepDone()
+		}
 		step++
 	}
 
