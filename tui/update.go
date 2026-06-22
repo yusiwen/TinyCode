@@ -1086,11 +1086,7 @@ func (m *TuiModel) runAgent(prompt string) {
 			}
 		},
 		OnStepDone: func() {
-			// Non-blocking send — if streamCh is full, the TUI will catch up
-			select {
-			case m.streamCh <- StreamDone{IsIntermediate: true}:
-			default:
-			}
+			m.streamCh <- StreamDone{IsIntermediate: true}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)
