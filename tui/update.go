@@ -328,6 +328,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ctrl+C: copy (char or msg selection) | interrupt | double-tap quit
 		if msg.Type == tea.KeyCtrlC {
+			// Always clear stale selection state on Ctrl+C
+			m.selecting = false
 			// Character-level selection copy using CellGrid coordinates
 			if m.charSelStart.Offset >= 0 && m.charSelEnd.Offset >= 0 && m.grid != nil {
 				text := m.grid.ExtractText(

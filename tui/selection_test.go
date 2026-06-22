@@ -136,12 +136,13 @@ func TestPosFromCoordPastEnd(t *testing.T) {
 }
 
 func TestPosFromCoordButton(t *testing.T) {
+	// Button text is now selectable (click is intercepted earlier by button handler)
 	srcs := []lineSrc{
 		{MsgIdx: 0, SourceField: "button", Text: ""},
 	}
 	pos := posFromCoord(0, 0, srcs)
-	if pos.Offset != -1 {
-		t.Errorf("want Offset=-1, got %d", pos.Offset)
+	if pos.Offset < 0 {
+		t.Errorf("want Offset>=0 (button now selectable), got %d", pos.Offset)
 	}
 }
 

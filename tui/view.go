@@ -459,9 +459,6 @@ func posFromCoord(line, col int, srcs []lineSrc) selPos {
 		line = len(srcs) - 1
 	}
 	s := srcs[line]
-	if s.SourceField == "button" {
-		return selPos{Offset: -1}
-	}
 	offset := col - s.ContentOffset
 	if offset < 0 {
 		offset = 0
