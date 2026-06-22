@@ -505,13 +505,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// If this is an intermediate step, prepare a new assistant message for the next step
 		if isIntermediate {
-			// Only split if the current message has no text content yet (silent tool-only step)
-			// If the step already has text (LLM returned reasoning+text+tools), keep it together.
-			if m.curAssistant.Content == "" {
-				cur := chatMessage{Role: "assistant", Streaming: true}
-				m.messages = append(m.messages, cur)
-				m.curAssistant = &m.messages[len(m.messages)-1]
-			}
+			cur := chatMessage{Role: "assistant", Streaming: true}
+			m.messages = append(m.messages, cur)
+			m.curAssistant = &m.messages[len(m.messages)-1]
 		} else {
 			m.curAssistant = nil
 		}
