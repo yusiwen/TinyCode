@@ -19,7 +19,10 @@ func (m *TuiModel) View() string {
 	var b strings.Builder
 
 	// Message area — built with CellGrid
-	m.activeButtons = nil
+	// activeButtons is rebuilt per message during rendering.
+	// Buttons for non-dirty messages (not re-rendered) must be preserved,
+	// so we do NOT nil here — instead, each rendered message clears its own old buttons.
+	// See the rendering loop below.
 	m.ensureMsgTracking()
 
 	// Find first dirty message (recalc start row from previous messages' rowCount)
@@ -175,6 +178,15 @@ func (m *TuiModel) View() string {
 			}
 			endRow := g.RowCount()
 			m.msgRowCount[i] = endRow - startRow
+
+			// Remove stale buttons for this message (re-registered below)
+			var kept []Button
+			for _, b := range m.activeButtons {
+				if b.MsgIdx != i {
+					kept = append(kept, b)
+				}
+			}
+			m.activeButtons = kept
 
 			// Fold button
 			if msg.Role == "assistant" && msg.ReasoningContent != "" {
