@@ -505,9 +505,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// If this is an intermediate step, prepare a new assistant message for the next step
 		if isIntermediate {
-			cur := chatMessage{Role: "assistant", Streaming: true}
-			m.messages = append(m.messages, cur)
-			m.curAssistant = &m.messages[len(m.messages)-1]
+			// Only split if the current message has no text content yet (silent tool-only step)
+			// If the step already has text (LLM returned reasoning+text+tools), keep it together.
+			if m.curAssistant.Content == "" {
+				cur := chatMessage{Role: "assistant", Streaming: true}
+				m.messages = append(m.messages, cur)
+				m.curAssistant = &m.messages[len(m.messages)-1]
+			}
 		} else {
 			m.curAssistant = nil
 		}
@@ -1082,7 +1086,11 @@ func (m *TuiModel) runAgent(prompt string) {
 			}
 		},
 		OnStepDone: func() {
-			m.streamCh <- StreamDone{IsIntermediate: true}
+			// Non-blocking send — if streamCh is full, the TUI will catch up
+			select {
+			case m.streamCh <- StreamDone{IsIntermediate: true}:
+			default:
+			}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)
