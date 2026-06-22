@@ -517,6 +517,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.streamDoneNotified = false
 		m.autoScroll()
+		if isIntermediate {
+			return m, m.waitForStream()
+		}
 		return m, nil
 
 	case modeSwitchMsg:
