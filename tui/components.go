@@ -75,14 +75,9 @@ func (AssistantComponent) Render(msg chatMessage, sel bool) []CellChunk {
 		chunks = append(chunks, tc.Render(msg, sel)...)
 	}
 
-	// "Response:" label — with blank line before (only when there's content)
+	// Blank line before response content (when there's content)
 	if msg.Content != "" || len(msg.Blocks) > 0 {
 		chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
-		labelStyle := ResponseLabel
-		if sel {
-			labelStyle = SelectionStyle
-		}
-		chunks = append(chunks, CellChunk{Text: "Response:", Style: labelStyle})
 	}
 
 	// Response/Answer content

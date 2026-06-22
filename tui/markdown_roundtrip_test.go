@@ -509,7 +509,7 @@ func TestToolCallFlowFull(t *testing.T) {
 	if !strings.Contains(out, "read_file") {
 		t.Errorf("missing tool call name in render")
 	}
-	if !strings.Contains(out, "Response:") {
-		t.Errorf("missing Response: label")
+	if !strings.Contains(out, "Found it") {
+		t.Errorf("missing final answer in render")
 	}
 }

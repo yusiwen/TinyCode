@@ -85,8 +85,7 @@ func TestViewRendersAssistantResponse(t *testing.T) {
 	output := stripANSIView(m.View())
 
 	checks := []string{
-		"Response:",         // label
-		"bold",              // rendered bold text
+		"bold",              // rendered bold text (no "Response:" label anymore)
 		"code",              // rendered inline code text
 	}
 	for _, s := range checks {
@@ -123,8 +122,7 @@ func TestViewRendersReasoning(t *testing.T) {
 		"[-]",               // reasoning expanded marker
 		"Step by step",      // reasoning content
 		"More reasoning",    // reasoning content
-		"Response:",         // label
-		"Final answer.",     // content
+		"Final answer.",     // content (no "Response:" label anymore — color differentiates)
 	}
 	for _, s := range checks {
 		if !strings.Contains(output, s) {
