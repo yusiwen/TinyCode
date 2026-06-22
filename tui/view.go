@@ -102,10 +102,10 @@ func (m *TuiModel) View() string {
 			chunks := comp.Render(msg, false)
 
 			// Inject TODO into the last assistant message (between reasoning and tool calls)
-			// Always renders when todoStore has items — todoDirty only controls content refresh.
+			// Always renders when message has TodoSnapshot — todoDirty only controls content refresh.
 			if i == len(m.messages)-1 && msg.Role == "assistant" && len(msg.ToolCalls) > 0 &&
-				m.todoStore != nil {
-				items := m.todoStore.Read()
+				len(msg.TodoSnapshot) > 0 {
+				items := msg.TodoSnapshot
 				if len(items) > 0 {
 					// Find the "→ Calling tools:" index
 					toolCallIdx := -1
@@ -117,9 +117,13 @@ func (m *TuiModel) View() string {
 					}
 					if toolCallIdx > 0 {
 						// Build TODO chunks (rebuild only when dirty, otherwise reuse)
-						summary := m.todoStore.Summary()
-						done := summary.Completed + summary.Cancelled
-						total := summary.Total
+						done := 0
+						for _, item := range items {
+							if item.Status == "completed" || item.Status == "cancelled" {
+								done++
+							}
+						}
+						total := len(items)
 						todoChunks := []CellChunk{
 							{Text: "", Style: DefaultStyle},
 							{Text: fmt.Sprintf("  Todo (%d/%d)", done, total), Style: HeadingStyle},

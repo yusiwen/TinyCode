@@ -131,7 +131,8 @@ func DefaultAgents() map[string]*AgentConfig {
 			SystemPrompt: "You are a general-purpose sub-agent for executing independent work units. " +
 				"You have full access to most tools including bash, write_file, edit, and git. " +
 				"Your job is to complete the assigned task efficiently and independently.\n\n" +
-				"You CANNOT delegate tasks to other agents or manage skills.\n\n" +
+				"You CANNOT delegate tasks to other agents, manage skills, or create/manage task lists. " +
+				"Task tracking is the main agent's responsibility.\n\n" +
 				"Return a concise summary of what you accomplished. Do NOT produce verbose output.",
 			MaxSteps: 20,
 			Permissions: Ruleset{
@@ -139,6 +140,7 @@ func DefaultAgents() map[string]*AgentConfig {
 				{Action: "task", Resource: "*", Effect: EffectDeny},
 				{Action: "task_collect", Resource: "*", Effect: EffectDeny},
 				{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
+				{Action: "todo", Resource: "*", Effect: EffectDeny},
 			},
 		},
 		"compact": {

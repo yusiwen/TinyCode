@@ -38,14 +38,12 @@ func TestTodoRenderingEmpty(t *testing.T) {
 func TestTodoRenderingWithItems(t *testing.T) {
 	m := newModelWithAssistant()
 
-	// Add items to the store
-	store := tool.NewTodoStore()
-	store.Write([]tool.TodoItem{
+	// Add TodoSnapshot to the last assistant message
+	m.messages[len(m.messages)-1].TodoSnapshot = []tool.TodoItem{
 		{ID: "1", Content: "Check repo status", Status: "completed"},
 		{ID: "2", Content: "Fix CVE-2026-1234", Status: "in_progress"},
 		{ID: "3", Content: "Verify fix", Status: "pending"},
-	}, false)
-	m.todoStore = store
+	}
 	m.todoDirty = true
 
 	output := m.View()
@@ -75,12 +73,11 @@ func TestTodoRenderingWithItems(t *testing.T) {
 func TestTodoRenderingAllDone(t *testing.T) {
 	m := newModelWithAssistant()
 
-	store := tool.NewTodoStore()
-	store.Write([]tool.TodoItem{
+	// Add TodoSnapshot to the last assistant message
+	m.messages[len(m.messages)-1].TodoSnapshot = []tool.TodoItem{
 		{ID: "1", Content: "Task A", Status: "completed"},
 		{ID: "2", Content: "Task B", Status: "completed"},
-	}, false)
-	m.todoStore = store
+	}
 	m.todoDirty = true
 
 	output := m.View()

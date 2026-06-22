@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/yusiwen/tinycode/tool"
+
 // StreamMsg is sent from the agent goroutine to the TUI for each streaming delta.
 type StreamMsg struct {
 	ReasoningDelta string
@@ -30,6 +32,7 @@ type chatMessage struct {
 	ToolCalls        []ToolCallInfo // in-order tool calls during this message
 	Streaming        bool
 	Blocks           []ContentBlock
+	TodoSnapshot     []tool.TodoItem // snapshot taken at StreamDone (for per-message TODO display)
 }
 
 // ToolCallInfo records one tool invocation during a message.

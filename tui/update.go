@@ -461,14 +461,17 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StreamDone:
 		m.status = StatusIdle
+		// Check if this step had tool calls — if so, a new assistant message
+		// is needed for the next step (multi-step message splitting)
+		hasToolCalls := m.curAssistant != nil && len(m.curAssistant.ToolCalls) > 0
+		housekeeping := map[string]bool{"todo": true, "memory": true}
 		if msg.Error != nil {
 			m.curAssistant.Content = fmt.Sprintf("Error: %v", msg.Error)
 			m.curAssistant.Streaming = false
 		} else {
 			m.curAssistant.Streaming = false
 			// Mute if all tool calls are housekeeping (todo, memory, etc.)
-			housekeeping := map[string]bool{"todo": true, "memory": true}
-			if len(m.curAssistant.ToolCalls) > 0 {
+			if hasToolCalls {
 				allHousekeeping := true
 				for _, tc := range m.curAssistant.ToolCalls {
 					if !housekeeping[tc.Name] {
@@ -477,12 +480,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if allHousekeeping {
-					m.curAssistant.Content = ""
-					m.curAssistant.Blocks = nil
 					m.curAssistant.ReasoningContent = ""
 				}
 			}
-			if msg.Content != "" && (m.curAssistant == nil || m.curAssistant.Content != "") {
+			if msg.Content != "" {
 				m.curAssistant.Blocks = parseMarkdown(msg.Content)
 			}
 		}
@@ -492,9 +493,22 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Mark todo dirty so CellGrid re-renders todo in-place
 		m.todoDirty = true
-		// Generate session title after first assistant response
-		m.generateSessionTitle()
-		m.curAssistant = nil
+		// Take TODO snapshot for this message (at StreamDone time)
+		if m.todoStore != nil {
+			m.curAssistant.TodoSnapshot = m.todoStore.Read()
+		}
+		// Generate session title after first assistant response (not on intermediate steps)
+		if !hasToolCalls {
+			m.generateSessionTitle()
+		}
+		// If this step had tool calls, prepare a new assistant message for the next step
+		if hasToolCalls {
+			cur := chatMessage{Role: "assistant", Streaming: true}
+			m.messages = append(m.messages, cur)
+			m.curAssistant = &m.messages[len(m.messages)-1]
+		} else {
+			m.curAssistant = nil
+		}
 		m.streamDoneNotified = false
 		m.autoScroll()
 		return m, nil
