@@ -399,12 +399,14 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case spinner.TickMsg:
+		// Always advance spinner and keep tick pipeline alive
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
 		if m.status == StatusStreaming {
-			var cmd tea.Cmd
-			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
-		return m, nil
+		// Keep ticks flowing even when idle so spinner is ready when streaming starts
+		return m, cmd
 
 	case ChatMsg:
 		m.messages = append(m.messages, chatMessage{Role: "user", Content: msg.Text})
