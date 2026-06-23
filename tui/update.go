@@ -307,8 +307,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Not browsing history — let Down pass through to textarea
 		}
 
-		// Tab on empty input → mode switch
-		if msg.Type == tea.KeyTab && m.input.Value() == "" {
+		// Tab → mode switch
+		if msg.Type == tea.KeyTab {
 			return m, func() tea.Msg { return modeSwitchMsg{} }
 		}
 
