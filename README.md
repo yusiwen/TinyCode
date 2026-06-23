@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/TinyCode-v0.0.5-%23FFD700?style=for-the-badge" alt="TinyCode v0.0.5"/>
+  <img src="https://img.shields.io/badge/TinyCode-v0.0.6-%23FFD700?style=for-the-badge" alt="TinyCode v0.0.6"/>
   <img src="https://img.shields.io/badge/Go-1.24-%2300ADD8?style=for-the-badge&logo=go" alt="Go 1.24"/>
   <img src="https://img.shields.io/badge/License-MIT-%23green?style=for-the-badge" alt="MIT License"/>
 </p>
@@ -39,11 +39,11 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 
 ### TUI Features
 - **Incremental CellGrid Rendering** — msgDirty/msgRowCount tracking. View() skips unchanged messages, only re-renders from first dirty onward. CellGrid no longer Reset() every frame. Benchmark: ~2.3ms regardless of message count (10/50/100 tested). (ffbbf22)
-- **Reasoning folding**: click `[+]`/`[-]` markers to expand/collapse LLM reasoning blocks
-- **Tool call display**: `→ Calling tools:` with bullet list and `⏳ Running...` indicator during tool execution
-- **Character-level selection**: drag-select any range of viewport text, Ctrl+C copies rendered text (not raw markdown)
-- **[Copy] buttons**: click to copy assistant response to clipboard
-- **Response label**: gold bold `Response:` with blank line before for visual separation
+- **Reasoning folding**: click `[+]`/`[-]` markers to expand/collapse LLM reasoning blocks. Multi-step agent loop now creates **one assistant message per step**, each with its own `[-]` reasoning + `→ Calling tools:` list. (c5f854f)
+- **Tool call display**: `→ Calling tools:` with bullet list during tool execution. Duplicate tool calls in the same step no longer appear twice (agent.go fired OnToolCall twice per tool — fixed in cc5a224)
+- **Character-level selection**: drag-select any range of viewport text, Ctrl+C copies rendered text (not raw markdown). Range check prevents single-click selects from triggering copy. (ea6711c)
+- **[Copy] buttons**: click to copy assistant response to clipboard. Fixed: button row now counted in msgRowCount so subsequent messages don't overlap. (f9143cc). Fixed: button stops working after incremental render — activeButtons preserved per MsgIdx across renders. (8dffd64)
+- **Spinner**: `⣾ ⣽ ⣻ ⢿ ⡿ ⣟` braille spinner in status bar during streaming. Tick pipeline kept alive even during idle. Spinner continues across intermediate steps. (42b8794, 9a0f55b, afc14e1)
 - **Auto-scroll**: viewport follows streaming output, pauses when user scrolls up
 - **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration, transient status messages
 
@@ -52,6 +52,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **6 agents**: plan (read-only whitelist), build (full access), explore (read_file + search_files only), general (full execution sub-agent), compact (history compression), title (session naming)
 - **Permissions engine**: `Ruleset` with last-match-wins `{action, resource, effect}` rules replacing DeniedTools/AllowedTools. Supports whitelist (`*: deny` + specific allows) and blacklist (`*: allow` + specific denies).
 - **Task tool**: Delegate to sub-agents via `task({agent, goal})`. Sync mode (block until done) or bg mode (returns task_id, collect with `task_collect`). Sub-agent steps don't count against parent's step budget.
+- **OnStepDone callback**: after each step's tools complete, the agent fires `OnStepDone` — the TUI creates a new assistant message for the next step. Each step gets its own reasoning + tool calls display.
 - Agent integration test framework: 13 tests using MockLLM step-by-step
 - Streaming reasoning + text deltas
 - Tool call lifecycle displayed in real-time
@@ -181,10 +182,17 @@ type Tool struct {
 - `edit` — search/replace with 7 fuzzy strategies + indentation correction
 - `apply_patch` — V4A multi-file patch (UPDATE/ADD/DELETE)
 
-**Sandbox (3 layers):**
+**Sandbox (3 layers + dialog):**
 1. Command blacklist (bash tool)
 2. Path restriction (default: project directory only)
-3. User whitelist (allow/deny/always prompt)
+3. Interactive TUI dialog with 4 options:
+   - **Allow once** — one tool call only, no cache
+   - **Allow session** — cached for session, persisted to session file, restored on resume
+   - **Always allow** — cached + persisted to `config.json`, loaded on every startup
+   - **Deny** — blocks access, dialog dismissed
+4. User whitelist (allow/deny/always prompt via TUI dialog)
+5. `read_file` triggers dialog (previously returned text hint to LLM) — e2832e3
+6. Dialog auto-shows on View() even without keypress — 57359db
 
 **Permissions:** `ToolAllowedFor(cfg, toolName)` — checked before every tool execution. Plan mode denies write/git/task/skill_manage.
 
@@ -292,6 +300,17 @@ main.go         CLI entry point with cobra
 - [x] **Command palette UX fix** — Selecting a command from palette fills the input box. User presses Enter again to execute. No more immediate execution + stale text. (118e938)
 - [x] **Status bar processing indicator** — Animated dot spinner + ● fallback indicator during streaming. Shows when agent is actively processing. (6adfda0)
 - [x] **Mouse selection clamp** — `posFromCoord` clamps to last valid row instead of returning `Offset: -1` when dragging past content end. 5 new tests. (39e80e5)
+- [x] **Multi-message step split** — Each agent step creates its own assistant message with independent reasoning, tool calls, TODO snapshot. `OnStepDone` callback fires between steps. (c5f854f, 4ef98ff)
+- [x] **TODO snapshot per message** — Each assistant message carries the TODO list state at creation time. Resume restores TODO from history. Todo render ack fixed — ackCh moved outside TODO injection block to prevent agent deadlock. (e34143c, 633a641)
+- [x] **Remove redundant UI** — `⏳ Running...` indicator removed (spinner in status bar is sufficient). `(processing...)` text in input area removed. `Response:` label removed (message color differentiates roles). (4e832f1, b35bdd7)
+- [x] **[Copy] button fixes** — Button row counted in `msgRowCount` so next message doesn't overlap. `activeButtons` preserved per `MsgIdx` across renders so button stays clickable after incremental rebuild. (f9143cc, 8dffd64)
+- [x] **Spinner pipeline fix** — Tick kept alive even during idle. `StatusStreaming` preserved across intermediate steps so spinner doesn't stop mid-task. Switched to braille `Dot` type (user terminal supports it). (9a0f55b, afc14e1, 42b8794)
+- [x] **Tab mode switch** — Tab now always switches plan/build mode (removed empty-input guard). (c75d9ae)
+- [x] **Ctrl+C copy fix** — Character-level copy requires non-zero selection range (click without drag no longer copies single char). Ctrl+C twice now quits. (ea6711c)
+- [x] **Permission dialog** — 4 options (Allow once=true once, Allow session=session persisted, Always allow=config persisted, Deny). Dialog auto-shows on View() without keypress. Dialog dismissed after Deny (Resolved field). Alignment: `>` separate column, `[1]` `[2]` aligned. (3e6f306, 57359db, 792120f, e8cff4f, de01f54)
+- [x] **read_file triggers dialog** — Previously returned text hint to LLM; now calls `RequestPermission()` like `write_file` does. (e2832e3)
+- [x] **Session resume restores history** — `inputHistory` populated from loaded user messages. `historyPos` reset to -1 so Up goes to most recent entry. (444dd04, 2e6f9b3)
+- [x] **Duplicate tool call fix** — `OnToolCall` fired twice per tool (main goroutine + execution goroutine). Removed duplicate from execution goroutine. (cc5a224)
 
 ## Remaining
 
