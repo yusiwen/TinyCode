@@ -158,7 +158,8 @@ type PermissionRequest struct {
 	Path       string
 	AgentLabel string // who is asking (e.g. "build", "general")
 	Allowed    bool   // set to true by TUI when user approves
-	Mode       string // "once" or "always"
+	Mode       string // "once", "session", "always", "denied", "cancelled"
+	Resolved   bool   // set to true when TUI has responded (allow or deny)
 }
 
 // currentAgentLabel tracks which agent is the current caller for permission requests.
@@ -196,15 +197,12 @@ func RequestPermission(ctx context.Context, path string) (bool, string) {
 		default:
 			pendingMu.Lock()
 			r := pendingPerm
-			allowed := r != nil && r.Allowed
-			denied := r != nil && r.Mode == "denied"
-			mode := ""
-			if r != nil {
-				mode = r.Mode
-			}
 			pendingMu.Unlock()
-			if allowed || denied || r == nil {
-				return allowed, mode
+			if r != nil && r.Resolved {
+				return r.Allowed, r.Mode
+			}
+			if r == nil {
+				return false, ""
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -215,7 +213,7 @@ func RequestPermission(ctx context.Context, path string) (bool, string) {
 func HasPendingPermission() bool {
 	pendingMu.Lock()
 	defer pendingMu.Unlock()
-	return pendingPerm != nil && !pendingPerm.Allowed
+	return pendingPerm != nil && !pendingPerm.Resolved
 }
 
 // PendingPermissionPath returns the path of the pending request, if any.
@@ -249,8 +247,6 @@ func ResolvePermission(path string, allow bool, mode string) bool {
 	if path != "" && pendingPerm.Path != path {
 		return false // path mismatch
 	}
-	pendingPerm.Allowed = allow
-	pendingPerm.Mode = mode
 	if allow {
 		switch mode {
 		case "once":
@@ -261,6 +257,9 @@ func ResolvePermission(path string, allow bool, mode string) bool {
 			DefaultSandbox.AllowSession(pendingPerm.Path)
 		}
 	}
+	pendingPerm.Allowed = allow
+	pendingPerm.Mode = mode
+	pendingPerm.Resolved = true
 	return true
 }
 
