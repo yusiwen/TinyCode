@@ -212,7 +212,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	// Create spinner
 	s := spinner.New()
 	s.Style = spinnerStyle
-	s.Spinner = spinner.Line
+	s.Spinner = spinner.Dot
 
 	m := &TuiModel{
 		agent:     ag,
