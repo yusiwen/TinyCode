@@ -425,9 +425,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForStream()
 
 	case StreamDone:
-		m.status = StatusIdle
 		// Check if this is an intermediate step (more to come) or the final response
 		isIntermediate := msg.IsIntermediate || (m.curAssistant != nil && len(m.curAssistant.ToolCalls) > 0)
+		if !isIntermediate {
+			m.status = StatusIdle
+		}
 		if msg.Error != nil {
 			m.curAssistant.Content = fmt.Sprintf("Error: %v", msg.Error)
 			m.curAssistant.Streaming = false
