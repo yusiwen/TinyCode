@@ -149,13 +149,6 @@ func (m *TuiModel) View() string {
 						todoChunks = append(todoChunks, CellChunk{Text: "", Style: DefaultStyle})
 						m.todoRowCount = len(todoChunks) + 1
 
-						// Signal render ack on first render (todoDirty transition)
-						if m.todoDirty && m.renderAckCh != nil {
-							m.renderAckCh <- struct{}{}
-							m.renderAckCh = nil
-						}
-						m.todoDirty = false
-
 						// Insert todoChunks before toolCallIdx
 						chunks = append(chunks[:toolCallIdx], append(todoChunks, chunks[toolCallIdx:]...)...)
 					}
@@ -272,6 +265,14 @@ func (m *TuiModel) View() string {
 	}
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
+
+	// Signal TODO render ack (outside the TODO injection block, so it fires
+	// even when TodoSnapshot isn't set yet — prevents agent deadlock)
+	if m.todoDirty && m.renderAckCh != nil {
+		m.renderAckCh <- struct{}{}
+		m.renderAckCh = nil
+	}
+	m.todoDirty = false
 
 	// Auto-show permission dialog even without a keypress
 	m.checkPermissionDialog()
