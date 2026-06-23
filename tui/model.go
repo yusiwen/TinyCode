@@ -295,6 +295,50 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	return m
 }
 
+// checkPermissionDialog auto-shows the permission dialog when a sandbox
+// path is pending approval. Returns true if dialog was shown.
+func (m *TuiModel) checkPermissionDialog() bool {
+	if !tool.HasPendingPermission() || m.dialogMode {
+		return false
+	}
+	path := tool.PendingPermissionPath()
+	label := tool.PendingPermissionAgentLabel()
+	if path == "" {
+		return false
+	}
+	displayPath := path
+	if len(displayPath) > 60 {
+		displayPath = "..." + displayPath[len(displayPath)-57:]
+	}
+	title := "🔒 Write to " + displayPath + "?"
+	if label != "" {
+		title = "🔒 [" + label + "] Write to " + displayPath + "?"
+	}
+	m.showDialogWithCancel(title, []string{
+		"Allow once",
+		"Always allow",
+		"Deny",
+	}, func(sel string) {
+		var allowed bool
+		var mode string
+		switch sel {
+		case "Allow once":
+			allowed = true
+			mode = "once"
+		case "Always allow":
+			allowed = true
+			mode = "always"
+		default:
+			allowed = false
+			mode = "denied"
+		}
+		tool.ResolvePermission(tool.PendingPermissionPath(), allowed, mode)
+	}, func() {
+		tool.ResolvePermission(tool.PendingPermissionPath(), false, "cancelled")
+	})
+	return true
+}
+
 // showDialog activates the dialog overlay with the given items.
 func (m *TuiModel) showDialog(msg string, items []string, onDone func(string)) {
 	m.showDialogWithCancel(msg, items, onDone, nil)

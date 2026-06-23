@@ -273,6 +273,9 @@ func (m *TuiModel) View() string {
 	b.WriteString(m.vp.View())
 	b.WriteString("\n")
 
+	// Auto-show permission dialog even without a keypress
+	m.checkPermissionDialog()
+
 	// Input area — dialog, provider, command palette are mutually exclusive
 	if m.dialogMode {
 		b.WriteString(headerStyle.Render(m.dialogMsg))
