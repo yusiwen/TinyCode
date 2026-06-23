@@ -284,7 +284,7 @@ func (m *TuiModel) View() string {
 		for i, item := range m.dialogItems {
 			label := fmt.Sprintf("[%d] %s", i+1, item)
 			if i == m.dialogSel {
-				b.WriteString(headerStyle.Render("> " + label))
+				b.WriteString("> " + label)
 			} else {
 				b.WriteString("  " + label)
 			}
