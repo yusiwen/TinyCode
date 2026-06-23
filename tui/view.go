@@ -282,7 +282,7 @@ func (m *TuiModel) View() string {
 		b.WriteString(headerStyle.Render(m.dialogMsg))
 		b.WriteString("\n")
 		for i, item := range m.dialogItems {
-			label := fmt.Sprintf("  [%d] %s", i+1, item)
+			label := fmt.Sprintf("[%d] %s", i+1, item)
 			if i == m.dialogSel {
 				b.WriteString(headerStyle.Render("> " + label))
 			} else {
