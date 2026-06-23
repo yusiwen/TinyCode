@@ -278,6 +278,9 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 			}
 		}
 	}
+	// Reset history position — zero value (0) would wrongly skip the
+	// "first press" branch on Up. -1 means "not browsing" as expected.
+	m.historyPos = -1
 
 	// Apply theme from config
 	if cfg.Theme != "" {
