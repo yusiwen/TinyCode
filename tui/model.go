@@ -270,6 +270,15 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		}
 	}
 
+	// Restore input history from loaded user messages
+	for _, cm := range m.messages {
+		if cm.Role == "user" && cm.Content != "" {
+			if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != cm.Content {
+				m.inputHistory = append(m.inputHistory, cm.Content)
+			}
+		}
+	}
+
 	// Apply theme from config
 	if cfg.Theme != "" {
 		if t := LookupTheme(cfg.Theme); t != nil {
