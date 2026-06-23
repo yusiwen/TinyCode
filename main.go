@@ -362,6 +362,12 @@ func main() {
 				parent := filepath.Dir(cwd)
 				tool.DefaultSandbox.AutoAllowPaths = []string{cwd, parent}
 			}
+			// Load persistent allowed paths from config.json
+			if cfg.Sandbox != nil {
+				for _, p := range cfg.Sandbox.AllowedPaths {
+					tool.DefaultSandbox.AllowAlways(p)
+				}
+			}
 
 			store := session.NewStore(cfg.SessionDir)
 			sess := store.Create("default")

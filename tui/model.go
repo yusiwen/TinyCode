@@ -14,6 +14,7 @@ import (
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/tool"
 )
 
@@ -253,6 +254,10 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 			if sess.ModelName != "" && m.provReg != nil {
 				m.provReg.SwitchToName(sess.ModelName)
 			}
+			// Restore allowed paths from session (Allow session)
+			for _, p := range sess.AllowedPaths {
+				tool.DefaultSandbox.AllowAlways(p)
+			}
 		}
 	}
 
@@ -328,6 +333,7 @@ func (m *TuiModel) checkPermissionDialog() bool {
 	}
 	m.showDialogWithCancel(title, []string{
 		"Allow once",
+		"Allow session",
 		"Always allow",
 		"Deny",
 	}, func(sel string) {
@@ -337,12 +343,50 @@ func (m *TuiModel) checkPermissionDialog() bool {
 		case "Allow once":
 			allowed = true
 			mode = "once"
+		case "Allow session":
+			allowed = true
+			mode = "session"
 		case "Always allow":
 			allowed = true
 			mode = "always"
 		default:
 			allowed = false
 			mode = "denied"
+		}
+		if allowed && mode == "session" {
+			// Persist to session file on Allow session
+			if m.SessionDir != "" && m.currentBranch != "" {
+				// Read existing session, append path, write back
+				if existing, err := session.Load(m.currentBranch, m.SessionDir); err == nil {
+					paths := existing.AllowedPaths
+					// Dedup
+					has := false
+					for _, p := range paths {
+						if p == tool.PendingPermissionPath() {
+							has = true
+							break
+						}
+					}
+					if !has {
+						paths = append(paths, tool.PendingPermissionPath())
+					}
+					existing.AllowedPaths = paths
+					existing.Flush()
+				} else {
+					sess := session.Session{
+						ID:           m.currentBranch,
+						AllowedPaths: []string{tool.PendingPermissionPath()},
+					}
+					sess.Flush()
+				}
+			}
+		}
+		if allowed && mode == "always" {
+			// Persist to global config on Allow always
+			m.config.Sandbox.AllowedPaths = append(m.config.Sandbox.AllowedPaths, tool.PendingPermissionPath())
+			if err := m.config.Save(); err != nil {
+				tlog.Warn("tui.permission", "save_config_error", "err", err)
+			}
 		}
 		tool.ResolvePermission(tool.PendingPermissionPath(), allowed, mode)
 	}, func() {

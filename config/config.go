@@ -58,6 +58,7 @@ type LSPConfig struct {
 type SandboxConfig struct {
 	ProjectRoot  string   `json:"project_root,omitempty"`
 	DenyCommands []string `json:"deny_commands,omitempty"`
+	AllowedPaths []string `json:"allowed_paths,omitempty"`
 }
 
 // MCPServerConfig defines a single MCP server to connect to.

@@ -28,6 +28,9 @@ type Session struct {
 	ParentSessionID string          `json:"parent_session,omitempty"`
 	ForkAt          int             `json:"fork_at,omitempty"` // message index where fork happened
 
+	// Permission paths allowed for this session (Allow session)
+	AllowedPaths []string `json:"allowed_paths,omitempty"`
+
 	Messages     []types.Message `json:"messages"`
 	dir          string
 }

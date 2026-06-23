@@ -121,7 +121,15 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 }
 
 func (sc *SandboxConfig) AllowOnce(absPath string) {
-	sc.AllowAlways(absPath)
+	// One-time permission: do NOT add to allowedPaths.
+	// The next call for the same path will trigger the permission dialog again.
+}
+
+func (sc *SandboxConfig) AllowSession(absPath string) {
+	abs, _ := filepath.Abs(absPath)
+	sc.mu.Lock()
+	sc.allowedPaths[abs] = true
+	sc.mu.Unlock()
 }
 
 func (sc *SandboxConfig) AllowAlways(absPath string) {
@@ -244,7 +252,14 @@ func ResolvePermission(path string, allow bool, mode string) bool {
 	pendingPerm.Allowed = allow
 	pendingPerm.Mode = mode
 	if allow {
-		DefaultSandbox.AllowAlways(pendingPerm.Path)
+		switch mode {
+		case "once":
+			DefaultSandbox.AllowOnce(pendingPerm.Path)
+		case "always":
+			DefaultSandbox.AllowAlways(pendingPerm.Path)
+		default:
+			DefaultSandbox.AllowSession(pendingPerm.Path)
+		}
 	}
 	return true
 }
