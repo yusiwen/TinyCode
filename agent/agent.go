@@ -341,9 +341,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			idx, tc := idx, tc
 			go func() {
 				a.stepDetail("[step %d] calling %s: %s", step, tc.Name, tc.Arguments)
-				if callbacks != nil && callbacks.OnToolCall != nil {
-					callbacks.OnToolCall(tc.Name, "")
-				}
 				tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
 
 				var result string
