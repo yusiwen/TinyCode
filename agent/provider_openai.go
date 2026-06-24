@@ -117,7 +117,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
-	tlog.Trace("llm.provider", "request", "model", p.model, "body", string(body))
+	tlog.Trace("llm.provider", "request", "model", model, "body", string(body))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		p.baseURL+"/chat/completions",
