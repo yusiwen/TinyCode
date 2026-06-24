@@ -125,6 +125,14 @@ func (a *Agent) AddTool(t Tool) {
 	a.Tools = append(a.Tools, t)
 }
 
+// getModel returns the agent's model override, or empty string to use provider default.
+func (a *Agent) getModel() string {
+	if a.Config != nil {
+		return a.Config.Model
+	}
+	return ""
+}
+
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	// Resolve system prompt from config, falling back to Agent.SystemPrompt
@@ -218,13 +226,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 						}
 					}
 
-								// Call provider
-								resp, err := a.Provider.Chat(ctx, types.ChatRequest{
-						Messages:  messages,
-						Tools:     toolDefs,
-						MaxTokens: a.MaxTokens,
-						StreamCallbacks: callbacks,
-					})
+				// Call provider
+				resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+					Messages:       messages,
+					Tools:           toolDefs,
+					MaxTokens:       a.MaxTokens,
+					Model:           a.getModel(),
+					StreamCallbacks: callbacks,
+				})
 		if err != nil {
 			tlog.Error("agent.loop", "llm error", "step", step, "error", err)
 			a.HandleContextError(err)
@@ -441,6 +450,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		Messages:  messages,
 		Tools:     nil, // no tools — LLM must output text only
 		MaxTokens: a.MaxTokens,
+		Model:     a.getModel(),
 		StreamCallbacks: &types.StreamCallbacks{
 			OnReasoningDelta: func(text string) {},
 			OnTextDelta: func(text string) {

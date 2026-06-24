@@ -34,9 +34,10 @@ type MemoryStore interface {
 
 // ChatRequest holds parameters for an LLM chat call.
 type ChatRequest struct {
-	Messages []Message
-	Tools    []ToolDef
-	MaxTokens int
+	Messages       []Message
+	Tools           []ToolDef
+	MaxTokens       int
+	Model           string // optional: override provider's default model
 	StreamCallbacks *StreamCallbacks // optional SSE callbacks for real-time display
 }
 

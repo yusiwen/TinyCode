@@ -16,6 +16,7 @@ type AgentConfig struct {
 	Description  string
 	SystemPrompt string
 	MaxSteps     int       // 0 = unlimited
+	Model        string    // "<provider>/<model>", e.g. "deepseek/deepseek-v4-pro"
 	AllowedTools []string  // tool names allowed ("*" = all)
 	DeniedTools  []string  // tool names explicitly denied
 	Permissions  Ruleset   // permission rules (replaces DeniedTools, Phase 3)

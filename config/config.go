@@ -36,6 +36,7 @@ type AgentOverride struct {
 	AllowedTools []string `json:"allowed_tools,omitempty"`
 	DeniedTools  []string `json:"denied_tools,omitempty"`
 	SystemPrompt string   `json:"system_prompt,omitempty"`
+	Model        string   `json:"model,omitempty"` // "<provider>/<model>", e.g. "deepseek/deepseek-v4-pro"
 }
 
 // APIKey returns the env var name to look up for this provider's API key.

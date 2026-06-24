@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
@@ -147,6 +148,14 @@ func main() {
 					}
 					if override.DeniedTools != nil {
 						aCfg.DeniedTools = override.DeniedTools
+					}
+					if override.Model != "" {
+						// Support "<provider>/<model>" and bare "<model>" formats
+						if _, after, ok := strings.Cut(override.Model, "/"); ok {
+							aCfg.Model = after // use model part, ignore provider for now
+						} else {
+							aCfg.Model = override.Model
+						}
 					}
 				}
 			}

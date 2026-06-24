@@ -92,8 +92,12 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	}
 
 	// Build request body
+	model := p.model
+	if req.Model != "" {
+		model = req.Model
+	}
 	bodyMap := map[string]any{
-		"model":      p.model,
+		"model":      model,
 		"messages":   rawMsgs,
 		"max_tokens": req.MaxTokens,
 	}
