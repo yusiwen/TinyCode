@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 func TestConnectMCPServersEmpty(t *testing.T) {
-	tools, err := ConnectMCPServers(nil)
+	tools, err := ConnectMCPServers(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("expected no error for nil config, got: %v", err)
 	}
@@ -18,7 +19,7 @@ func TestConnectMCPServersEmpty(t *testing.T) {
 }
 
 func TestConnectMCPServersEmptyList(t *testing.T) {
-	tools, err := ConnectMCPServers([]config.MCPServerConfig{})
+	tools, err := ConnectMCPServers(context.Background(), []config.MCPServerConfig{})
 	if err != nil {
 		t.Fatalf("expected no error for empty list, got: %v", err)
 	}

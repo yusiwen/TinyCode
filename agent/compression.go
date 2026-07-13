@@ -38,7 +38,7 @@ func EstimateMessagesTokens(msgs []types.Message) int {
 }
 
 // compressHistory compresses a.History when it exceeds the threshold.
-func (a *Agent) compressHistory(messages []types.Message) ([]types.Message, error) {
+func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) ([]types.Message, error) {
 	if a.CompressionThreshold <= 0 || a.ContextLength <= 0 {
 		return messages, nil
 	}
@@ -123,7 +123,7 @@ Provide a concise summary in 3-5 sentences.`, middleText.String())
 		},
 		MaxTokens: 1024,
 	}
-	resp, err := summarizer.Provider.Chat(context.Background(), summarizerReq)
+	resp, err := summarizer.Provider.Chat(ctx, summarizerReq)
 	if err != nil {
 		return messages, nil
 	}

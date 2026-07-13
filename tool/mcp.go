@@ -25,7 +25,7 @@ type mcpClient struct {
 
 // ConnectMCPServers connects to all configured MCP servers and discovers their tools.
 // Returns a list of wrapped agent.Tools ready for registration.
-func ConnectMCPServers(servers []config.MCPServerConfig) ([]agent.Tool, error) {
+func ConnectMCPServers(ctx context.Context, servers []config.MCPServerConfig) ([]agent.Tool, error) {
 	if len(servers) == 0 {
 		return nil, nil
 	}
@@ -35,7 +35,7 @@ func ConnectMCPServers(servers []config.MCPServerConfig) ([]agent.Tool, error) {
 
 	for _, s := range servers {
 		tlog.Info("tool.mcp", "connecting", "server", s.Name, "transport", s.Transport)
-		client, err := connectMCP(context.Background(), &s, timeout)
+		client, err := connectMCP(ctx, &s, timeout)
 		if err != nil {
 			tlog.Warn("tool.mcp", "connect failed",
 				"server", s.Name,

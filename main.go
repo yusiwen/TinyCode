@@ -339,7 +339,7 @@ func main() {
 			var mcpToolList []agent.Tool
 			if len(cfg.MCPServers) > 0 {
 				fmt.Print("  Connecting to MCP servers... ")
-				mcpToolList, _ = tool.ConnectMCPServers(cfg.MCPServers)
+				mcpToolList, _ = tool.ConnectMCPServers(context.Background(), cfg.MCPServers)
 				for _, mt := range mcpToolList {
 					ag.AddTool(mt)
 				}

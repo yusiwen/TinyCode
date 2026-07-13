@@ -146,7 +146,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 	// Load multi-turn history, skipping messages that would cause API errors
 	// Compress history if it exceeds the threshold
-	compressed, err := a.compressHistory(a.History)
+	compressed, err := a.compressHistory(ctx, a.History)
 	if err == nil && compressed != nil {
 		a.History = compressed
 	}
@@ -262,11 +262,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 			tlog.Info("agent.loop", "answer", "step", step, "mode", a.agentPrefix(), "resp_len", len(resp.Content))
 			a.ContentStreamed = true
-			messages = append(messages, types.Message{
-				Role:             types.RoleAssistant,
-				Content:          resp.Content,
-				ReasoningContent: resp.ReasoningContent,
-			})
 			// Save to multi-turn history (skip empty responses)
 			if resp.Content != "" {
 				a.History = append(a.History,
@@ -472,7 +467,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 // for summarization. Returns true if compression was applied.
 func (a *Agent) CompressHistory() bool {
 	before := len(a.History)
-	compressed, err := a.compressHistory(a.History)
+	compressed, err := a.compressHistory(context.Background(), a.History)
 	if err != nil || compressed == nil {
 		return false
 	}

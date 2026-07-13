@@ -83,7 +83,7 @@ func WebExtract() Tool {
 				} else {
 					if len(content) > 5000 {
 						if summarizer != nil {
-							summary, err := summarizer(context.Background(), content)
+							summary, err := summarizer(ctx, content)
 							if err == nil && len(summary) > 0 && len(summary) < len(content) {
 								content = summary + "\n\n[... LLM-summarized from longer content ...]"
 							} else {

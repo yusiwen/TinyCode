@@ -46,7 +46,7 @@ func TestCompressHistoryTooSmall(t *testing.T) {
 		{Role: "user", Content: "Hi"},
 		{Role: "assistant", Content: "Hello!"},
 	}
-	result, err := a.compressHistory(history)
+	result, err := a.compressHistory(context.Background(), history)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestCompressHistoryDisabled(t *testing.T) {
 	history := []types.Message{
 		{Role: "user", Content: "Hi"},
 	}
-	result, err := a.compressHistory(history)
+	result, err := a.compressHistory(context.Background(), history)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestCompressHistoryBelowThreshold(t *testing.T) {
 		{Role: "user", Content: "Hello"},
 		{Role: "assistant", Content: "World"},
 	}
-	result, err := a.compressHistory(history)
+	result, err := a.compressHistory(context.Background(), history)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestTokenThresholdUnit(t *testing.T) {
 		t.Errorf("expected tokens >= 100, got %d", tokens)
 	}
 	// Should trigger compression and succeed (mock returns a summary)
-	result, err := a.compressHistory(history)
+	result, err := a.compressHistory(context.Background(), history)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestCompressTodoInjection(t *testing.T) {
 			types.Message{Role: types.RoleAssistant, Content: "A detailed assistant response with analysis and code."},
 		)
 	}
-	result, err := a.compressHistory(history)
+	result, err := a.compressHistory(context.Background(), history)
 	if err != nil {
 		t.Fatalf("compress error: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestCompressNoTodoInjection(t *testing.T) {
 			types.Message{Role: types.RoleAssistant, Content: "A detailed assistant response."},
 		)
 	}
-	result, err := a.compressHistory(history)
+	result, err := a.compressHistory(context.Background(), history)
 	if err != nil {
 		t.Fatalf("compress error: %v", err)
 	}
