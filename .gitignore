@@ -36,3 +36,7 @@ go.work.sum
 .tinycode/
 tinycode
 bin/
+
+# Nix / direnv
+.direnv/
+result

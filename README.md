@@ -270,6 +270,43 @@ main.go         CLI entry point with cobra
 | `goldmark` | Markdown parser |
 | `cobra` | CLI flag handling |
 
+### Development Environment (Nix / direnv)
+
+A reproducible development environment is provided via a Nix flake
+(`flake.nix`) plus a `direnv` integration (`.envrc`). The toolchain is
+pinned so `make build` / `make test` / `make lint` behave identically
+across machines.
+
+**Toolchain summary**
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| Go | 1.24.2 (module `go` directive) | Pinned via Flake; CI uses `Go 1.24` |
+| Make | — | `build`, `run`, `test`, `lint`, cross-compile |
+| `staticcheck` | optional | Used by `make lint` (best-effort, `|| true`) |
+
+**Activate the environment**
+
+```bash
+# With direnv (recommended) — run once, then cd into the repo:
+direnv allow
+
+# Or without direnv:
+nix develop
+```
+
+The dev shell provides the Go toolchain, `gopls` (LSP), `gofumpt`
+(formatter), and `git`. Once active, the usual commands work directly:
+
+```bash
+make build      # static binary at ./bin/tinycode (CGO_ENABLED=0)
+make test
+make lint
+```
+
+The Makefile remains the canonical build/release path; the flake pins the
+toolchain so it behaves identically everywhere.
+
 ---
 
 # TODO
