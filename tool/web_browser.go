@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+
+	"github.com/yusiwen/tinycode/tlog"
 )
 
 // ── Browser detection chain ──
@@ -91,6 +94,13 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	// Linux-specific flags for headless server environments
 	if runtime.GOOS == "linux" {
 		args = append(args, "--disable-dev-shm-usage", "--single-process")
+	}
+	// Pin the top-level host to the address this process validated, so Chromium
+	// cannot be rebound to a private address by a second DNS answer. The exec
+	// path cannot intercept requests at all, so this is its only protection for
+	// the initial navigation.
+	if rule := browserHostRule(url); rule != "" {
+		args = append(args, "--host-resolver-rules="+rule)
 	}
 	args = append(args, "--dump-dom", url)
 	cmd := exec.CommandContext(ctx2, browserPath, args...)
@@ -216,8 +226,33 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 		}
 	}()
 
-	// rod.NewBrowser() auto-downloads to ~/.cache/rod/ on first call.
-	browser := rod.New().Context(ctx)
+	// Pin the top-level host to the address we validated so the browser cannot
+	// be rebound to a private address. Only the top-level host can be pinned
+	// here (other names appear while the page loads); those are handled by the
+	// request interceptor below. When no rule applies (IP literal, checks
+	// skipped) the default launcher is used.
+	var browser *rod.Browser
+	if rule := browserHostRule(url); rule != "" {
+		// Append takes the flag name and its values; rod renders it as
+		// --host-resolver-rules=MAP host ip in a single argv element.
+		// Same launcher rod would build by default (headless, leakless, random
+		// debugging port), plus the pinning rule and the caller's context so the
+		// browser is killed when the call is cancelled.
+		l := launcher.New().Headless(true).Context(ctx).Append("host-resolver-rules", rule)
+		wsURL, launchErr := l.Launch()
+		if launchErr != nil {
+			// Pinning is best effort: fall back to the default launcher rather
+			// than losing the browser fallback entirely.
+			l.Cleanup()
+			tlog.Warn("web.browser", "pin_host_failed", "url", url, "err", launchErr.Error())
+			browser = rod.New().Context(ctx)
+		} else {
+			defer l.Cleanup()
+			browser = rod.New().ControlURL(wsURL).Context(ctx)
+		}
+	} else {
+		browser = rod.New().Context(ctx)
+	}
 	if err := browser.Connect(); err != nil {
 		return "", fmt.Errorf("connect browser: %w", err)
 	}

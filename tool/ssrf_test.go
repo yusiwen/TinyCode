@@ -393,3 +393,51 @@ func TestUrlScheme(t *testing.T) {
 		}
 	}
 }
+
+// TestHostRuleFor covers the Chromium --host-resolver-rules entry that pins a
+// host to the address this process validated.
+func TestHostRuleFor(t *testing.T) {
+	cases := []struct {
+		host, ip, want string
+	}{
+		{"example.com", "93.184.216.34", "MAP example.com 93.184.216.34"},
+		{"sub.example.com", "2606:2800:220:1:248:1893:25c8:1946", "MAP sub.example.com 2606:2800:220:1:248:1893:25c8:1946"},
+		{"93.184.216.34", "93.184.216.34", ""}, // already an address
+		{"example.com", "not-an-ip", ""},
+		{"", "93.184.216.34", ""},
+		{"example.com", "", ""},
+	}
+	for _, tc := range cases {
+		if got := hostRuleFor(tc.host, tc.ip); got != tc.want {
+			t.Errorf("hostRuleFor(%q, %q) = %q, want %q", tc.host, tc.ip, got, tc.want)
+		}
+	}
+}
+
+// TestBrowserHostRuleShortCircuits covers the cases where no rule is built: the
+// test hook, non-http(s) schemes, IP literals and URLs without a host. None of
+// these may perform a DNS lookup.
+func TestBrowserHostRuleShortCircuits(t *testing.T) {
+	saved := skipSSRFCheck
+
+	skipSSRFCheck = true
+	if got := browserHostRule("https://example.com/"); got != "" {
+		t.Errorf("with skipSSRFCheck the rule must be empty, got %q", got)
+	}
+
+	skipSSRFCheck = false
+	defer func() { skipSSRFCheck = saved }()
+
+	for _, u := range []string{
+		"http://93.184.216.34/",  // IP literal: nothing to resolve
+		"http://[2606:2800::1]/", // IPv6 literal
+		"file:///etc/passwd",     // non-http(s)
+		"data:text/plain,hello",  // non-http(s)
+		"",                       // no host
+		"http://",                // no host
+	} {
+		if got := browserHostRule(u); got != "" {
+			t.Errorf("browserHostRule(%q) = %q, want an empty rule", u, got)
+		}
+	}
+}
