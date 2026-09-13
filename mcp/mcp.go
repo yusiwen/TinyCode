@@ -30,6 +30,11 @@ const (
 // errClientClosed is returned once the client has been closed.
 var errClientClosed = errors.New("mcp client is closed")
 
+// errNoMatchingResponse is delivered to a waiter whose response never arrived
+// because the peer kept sending unrelated frames (notifications or responses
+// addressed to other requests) beyond maxSkippedMessages.
+var errNoMatchingResponse = errors.New("no matching response within the skip budget")
+
 // Tool represents a tool exposed by an MCP server.
 type Tool struct {
 	Name        string          `json:"name"`
@@ -108,23 +113,37 @@ type MCPClient interface {
 }
 
 // Client manages a JSON-RPC 2.0 connection to an MCP server over stdio.
+//
+// Exactly one goroutine (started lazily by the first request) reads from the
+// stream. Concurrent requests are correlated by a unique numeric id and each
+// response is delivered to the channel registered under that id, so many calls
+// can be in flight at once without interleaving frames or stealing responses.
 type Client struct {
 	stdin  io.Writer
 	stdout io.Reader
 	stderr io.Reader
 
-	// mu serializes a complete request/response exchange: from reserving the
-	// request id and writing the frame to reading the matching response. This
-	// keeps concurrent callers from interleaving frames or stealing each
-	// other's responses.
-	mu     sync.Mutex
-	nextID int
+	// writeMu serializes frame writes. It is held only while a single
+	// Content-Length frame is written, never while waiting for a response, so
+	// one slow call cannot block another caller's write.
+	writeMu sync.Mutex
 
-	// stateMu guards closed, kill and closeErr. It is deliberately separate
-	// from mu so Close can tear down a blocked exchange without waiting for it.
-	stateMu sync.Mutex
+	// readerOnce guarantees that only one reader goroutine is ever started.
+	readerOnce sync.Once
+
+	// mu guards nextID, pending, closed, closeCause and kill.
+	mu      sync.Mutex
+	nextID  int
+	pending map[int]chan json.RawMessage
 	closed  bool
 	kill    func()
+
+	// closeCause records why the client was marked closed, if not by Close.
+	closeCause error
+
+	// done is closed exactly once when the client is closed. Waiters select on
+	// it so they are released as soon as the transport goes away.
+	done chan struct{}
 
 	closeOnce sync.Once
 	closeErr  error
@@ -136,35 +155,41 @@ type Client struct {
 // NewClient creates an MCP client using the given stdio/stderr streams.
 func NewClient(stdin io.Writer, stdout io.Reader, stderr io.Reader) *Client {
 	return &Client{
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
-		nextID: 1,
+		stdin:   stdin,
+		stdout:  stdout,
+		stderr:  stderr,
+		nextID:  1,
+		pending: make(map[int]chan json.RawMessage),
+		done:    make(chan struct{}),
 	}
 }
 
 // SetKillFunc registers a transport-level termination function, for example
-// killing the stdio child process. It is invoked by Close and whenever an
-// in-flight exchange is cancelled, so a read blocked on a dead peer is
-// unblocked and the goroutine can exit.
+// killing the stdio child process. It is invoked by Close so a read blocked on
+// a dead peer is unblocked and the goroutine can exit.
 func (c *Client) SetKillFunc(fn func()) {
-	c.stateMu.Lock()
+	c.mu.Lock()
 	c.kill = fn
-	c.stateMu.Unlock()
+	c.mu.Unlock()
 }
 
-// Close releases the transport. It is safe to call multiple times and from
-// any goroutine, including while a request is in flight.
+// Close releases the transport and fails every pending waiter. It is safe to
+// call multiple times and from any goroutine, including while a request is in
+// flight: only the first call tears the transport down.
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
-		c.stateMu.Lock()
-		c.closed = true
+		c.mu.Lock()
 		kill := c.kill
-		c.stateMu.Unlock()
+		c.mu.Unlock()
+
+		// Release every waiter before touching the transport so a blocked send
+		// returns promptly even when kill waits for a child to be reaped.
+		c.markClosed(errClientClosed)
 
 		// When a kill function is registered the transport owner (for example
 		// the stdio subprocess wrapper) is responsible for tearing down the
-		// underlying process and pipes.
+		// underlying process and pipes. Its contract is to return only once the
+		// child has been killed and reaped.
 		if kill != nil {
 			kill()
 			return
@@ -174,6 +199,142 @@ func (c *Client) Close() error {
 		}
 	})
 	return c.closeErr
+}
+
+// markClosed transitions the client to the closed state exactly once. The done
+// channel is closed so pending waiters wake up, and the reason is retained for
+// diagnostics. It reports whether this call performed the transition.
+func (c *Client) markClosed(cause error) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return false
+	}
+	c.closed = true
+	c.closeCause = cause
+	close(c.done)
+	return true
+}
+
+// startReader launches the single background goroutine that reads and routes
+// messages. It is idempotent: repeated calls are no-ops, so only one goroutine
+// ever touches the stream.
+func (c *Client) startReader() {
+	c.readerOnce.Do(func() {
+		go c.readLoop()
+	})
+}
+
+// readLoop reads frames until the stream fails, routing each one to its waiter.
+// It is the only reader of c.stdout.
+func (c *Client) readLoop() {
+	skipped := 0
+	for {
+		raw, err := c.readMessage()
+		if err != nil {
+			// A dead stream must release the waiters (and make later sends fail
+			// immediately) instead of letting every call hang forever.
+			c.markClosed(fmt.Errorf("mcp reader stopped: %w", err))
+			return
+		}
+
+		matched, pending := c.dispatch(raw)
+		if matched {
+			skipped = 0
+			continue
+		}
+		if !pending {
+			// Nothing is waiting, so an unmatched frame is simply dropped and
+			// must not count against a future request's budget.
+			skipped = 0
+			continue
+		}
+		skipped++
+		if skipped > maxSkippedMessages {
+			// The peer is flooding unrelated frames while a request is pending.
+			// Fail the waiters rather than reading the stream forever; the
+			// stream itself stays framed, so a later call can still succeed.
+			c.failPending()
+			skipped = 0
+		}
+	}
+}
+
+// dispatch routes one raw frame to the pending request registered under its id.
+// Notifications and responses addressed to unknown ids are dropped. It reports
+// whether a pending request matched and whether any request was pending at all.
+func (c *Client) dispatch(raw []byte) (matched, pending bool) {
+	var msg jsonrpcMessage
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		return false, c.hasPending()
+	}
+	// A method means this is a notification or a server-initiated request, not
+	// a response to one of ours. Server request ids share our id space, so they
+	// must never be mistaken for a response.
+	if msg.Method != "" || msg.ID == 0 {
+		return false, c.hasPending()
+	}
+
+	c.mu.Lock()
+	ch, ok := c.pending[msg.ID]
+	pending = len(c.pending) > 0
+	c.mu.Unlock()
+	if !ok {
+		return false, pending
+	}
+
+	// The channel is buffered with room for one response, so a waiter that
+	// already gave up cannot block the reader.
+	select {
+	case ch <- json.RawMessage(raw):
+	default:
+	}
+	return true, pending
+}
+
+// hasPending reports whether any request is currently registered.
+func (c *Client) hasPending() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.pending) > 0
+}
+
+// failPending closes the response channel of every pending request so the
+// callers return an error. Closing is only ever done here, by the single reader
+// goroutine, so no channel is ever closed twice.
+func (c *Client) failPending() {
+	c.mu.Lock()
+	stale := c.pending
+	c.pending = make(map[int]chan json.RawMessage)
+	c.mu.Unlock()
+
+	for _, ch := range stale {
+		close(ch)
+	}
+}
+
+// reserve allocates the next unique request id and registers a response channel
+// for it under the same lock, so ids can never be reused while in flight and no
+// response can arrive before its waiter is registered.
+func (c *Client) reserve() (int, chan json.RawMessage, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return 0, nil, errClientClosed
+	}
+	id := c.nextID
+	c.nextID++
+	ch := make(chan json.RawMessage, 1)
+	c.pending[id] = ch
+	return id, ch, nil
+}
+
+// unregister removes the response channel for id. It is safe to call for an
+// unknown id and after the client has been closed.
+func (c *Client) unregister(id int) {
+	c.mu.Lock()
+	delete(c.pending, id)
+	c.mu.Unlock()
 }
 
 // Initialize sends the initialize request and waits for a response.
@@ -278,30 +439,26 @@ func (c *Client) Info() *ServerInfo {
 	return c.serverInfo
 }
 
-// send performs one synchronous request/response exchange over the stdio
-// transport. The whole exchange is serialized by c.mu so concurrent callers
-// cannot interleave frames or read each other's responses.
+// send performs one request/response exchange over the stdio transport.
+//
+// The request id is reserved and the response channel registered before the
+// frame is written, so a response can never race ahead of its waiter. Any
+// number of exchanges may be in flight concurrently: writes are serialized by
+// writeMu, while waiting is done on the request's own channel.
+//
+// If ctx is cancelled the request is unregistered and the context error is
+// returned; the transport is deliberately left intact so the client (and every
+// other in-flight call) stays usable.
 func (c *Client) send(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("send %q: %w", method, err)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.stateMu.Lock()
-	closed := c.closed
-	c.stateMu.Unlock()
-	if closed {
-		return nil, fmt.Errorf("send %q: %w", method, errClientClosed)
-	}
-	// The context may have been cancelled while waiting for the exchange lock.
-	if err := ctx.Err(); err != nil {
+	id, respCh, err := c.reserve()
+	if err != nil {
 		return nil, fmt.Errorf("send %q: %w", method, err)
 	}
-
-	id := c.nextID
-	c.nextID++
+	defer c.unregister(id)
 
 	msg := jsonrpcMessage{
 		JSONRPC: "2.0",
@@ -322,39 +479,22 @@ func (c *Client) send(ctx context.Context, method string, params any) (json.RawM
 		return nil, fmt.Errorf("marshal request %q: %w", method, err)
 	}
 
-	// Build the whole frame first and write it with a single Write so a peer
-	// never observes a header without its body.
-	frame := make([]byte, 0, len(body)+32)
-	frame = append(frame, fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))...)
-	frame = append(frame, body...)
-	if _, err := c.stdin.Write(frame); err != nil {
+	// Start (or reuse) the single reader before waiting for a response.
+	c.startReader()
+
+	if err := c.writeFrame(body); err != nil {
 		return nil, fmt.Errorf("write request %q: %w", method, err)
 	}
 
-	return c.readResponse(ctx, method, id)
-}
-
-// readResponse reads frames until the response for id arrives, skipping
-// notifications and responses addressed to other requests.
-func (c *Client) readResponse(ctx context.Context, method string, id int) (json.RawMessage, error) {
-	type readResult struct {
-		msg json.RawMessage
-		err error
-	}
-	done := make(chan readResult, 1)
-
-	go func() {
-		msg, err := c.readMatchingResponse(id)
-		done <- readResult{msg: msg, err: err}
-	}()
-
 	select {
-	case res := <-done:
-		if res.err != nil {
-			return nil, fmt.Errorf("read response for %q: %w", method, res.err)
+	case raw, ok := <-respCh:
+		if !ok {
+			// The reader closed the channel after failing the waiter, e.g. the
+			// peer flooded unrelated frames past the skip budget.
+			return nil, fmt.Errorf("read response for %q: %w", method, errNoMatchingResponse)
 		}
 		var rpcResp jsonrpcMessage
-		if err := json.Unmarshal(res.msg, &rpcResp); err != nil {
+		if err := json.Unmarshal(raw, &rpcResp); err != nil {
 			return nil, fmt.Errorf("parse response for %q: %w", method, err)
 		}
 		if rpcResp.Error != nil {
@@ -362,34 +502,42 @@ func (c *Client) readResponse(ctx context.Context, method string, id int) (json.
 		}
 		return rpcResp.Result, nil
 	case <-ctx.Done():
-		// The read is still blocked. Tear the transport down so the reader
-		// goroutine cannot leak and the stream is not silently desynchronized.
-		_ = c.Close()
+		// Cancel this call only. Unregistering (the deferred call) drops any
+		// late response, and the client remains open for later requests.
 		return nil, fmt.Errorf("read response for %q: %w", method, ctx.Err())
+	case <-c.done:
+		return nil, fmt.Errorf("read response for %q: %w", method, c.closeReason())
 	}
 }
 
-// readMatchingResponse returns the raw frame whose JSON-RPC id equals id.
-// Notifications (no id) and responses addressed to other requests are skipped
-// up to maxSkippedMessages frames.
-func (c *Client) readMatchingResponse(id int) ([]byte, error) {
-	for skipped := 0; skipped < maxSkippedMessages; skipped++ {
-		raw, err := c.readMessage()
-		if err != nil {
-			return nil, err
-		}
-		var msg jsonrpcMessage
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			return nil, fmt.Errorf("parse message: %w", err)
-		}
-		if msg.ID == id {
-			return raw, nil
-		}
+// closeReason returns why the client was closed: the recorded cause when the
+// transport died on its own, otherwise errClientClosed.
+func (c *Client) closeReason() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closeCause != nil {
+		return c.closeCause
 	}
-	return nil, fmt.Errorf("no response for request id %d after %d unrelated messages", id, maxSkippedMessages)
+	return errClientClosed
 }
 
-// readMessage reads one Content-Length framed message.
+// writeFrame writes one complete Content-Length framed message. writeMu keeps
+// concurrent frames from interleaving, and the frame is written with a single
+// Write so a peer never observes a header without its body.
+func (c *Client) writeFrame(body []byte) error {
+	frame := make([]byte, 0, len(body)+32)
+	frame = append(frame, fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))...)
+	frame = append(frame, body...)
+
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	_, err := c.stdin.Write(frame)
+	return err
+}
+
+// readMessage reads one Content-Length framed message. It must only be called
+// from the single reader goroutine started by startReader.
 func (c *Client) readMessage() ([]byte, error) {
 	contentLength := -1
 

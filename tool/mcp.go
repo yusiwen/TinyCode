@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yusiwen/tinycode/agent"
@@ -16,6 +17,40 @@ import (
 	"github.com/yusiwen/tinycode/mcp"
 	"github.com/yusiwen/tinycode/tlog"
 )
+
+// mcpClients tracks every client created by ConnectMCPServers so a single call
+// to CloseMCPServers can release them all at shutdown. mcpClientsMu guards the
+// slice; it is small and only touched on connect and at shutdown.
+var (
+	mcpClientsMu sync.Mutex
+	mcpClients   []mcp.MCPClient
+)
+
+// registerMCPClient records a connected client for CloseMCPServers.
+func registerMCPClient(c mcp.MCPClient) {
+	mcpClientsMu.Lock()
+	mcpClients = append(mcpClients, c)
+	mcpClientsMu.Unlock()
+}
+
+// CloseMCPServers closes every MCP client created by ConnectMCPServers and
+// reaps their stdio children. It is safe to call more than once and from any
+// goroutine: the tracked list is cleared before closing, and each client Close
+// is itself idempotent, so a second call is a no-op.
+//
+// Call it once from main when the agent is done, for example on shutdown.
+func CloseMCPServers() {
+	mcpClientsMu.Lock()
+	clients := mcpClients
+	mcpClients = nil
+	mcpClientsMu.Unlock()
+
+	for _, c := range clients {
+		if err := c.Close(); err != nil {
+			tlog.Warn("tool.mcp", "close failed", "error", err.Error())
+		}
+	}
+}
 
 // mcpStderrCapture bounds how much of a server's stderr is kept for diagnostics
 // (the pipe is always drained; only the retained copy is capped).
@@ -62,6 +97,10 @@ func ConnectMCPServers(ctx context.Context, servers []config.MCPServerConfig) ([
 				"error", err.Error())
 			continue
 		}
+
+		// Track the client so CloseMCPServers can release it (and reap the
+		// stdio child) at shutdown.
+		registerMCPClient(client.Client)
 
 		for _, mt := range client.Tools {
 			name := fmt.Sprintf("mcp_%s_%s", s.Name, mt.Name)

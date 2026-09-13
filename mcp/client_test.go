@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -158,21 +159,53 @@ func TestSendSkipsMismatchedResponseID(t *testing.T) {
 	}
 }
 
-// TestReadMatchingResponseBoundsUnrelatedMessages ensures a server that keeps
-// sending unrelated frames cannot make the reader spin forever.
-func TestReadMatchingResponseBoundsUnrelatedMessages(t *testing.T) {
+// TestSendFailsAfterSkipBudgetExceeded ensures a server that floods unrelated
+// frames while a request is pending cannot keep the caller waiting forever:
+// once the bounded skip budget is exhausted the request fails.
+func TestSendFailsAfterSkipBudgetExceeded(t *testing.T) {
 	notification := `{"jsonrpc":"2.0","method":"notifications/message"}`
-	correct := `{"jsonrpc":"2.0","id":1,"result":{}}`
 
 	var sb strings.Builder
 	for i := 0; i < maxSkippedMessages+2; i++ {
 		fmt.Fprintf(&sb, "Content-Length: %d\r\n\r\n%s", len(notification), notification)
 	}
-	fmt.Fprintf(&sb, "Content-Length: %d\r\n\r\n%s", len(correct), correct)
 
 	client := NewClient(io.Discard, strings.NewReader(sb.String()), nil)
-	if _, err := client.readMatchingResponse(1); err == nil {
+	_, err := client.send(context.Background(), "initialize", nil)
+	if err == nil {
 		t.Fatal("expected error after exceeding the skip budget, got nil")
+	}
+	if !errors.Is(err, errNoMatchingResponse) {
+		t.Fatalf("expected the skip-budget error, got: %v", err)
+	}
+}
+
+// TestSendSkipsNotificationAndUnmatchedID ensures an interleaved notification
+// and a response addressed to another request do not desynchronize the
+// exchange and are never returned as ours.
+func TestSendSkipsNotificationAndUnmatchedID(t *testing.T) {
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+	defer closePipes(clientStdinR, clientStdinW, serverStdoutR, serverStdoutW)
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+
+	go func() {
+		fs := newFrameStream(clientStdinR)
+		if _, err := fs.read(); err != nil {
+			return
+		}
+		_ = writeFrame(serverStdoutW, `{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info"}}`)
+		_ = writeFrame(serverStdoutW, `{"jsonrpc":"2.0","id":42,"result":{"serverInfo":{"name":"wrong","version":"1"}}}`)
+		_ = writeFrame(serverStdoutW, `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"right","version":"1"}}}`)
+	}()
+
+	info, err := client.Initialize(context.Background())
+	if err != nil {
+		t.Fatalf("Initialize after interleaved frames: %v", err)
+	}
+	if info.Name != "right" {
+		t.Fatalf("expected server %q, got %q", "right", info.Name)
 	}
 }
 
@@ -256,5 +289,140 @@ func TestConcurrentSendCorrelatesResponses(t *testing.T) {
 
 	for err := range errCh {
 		t.Error(err)
+	}
+}
+
+// TestConcurrentSendReverseOrder forces two genuinely overlapping calls and has
+// the server answer the second request first. Both callers must receive their
+// own result; a client that allows only one in-flight request deadlocks,
+// because the server refuses to answer until both requests have arrived.
+func TestConcurrentSendReverseOrder(t *testing.T) {
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+	defer closePipes(clientStdinR, clientStdinW, serverStdoutR, serverStdoutW)
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+
+	go func() {
+		fs := newFrameStream(clientStdinR)
+		first, err := fs.read()
+		if err != nil {
+			return
+		}
+		second, err := fs.read()
+		if err != nil {
+			return
+		}
+		var m1, m2 jsonrpcMessage
+		if json.Unmarshal([]byte(first), &m1) != nil || json.Unmarshal([]byte(second), &m2) != nil {
+			return
+		}
+		// Answer the second request before the first one.
+		_ = writeFrame(serverStdoutW, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":%s}`, m2.ID, string(m2.Params)))
+		_ = writeFrame(serverStdoutW, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":%s}`, m1.ID, string(m1.Params)))
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	type outcome struct {
+		value int
+		err   error
+	}
+	results := make(chan outcome, 2)
+	for i := 0; i < 2; i++ {
+		go func(i int) {
+			raw, err := client.send(ctx, "tools/call", map[string]int{"value": i})
+			if err != nil {
+				results <- outcome{err: err}
+				return
+			}
+			var res struct {
+				Value int `json:"value"`
+			}
+			if err := json.Unmarshal(raw, &res); err != nil {
+				results <- outcome{err: err}
+				return
+			}
+			results <- outcome{value: res.Value}
+		}(i)
+	}
+
+	seen := map[int]bool{}
+	for i := 0; i < 2; i++ {
+		select {
+		case res := <-results:
+			if res.err != nil {
+				t.Fatalf("send failed: %v", res.err)
+			}
+			seen[res.value] = true
+		case <-ctx.Done():
+			t.Fatal("overlapping sends did not complete: responses were not correlated by id")
+		}
+	}
+	if !seen[0] || !seen[1] {
+		t.Fatalf("expected each caller to receive its own result, got %v", seen)
+	}
+}
+
+// TestCancelSendKeepsClientUsable is the regression test for the old behaviour
+// where cancelling one call closed the whole client. The cancelled call must
+// fail with its context error while the transport stays alive, so a later call
+// still succeeds.
+func TestCancelSendKeepsClientUsable(t *testing.T) {
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+	defer closePipes(clientStdinR, clientStdinW, serverStdoutR, serverStdoutW)
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+
+	// The server deliberately ignores the first request and answers only the
+	// second, so the first caller must rely on its own context.
+	go func() {
+		fs := newFrameStream(clientStdinR)
+		if _, err := fs.read(); err != nil {
+			return
+		}
+		second, err := fs.read()
+		if err != nil {
+			return
+		}
+		var req jsonrpcMessage
+		if json.Unmarshal([]byte(second), &req) != nil {
+			return
+		}
+		_ = writeFrame(serverStdoutW, fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":%d,"result":{"serverInfo":{"name":"still-alive","version":"1"}}}`, req.ID))
+	}()
+
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	raw, err := client.send(cancelCtx, "initialize", nil)
+	if err == nil {
+		t.Fatal("expected the cancelled call to fail")
+	}
+	if raw != nil {
+		t.Fatalf("expected no result for the cancelled call, got %s", raw)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected a context error, got: %v", err)
+	}
+
+	// The cancellation must not have closed the client.
+	ctx, ctxCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer ctxCancel()
+	raw, err = client.send(ctx, "initialize", nil)
+	if err != nil {
+		t.Fatalf("second call after cancellation: %v", err)
+	}
+	var res struct {
+		ServerInfo ServerInfo `json:"serverInfo"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatalf("parse second result: %v", err)
+	}
+	if res.ServerInfo.Name != "still-alive" {
+		t.Fatalf("expected %q, got %q", "still-alive", res.ServerInfo.Name)
 	}
 }

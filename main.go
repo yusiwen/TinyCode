@@ -461,6 +461,9 @@ func newRootCmd() *cobra.Command {
 					fmt.Println("no tools found")
 				}
 			}
+			// Reap every MCP child (stdio) on the way out. Safe when none was
+			// started, and idempotent.
+			defer tool.CloseMCPServers()
 			// Sandbox project root: config → CWD
 			rootDir := ""
 			if cfg.Sandbox != nil {

@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -134,6 +136,7 @@ func TestConnectMCPStdioKeepsChildAlive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConnectMCPServers: %v", err)
 	}
+	defer CloseMCPServers()
 
 	echo := -1
 	for i := range tools {
@@ -237,4 +240,105 @@ func TestConnectMCPStdioDrainsStderr(t *testing.T) {
 	if !strings.Contains(err.Error(), "MCP-STDERR-MARKER") {
 		t.Errorf("server stderr excerpt missing from the error: %v", err)
 	}
+}
+
+// TestHelperMCPPidProcess is a fake MCP server that records its own pid before
+// serving, so TestCloseMCPServersReapsChildAndIsIdempotent can verify the child
+// is reaped by shutdown.
+func TestHelperMCPPidProcess(t *testing.T) {
+	if os.Getenv("TINYCODE_MCP_PID_HELPER") != "1" {
+		t.Skip("helper process for MCP shutdown tests")
+	}
+	if path := os.Getenv("TINYCODE_MCP_PID_FILE"); path != "" {
+		if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+			os.Exit(4)
+		}
+	}
+	serveFakeMCP(os.Stdin, os.Stdout)
+	os.Exit(0)
+}
+
+// TestCloseMCPServersReapsChildAndIsIdempotent verifies the exported shutdown
+// hook closes stdio clients, leaves no child process behind, and is safe to
+// call more than once.
+func TestCloseMCPServersReapsChildAndIsIdempotent(t *testing.T) {
+	t.Setenv("TINYCODE_MCP_PID_HELPER", "1")
+	pidFile := filepath.Join(t.TempDir(), "mcp-child.pid")
+	t.Setenv("TINYCODE_MCP_PID_FILE", pidFile)
+
+	cfg := config.MCPServerConfig{
+		Name:      "pidfake",
+		Transport: "stdio",
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestHelperMCPPidProcess"},
+	}
+
+	tools, err := ConnectMCPServers(context.Background(), []config.MCPServerConfig{cfg})
+	if err != nil {
+		t.Fatalf("ConnectMCPServers: %v", err)
+	}
+
+	echo := -1
+	for i := range tools {
+		if tools[i].Name == "mcp_pidfake_echo" {
+			echo = i
+			break
+		}
+	}
+	if echo < 0 {
+		t.Fatalf("expected tool %q, got %d tools", "mcp_pidfake_echo", len(tools))
+	}
+
+	// The child works before shutdown.
+	out, err := tools[echo].Execute(context.Background(), map[string]any{"text": "before-close"})
+	if err != nil {
+		t.Fatalf("tool call before shutdown: %v", err)
+	}
+	if out != "echo:before-close" {
+		t.Fatalf("expected %q, got %q", "echo:before-close", out)
+	}
+
+	pid := readHelperPID(t, pidFile)
+	if err := signalProcess(pid); err != nil {
+		t.Fatalf("child %d is not alive before shutdown: %v", pid, err)
+	}
+
+	CloseMCPServers()
+	CloseMCPServers() // must be a safe no-op
+
+	deadline := time.Now().Add(5 * time.Second)
+	for signalProcess(pid) == nil {
+		if time.Now().After(deadline) {
+			t.Fatalf("child process %d survived CloseMCPServers", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// readHelperPID waits for the helper child to publish its pid.
+func readHelperPID(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if convErr == nil && pid > 0 {
+				return pid
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("helper pid file %s was not written", path)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// signalProcess reports whether the process still exists by sending signal 0.
+func signalProcess(pid int) error {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Signal(syscall.Signal(0))
 }
