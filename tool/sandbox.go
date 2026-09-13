@@ -149,13 +149,23 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 	}
 
 	rawAbs := absoluteNoClean(absPath)
+	root := filepath.Clean(absoluteNoClean(sc.ProjectRoot))
 	realAbs := filepath.Clean(resolveRealPath(rawAbs))
-	realRoot := filepath.Clean(resolveRealPath(absoluteNoClean(sc.ProjectRoot)))
+	realRoot := filepath.Clean(resolveRealPath(root))
 
 	// 1) Within project root. The OS-resolved forms are authoritative: a
 	// lexical check alone would accept a link (or a link plus "..") that
 	// points outside.
 	if rel, err := filepath.Rel(realRoot, realAbs); err == nil && !escapes(rel) {
+		// On Linux the kernel re-evaluates the requested path with
+		// RESOLVE_BENEATH: a path that escapes only because of a race or a
+		// magic link is denied even though the resolved comparison passed.
+		if kernelEscapeCheck(root, rawAbs) {
+			return &AccessDenied{
+				Path:    rawAbs,
+				Message: fmt.Sprintf("Path %q escapes the project root %q.", rawAbs, sc.ProjectRoot),
+			}
+		}
 		return nil
 	}
 
