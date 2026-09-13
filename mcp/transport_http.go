@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yusiwen/tinycode/internal/netsafe"
 )
 
 // httpRequestTimeout bounds a single HTTP MCP request when the caller's
@@ -35,9 +38,25 @@ func NewHTTPClient(baseURL string, headers map[string]string) *HTTPClient {
 	return &HTTPClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		headers: headers,
-		client:  &http.Client{Timeout: httpRequestTimeout},
+		client:  newSSRFProtectedClient(baseURL),
 		nextID:  1,
 	}
+}
+
+// newSSRFProtectedClient builds the transport client with the shared SSRF
+// policy: the configured host is resolved once and the validated IP is pinned,
+// and every redirect target is re-validated.
+//
+// Loopback stays reachable only when the configured endpoint is itself
+// loopback. checkMCPURL deliberately whitelists localhost MCP servers for
+// development, so the client must be able to reach them; a public endpoint,
+// however, still cannot be redirected to a local service.
+func newSSRFProtectedClient(baseURL string) *http.Client {
+	var opts []netsafe.Option
+	if u, err := url.Parse(baseURL); err == nil && netsafe.IsLoopbackHost(u.Hostname()) {
+		opts = append(opts, netsafe.AllowLoopback())
+	}
+	return netsafe.NewClient(httpRequestTimeout, true, opts...)
 }
 
 // Close releases idle HTTP connections held by the client.

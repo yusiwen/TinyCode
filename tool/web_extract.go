@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+
+	"github.com/yusiwen/tinycode/internal/netsafe"
 )
 
 var skipSSRFCheck = false
@@ -236,80 +238,31 @@ func tryWayback(ctx context.Context, urlStr string) string {
 	return ""
 }
 
-// maxSSRFRedirects caps how many HTTP redirect hops the hardened client follows.
-const maxSSRFRedirects = 5
-
-// newSSRFProtectedClient returns an *http.Client hardened against SSRF.
+// ── SSRF policy delegation ──
 //
-// The target host is resolved exactly once per connection, every resolved IP is
-// validated against the shared SSRF policy, and the connection is then pinned to
-// that already-validated IP. A DNS rebinding attacker therefore cannot swap the
-// destination between the check and the connect. Every redirect target is
-// re-validated with the same policy and the hop count is capped.
+// The policy itself lives in internal/netsafe so the MCP HTTP transport can
+// share it. Everything below is a thin package-local delegate, kept so the
+// existing call sites and tests in this package compile unchanged.
+
+// checkSSRF validates a URL with the shared SSRF policy. It always enforces:
+// the package-wide skipSSRFCheck hook only affects the helpers that consult it
+// explicitly (newSSRFProtectedClient, checkBrowserTarget, browserRequestAllowed,
+// browserHostRule).
+func checkSSRF(rawURL string) error { return netsafe.CheckURL(rawURL) }
+
+// resolveValidatedHost resolves host exactly once with the shared policy.
+func resolveValidatedHost(ctx context.Context, host string, enforce bool) ([]net.IP, error) {
+	return netsafe.ResolveValidatedHost(ctx, host, enforce)
+}
+
+// isPrivateIP reports whether ip is not a globally routable unicast address.
+func isPrivateIP(ip net.IP) bool { return netsafe.IsBlockedIP(ip) }
+
+// newSSRFProtectedClient returns an *http.Client hardened against SSRF. The
+// package-wide test hook disables enforcement so tests can use httptest's
+// loopback servers; all production callers run with skipSSRFCheck = false.
 func newSSRFProtectedClient(timeout time.Duration) *http.Client {
-	dialer := &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			// A proxy resolves the hostname itself, which would defeat the
-			// pinned-IP guarantee enforced by DialContext below.
-			Proxy:                 nil,
-			DialContext:           ssrfDialContext(dialer),
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          16,
-			IdleConnTimeout:       30 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: time.Second,
-		},
-		CheckRedirect: ssrfRedirectPolicy(maxSSRFRedirects),
-	}
-}
-
-// ssrfDialContext resolves the host once, validates every resolved IP, and dials
-// only an address that already passed validation.
-func ssrfDialContext(dialer *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
-	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, fmt.Errorf("split host port %q: %w", addr, err)
-		}
-		ips, err := resolveValidatedHost(ctx, host, !skipSSRFCheck)
-		if err != nil {
-			return nil, err
-		}
-		var lastErr error
-		for _, ip := range ips {
-			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-			if err == nil {
-				return conn, nil
-			}
-			lastErr = err
-		}
-		if lastErr == nil {
-			lastErr = fmt.Errorf("no usable address for %q", host)
-		}
-		return nil, fmt.Errorf("dial %q: %w", host, lastErr)
-	}
-}
-
-// ssrfRedirectPolicy returns a CheckRedirect hook that re-validates every
-// redirect target with the shared SSRF policy and refuses extra hops.
-func ssrfRedirectPolicy(maxHops int) func(req *http.Request, via []*http.Request) error {
-	return func(req *http.Request, via []*http.Request) error {
-		if len(via) >= maxHops {
-			return fmt.Errorf("stopped after %d redirects", maxHops)
-		}
-		if skipSSRFCheck {
-			return nil
-		}
-		if err := checkSSRF(req.URL.String()); err != nil {
-			return fmt.Errorf("redirect blocked: %w", err)
-		}
-		return nil
-	}
+	return netsafe.NewClient(timeout, !skipSSRFCheck)
 }
 
 // browserPreflightTimeout bounds the redirect-chain probe run before a
@@ -355,144 +308,6 @@ func checkBrowserTarget(rawURL string) error {
 	}
 	resp.Body.Close()
 	return nil
-}
-
-// resolveValidatedHost resolves host exactly once. When enforce is true every
-// resolved address must pass the SSRF policy, so a hostname that mixes public
-// and private addresses is rejected instead of silently dialed.
-func resolveValidatedHost(ctx context.Context, host string, enforce bool) ([]net.IP, error) {
-	if ip := net.ParseIP(host); ip != nil {
-		if enforce {
-			if err := validatePublicIP(ip, host); err != nil {
-				return nil, err
-			}
-		}
-		return []net.IP{ip}, nil
-	}
-
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return nil, fmt.Errorf("SSRF: DNS resolution failed for %q: %w", host, err)
-	}
-	ips := make([]net.IP, 0, len(addrs))
-	for _, addr := range addrs {
-		if enforce {
-			if err := validatePublicIP(addr.IP, host); err != nil {
-				return nil, err
-			}
-		}
-		ips = append(ips, addr.IP)
-	}
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("SSRF: no addresses resolved for host %q", host)
-	}
-	return ips, nil
-}
-
-// validatePublicIP rejects any address that is not a globally routable unicast IP.
-func validatePublicIP(ip net.IP, host string) error {
-	if isPrivateIP(ip) {
-		return fmt.Errorf("SSRF: blocked non-public IP %q for host %q", ip.String(), host)
-	}
-	return nil
-}
-
-// blockedHosts lists cloud metadata endpoints that must never be fetched.
-var blockedHosts = map[string]bool{
-	"169.254.169.254":          true,
-	"169.254.170.2":            true,
-	"169.254.169.253":          true,
-	"metadata.google.internal": true,
-	"metadata.goog":            true,
-	"100.100.100.200":          true,
-}
-
-// checkSSRF validates a URL against the SSRF policy. Cloud metadata hostnames
-// and any host resolving to a private, loopback, link-local, unspecified,
-// CGNAT, or multicast address are rejected.
-func checkSSRF(rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("SSRF: unsupported URL scheme %q", u.Scheme)
-	}
-	host := u.Hostname()
-	if host == "" {
-		return fmt.Errorf("SSRF: missing host in %q", rawURL)
-	}
-	if blockedHosts[strings.ToLower(host)] {
-		return fmt.Errorf("SSRF: blocked host %q (cloud metadata)", host)
-	}
-	if _, err := resolveValidatedHost(context.Background(), host, true); err != nil {
-		return err
-	}
-	return nil
-}
-
-// isPrivateIP reports whether ip is not a globally routable unicast address.
-func isPrivateIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-	// IPv4 and IPv4-mapped IPv6 addresses are checked explicitly so the
-	// special ranges below cannot be smuggled in as ::ffff:a.b.c.d.
-	if ip4 := ip.To4(); ip4 != nil {
-		switch {
-		case ip4[0] == 0: // 0.0.0.0/8 "this network" (includes 0.0.0.0)
-			return true
-		case ip4[0] == 10: // 10.0.0.0/8
-			return true
-		case ip4[0] == 127: // 127.0.0.0/8 loopback
-			return true
-		case ip4[0] == 169 && ip4[1] == 254: // 169.254.0.0/16 link-local / metadata
-			return true
-		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31: // 172.16.0.0/12
-			return true
-		case ip4[0] == 192 && ip4[1] == 168: // 192.168.0.0/16
-			return true
-		case ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127: // 100.64.0.0/10 CGNAT
-			return true
-		// Note: 198.18.0.0/15 is deliberately NOT blocked. Sandboxes and
-		// transparent egress proxies commonly map public names into that
-		// benchmarking range, so blocking it breaks legitimate fetches.
-		case ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 0: // 192.0.0.0/24 IETF protocol assignments
-			return true
-		case ip4[0] >= 240: // 240.0.0.0/4 reserved, includes 255.255.255.255
-			return true
-		}
-	}
-
-	// IPv4-compatible IPv6 (::a.b.c.d) is not covered by To4, and NAT64
-	// (64:ff9b::/96) embeds an IPv4 address; both could smuggle a loopback or
-	// private target past the checks above.
-	if ip16 := ip.To16(); ip16 != nil {
-		allZero := true
-		for _, b := range ip16[:12] {
-			if b != 0 {
-				allZero = false
-				break
-			}
-		}
-		if allZero {
-			return true
-		}
-		if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b {
-			return true
-		}
-	}
-
-	// Covers IPv6 loopback, link-local, unique-local, unspecified (::),
-	// multicast, and link-local multicast ranges; !IsGlobalUnicast also rejects
-	// the IPv4/6 broadcast and other non-unicast forms.
-	return !ip.IsGlobalUnicast() ||
-		ip.IsUnspecified() ||
-		ip.IsLoopback() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() ||
-		ip.IsPrivate()
 }
 
 // ── HTML to Markdown converter ──

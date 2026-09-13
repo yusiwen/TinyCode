@@ -190,3 +190,69 @@ func TestHTTPResponseIDMismatchRejected(t *testing.T) {
 		t.Fatal("expected error for mismatched response id, got nil")
 	}
 }
+
+// TestHTTPTransportRefusesRedirectToMetadata proves the MCP HTTP transport uses
+// the shared SSRF-hardened client: a compromised endpoint cannot redirect the
+// agent to the cloud metadata service.
+func TestHTTPTransportRefusesRedirectToMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://169.254.169.254/latest/meta-data/", http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient(server.URL, nil)
+	if _, err := client.Initialize(context.Background()); err == nil {
+		t.Fatal("expected a 302 to the cloud metadata endpoint to be refused")
+	} else if !strings.Contains(err.Error(), "redirect blocked") {
+		t.Fatalf("expected a redirect-blocked error, got: %v", err)
+	}
+}
+
+// TestHTTPTransportReachesLoopbackServer documents that the loopback allowance
+// keeps a deliberately configured local MCP server reachable through the
+// SSRF-hardened transport.
+func TestHTTPTransportReachesLoopbackServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"local","version":"1.0.0"}}}`))
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient(server.URL, nil)
+	info, err := client.Initialize(context.Background())
+	if err != nil {
+		t.Fatalf("Initialize against a loopback server: %v", err)
+	}
+	if info.Name != "local" {
+		t.Fatalf("expected server name %q, got %q", "local", info.Name)
+	}
+}
+
+// TestHTTPTransportLoopbackScopedToConfiguredEndpoint pins the security
+// boundary: loopback is reachable only when the configured endpoint is itself
+// loopback, so a public MCP endpoint cannot be redirected to a local service.
+func TestHTTPTransportLoopbackScopedToConfiguredEndpoint(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	local, ok := NewHTTPClient("http://127.0.0.1:9000/mcp", nil).client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("expected the MCP transport to use *http.Transport")
+	}
+	// Validation must pass for the configured loopback endpoint; the dial then
+	// fails only because nothing listens on that port.
+	if _, err := local.DialContext(ctx, "tcp", "127.0.0.1:1"); err == nil {
+		t.Log("unexpectedly connected to 127.0.0.1:1")
+	} else if strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("a configured loopback endpoint must stay reachable, got: %v", err)
+	}
+
+	remote, ok := NewHTTPClient("https://mcp.example.com/mcp", nil).client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("expected the MCP transport to use *http.Transport")
+	}
+	if _, err := remote.DialContext(ctx, "tcp", "127.0.0.1:1"); err == nil {
+		t.Fatal("a public MCP endpoint must not be able to dial loopback")
+	} else if !strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("expected an SSRF block for a public endpoint, got: %v", err)
+	}
+}
