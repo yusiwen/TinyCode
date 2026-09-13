@@ -322,9 +322,12 @@ const browserPreflightTimeout = 10 * time.Second
 // redirect chain with the SSRF-protected client: a chain that leaves the public
 // internet is refused before the browser starts.
 //
-// Page-level redirects (JavaScript, meta refresh) cannot be observed this way
-// and remain a residual risk; a request-interception proxy would be needed to
-// close them.
+// This is only the pre-flight check. Requests that only the browser can observe
+// (HTTP 3xx hops, JavaScript/meta-refresh redirects, XHR/fetch, frames and other
+// subresources) are enforced in-browser by the request interceptor wired up in
+// crawlViaRod, which applies the same policy through browserRequestAllowed. The
+// --dump-dom paths (crawlViaExec, tryBrowser) cannot intercept requests and stay
+// limited to this pre-flight check.
 func checkBrowserTarget(rawURL string) error {
 	if skipSSRFCheck {
 		return nil

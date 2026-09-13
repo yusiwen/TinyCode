@@ -104,6 +104,99 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	return processContent(string(output)), nil
 }
 
+// browserRequestAllowed is the SSRF predicate applied to every request the
+// headless browser makes, not just the top-level navigation. It returns nil for
+// a public http(s) URL, for schemes that never touch the network (inline
+// `data:`/`blob:` subresources, which pages use heavily) and whenever the
+// package-wide skipSSRFCheck test hook is set.
+//
+// It is deliberately resolution-only: it performs no HTTP request, so it is safe
+// to call from inside the browser's request-interception handler, where a nested
+// fetch could deadlock or recurse back into the interceptor.
+func browserRequestAllowed(rawURL string) error {
+	if skipSSRFCheck {
+		return nil
+	}
+	if scheme := urlScheme(rawURL); nonNetworkScheme(scheme) {
+		return nil
+	}
+	return checkSSRF(rawURL)
+}
+
+// nonNetworkScheme reports whether a URL scheme is resolved locally by the
+// browser and therefore cannot be used to reach a network service. `file:` and
+// the network-capable schemes are deliberately NOT in this set.
+func nonNetworkScheme(scheme string) bool {
+	switch scheme {
+	case "data", "blob", "about", "chrome", "devtools":
+		return true
+	}
+	return false
+}
+
+// urlScheme returns the lower-cased scheme of rawURL, or "" when it has none.
+func urlScheme(rawURL string) string {
+	i := strings.Index(rawURL, ":")
+	if i <= 0 {
+		return ""
+	}
+	scheme := rawURL[:i]
+	for _, r := range scheme {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '+' || r == '-' || r == '.') {
+			return ""
+		}
+	}
+	return strings.ToLower(scheme)
+}
+
+// hijackDecision is the outcome of applying the SSRF policy to one intercepted
+// request: let it reach the network, or fail it before any bytes are sent.
+type hijackDecision int
+
+const (
+	// hijackContinue forwards the request to its real destination unchanged.
+	hijackContinue hijackDecision = iota
+	// hijackAbort fails the request without contacting the target.
+	hijackAbort
+)
+
+// browserHijackDecisionFor maps the SSRF decision for a request URL onto the
+// action the rod interceptor must take. It is a pure function of the URL (plus
+// the SSRF lookup) so the policy is unit-testable without a browser.
+func browserHijackDecisionFor(rawURL string) hijackDecision {
+	if browserRequestAllowed(rawURL) == nil {
+		return hijackContinue
+	}
+	return hijackAbort
+}
+
+// interceptBrowserRequest is the rod request-interception handler. Chromium
+// resolves DNS, follows redirects and loads subresources itself, so the
+// pre-flight checkBrowserTarget call cannot see them; this handler runs for
+// every request the browser makes (documents, 3xx hops, JS/meta redirects,
+// XHR/fetch, frames, images and other subresources) and only public http(s)
+// targets are continued.
+//
+// Both branches must be explicit: a handler that neither continues nor fails a
+// request makes rod fulfil it with a synthetic 200 response.
+func interceptBrowserRequest(h *rod.Hijack) {
+	// rod invokes handlers from its own dispatcher goroutine, where the
+	// recover() in crawlViaRod cannot reach. A panic here would kill the whole
+	// agent process, so fail the request closed instead.
+	defer func() {
+		if r := recover(); r != nil {
+			h.Response.Fail(proto.NetworkErrorReasonAborted)
+		}
+	}()
+
+	if browserHijackDecisionFor(h.Request.URL().String()) == hijackAbort {
+		// Fail (not MustFail) so a protocol error cannot panic this goroutine.
+		h.Response.Fail(proto.NetworkErrorReasonAborted)
+		return
+	}
+	h.ContinueRequest(&proto.FetchContinueRequest{})
+}
+
 // crawlViaRod uses go-rod to render the page (auto-downloads Chromium if needed).
 // Every rod call uses its error-returning form: a panic inside a tool goroutine
 // would terminate the whole agent process.
@@ -129,6 +222,22 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 		return "", fmt.Errorf("connect browser: %w", err)
 	}
 	defer browser.Close()
+
+	// Enforce the SSRF policy inside Chromium. The pre-flight checkBrowserTarget
+	// call above only sees the top-level URL and its observable HTTP redirect
+	// chain; the interceptor covers everything Chromium requests afterwards,
+	// including page-level redirects and subresources. Registering it before the
+	// page is created means the initial navigation is intercepted too, and it is
+	// continued because checkBrowserTarget already validated that URL.
+	//
+	// Browser.HijackRequests (not Page.HijackRequests) covers the whole browser,
+	// so targets opened by the page cannot slip past the policy.
+	router := browser.HijackRequests()
+	if err := router.Add("*", "", interceptBrowserRequest); err != nil {
+		return "", fmt.Errorf("install request interceptor: %w", err)
+	}
+	defer func() { _ = router.Stop() }()
+	go router.Run()
 
 	page, err := browser.Page(proto.TargetCreateTarget{URL: url})
 	if err != nil {

@@ -273,3 +273,123 @@ func TestCheckBrowserTargetValidatesAddr(t *testing.T) {
 		t.Errorf("skipSSRFCheck=true should bypass the check, got %v", err)
 	}
 }
+
+// TestBrowserRequestAllowed covers the in-browser request predicate. It uses IP
+// literals only, so no DNS lookup (and no network) is required.
+func TestBrowserRequestAllowed(t *testing.T) {
+	previous := skipSSRFCheck
+	skipSSRFCheck = false
+	defer func() { skipSSRFCheck = previous }()
+
+	public := []string{
+		"http://93.184.216.34/",
+		"https://93.184.216.34/page?q=1",
+	}
+	for _, u := range public {
+		if err := browserRequestAllowed(u); err != nil {
+			t.Errorf("browserRequestAllowed(%q) = %v, want nil", u, err)
+		}
+	}
+
+	rejected := []string{
+		"http://169.254.169.254/latest/meta-data/", // cloud metadata
+		"http://127.0.0.1/",                        // loopback
+		"http://[::1]/",                            // IPv6 loopback
+		"http://0.0.0.0/",                          // unspecified
+		"file:///etc/passwd",                       // non-http scheme
+		"ftp://93.184.216.34/",                     // non-http scheme
+		"http://[::1",                              // malformed URL (unclosed bracket)
+		"",                                         // empty URL
+	}
+	for _, u := range rejected {
+		if err := browserRequestAllowed(u); err == nil {
+			t.Errorf("browserRequestAllowed(%q) = nil, want an error", u)
+		}
+	}
+
+	// The test hook disables the predicate for every input, public or not.
+	skipSSRFCheck = true
+	for _, u := range append(public, rejected...) {
+		if err := browserRequestAllowed(u); err != nil {
+			t.Errorf("skipSSRFCheck=true: browserRequestAllowed(%q) = %v, want nil", u, err)
+		}
+	}
+}
+
+// TestBrowserHijackDecisionFor pins the abort/continue mapping used by the rod
+// interception handler.
+func TestBrowserHijackDecisionFor(t *testing.T) {
+	previous := skipSSRFCheck
+	skipSSRFCheck = false
+	defer func() { skipSSRFCheck = previous }()
+
+	if got := browserHijackDecisionFor("http://93.184.216.34/"); got != hijackContinue {
+		t.Errorf("public URL decision = %v, want hijackContinue", got)
+	}
+	for _, u := range []string{
+		"http://169.254.169.254/latest/meta-data/",
+		"http://127.0.0.1/",
+		"http://[::1]/",
+		"file:///etc/passwd",
+		"http://[::1",
+	} {
+		if got := browserHijackDecisionFor(u); got != hijackAbort {
+			t.Errorf("browserHijackDecisionFor(%q) = %v, want hijackAbort", u, got)
+		}
+	}
+
+	// The hook also bypasses the hijack decision.
+	skipSSRFCheck = true
+	if got := browserHijackDecisionFor("http://169.254.169.254/latest/meta-data/"); got != hijackContinue {
+		t.Errorf("skipSSRFCheck=true decision = %v, want hijackContinue", got)
+	}
+}
+
+// TestBrowserRequestAllowedNonNetworkSchemes covers local-only schemes: inline
+// data:/blob: subresources must not be aborted (they never touch the network),
+// while file: and network schemes other than http(s) must be.
+func TestBrowserRequestAllowedNonNetworkSchemes(t *testing.T) {
+	saved := skipSSRFCheck
+	skipSSRFCheck = false
+	defer func() { skipSSRFCheck = saved }()
+
+	allowed := []string{
+		"data:image/png;base64,iVBORw0KGgo=",
+		"blob:https://example.com/1234",
+		"about:blank",
+	}
+	for _, u := range allowed {
+		if err := browserRequestAllowed(u); err != nil {
+			t.Errorf("browserRequestAllowed(%q) = %v, want nil", u, err)
+		}
+	}
+
+	blocked := []string{
+		"file:///etc/passwd",
+		"ftp://example.com/x",
+		"ws://example.com/socket",
+		"http://169.254.169.254/",
+	}
+	for _, u := range blocked {
+		if err := browserRequestAllowed(u); err == nil {
+			t.Errorf("browserRequestAllowed(%q) = nil, want an error", u)
+		}
+	}
+}
+
+// TestUrlScheme covers the small scheme parser used by the predicate.
+func TestUrlScheme(t *testing.T) {
+	cases := map[string]string{
+		"HTTP://Example.com/": "http",
+		"data:text/plain,hi":  "data",
+		"//example.com/x":     "",
+		"no-colon":            "",
+		"we ird:x":            "",
+		"":                    "",
+	}
+	for in, want := range cases {
+		if got := urlScheme(in); got != want {
+			t.Errorf("urlScheme(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
