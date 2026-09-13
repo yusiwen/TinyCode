@@ -57,7 +57,7 @@
   },
 
   "agents": {
-    "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), model.",
+    "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), permissions (an explicit ruleset that REPLACES both the built-in ruleset and the two tool lists: [{action, resource, effect: allow|deny}], last match wins), model.",
     "plan": {
       "max_steps": 20,
       "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
@@ -67,7 +67,13 @@
     },
     "general": {
       "max_steps": 20,
-      "denied_tools": ["task", "task_collect", "skill_manage", "todo"]
+      "permissions": [
+        {"action": "*", "resource": "*", "effect": "allow"},
+        {"action": "task", "resource": "*", "effect": "deny"},
+        {"action": "task_collect", "resource": "*", "effect": "deny"},
+        {"action": "skill_manage", "resource": "*", "effect": "deny"},
+        {"action": "todo", "resource": "*", "effect": "deny"}
+      ]
     }
   },
 

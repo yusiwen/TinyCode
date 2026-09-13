@@ -59,7 +59,9 @@ func TruncateOutput(output string) TruncationResult {
 
 	// Save full output to a unique file
 	filePath := uniqueToolFile()
-	if wErr := os.WriteFile(filePath, []byte(output), 0644); wErr != nil {
+	// Tool output can contain secrets (env dumps, tokens), so keep the file
+	// readable only by the owner.
+	if wErr := os.WriteFile(filePath, []byte(output), 0600); wErr != nil {
 		// If we can't save, just return full output as-is
 		return TruncationResult{Content: output}
 	}

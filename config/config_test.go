@@ -272,3 +272,37 @@ func TestAddAllowedPathPreservesFile(t *testing.T) {
 		t.Errorf("allowed paths after reload = %+v, want 2 entries", cfg.Sandbox)
 	}
 }
+
+// TestMergeAgentPermissions covers the ruleset override added to AgentOverride.
+func TestMergeAgentPermissions(t *testing.T) {
+	base := DefaultConfig()
+	src := Config{
+		Agents: map[string]AgentOverride{
+			"plan": {Permissions: []AgentRule{
+				{Action: "*", Effect: "deny"},
+				{Action: "read_file", Effect: "allow"},
+			}},
+		},
+	}
+
+	got := merge(base, src)
+	perms := got.Agents["plan"].Permissions
+	if len(perms) != 2 {
+		t.Fatalf("permissions not merged: %+v", got.Agents["plan"])
+	}
+	if perms[0].Action != "*" || perms[0].Effect != "deny" {
+		t.Errorf("first rule = %+v, want a deny-all", perms[0])
+	}
+	if perms[1].Action != "read_file" || perms[1].Effect != "allow" {
+		t.Errorf("second rule = %+v, want an allow for read_file", perms[1])
+	}
+
+	// A config file must be able to express them too.
+	round, err := json.Marshal(got.Agents["plan"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(round), `"permissions"`) {
+		t.Errorf("permissions are not serialised: %s", round)
+	}
+}

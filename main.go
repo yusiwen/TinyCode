@@ -164,11 +164,29 @@ func newRootCmd() *cobra.Command {
 					if override.SystemPrompt != "" {
 						aCfg.SystemPrompt = override.SystemPrompt
 					}
-					// Every built-in agent ships a Permissions ruleset, which
-					// takes precedence over AllowedTools/DeniedTools. Translate
-					// the configured lists into rules so they are not silently
-					// ignored (see agent.TranslateToolLists).
-					if override.AllowedTools != nil || override.DeniedTools != nil {
+					// An explicit ruleset wins over the legacy tool lists.
+					if len(override.Permissions) > 0 {
+						rules := make(agent.Ruleset, 0, len(override.Permissions))
+						for _, r := range override.Permissions {
+							resource := r.Resource
+							if resource == "" {
+								resource = "*"
+							}
+							switch r.Effect {
+							case "allow":
+								rules = append(rules, agent.Rule{Action: r.Action, Resource: resource, Effect: agent.EffectAllow})
+							case "deny":
+								rules = append(rules, agent.Rule{Action: r.Action, Resource: resource, Effect: agent.EffectDeny})
+							default:
+								return fmt.Errorf("agents.%s.permissions: unknown effect %q (use \"allow\" or \"deny\")", name, r.Effect)
+							}
+						}
+						aCfg.Permissions = rules
+					} else if override.AllowedTools != nil || override.DeniedTools != nil {
+						// Every built-in agent ships a Permissions ruleset, which
+						// takes precedence over AllowedTools/DeniedTools. Translate
+						// the configured lists into rules so they are not silently
+						// ignored (see agent.TranslateToolLists).
 						aCfg.Permissions = agent.TranslateToolLists(aCfg.Permissions, override.AllowedTools, override.DeniedTools)
 					}
 					if override.Model != "" {
@@ -409,7 +427,8 @@ func newRootCmd() *cobra.Command {
 				}
 				md := sess.ExportMarkdown()
 				outPath := exportSession + ".md"
-				if err := os.WriteFile(outPath, []byte(md), 0644); err != nil {
+				// An exported transcript contains the whole conversation.
+				if err := os.WriteFile(outPath, []byte(md), 0600); err != nil {
 					return fmt.Errorf("write export: %w", err)
 				}
 				fmt.Printf("Exported session to: %s\n", outPath)

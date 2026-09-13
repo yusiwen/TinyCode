@@ -30,6 +30,14 @@ type TruncationConfig struct {
 	OutputDir string `json:"output_dir,omitempty"`
 }
 
+// AgentRule mirrors agent.Rule for configuration files. Keeping a local copy
+// avoids a config → agent dependency; main.go translates it.
+type AgentRule struct {
+	Action   string `json:"action"`             // tool name or "*"
+	Resource string `json:"resource,omitempty"` // ignored today, defaults to "*"
+	Effect   string `json:"effect"`             // "allow" | "deny"
+}
+
 // AgentOverride holds per-agent configuration overrides.
 type AgentOverride struct {
 	MaxSteps     int      `json:"max_steps,omitempty"`
@@ -37,6 +45,10 @@ type AgentOverride struct {
 	DeniedTools  []string `json:"denied_tools,omitempty"`
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 	Model        string   `json:"model,omitempty"` // "<provider>/<model>", e.g. "deepseek/deepseek-v4-pro"
+	// Permissions replaces the agent's built-in ruleset when set (last match
+	// wins, like the built-in rules). It takes precedence over
+	// allowed_tools/denied_tools.
+	Permissions []AgentRule `json:"permissions,omitempty"`
 }
 
 // APIKey returns the env var name to look up for this provider's API key.
@@ -246,6 +258,9 @@ func merge(dst, src Config) Config {
 		}
 		if override.Model != "" {
 			existing.Model = override.Model
+		}
+		if override.Permissions != nil {
+			existing.Permissions = override.Permissions
 		}
 		if override.AllowedTools != nil {
 			existing.AllowedTools = override.AllowedTools
