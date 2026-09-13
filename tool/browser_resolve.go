@@ -6,7 +6,12 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// browserPinResolveTimeout bounds the DNS lookup used to build the pinning rule,
+// so a slow or hostile resolver cannot stall the browser path.
+const browserPinResolveTimeout = 5 * time.Second
 
 // hostRuleFor renders a Chromium --host-resolver-rules entry that pins host to
 // ip, or "" when pinning does not apply (the host is already an IP literal, or
@@ -56,7 +61,10 @@ func browserHostRule(rawURL string) string {
 		return ""
 	}
 
-	ips, err := resolveValidatedHost(context.Background(), host, true)
+	ctx, cancel := context.WithTimeout(context.Background(), browserPinResolveTimeout)
+	defer cancel()
+
+	ips, err := resolveValidatedHost(ctx, host, true)
 	if err != nil || len(ips) == 0 {
 		return ""
 	}
