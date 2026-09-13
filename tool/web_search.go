@@ -27,7 +27,7 @@ type searchResult struct {
 // Primary: DuckDuckGo Lite (zero config). Optional: SearXNG if configured.
 func WebSearch() Tool {
 	return Tool{
-		Name:        "web_search",
+		Name: "web_search",
 		Description: "Search the web for information. " +
 			"Uses DuckDuckGo Lite (no API key needed) with optional SearXNG fallback. " +
 			"Returns up to 5 results by default with titles, URLs, and descriptions.",

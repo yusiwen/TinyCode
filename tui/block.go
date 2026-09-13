@@ -21,14 +21,14 @@ type TextChunk struct {
 
 // ContentBlock is a top-level block in the rendered message.
 type ContentBlock struct {
-	Type     string         // "paragraph", "heading", "code", "list", "quote", "hr", "table"
-	Chunks   []TextChunk    // inline content
-	Level    int            // heading level
-	Language string         // code block language
-	Code     string         // raw code text
-	Items    []ContentBlock // list items / quote children
-	Numbered bool           // ordered list
-	Headers  [][]TextChunk  // table header cells
+	Type     string          // "paragraph", "heading", "code", "list", "quote", "hr", "table"
+	Chunks   []TextChunk     // inline content
+	Level    int             // heading level
+	Language string          // code block language
+	Code     string          // raw code text
+	Items    []ContentBlock  // list items / quote children
+	Numbered bool            // ordered list
+	Headers  [][]TextChunk   // table header cells
 	Rows     [][][]TextChunk // table body cells
 }
 

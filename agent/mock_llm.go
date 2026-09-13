@@ -10,8 +10,8 @@ import (
 // MockStep defines one LLM response in a multi-step sequence.
 type MockStep struct {
 	// What the LLM returns (either Content or ToolCalls, not both)
-	Content    string
-	ToolCalls  []types.ToolCall
+	Content   string
+	ToolCalls []types.ToolCall
 	// Expected tool results fed back to the LLM in the NEXT call
 	ToolResults []string
 }

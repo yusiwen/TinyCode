@@ -104,7 +104,7 @@ func TestThemeCommand(t *testing.T) {
 	}
 	last2 := m.messages[len(m.messages)-1]
 	t.Logf("after /theme nord: %q", last2.Content)
-	
+
 	// Check theme was applied via command handler
 	if ResponseLabel.Fg != lipgloss.Color("#88C0D0") {
 		t.Errorf("expected nord ResponseLabel after /theme nord, got %v", ResponseLabel.Fg)

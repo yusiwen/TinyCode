@@ -38,7 +38,7 @@ func (r *Registry) Find(name string) (Tool, bool) {
 	for _, t := range r.tools {
 		if t.Name == name {
 			return t, true
-			}
+		}
 	}
 	return Tool{}, false
 }

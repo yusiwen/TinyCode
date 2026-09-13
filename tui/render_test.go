@@ -7,11 +7,11 @@ import (
 
 // --- Builder helpers for ContentBlock ---
 
-func txt(s string) TextChunk           { return TextChunk{Text: s} }
-func bold(s string) TextChunk           { return TextChunk{Text: s, Bold: true} }
-func italic(s string) TextChunk         { return TextChunk{Text: s, Italic: true} }
-func code(s string) TextChunk           { return TextChunk{Text: s, Code: true} }
-func link(text, url string) TextChunk   { return TextChunk{Text: text, Link: url} }
+func txt(s string) TextChunk          { return TextChunk{Text: s} }
+func bold(s string) TextChunk         { return TextChunk{Text: s, Bold: true} }
+func italic(s string) TextChunk       { return TextChunk{Text: s, Italic: true} }
+func code(s string) TextChunk         { return TextChunk{Text: s, Code: true} }
+func link(text, url string) TextChunk { return TextChunk{Text: text, Link: url} }
 
 func para(chunks ...TextChunk) ContentBlock {
 	return ContentBlock{Type: "paragraph", Chunks: chunks}

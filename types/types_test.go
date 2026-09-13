@@ -34,8 +34,8 @@ func TestMessageCreation(t *testing.T) {
 
 func TestMessageWithOptionalFields(t *testing.T) {
 	msg := Message{
-		Role:       RoleAssistant,
-		Content:    "",
+		Role:    RoleAssistant,
+		Content: "",
 		ToolCalls: []ToolCall{
 			{
 				ID:        "call_123",

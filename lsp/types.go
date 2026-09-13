@@ -22,10 +22,10 @@ type Location struct {
 
 // SymbolInformation represents a document symbol (function, type, variable, etc.).
 type SymbolInformation struct {
-	Name          string `json:"name"`
-	Kind          int    `json:"kind"`
+	Name          string   `json:"name"`
+	Kind          int      `json:"kind"`
 	Location      Location `json:"location"`
-	ContainerName string `json:"containerName,omitempty"`
+	ContainerName string   `json:"containerName,omitempty"`
 }
 
 // Hover result.
@@ -65,11 +65,11 @@ type CompletionItem struct {
 
 // JSON-RPC message.
 type JSONRPCMessage struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id,omitempty"` // int or string
-	Method  string `json:"method,omitempty"`
-	Params  any    `json:"params,omitempty"`
-	Result  any    `json:"result,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	ID      any           `json:"id,omitempty"` // int or string
+	Method  string        `json:"method,omitempty"`
+	Params  any           `json:"params,omitempty"`
+	Result  any           `json:"result,omitempty"`
 	Error   *JSONRPCError `json:"error,omitempty"`
 }
 

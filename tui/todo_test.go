@@ -17,9 +17,9 @@ func TestTodoInjection(t *testing.T) {
 	}, false)
 
 	msg := chatMessage{
-		Role: "assistant",
+		Role:             "assistant",
 		ReasoningContent: "Let me plan this project step by step...",
-		Content: "Project created successfully!",
+		Content:          "Project created successfully!",
 		ToolCalls: []ToolCallInfo{
 			{Name: "todo", Arg: `{"todos":[{"id":"1","content":"Create parent POM","status":"in_progress"}]}`},
 			{Name: "bash", Arg: "mkdir -p project"},

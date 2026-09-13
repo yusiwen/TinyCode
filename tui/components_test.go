@@ -7,7 +7,7 @@ import (
 
 func TestToolCallComponentSkipsTodo(t *testing.T) {
 	msg := chatMessage{
-		Role: "assistant",
+		Role:    "assistant",
 		Content: "Let me plan this:",
 		ToolCalls: []ToolCallInfo{
 			{Name: "todo", Arg: `{"todos":[{"id":"1","content":"Create files","status":"in_progress"}]}`},

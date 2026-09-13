@@ -13,7 +13,7 @@ import (
 // own reusable capabilities without code changes.
 func SkillManage() Tool {
 	return Tool{
-		Name:        "skill_manage",
+		Name: "skill_manage",
 		Description: "Manage skills: create, edit, delete, or list. " +
 			"Skills are reusable instruction documents (SKILL.md format) that guide tool usage. " +
 			"Use this to create new skills, update existing ones, remove outdated ones, or list all available skills.",

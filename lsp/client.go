@@ -24,8 +24,8 @@ func NewClient(conn *Conn) *Client {
 // Initialize sends the initialize request and returns server capabilities.
 func (c *Client) Initialize(rootURI string) error {
 	params := map[string]any{
-		"processId": nil,
-		"rootUri":   rootURI,
+		"processId":    nil,
+		"rootUri":      rootURI,
 		"capabilities": map[string]any{},
 	}
 

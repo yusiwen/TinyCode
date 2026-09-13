@@ -12,11 +12,11 @@ import (
 
 func streamModel() *TuiModel {
 	m := &TuiModel{
-		ready:    true,
-		width:    100,
-		height:   50,
-		status:   StatusIdle,
-		messages: []chatMessage{},
+		ready:       true,
+		width:       100,
+		height:      50,
+		status:      StatusIdle,
+		messages:    []chatMessage{},
 		selectStart: -1,
 		selectEnd:   -1,
 	}

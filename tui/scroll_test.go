@@ -11,12 +11,12 @@ import (
 // scrollTestModel creates a model with a small viewport and many messages.
 func scrollTestModel(msgCount int) *TuiModel {
 	m := &TuiModel{
-		ready:  true,
-		width:  80,
-		height: 20,
+		ready:       true,
+		width:       80,
+		height:      20,
 		selectStart: -1,
 		selectEnd:   -1,
-		status:  StatusIdle,
+		status:      StatusIdle,
 	}
 	m.vp = viewport.New(80, 5) // tiny viewport: only 5 visible lines
 	for i := 0; i < msgCount; i++ {

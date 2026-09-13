@@ -11,11 +11,11 @@ import (
 
 func layoutModel(termHeight int) *TuiModel {
 	m := &TuiModel{
-		ready:        true,
-		height:       termHeight,
-		width:        80,
-		status:       StatusIdle,
-		messages:     []chatMessage{},
+		ready:       true,
+		height:      termHeight,
+		width:       80,
+		status:      StatusIdle,
+		messages:    []chatMessage{},
 		selectStart: -1,
 		selectEnd:   -1,
 	}

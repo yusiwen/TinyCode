@@ -7,7 +7,7 @@ import (
 // Registry holds named agent configurations and tracks the active agent.
 type Registry struct {
 	agents  map[string]*AgentConfig
-	current string // name of the currently active agent
+	current string   // name of the currently active agent
 	order   []string // insertion order for cycling
 	pos     int
 }

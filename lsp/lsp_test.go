@@ -140,7 +140,7 @@ func TestFormatDiagnostics(t *testing.T) {
 // TestFormatDiagnosticsNoErrors verifies that no errors = empty output.
 func TestFormatDiagnosticsNoErrors(t *testing.T) {
 	diags := []Diagnostic{
-		{Severity: 2, Message: "unused variable"},    // WARN
+		{Severity: 2, Message: "unused variable"},     // WARN
 		{Severity: 3, Message: "deprecated function"}, // INFO
 	}
 

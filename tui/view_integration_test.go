@@ -33,14 +33,14 @@ func stripANSIView(s string) string {
 
 func TestViewRendersUserMessage(t *testing.T) {
 	m := &TuiModel{
-		ready:    true,
-		width:    80,
-		height:   40,
+		ready:  true,
+		width:  80,
+		height: 40,
 		messages: []chatMessage{
 			{Role: "user", Content: "Hello from user"},
 		},
-		selectStart: -1,
-		selectEnd:   -1,
+		selectStart:  -1,
+		selectEnd:    -1,
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		input:        textarea.New(),
@@ -63,15 +63,15 @@ func TestViewRendersUserMessage(t *testing.T) {
 
 func TestViewRendersAssistantResponse(t *testing.T) {
 	m := &TuiModel{
-		ready:    true,
-		width:    80,
-		height:   40,
+		ready:  true,
+		width:  80,
+		height: 40,
 		messages: []chatMessage{
 			{Role: "user", Content: "Hi"},
 			{Role: "assistant", Content: "**bold** and `code`"},
 		},
-		selectStart: -1,
-		selectEnd:   -1,
+		selectStart:  -1,
+		selectEnd:    -1,
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		input:        textarea.New(),
@@ -85,8 +85,8 @@ func TestViewRendersAssistantResponse(t *testing.T) {
 	output := stripANSIView(m.View())
 
 	checks := []string{
-		"bold",              // rendered bold text (no "Response:" label anymore)
-		"code",              // rendered inline code text
+		"bold", // rendered bold text (no "Response:" label anymore)
+		"code", // rendered inline code text
 	}
 	for _, s := range checks {
 		if !strings.Contains(output, s) {
@@ -97,15 +97,15 @@ func TestViewRendersAssistantResponse(t *testing.T) {
 
 func TestViewRendersReasoning(t *testing.T) {
 	m := &TuiModel{
-		ready:    true,
-		width:    80,
-		height:   40,
+		ready:  true,
+		width:  80,
+		height: 40,
 		messages: []chatMessage{
 			{Role: "assistant", Content: "Final answer.",
 				ReasoningContent: "Step by step thinking.\nMore reasoning."},
 		},
-		selectStart: -1,
-		selectEnd:   -1,
+		selectStart:  -1,
+		selectEnd:    -1,
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		input:        textarea.New(),
@@ -119,10 +119,10 @@ func TestViewRendersReasoning(t *testing.T) {
 	output := stripANSIView(m.View())
 
 	checks := []string{
-		"[-]",               // reasoning expanded marker
-		"Step by step",      // reasoning content
-		"More reasoning",    // reasoning content
-		"Final answer.",     // content (no "Response:" label anymore — color differentiates)
+		"[-]",            // reasoning expanded marker
+		"Step by step",   // reasoning content
+		"More reasoning", // reasoning content
+		"Final answer.",  // content (no "Response:" label anymore — color differentiates)
 	}
 	for _, s := range checks {
 		if !strings.Contains(output, s) {
@@ -133,14 +133,14 @@ func TestViewRendersReasoning(t *testing.T) {
 
 func TestViewRendersSystemMessage(t *testing.T) {
 	m := &TuiModel{
-		ready:    true,
-		width:    80,
-		height:   40,
+		ready:  true,
+		width:  80,
+		height: 40,
 		messages: []chatMessage{
 			{Role: "system", Content: "Mode switched to plan"},
 		},
-		selectStart: -1,
-		selectEnd:   -1,
+		selectStart:  -1,
+		selectEnd:    -1,
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		input:        textarea.New(),
@@ -160,11 +160,11 @@ func TestViewRendersSystemMessage(t *testing.T) {
 
 func TestViewRendersStatusBar(t *testing.T) {
 	m := &TuiModel{
-		ready:    true,
-		width:    80,
-		height:   40,
-		selectStart: -1,
-		selectEnd:   -1,
+		ready:        true,
+		width:        80,
+		height:       40,
+		selectStart:  -1,
+		selectEnd:    -1,
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 		input:        textarea.New(),

@@ -66,13 +66,13 @@ type Config struct {
 // DefaultConfigs is the built-in mapping of languages to LSP servers.
 // Users can override this via .env or config file.
 var DefaultConfigs = []Config{
-	{Language: "go",         Command: "gopls"},
-	{Language: "python",     Command: "pyright",     Args: []string{"--stdio"}},
+	{Language: "go", Command: "gopls"},
+	{Language: "python", Command: "pyright", Args: []string{"--stdio"}},
 	{Language: "typescript", Command: "typescript-language-server", Args: []string{"--stdio"}},
 	{Language: "javascript", Command: "typescript-language-server", Args: []string{"--stdio"}},
-	{Language: "rust",       Command: "rust-analyzer"},
-	{Language: "cpp",        Command: "clangd"},
-	{Language: "java",       Command: "java",         Args: []string{"-jar", "eclipse.jdt.ls"}},
+	{Language: "rust", Command: "rust-analyzer"},
+	{Language: "cpp", Command: "clangd"},
+	{Language: "java", Command: "java", Args: []string{"-jar", "eclipse.jdt.ls"}},
 }
 
 // FindConfig looks up the LSP server config for a language.
