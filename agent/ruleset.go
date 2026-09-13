@@ -41,6 +41,42 @@ func FilterTools(allTools []string, rules ...Rule) []string {
 	return out
 }
 
+// TranslateToolLists converts the legacy per-agent AllowedTools/DeniedTools
+// lists into permission rules on top of base.
+//
+// Every built-in agent ships a Ruleset and the ruleset takes precedence over
+// the two lists, so without this translation a configured tool list would be
+// silently ignored. A non-empty allowed list acts as a whitelist (deny
+// everything, then allow the listed tools). The base ruleset's *named* deny
+// rules are re-applied on top of the whitelist, so a configured whitelist can
+// never silently re-grant a tool the agent explicitly denies (for example
+// `task` for the general sub-agent). An empty-but-non-nil allowed list means
+// "no override" rather than "deny everything". Denied names are appended last,
+// so a tool named in both lists ends up denied.
+func TranslateToolLists(base Ruleset, allowed, denied []string) Ruleset {
+	rules := append(Ruleset(nil), base...)
+
+	if len(allowed) > 0 {
+		whitelist := Ruleset{{Action: "*", Resource: "*", Effect: EffectDeny}}
+		for _, name := range allowed {
+			whitelist = append(whitelist, Rule{Action: name, Resource: "*", Effect: EffectAllow})
+		}
+		for _, r := range base {
+			// Only named denies are preserved: a blanket "*" deny is what the
+			// whitelist is meant to replace.
+			if r.Effect == EffectDeny && r.Action != "*" {
+				whitelist = append(whitelist, r)
+			}
+		}
+		rules = whitelist
+	}
+
+	for _, name := range denied {
+		rules = append(rules, Rule{Action: name, Resource: "*", Effect: EffectDeny})
+	}
+	return rules
+}
+
 // wildcardMatch reports whether the pattern matches the value.
 // Pattern supports '*' (any sequence) and '?' (any single char).
 // Multi-segment patterns like "bash:ls *" match against action:resource.

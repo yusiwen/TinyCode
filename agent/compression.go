@@ -37,6 +37,22 @@ func EstimateMessagesTokens(msgs []types.Message) int {
 	return total
 }
 
+// groupEnd returns the index just past the message group containing idx. A
+// group starts at a user message and runs until the next user message, so an
+// assistant message with tool_calls always stays together with its tool
+// results. Returns len(messages) when no later user message exists.
+func groupEnd(messages []types.Message, idx int) int {
+	if idx < 0 {
+		return 0
+	}
+	for i := idx + 1; i < len(messages); i++ {
+		if messages[i].Role == types.RoleUser {
+			return i
+		}
+	}
+	return len(messages)
+}
+
 // compressHistory compresses a.History when it exceeds the threshold.
 func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) ([]types.Message, error) {
 	if a.CompressionThreshold <= 0 || a.ContextLength <= 0 {
@@ -59,8 +75,12 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 	if protectFirst > len(userMsgIndices) {
 		protectFirst = len(userMsgIndices)
 	}
-	headEnd := userMsgIndices[protectFirst-1] + 3
-	if headEnd >= len(messages) {
+	// Snap the head cut forward to a message-group boundary. A fixed offset can
+	// split an assistant message with tool_calls from its tool results, and an
+	// assistant tool_calls message whose tool responses are missing is rejected
+	// by OpenAI-compatible APIs.
+	headEnd := groupEnd(messages, userMsgIndices[protectFirst-1]+2)
+	if headEnd > len(messages) {
 		headEnd = len(messages)
 	}
 	tailBudget := 2
@@ -93,6 +113,10 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 				content = content[:200] + "..."
 			}
 			middleText.WriteString(fmt.Sprintf("Tool (%s): %s\n", m.Name, content))
+		case types.RoleSystem:
+			// Preserve earlier summaries so compressing twice does not discard
+			// the context that was already distilled.
+			middleText.WriteString(fmt.Sprintf("Context: %s\n", m.Content))
 		}
 	}
 
@@ -110,8 +134,8 @@ Provide a concise summary in 3-5 sentences.`, middleText.String())
 	summarizer := &Agent{
 		Provider: a.Provider,
 		Config: &AgentConfig{
-			Name:    "compact",
-			Mode:    AgentModePrimary,
+			Name:     "compact",
+			Mode:     AgentModePrimary,
 			MaxSteps: 1,
 		},
 		Tools: nil,

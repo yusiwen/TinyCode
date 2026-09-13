@@ -10,6 +10,14 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 )
 
+// syncTaskTimeoutDefault is the production timeout for a synchronous
+// sub-agent run.
+const syncTaskTimeoutDefault = 120 * time.Second
+
+// taskTimeout bounds a synchronous sub-agent run. It is a variable so tests can
+// shorten it; production keeps syncTaskTimeoutDefault.
+var taskTimeout = syncTaskTimeoutDefault
+
 // TaskToolDeps holds the dependencies the task tool needs to create sub-agents.
 type TaskToolDeps struct {
 	// Provider is the shared LLM provider for sub-agents.
@@ -26,7 +34,7 @@ type TaskToolDeps struct {
 // TaskTool creates the task tool for delegating to sub-agents.
 func TaskTool(deps *TaskToolDeps) agent.Tool {
 	return agent.Tool{
-		Name:        "task",
+		Name: "task",
 		Description: "Delegate a unit of work to a sub-agent for focused execution. " +
 			"The sub-agent runs independently and its step count does not count against your step budget.\n\n" +
 			"Use this when a task involves multiple independent work items " +
@@ -99,17 +107,33 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 				output string
 				err    error
 			}
+			// The sub-agent runs on a derived, cancellable context so a timeout
+			// or a cancelled parent context stops it instead of leaving it to
+			// keep calling tools in the background. The channel is buffered so
+			// an abandoned goroutine can always deliver its result and exit.
+			runCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			ch := make(chan result, 1)
 			go func() {
-				out, err := sub.Run(ctx, goal)
+				out, err := sub.Run(runCtx, goal)
 				ch <- result{out, err}
 			}()
 
 			var r result
 			select {
 			case r = <-ch:
-			case <-time.After(120 * time.Second):
+			case <-time.After(taskTimeout):
+				cancel()
 				return "", fmt.Errorf("task: sub-agent %q timed out after 120s", name)
+			case <-ctx.Done():
+				// Prefer a result that is already available; only report the
+				// cancellation when the sub-agent did not finish in time.
+				select {
+				case r = <-ch:
+				default:
+					cancel()
+					return "", fmt.Errorf("task: sub-agent %q failed: %w", name, ctx.Err())
+				}
 			}
 
 			if r.err != nil {
@@ -131,7 +155,7 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 // TaskCollectTool creates the tool for collecting background task results.
 func TaskCollectTool(mgr *BackgroundTaskManager) agent.Tool {
 	return agent.Tool{
-		Name:        "task_collect",
+		Name: "task_collect",
 		Description: "Retrieve results from background tasks started with task(bg=true). " +
 			"Blocks until the specified task completes. " +
 			"Use this after launching multiple background tasks to collect their results.",
@@ -150,7 +174,7 @@ func TaskCollectTool(mgr *BackgroundTaskManager) agent.Tool {
 			if id == "" {
 				return "", fmt.Errorf("task_collect: id is required")
 			}
-			result, err := mgr.Collect(id)
+			result, err := mgr.CollectContext(ctx, id)
 			if err != nil {
 				return "", err
 			}

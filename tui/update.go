@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,12 +12,13 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/lsp"
+	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
-	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
-	"github.com/yusiwen/tinycode/lsp"
 	"os"
 )
 
@@ -275,7 +277,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Enter → submit
 		if msg.Type == tea.KeyEnter && !msg.Alt {
-			if m.status != StatusStreaming && strings.TrimSpace(m.input.Value()) != "" {
+			if m.status != StatusStreaming && !m.runIsActive() && strings.TrimSpace(m.input.Value()) != "" {
 				return m.submitInput()
 			}
 		}
@@ -321,38 +323,32 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.status == StatusStreaming {
-				m.status = StatusIdle
-				m.ShowStatus("⏹ Interrupted")
+				switch {
+				case m.runAlreadyInterrupted():
+					// Cancellation already requested; wait for the run to unwind.
+					m.ShowStatus("⏹ Interrupting...")
+				case m.cancelRun():
+					// A live run owns the status now: it flips back to Idle
+					// only when its terminal StreamDone is processed.
+					// Unblock any permission dialog the run is waiting on.
+					tool.CancelPendingPermission()
+					m.ShowStatus("⏹ Interrupted")
+				default:
+					// No live run attached (state set directly): reset here.
+					m.status = StatusIdle
+					m.ShowStatus("⏹ Interrupted")
+				}
 				m.autoScroll()
 				return m, nil
-				}
-				if !m.quitConfirm {
+			}
+			if !m.quitConfirm {
 				m.quitConfirm = true
 				m.statusMsg = "Press Ctrl+C again to quit"
 				m.autoScroll()
 				return m, nil
 			}
 			// Save session before quitting
-			if m.SessionDir != "" && len(m.messages) > 0 {
-				now := time.Now().Format("20060102-150405")
-				sessionID := "TUI-" + now
-				s := session.New(sessionID, m.SessionDir)
-				for _, chatMsg := range m.messages {
-					s.Append(types.Message{
-						Role:             chatMsg.Role,
-						Content:          chatMsg.Content,
-						ReasoningContent: chatMsg.ReasoningContent,
-					})
-				}
-				if m.provReg != nil {
-					s.ModelName = m.provReg.Current().Name()
-				}
-				// Apply auto-generated title
-				if m.sessionTitle != "" {
-					s.Title = m.sessionTitle
-				}
-				s.Flush()
-			}
+			m.persistSession()
 			return m, tea.Quit
 		}
 
@@ -372,27 +368,51 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case ChatMsg:
+		// Refuse a second concurrent run: the previous run may still be
+		// unwinding (e.g. right after an interrupt).
+		ctx, runID, ok := m.beginRun()
+		if !ok {
+			m.ShowStatus("A run is already in progress")
+			m.autoScroll()
+			return m, nil
+		}
 		m.messages = append(m.messages, chatMessage{Role: "user", Content: msg.Text})
 		cur := chatMessage{Role: "assistant", Streaming: true}
 		m.messages = append(m.messages, cur)
 		m.curAssistant = &m.messages[len(m.messages)-1]
 		m.status = StatusStreaming
 		m.streamDoneNotified = false
-		go m.runAgent(msg.Text)
+		go m.runAgent(ctx, runID, msg.Text)
 		return m, m.waitForStream()
 
 	case ToolCallMsg:
+		if m.isStaleRun(msg.RunID) {
+			return m, m.waitForStream()
+		}
+		count := 0
 		if m.curAssistant != nil {
 			m.curAssistant.ToolCalls = append(m.curAssistant.ToolCalls, ToolCallInfo{
 				Name: msg.Name,
 				Arg:  msg.Arg,
 			})
+			count = len(m.curAssistant.ToolCalls)
 		}
-		tlog.Debug("toolcall.msg", "name", msg.Name, "arg", msg.Arg, "count", len(m.curAssistant.ToolCalls))
+		// One reported tool call counts, even if it cannot be attached to a
+		// message (e.g. a late message after the assistant was finalized).
+		m.sessionToolCalls++
+		tlog.Debug("toolcall.msg", "name", msg.Name, "arg", msg.Arg, "count", count)
 		m.autoScroll()
 		return m, m.waitForStream()
 
 	case ToolResultMsg:
+		if m.isStaleRun(msg.RunID) {
+			// Unblock a run that is waiting on the render ack even though its
+			// output is no longer displayed.
+			if msg.AckCh != nil {
+				msg.AckCh <- struct{}{}
+			}
+			return m, m.waitForStream()
+		}
 		// If the completed tool was "todo", mark dirty and save the render
 		// ack channel. The agent goroutine blocks on this channel; View()
 		// signals it after the TODO is injected into the CellGrid.
@@ -408,14 +428,27 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.autoScroll()
 		return m, nil
 	case StreamMsg:
+		if m.isStaleRun(msg.RunID) {
+			return m, m.waitForStream()
+		}
 		if m.curAssistant == nil {
 			return m, m.waitForStream()
 		}
+		// Approximate token accounting. The running total is derived from the
+		// accumulated message text (like agent.EstimateTokens) rather than the
+		// delta length, so character-by-character streaming is counted too.
+		prevTokens := agent.EstimateTokens(m.curAssistant.Content) +
+			agent.EstimateTokens(m.curAssistant.ReasoningContent)
 		if msg.ReasoningDelta != "" {
 			m.curAssistant.ReasoningContent += msg.ReasoningDelta
 		}
 		if msg.TextDelta != "" {
 			m.curAssistant.Content += msg.TextDelta
+		}
+		curTokens := agent.EstimateTokens(m.curAssistant.Content) +
+			agent.EstimateTokens(m.curAssistant.ReasoningContent)
+		if curTokens > prevTokens {
+			m.sessionTokens += curTokens - prevTokens
 		}
 		// Mark the streaming message as dirty so View() re-renders it
 		if len(m.msgDirty) > 0 {
@@ -425,35 +458,52 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForStream()
 
 	case StreamDone:
-		// Check if this is an intermediate step (more to come) or the final response
-		isIntermediate := msg.IsIntermediate || (m.curAssistant != nil && len(m.curAssistant.ToolCalls) > 0)
-		if !isIntermediate {
-			m.status = StatusIdle
+		// Ignore output from a superseded run while a newer run is active.
+		if m.isStaleRun(msg.RunID) {
+			return m, m.waitForStream()
 		}
+		ca := m.curAssistant
+		// Check if this is an intermediate step (more to come) or the final
+		// response. An error always terminates the run, even when the message
+		// carries tool calls from the step that failed.
+		isIntermediate := msg.IsIntermediate || (msg.Error == nil && ca != nil && len(ca.ToolCalls) > 0)
 		if msg.Error != nil {
-			m.curAssistant.Content = fmt.Sprintf("Error: %v", msg.Error)
-			m.curAssistant.Streaming = false
+			if ca != nil {
+				if errors.Is(msg.Error, context.Canceled) {
+					ca.Content = "⏹ Interrupted"
+				} else {
+					ca.Content = fmt.Sprintf("Error: %v", msg.Error)
+				}
+				ca.Streaming = false
+			}
+			if errors.Is(msg.Error, context.Canceled) {
+				m.ShowStatus("⏹ Interrupted")
+			}
 		} else if msg.IsIntermediate {
 			// Intermediate step: just finalize, don't set Blocks (no text response)
-			m.curAssistant.Streaming = false
+			if ca != nil {
+				ca.Streaming = false
+			}
 		} else {
-			m.curAssistant.Streaming = false
-			// Mute if all tool calls are housekeeping (todo, memory, etc.)
-			housekeeping := map[string]bool{"todo": true, "memory": true}
-			if len(m.curAssistant.ToolCalls) > 0 {
-				allHousekeeping := true
-				for _, tc := range m.curAssistant.ToolCalls {
-					if !housekeeping[tc.Name] {
-						allHousekeeping = false
-						break
+			if ca != nil {
+				ca.Streaming = false
+				// Mute if all tool calls are housekeeping (todo, memory, etc.)
+				housekeeping := map[string]bool{"todo": true, "memory": true}
+				if len(ca.ToolCalls) > 0 {
+					allHousekeeping := true
+					for _, tc := range ca.ToolCalls {
+						if !housekeeping[tc.Name] {
+							allHousekeeping = false
+							break
+						}
+					}
+					if allHousekeeping {
+						ca.ReasoningContent = ""
 					}
 				}
-				if allHousekeeping {
-					m.curAssistant.ReasoningContent = ""
+				if msg.Content != "" {
+					ca.Blocks = parseMarkdown(msg.Content)
 				}
-			}
-			if msg.Content != "" {
-				m.curAssistant.Blocks = parseMarkdown(msg.Content)
 			}
 		}
 		// Mark dirty so View() re-renders the message with [Copy] button
@@ -463,25 +513,35 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Mark todo dirty so CellGrid re-renders todo in-place
 		m.todoDirty = true
 		// Take TODO snapshot for this message (at StreamDone time)
-		if m.todoStore != nil {
-			m.curAssistant.TodoSnapshot = m.todoStore.Read()
+		if ca != nil && m.todoStore != nil {
+			ca.TodoSnapshot = m.todoStore.Read()
 		}
-		// Generate session title after first assistant response (not on intermediate steps)
-		if !isIntermediate {
-			m.generateSessionTitle()
-		}
-		// If this is an intermediate step, prepare a new assistant message for the next step
+		m.streamDoneNotified = false
+		m.autoScroll()
+		// If this is an intermediate step, prepare a new assistant message for
+		// the next step and keep draining the stream.
 		if isIntermediate {
 			cur := chatMessage{Role: "assistant", Streaming: true}
 			m.messages = append(m.messages, cur)
 			m.curAssistant = &m.messages[len(m.messages)-1]
-		} else {
-			m.curAssistant = nil
-		}
-		m.streamDoneNotified = false
-		m.autoScroll()
-		if isIntermediate {
 			return m, m.waitForStream()
+		}
+		// Terminal step: the run has actually reported completion, so it is
+		// now safe to leave the streaming state and accept new input.
+		m.finishRun(msg.RunID)
+		m.status = StatusIdle
+		m.curAssistant = nil
+		if msg.Error != nil {
+			// Do not spend an LLM call on a title after a failed or
+			// interrupted run.
+			return m, nil
+		}
+		// Generate the session title off the event loop (async + timeout).
+		return m, m.generateSessionTitleCmd()
+
+	case sessionTitleMsg:
+		if msg.Title != "" && m.sessionTitle == "" {
+			m.sessionTitle = msg.Title
 		}
 		return m, nil
 
@@ -489,7 +549,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.registry.Switch()
 		m.agent.Config = m.registry.Current()
 		m.modeName = m.registry.CurrentName()
-		
+
 		m.autoScroll()
 		return m, nil
 	}
@@ -627,12 +687,103 @@ func copyToClipboard(text string) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(text))
 	fmt.Printf("\033]52;c;%s\007", encoded)
 }
-// saveBranchSession persists the current branch's messages to disk.
-func (m *TuiModel) saveBranchSession() {
-	if m.currentBranch == "" || m.SessionDir == "" {
+
+// beginRun registers a new agent run and returns its context plus generation
+// id. ok is false when a run is already active, so the caller must not start
+// another one.
+func (m *TuiModel) beginRun() (context.Context, uint64, bool) {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	if m.runActive {
+		return nil, m.runID, false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.runID++
+	m.runActive = true
+	m.runCancel = cancel
+	m.runInterrupted = false
+	return ctx, m.runID, true
+}
+
+// finishRun marks the run with the given id as finished. A stale id (a
+// superseded run) is ignored so it cannot clear a newer run's state.
+func (m *TuiModel) finishRun(id uint64) {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	if !m.runActive || m.runID != id {
 		return
 	}
-	s := session.New(m.currentBranch, m.SessionDir)
+	m.runActive = false
+	m.runCancel = nil
+	m.runInterrupted = false
+}
+
+// cancelRun cancels the active run's context. It reports whether a live run
+// was actually cancelled.
+func (m *TuiModel) cancelRun() bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	if !m.runActive || m.runCancel == nil {
+		return false
+	}
+	m.runCancel()
+	m.runInterrupted = true
+	return true
+}
+
+// runIsActive reports whether an agent run is currently in flight.
+func (m *TuiModel) runIsActive() bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	return m.runActive
+}
+
+// runAlreadyInterrupted reports whether the active run has been cancelled by
+// the user and is still unwinding.
+func (m *TuiModel) runAlreadyInterrupted() bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	return m.runActive && m.runInterrupted
+}
+
+// isStaleRun reports whether a stream message belongs to a superseded run.
+// While no run is active nothing is treated as stale, which keeps direct
+// Update calls (tests, late messages after completion) working.
+func (m *TuiModel) isStaleRun(id uint64) bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	return m.runActive && id != m.runID
+}
+
+// runIsCurrent reports whether the given generation id still owns the model.
+// The agent goroutine uses it to avoid injecting output after being superseded.
+func (m *TuiModel) runIsCurrent(id uint64) bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	return m.runActive && id == m.runID
+}
+
+// persistSession writes the conversation to disk. It reuses the resumed or
+// forked session id when one is set, so quitting updates the current session
+// instead of duplicating it; otherwise it mints a new TUI-<timestamp> id.
+func (m *TuiModel) persistSession() {
+	if m.SessionDir == "" || len(m.messages) == 0 {
+		return
+	}
+	id := m.currentBranch
+	if id == "" {
+		id = "TUI-" + time.Now().Format("20060102-150405")
+		m.currentBranch = id
+	}
+	var s *session.Session
+	if existing, err := session.Load(id, m.SessionDir); err == nil {
+		// Reuse the stored session so metadata such as AllowedPaths survives,
+		// but rebuild the message list from the live transcript.
+		s = existing
+		s.Messages = nil
+	} else {
+		s = session.New(id, m.SessionDir)
+	}
 	for _, chatMsg := range m.messages {
 		s.Append(types.Message{
 			Role:             chatMsg.Role,
@@ -643,7 +794,20 @@ func (m *TuiModel) saveBranchSession() {
 	if m.provReg != nil {
 		s.ModelName = m.provReg.Current().Name()
 	}
-	s.Flush()
+	if m.sessionTitle != "" {
+		s.Title = m.sessionTitle
+	}
+	if err := s.Flush(); err != nil {
+		tlog.Warn("tui.session", "flush_error", "err", err)
+	}
+}
+
+// saveBranchSession persists the current branch's messages to disk.
+func (m *TuiModel) saveBranchSession() {
+	if m.currentBranch == "" {
+		return
+	}
+	m.persistSession()
 }
 
 // autoScroll scrolls to bottom only if user is already at the bottom.
@@ -653,15 +817,24 @@ func (m *TuiModel) autoScroll() {
 	}
 }
 
-// generateSessionTitle uses the "title" hidden agent to generate a concise title.
-func (m *TuiModel) generateSessionTitle() {
-	if m.agent == nil || m.agent.Provider == nil || len(m.messages) < 2 || m.sessionTitle != "" {
-		return
+// sessionTitleTimeout bounds the background title-generation LLM call.
+// It is a variable so tests can shorten it.
+var sessionTitleTimeout = 15 * time.Second
+
+// generateSessionTitleCmd returns a command that derives a session title with
+// the hidden "title" agent. The LLM call runs off the event loop with a
+// timeout so a slow provider cannot freeze the TUI. The prompt is built and
+// the fallback computed before returning, so the command goroutine never
+// touches model state.
+func (m *TuiModel) generateSessionTitleCmd() tea.Cmd {
+	if m.agent == nil || m.agent.Provider == nil || m.registry == nil ||
+		len(m.messages) < 2 || m.sessionTitle != "" {
+		return nil
 	}
+	fallback := extractFirstUserMsg(m.messages)
 	cfg, err := m.registry.Get("title")
 	if err != nil {
-		m.sessionTitle = extractFirstUserMsg(m.messages)
-		return
+		return func() tea.Msg { return sessionTitleMsg{Title: fallback} }
 	}
 	var b strings.Builder
 	b.WriteString(cfg.SystemPrompt)
@@ -673,18 +846,24 @@ func (m *TuiModel) generateSessionTitle() {
 		}
 		b.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
 	}
-	resp, err := m.agent.Provider.Chat(context.Background(), types.ChatRequest{
-		Messages: []types.Message{
-			{Role: types.RoleUser, Content: b.String()},
-		},
-	})
-	if err != nil || resp.Content == "" {
-		m.sessionTitle = extractFirstUserMsg(m.messages)
-		return
-	}
-	m.sessionTitle = strings.TrimSpace(resp.Content)
-	if len(m.sessionTitle) > 80 {
-		m.sessionTitle = m.sessionTitle[:80]
+	prompt := b.String()
+	provider := m.agent.Provider
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), sessionTitleTimeout)
+		defer cancel()
+		resp, err := provider.Chat(ctx, types.ChatRequest{
+			Messages: []types.Message{
+				{Role: types.RoleUser, Content: prompt},
+			},
+		})
+		if err != nil || resp == nil || resp.Content == "" {
+			return sessionTitleMsg{Title: fallback}
+		}
+		title := strings.TrimSpace(resp.Content)
+		if len(title) > 80 {
+			title = title[:80]
+		}
+		return sessionTitleMsg{Title: title}
 	}
 }
 
@@ -731,10 +910,21 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 	switch base {
 	case "/exit", "/quit":
+		m.persistSession()
 		return m, tea.Quit
 	case "/compress":
 		if m.agent == nil {
 			m.ShowStatus("No agent available")
+			return m, nil
+		}
+		// CompressHistory replaces a.History while the agent goroutine may be
+		// appending to it, so it must never run concurrently with an active
+		// run. Refusing while runIsActive() is sufficient: the run lifecycle
+		// (beginRun/finishRun) clears runActive only when the agent goroutine
+		// has delivered its terminal StreamDone, so once no run is active no
+		// goroutine is touching History anymore.
+		if m.runIsActive() {
+			m.ShowStatus("Cannot compress: a run is in progress")
 			return m, nil
 		}
 		if m.agent.CompressionThreshold <= 0 {
@@ -820,10 +1010,11 @@ Mouse:
 		}
 		m.messages = nil
 		m.messages = append(m.messages, chatMessage{
-			Role: "system",
+			Role:    "system",
 			Content: fmt.Sprintf("Created branch: %s (forked at message %d from %s)", branch.ID, branch.ForkAt, branch.ParentSessionID),
 		})
 		m.currentBranch = branch.ID
+		m.resetSessionStats()
 		m.autoScroll()
 	case "/session":
 		parts := strings.Fields(cmd)
@@ -874,8 +1065,9 @@ Mouse:
 			m.messages = append(m.messages, cm)
 		}
 		m.currentBranch = branch.ID
+		m.resetSessionStats()
 		m.messages = append(m.messages, chatMessage{
-			Role: "system",
+			Role:    "system",
 			Content: fmt.Sprintf("Switched to session: %s (%d messages)", branch.ID, len(branch.Messages)),
 		})
 		m.autoScroll()
@@ -972,30 +1164,29 @@ Mouse:
 		}
 		name := parts[1]
 		var found *skill.Skill
-			for i := range skills {
-				if skills[i].Name == name {
-					found = &skills[i]
-					break
-				}
+		for i := range skills {
+			if skills[i].Name == name {
+				found = &skills[i]
+				break
 			}
-			if found == nil {
-				m.ShowStatus(fmt.Sprintf("Skill not found: %s", name))
-				return m, nil
-			}
-			// Load full content (uses same dedup as load_skill tool)
-			content, fresh := skill.LoadOnce(name, ".")
-			if content == "" {
-				content = found.Description
-			}
-			msg := "Loaded skill: " + name
-			if !fresh {
-				msg += " (already loaded)"
-			}
-			msg += "\n\n" + content
-			m.messages = append(m.messages, chatMessage{
-				Role:    "system",
-				Content: msg,
-			})
+		}
+		if found == nil {
+			m.ShowStatus(fmt.Sprintf("Skill not found: %s", name))
+			return m, nil
+		}
+		// An explicit /skill command always shows the content. The
+		// once-per-session dedup in LoadOnce exists to keep the load_skill
+		// *tool* from re-injecting the same instructions into the model
+		// context, not to hide content the user asked for again.
+		content := skill.LoadContent(name, ".")
+		if content == "" {
+			content = found.Description
+		}
+		msg := "Loaded skill: " + name + "\n\n" + content
+		m.messages = append(m.messages, chatMessage{
+			Role:    "system",
+			Content: msg,
+		})
 		m.autoScroll()
 		return m, nil
 	case "/plan":
@@ -1029,35 +1220,40 @@ func (m *TuiModel) waitForStream() tea.Cmd {
 	}
 }
 
-func (m *TuiModel) runAgent(prompt string) {
-	ctx := context.Background()
+func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string) {
 	m.agent.StreamCallbacks = &types.StreamCallbacks{
 		OnReasoningDelta: func(text string) {
-			m.streamCh <- StreamMsg{ReasoningDelta: text}
+			m.streamCh <- StreamMsg{RunID: runID, ReasoningDelta: text}
 		},
 		OnTextDelta: func(text string) {
-			m.streamCh <- StreamMsg{TextDelta: text}
+			m.streamCh <- StreamMsg{RunID: runID, TextDelta: text}
 		},
 		OnToolCall: func(name, arg string) {
-			m.streamCh <- ToolCallMsg{MsgIdx: -1, Name: name, Arg: arg}
+			m.streamCh <- ToolCallMsg{RunID: runID, MsgIdx: -1, Name: name, Arg: arg}
 		},
 		OnToolResult: func(name string) {
 			var ackCh chan struct{}
 			if name == "todo" {
 				ackCh = make(chan struct{}, 1)
 			}
-			m.streamCh <- ToolResultMsg{MsgIdx: -1, Name: name, AckCh: ackCh}
+			m.streamCh <- ToolResultMsg{RunID: runID, MsgIdx: -1, Name: name, AckCh: ackCh}
 			if ackCh != nil {
 				<-ackCh // BLOCK until View() injects TODO into CellGrid
 			}
 		},
 		OnStepDone: func() {
-			m.streamCh <- StreamDone{IsIntermediate: true}
+			m.streamCh <- StreamDone{RunID: runID, IsIntermediate: true}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)
 	m.agent.StreamCallbacks = nil
+	if !m.runIsCurrent(runID) {
+		// The run was superseded (or already finalized): do not inject output
+		// that would corrupt the newer run's transcript.
+		return
+	}
 	m.streamCh <- StreamDone{
+		RunID:   runID,
 		Content: result,
 		Error:   err,
 	}

@@ -23,6 +23,13 @@ var msgComponentMap = map[string]MessageComponent{
 	"system":    SystemComponent{},
 }
 
+// hasMsgComponent reports whether role has a registered message renderer.
+// Unknown roles contribute no rows to the grid.
+func hasMsgComponent(role string) bool {
+	_, ok := msgComponentMap[role]
+	return ok
+}
+
 var blockComponentMap = map[string]BlockComponent{
 	"paragraph": ParagraphComponent{},
 	"heading":   HeadingComponent{},

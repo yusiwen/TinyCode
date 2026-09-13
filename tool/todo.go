@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 const (
@@ -33,7 +34,7 @@ type TodoSummary struct {
 	Cancelled  int `json:"cancelled"`
 }
 
-	// Todo result type for JSON serialization
+// Todo result type for JSON serialization
 type TodoResult struct {
 	Todos   []TodoItem  `json:"todos"`
 	Summary TodoSummary `json:"summary"`
@@ -41,7 +42,12 @@ type TodoResult struct {
 
 // TodoStore is an in-memory ordered list of task items.
 // Only ONE item may be in_progress at a time.
+//
+// The store is safe for concurrent use: the todo tool may be executed
+// concurrently by the agent loop while the TUI and the compression path
+// read the same store. All access to items is guarded by mu.
 type TodoStore struct {
+	mu    sync.RWMutex
 	items []TodoItem
 }
 
@@ -63,43 +69,60 @@ func (s *TodoStore) Write(todos []TodoItem, merge bool) error {
 	}
 
 	if !merge {
+		s.mu.Lock()
 		s.items = make([]TodoItem, len(todos))
 		copy(s.items, todos)
-	} else {
-		for _, src := range todos {
-			found := false
-			for i, dst := range s.items {
-				if dst.ID == src.ID {
-					s.items[i].Status = src.Status
-					if src.Content != "" {
-						s.items[i].Content = src.Content
-					}
-					found = true
-					break
+		// Enforce: only one in_progress
+		enforceSingleInProgress(s.items)
+		s.mu.Unlock()
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, src := range todos {
+		found := false
+		for i, dst := range s.items {
+			if dst.ID == src.ID {
+				s.items[i].Status = src.Status
+				if src.Content != "" {
+					s.items[i].Content = src.Content
 				}
+				found = true
+				break
 			}
-			if !found {
-				s.items = append(s.items, src)
-			}
+		}
+		if !found {
+			s.items = append(s.items, src)
 		}
 	}
 
 	// Enforce: only one in_progress
-	hasInProgress := false
-	for i := range s.items {
-		if s.items[i].Status == StatusInProgress {
-			if hasInProgress {
-				s.items[i].Status = StatusPending
-			}
-			hasInProgress = true
-		}
-	}
+	enforceSingleInProgress(s.items)
 
 	return nil
 }
 
+// enforceSingleInProgress demotes every in_progress item after the first one.
+// The caller must hold the store lock.
+func enforceSingleInProgress(items []TodoItem) {
+	hasInProgress := false
+	for i := range items {
+		if items[i].Status == StatusInProgress {
+			if hasInProgress {
+				items[i].Status = StatusPending
+			}
+			hasInProgress = true
+		}
+	}
+}
+
 // Read returns a copy of the current todo list.
+// The returned slice is independent from the store: mutating it does not
+// change the stored items.
 func (s *TodoStore) Read() []TodoItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	cp := make([]TodoItem, len(s.items))
 	copy(cp, s.items)
 	return cp
@@ -107,6 +130,8 @@ func (s *TodoStore) Read() []TodoItem {
 
 // Summary calculates counts for each status.
 func (s *TodoStore) Summary() TodoSummary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var sum TodoSummary
 	for _, t := range s.items {
 		sum.Total++
@@ -127,6 +152,8 @@ func (s *TodoStore) Summary() TodoSummary {
 // FormatForInjection returns a compact string of active items (pending + in_progress)
 // for re-injection after context compression.
 func (s *TodoStore) FormatForInjection() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	var b strings.Builder
 	for _, t := range s.items {
 		if t.Status == StatusCompleted || t.Status == StatusCancelled {
@@ -175,13 +202,13 @@ func todoSchema() map[string]any {
 // The store must be set on the Tool's Store field before use.
 func Todo(store *TodoStore) Tool {
 	return Tool{
-		Name:        "todo",
+		Name: "todo",
 		Description: "Manage task list. Use the todos array to create or update tasks. " +
 			"Only ONE item in_progress at a time. " +
 			"Mark items completed immediately when done. " +
 			"If something fails, cancel it and add a revised item. " +
 			"Returns JSON with todos and summary.",
-		Parameters:  todoSchema(),
+		Parameters: todoSchema(),
 		Execute: func(ctx context.Context, args map[string]any) (string, error) {
 			var todos []TodoItem
 			merge := false

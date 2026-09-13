@@ -20,6 +20,8 @@ type fuzzyResult struct {
 	matchText string // the actual text in the file that matched
 	count     int    // number of matches (0 = not found, 1 = unique, >1 = ambiguous)
 	strategy  string // name of the strategy that found the match
+	start     int    // byte offset of matchText in the content (unique matches)
+	end       int    // byte offset just past matchText in the content
 }
 
 // Edit returns a Tool that performs search/replace edits on a file.
@@ -28,7 +30,7 @@ type fuzzyResult struct {
 // the entire file. Fuzzy matching is attempted when exact match fails.
 func Edit() Tool {
 	return Tool{
-		Name:        "edit",
+		Name: "edit",
 		Description: "Apply search/replace edits to a file. " +
 			"Provide old_string (exact text to find) and new_string (replacement). " +
 			"If old_string appears more than once, provide surrounding context. " +
@@ -66,11 +68,13 @@ func Edit() Tool {
 				return "", fmt.Errorf("path is required")
 			}
 
-			if err := DefaultSandbox.CheckPath(path); err != nil {
-				if ad, ok := err.(*AccessDenied); ok {
-					return ad.DenyHint(), nil
-				}
-				return "", fmt.Errorf("path check: %w", err)
+			// All I/O uses the resolved path returned by the gate.
+			safePath, denied, err := CheckPathAccess(ctx, path)
+			if err != nil {
+				return "", err
+			}
+			if denied != "" {
+				return denied, nil
 			}
 
 			raw, ok := args["edits"]
@@ -90,10 +94,10 @@ func Edit() Tool {
 			}
 
 			if lsp.IsAvailable() {
-				lsp.SnapshotBaseline(path)
+				lsp.SnapshotBaseline(safePath)
 			}
 
-			data, err := os.ReadFile(path)
+			data, err := os.ReadFile(safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
@@ -129,20 +133,31 @@ func Edit() Tool {
 
 				// Correct indentation: adjust new_string to match original indent
 				replacement := correctIndentation(result.matchText, edit.NewString)
+				// A fuzzy match can start after the line's indentation (the
+				// strategy stripped it); re-apply the file's own indentation so
+				// the replacement block lines up.
+				replacement = matchLineIndent(content, result, replacement)
 
-				content = strings.Replace(content, result.matchText, replacement, 1)
+				// Replace exactly the matched range: strings.Replace would hit
+				// the first occurrence of the text, which need not be the match
+				// the strategy selected.
+				if result.start < 0 || result.end > len(content) || result.start >= result.end {
+					return "", fmt.Errorf("edit %d: internal error: invalid match range [%d,%d) for %q",
+						applied+1, result.start, result.end, result.strategy)
+				}
+				content = content[:result.start] + replacement + content[result.end:]
 				applied++
 				totalChanges += strings.Count(replacement, "\n") + 1
 			}
 
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(safePath, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 
 			result := fmt.Sprintf("Applied %d edit(s) to %s (%d line(s) changed)", applied, path, totalChanges)
 
 			if lsp.IsAvailable() {
-				if newDiags := lsp.GetNewDiagnostics(path); len(newDiags) > 0 {
+				if newDiags := lsp.GetNewDiagnostics(safePath); len(newDiags) > 0 {
 					result += lsp.FormatDiagnostics(path, newDiags)
 				}
 			}
@@ -181,15 +196,16 @@ func tryExact(content, search string) *fuzzyResult {
 	if count == 0 {
 		return nil
 	}
-	return &fuzzyResult{matchText: search, count: count, strategy: "exact"}
+	idx := strings.Index(content, search)
+	return &fuzzyResult{
+		matchText: search, count: count, strategy: "exact",
+		start: idx, end: idx + len(search),
+	}
 }
 
 // 2. Line-trimmed: strip leading/trailing whitespace per line
 func tryLineTrimmed(content, search string) *fuzzyResult {
-	normalized := trimLines(search)
-	return findUnique(content, search, normalized, func(s string) string {
-		return trimLines(s)
-	}, "line-trimmed")
+	return findUnique(content, search, trimLines(search), mapTrimLines, "line-trimmed")
 }
 
 func trimLines(s string) string {
@@ -203,10 +219,7 @@ func trimLines(s string) string {
 
 // 3. Whitespace normalized: collapse multiple spaces/tabs to single space
 func tryWhitespaceNormalized(content, search string) *fuzzyResult {
-	normalized := collapseWS(search)
-	return findUnique(content, search, normalized, func(s string) string {
-		return collapseWS(s)
-	}, "ws-normalized")
+	return findUnique(content, search, collapseWS(search), mapCollapseWS, "ws-normalized")
 }
 
 func collapseWS(s string) string {
@@ -220,10 +233,7 @@ func collapseWS(s string) string {
 
 // 4. Indentation flexible: strip common leading whitespace
 func tryIndentationFlexible(content, search string) *fuzzyResult {
-	normalized := stripCommonIndent(search)
-	return findUnique(content, search, normalized, func(s string) string {
-		return stripCommonIndent(s)
-	}, "indent-flexible")
+	return findUnique(content, search, stripCommonIndent(search), mapStripCommonIndent, "indent-flexible")
 }
 
 func stripCommonIndent(s string) string {
@@ -252,10 +262,7 @@ func stripCommonIndent(s string) string {
 
 // 5. Escape normalized: convert \n literals to actual newlines
 func tryEscapeNormalized(content, search string) *fuzzyResult {
-	converted := unescape(search)
-	return findUnique(content, search, converted, func(s string) string {
-		return unescape(s)
-	}, "escape-normalized")
+	return findUnique(content, search, unescape(search), mapUnescape, "escape-normalized")
 }
 
 func unescape(s string) string {
@@ -269,10 +276,7 @@ func unescape(s string) string {
 
 // 6. Unicode normalized: smart quotes → ASCII, em dashes → --, etc.
 func tryUnicodeNormalized(content, search string) *fuzzyResult {
-	normalized := normalizeUnicode(search)
-	return findUnique(content, search, normalized, func(s string) string {
-		return normalizeUnicode(s)
-	}, "unicode-normalized")
+	return findUnique(content, search, normalizeUnicode(search), mapNormalizeUnicode, "unicode-normalized")
 }
 
 func normalizeUnicode(s string) string {
@@ -311,7 +315,16 @@ func tryBlockAnchor(content, search string) *fuzzyResult {
 	}
 
 	contentLines := strings.Split(content, "\n")
+	// Byte offset of the first character of each line.
+	lineStart := make([]int, len(contentLines))
+	off := 0
+	for i, line := range contentLines {
+		lineStart[i] = off
+		off += len(line) + 1 // +1 for the newline that was split away
+	}
+
 	var matches []string
+	firstStart, firstEnd := -1, -1
 
 	for i := 0; i < len(contentLines); i++ {
 		if strings.TrimSpace(contentLines[i]) != firstLine {
@@ -325,6 +338,10 @@ func tryBlockAnchor(content, search string) *fuzzyResult {
 			candidate := strings.Join(contentLines[i:j+1], "\n")
 			if levenshteinSimilarity(candidate, search) >= 0.65 {
 				matches = append(matches, candidate)
+				if firstStart < 0 {
+					firstStart = lineStart[i]
+					firstEnd = lineStart[j] + len(contentLines[j])
+				}
 				break // only one candidate per start position
 			}
 		}
@@ -337,31 +354,270 @@ func tryBlockAnchor(content, search string) *fuzzyResult {
 		matchText: matches[0],
 		count:     len(matches),
 		strategy:  "block-anchor",
+		start:     firstStart,
+		end:       firstEnd,
 	}
 }
 
-// findUnique is a helper: tries to locate a unique occurrence of `search`
-// by normalizing both content and search via a transform function.
-func findUnique(content, search, normalizedSearch string,
-	transform func(string) string, strategy string) *fuzzyResult {
+// ── Offset-preserving normalization ──
+//
+// Fuzzy strategies compare normalized text, but the edit has to replace the
+// ORIGINAL bytes. Slicing the original with offsets computed on the normalized
+// string (what this code used to do) silently replaces the wrong region
+// whenever a transform changes the text length. The mapped transforms below
+// record, for every normalized byte, the range it came from in the original.
 
-	if search == normalizedSearch && transform(content) == content {
+// normSpan is the source byte range of one normalized byte.
+type normSpan struct{ start, end int }
+
+// mappedTransform is normalized text plus the source range of each byte.
+type mappedTransform struct {
+	text  string
+	spans []normSpan
+}
+
+// sourceRange maps a normalized byte range back to the original byte range.
+func (m mappedTransform) sourceRange(start, end int) (int, int) {
+	if start < 0 || start >= end || end > len(m.spans) {
+		return 0, 0
+	}
+	return m.spans[start].start, m.spans[end-1].end
+}
+
+// mappedBuilder accumulates normalized bytes and their source ranges.
+type mappedBuilder struct {
+	b     strings.Builder
+	spans []normSpan
+}
+
+// emit appends replacement text mapped to the original range [start,end).
+func (m *mappedBuilder) emit(text string, start, end int) {
+	for i := 0; i < len(text); i++ {
+		m.b.WriteByte(text[i])
+		m.spans = append(m.spans, normSpan{start, end})
+	}
+}
+
+// copyRange appends src[start:end] with an identity mapping.
+func (m *mappedBuilder) copyRange(src string, start, end int) {
+	for i := start; i < end; i++ {
+		m.b.WriteByte(src[i])
+		m.spans = append(m.spans, normSpan{i, i + 1})
+	}
+}
+
+func (m *mappedBuilder) result() mappedTransform {
+	return mappedTransform{text: m.b.String(), spans: m.spans}
+}
+
+// eachLine walks src line by line (keeping the newline with the line it ends).
+func eachLine(src string, fn func(start, end int, line string)) {
+	for i := 0; i < len(src); {
+		j := strings.IndexByte(src[i:], '\n')
+		if j < 0 {
+			fn(i, len(src), src[i:])
+			return
+		}
+		fn(i, i+j+1, src[i:i+j+1])
+		i += j + 1
+	}
+}
+
+// mapTrimLines mirrors trimLines with source tracking.
+func mapTrimLines(src string) mappedTransform {
+	var mb mappedBuilder
+	eachLine(src, func(start, end int, line string) {
+		body := strings.TrimSuffix(line, "\n")
+		trimmed := strings.TrimRight(body, " \t\r")
+		mb.copyRange(src, start, start+len(trimmed))
+		if len(body) < len(line) { // emit the newline we stripped
+			mb.copyRange(src, end-1, end)
+		}
+	})
+	return mb.result()
+}
+
+// mapCollapseWS mirrors collapseWS (strings.Fields joined by one space).
+func mapCollapseWS(src string) mappedTransform {
+	var mb mappedBuilder
+	eachLine(src, func(start, end int, line string) {
+		body := strings.TrimSuffix(line, "\n")
+		i := 0
+		first := true
+		for i < len(body) {
+			for i < len(body) && isSpaceByte(body[i]) {
+				i++
+			}
+			if i >= len(body) {
+				break
+			}
+			segStart := i
+			for i < len(body) && !isSpaceByte(body[i]) {
+				i++
+			}
+			if !first {
+				// The separating space is attributed to the whitespace run
+				// that preceded this segment.
+				mb.emit(" ", segStart-1, segStart)
+			}
+			mb.copyRange(src, start+segStart, start+i)
+			first = false
+		}
+		if len(body) < len(line) {
+			mb.copyRange(src, end-1, end)
+		}
+	})
+	return mb.result()
+}
+
+func isSpaceByte(b byte) bool {
+	switch b {
+	case ' ', '\t', '\v', '\f', '\r':
+		return true
+	}
+	return false
+}
+
+// mapStripCommonIndent mirrors stripCommonIndent with source tracking.
+func mapStripCommonIndent(src string) mappedTransform {
+	minIndent := -1
+	eachLine(src, func(_, _ int, line string) {
+		body := strings.TrimSuffix(line, "\n")
+		trimmed := strings.TrimLeft(body, " \t")
+		if trimmed == "" {
+			return
+		}
+		indent := len(body) - len(trimmed)
+		if minIndent < 0 || indent < minIndent {
+			minIndent = indent
+		}
+	})
+	var mb mappedBuilder
+	eachLine(src, func(start, end int, line string) {
+		body := strings.TrimSuffix(line, "\n")
+		cut := 0
+		if minIndent > 0 && len(body) >= minIndent {
+			cut = minIndent
+		}
+		mb.copyRange(src, start+cut, start+len(body))
+		if len(body) < len(line) {
+			mb.copyRange(src, end-1, end)
+		}
+	})
+	return mb.result()
+}
+
+// mapUnescape mirrors unescape with source tracking. Escapes are consumed left
+// to right, so a normalized byte maps to the whole escape sequence it replaced.
+func mapUnescape(src string) mappedTransform {
+	var mb mappedBuilder
+	for i := 0; i < len(src); i++ {
+		if src[i] == '\\' && i+1 < len(src) {
+			var repl string
+			switch src[i+1] {
+			case 'n':
+				repl = "\n"
+			case 't':
+				repl = "\t"
+			case '"':
+				repl = "\""
+			case '\'':
+				repl = "'"
+			case '\\':
+				repl = "\\"
+			}
+			if repl != "" {
+				mb.emit(repl, i, i+2)
+				i++
+				continue
+			}
+		}
+		mb.copyRange(src, i, i+1)
+	}
+	return mb.result()
+}
+
+// mapNormalizeUnicode mirrors normalizeUnicode with source tracking.
+func mapNormalizeUnicode(src string) mappedTransform {
+	var mb mappedBuilder
+	for i, r := range src {
+		// i is the byte offset of r; size is needed for the source range.
+		size := len(string(r))
+		var repl string
+		switch r {
+		case '\u201C', '\u201D':
+			repl = "\""
+		case '\u2018', '\u2019':
+			repl = "'"
+		case '\u2013', '\u2014':
+			repl = "--"
+		case '\u2026':
+			repl = "..."
+		case '\u00A0':
+			repl = " "
+		default:
+			repl = string(r)
+		}
+		mb.emit(repl, i, i+size)
+	}
+	return mb.result()
+}
+
+// findUnique locates a unique occurrence of `search` in content after applying
+// a normalization, and returns the ORIGINAL text that matched.
+func findUnique(content, search, normalizedSearch string,
+	mapped func(string) mappedTransform, strategy string) *fuzzyResult {
+
+	mc := mapped(content)
+	if search == normalizedSearch && mc.text == content {
 		return nil // neither search nor content needs this transform
 	}
-	normalizedContent := transform(content)
-	count := strings.Count(normalizedContent, normalizedSearch)
+	count := strings.Count(mc.text, normalizedSearch)
 	if count == 0 {
 		return nil
 	}
 	if count > 1 {
 		return &fuzzyResult{count: count, strategy: strategy}
 	}
-	// Unique match found — locate the original text in content
-	idx := strings.Index(normalizedContent, normalizedSearch)
-	end := idx + len(normalizedSearch)
-	// Map back to original content
-	matchText := content[idx:end]
-	return &fuzzyResult{matchText: matchText, count: 1, strategy: strategy}
+	idx := strings.Index(mc.text, normalizedSearch)
+	start, end := mc.sourceRange(idx, idx+len(normalizedSearch))
+	if start < 0 || end > len(content) || start >= end {
+		return nil
+	}
+	matchText := content[start:end]
+	if !strings.Contains(content, matchText) {
+		return nil
+	}
+	return &fuzzyResult{matchText: matchText, count: 1, strategy: strategy, start: start, end: end}
+}
+
+// matchLineIndent re-indents replacement when the match begins at the first
+// non-whitespace character of an indented line but the replacement's first line
+// carries no indentation of its own (typical for the dedenting fuzzy
+// strategies). Otherwise the replacement is returned unchanged.
+func matchLineIndent(content string, result *fuzzyResult, replacement string) string {
+	if result.start <= 0 {
+		return replacement
+	}
+	lineStart := strings.LastIndexByte(content[:result.start], '\n') + 1
+	indent := content[lineStart:result.start]
+	if indent == "" || strings.TrimLeft(indent, " \t") != "" {
+		return replacement // match does not start at the line's content
+	}
+	if leadingWhitespace(replacement) != "" {
+		return replacement // the replacement already brings its own indent
+	}
+	// The first line is left alone: the content prefix content[:start] already
+	// carries the original indentation. The remaining lines were written at the
+	// dedented level, so they need the indent added back.
+	lines := strings.Split(replacement, "\n")
+	for i := 1; i < len(lines); i++ {
+		if lines[i] == "" {
+			continue
+		}
+		lines[i] = indent + lines[i]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ── Indentation correction ──

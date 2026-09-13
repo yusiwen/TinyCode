@@ -329,34 +329,72 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 			chunks = append(chunks, CellChunk{Text: indentStr, Style: style})
 			continue
 		}
-		words := strings.Fields(trimmed)
+
+		// Split into words and the whitespace runs between them. Collapsing the
+		// runs (strings.Fields) destroyed the alignment of code blocks, so the
+		// interior spacing is preserved and only dropped at a wrap point.
+		type token struct {
+			text  string
+			space bool
+		}
+		var tokens []token
+		for i := 0; i < len(trimmed); {
+			j := i
+			if trimmed[i] == ' ' {
+				for j < len(trimmed) && trimmed[j] == ' ' {
+					j++
+				}
+				tokens = append(tokens, token{trimmed[i:j], true})
+			} else {
+				for j < len(trimmed) && trimmed[j] != ' ' {
+					j++
+				}
+				tokens = append(tokens, token{trimmed[i:j], false})
+			}
+			i = j
+		}
+
 		var lineBuilder strings.Builder
-		lineWidth := 0
+		lineWidth := indent
+		hasContent := false
+		var pendingSpace string
+		chunksBefore := len(chunks)
 		flush := func() {
-			if lineBuilder.Len() > 0 {
+			if hasContent {
 				chunks = append(chunks, CellChunk{Text: indentStr + lineBuilder.String(), Style: style})
-				lineBuilder.Reset()
 			}
+			lineBuilder.Reset()
 			lineWidth = indent
+			hasContent = false
 		}
-		flush() // initialize lineWidth with indent width
-		for _, word := range words {
-			w := runewidth.StringWidth(word)
-			if lineWidth > indent && lineWidth+1+w > maxWidth {
-				chunks = append(chunks, CellChunk{Text: indentStr + lineBuilder.String(), Style: style})
-				lineBuilder.Reset()
-				lineWidth = indent
+
+		for _, tk := range tokens {
+			if tk.space {
+				// Hold the run; it is emitted only if another word follows on
+				// the same line, so lines never end in trailing blanks.
+				pendingSpace = tk.text
+				continue
 			}
-			if lineWidth > indent {
-				lineBuilder.WriteByte(' ')
-				lineWidth++
+			tw := runewidth.StringWidth(tk.text)
+			pw := runewidth.StringWidth(pendingSpace)
+			if hasContent && lineWidth+pw+tw > maxWidth {
+				flush()
+				pendingSpace = ""
+				pw = 0
 			}
-			lineBuilder.WriteString(word)
-			lineWidth += w
+			if hasContent && pendingSpace != "" {
+				lineBuilder.WriteString(pendingSpace)
+				lineWidth += pw
+			}
+			pendingSpace = ""
+			lineBuilder.WriteString(tk.text)
+			lineWidth += tw
+			hasContent = true
 		}
-		if lineBuilder.Len() > 0 {
-			chunks = append(chunks, CellChunk{Text: indentStr + lineBuilder.String(), Style: style})
-		} else {
+		flush()
+		// A line that produced no content (only indent) still needs a chunk so
+		// the row count stays stable.
+		if len(chunks) == chunksBefore && indentStr != "" {
 			chunks = append(chunks, CellChunk{Text: indentStr, Style: style})
 		}
 	}
@@ -366,14 +404,14 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 // --- Theme-aware style constructors (updated by ApplyTheme) ---
 
 var (
-	DefaultStyle     CellStyle
-	ThinkingStyle    CellStyle
-	ResponseLabel   CellStyle
-	HeadingStyle     CellStyle
-	DimStyle         CellStyle
-	SelectionStyle   CellStyle
-	UserStyle        CellStyle
-	CodeStyle        CellStyle
-	SystemStyle      CellStyle
-	StatusBarStyle   CellStyle
+	DefaultStyle   CellStyle
+	ThinkingStyle  CellStyle
+	ResponseLabel  CellStyle
+	HeadingStyle   CellStyle
+	DimStyle       CellStyle
+	SelectionStyle CellStyle
+	UserStyle      CellStyle
+	CodeStyle      CellStyle
+	SystemStyle    CellStyle
+	StatusBarStyle CellStyle
 )

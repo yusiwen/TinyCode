@@ -11,7 +11,7 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 )
 
-const (
+var (
 	// TruncMaxLines is the max lines of tool output to return to the LLM.
 	TruncMaxLines = 2000
 
@@ -24,6 +24,21 @@ const (
 	// truncDir is where full truncated output files are saved.
 	truncDir = "/tmp/tinycode/truncated"
 )
+
+// SetTruncationConfig overrides the output-truncation limits from the
+// configuration file. Zero or negative values keep the current setting. Call it
+// during startup, before any tool runs.
+func SetTruncationConfig(maxLines, maxBytes int, outputDir string) {
+	if maxLines > 0 {
+		TruncMaxLines = maxLines
+	}
+	if maxBytes > 0 {
+		TruncMaxBytes = maxBytes
+	}
+	if outputDir != "" {
+		truncDir = outputDir
+	}
+}
 
 // TruncationResult holds the result of truncating a tool's output.
 type TruncationResult struct {

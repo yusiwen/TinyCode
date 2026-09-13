@@ -52,14 +52,28 @@ func (m *TuiModel) View() string {
 		if firstDirty < 0 && m.todoDirty && len(m.messages) > 0 {
 			firstDirty = len(m.messages) - 1
 		}
+		// Guard: with no messages to render (firstDirty is still -1) start the
+		// render loop past the end. Leaving it at -1 would index m.messages[-1]
+		// below. The todo flag is still cleared by the ack block at the end of
+		// View, so the next render starts from a consistent state.
+		if firstDirty < 0 {
+			firstDirty = len(m.messages)
+		}
 
-		// Compute the grid row where firstDirty starts
+		// Compute the grid row where firstDirty starts. Only messages that
+		// have a renderer contribute rows and an inter-message blank line, so
+		// the accounting below mirrors the render loop exactly.
 		dirtyStart := 0
+		renderedBefore := false
 		for j := 0; j < firstDirty; j++ {
-			dirtyStart += m.msgRowCount[j]
-			if j > 0 {
-				dirtyStart++ // inter-message blank line (message 0 has no preceding blank)
+			if !hasMsgComponent(m.messages[j].Role) {
+				continue
 			}
+			if renderedBefore {
+				dirtyStart++ // inter-message blank line
+			}
+			renderedBefore = true
+			dirtyStart += m.msgRowCount[j]
 		}
 
 		// Truncate grid: set g.row back to dirtyStart
@@ -72,33 +86,48 @@ func (m *TuiModel) View() string {
 			}
 		}
 
-		// Truncate lineSrcs back
+		// Truncate lineSrcs back. lineSrcs holds one entry per rendered row
+		// (blank separators are not recorded), so it must match the row counts
+		// of the messages kept above without adding separator rows.
 		keepLines := 0
 		for j := 0; j < firstDirty; j++ {
-			keepLines += m.msgRowCount[j]
-			if j > 0 {
-				keepLines++ // inter-message blank line
+			if !hasMsgComponent(m.messages[j].Role) {
+				continue
 			}
+			keepLines += m.msgRowCount[j]
 		}
 		if keepLines < len(m.lineSrcs) {
 			m.lineSrcs = m.lineSrcs[:keepLines]
 		}
 
-		// Render messages
+		// Render messages. A blank separator is emitted only between two
+		// messages that actually render.
+		renderedAny := false
+		for j := 0; j < firstDirty; j++ {
+			if hasMsgComponent(m.messages[j].Role) {
+				renderedAny = true
+				break
+			}
+		}
 		for i := firstDirty; i < len(m.messages); i++ {
 			msg := m.messages[i]
 
-			// Blank line between messages
-			if i > 0 {
-				g.AppendChunk(CellChunk{Text: "", Style: DefaultStyle})
-			}
-
 			comp, ok := msgComponentMap[msg.Role]
 			if !ok {
+				// Unknown role: emit no rows at all — neither content nor the
+				// blank separator. Recording zero rows keeps msgRowCount and
+				// lineSrcs aligned with the grid, so later incremental renders
+				// and selection mapping stay correct.
 				m.msgRowCount[i] = 0
 				m.msgDirty[i] = false
 				continue
 			}
+
+			// Blank line between messages
+			if renderedAny {
+				g.AppendChunk(CellChunk{Text: "", Style: DefaultStyle})
+			}
+			renderedAny = true
 			chunks := comp.Render(msg, false)
 
 			// Inject TODO into the last assistant message (between reasoning and tool calls)
@@ -392,6 +421,7 @@ func (m *TuiModel) renderStatusBar() string {
 
 	return statusBarStyle.Render(status)
 }
+
 // providerName returns the current provider's display name.
 func (m *TuiModel) providerName() string {
 	if m.provReg == nil {
@@ -437,7 +467,7 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 				text := stripANSI(msgLines[li])
 				field := "content"
 				offset := 4
-							if strings.Contains(text, "Response:") {
+				if strings.Contains(text, "Response:") {
 					field = "label"
 					offset = 0
 				}
@@ -543,7 +573,6 @@ func renderAssistantMessageStatic(msg chatMessage) []CellChunk {
 	return ac.Render(msg, false)
 }
 
-
 // stripANSI removes ANSI escape sequences from a string.
 func stripANSI(s string) string {
 	var b strings.Builder
@@ -571,7 +600,6 @@ func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
 	answerComponent := AssistantComponent{}
 	return chunksToStrings(answerComponent.Render(msg, sel))
 }
-
 
 // wrapLine splits a line into multiple lines, each no wider than maxWidth.
 // Uses lipgloss.Width to properly handle ANSI codes, CJK, and emoji.
@@ -622,7 +650,6 @@ func renderChunks(chunks []TextChunk) string {
 }
 
 // renderTable renders a table block with aligned columns.
-
 
 // renderTable renders a table block with aligned columns.
 func renderTable(block ContentBlock, sel bool) []CellChunk {

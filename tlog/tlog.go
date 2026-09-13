@@ -72,6 +72,12 @@ func Init(dir string, level Level) {
 	defaultLogger.dir = dir
 	defaultLogger.level = level
 
+	// Re-initializing must not leak the previous handle.
+	if defaultLogger.file != nil {
+		defaultLogger.file.Close()
+		defaultLogger.file = nil
+	}
+
 	if dir == "" {
 		return // no file output
 	}
@@ -83,7 +89,9 @@ func Init(dir string, level Level) {
 
 	filename := time.Now().Format("2006-01-02T150405") + ".log"
 	path := filepath.Join(dir, filename)
-	f, err := os.Create(path)
+	// Log files contain full prompts, commands and file contents, so keep them
+	// readable only by the owner.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tlog: failed to create log file %s: %v\n", path, err)
 		return
@@ -118,19 +126,20 @@ func log(level Level, service string, msg string, keysAndValues ...any) {
 	sb.WriteString(fmt.Sprintf("%-5s %s %-7s", levelNames[level], ts, elapsedPart))
 	sb.WriteString("  service=" + service)
 
-	// Append key=value pairs
+	// Append key=value pairs. Values are escaped so a newline inside a message
+	// or argument cannot forge extra log lines.
 	for i := 0; i < len(keysAndValues); i += 2 {
-		key := fmt.Sprintf("%v", keysAndValues[i])
+		key := escapeLogValue(fmt.Sprintf("%v", keysAndValues[i]))
 		var val string
 		if i+1 < len(keysAndValues) {
-			val = fmt.Sprintf("%v", keysAndValues[i+1])
+			val = escapeLogValue(fmt.Sprintf("%v", keysAndValues[i+1]))
 		} else {
 			val = "(missing)"
 		}
 		sb.WriteString(" " + key + "=" + val)
 	}
 
-	sb.WriteString(" " + msg)
+	sb.WriteString(" " + escapeLogValue(msg))
 	line := sb.String()
 
 	// Write to file
@@ -139,6 +148,16 @@ func log(level Level, service string, msg string, keysAndValues ...any) {
 		L.file.WriteString(line + "\n")
 	}
 	L.mu.Unlock()
+}
+
+// escapeLogValue renders control characters so one log call always produces
+// exactly one line.
+func escapeLogValue(v string) string {
+	if !strings.ContainsAny(v, "\n\r\t") {
+		return v
+	}
+	r := strings.NewReplacer("\n", "\\n", "\r", "\\r", "\t", "\\t")
+	return r.Replace(v)
 }
 
 // Flush ensures all log entries are written to disk.

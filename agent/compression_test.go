@@ -211,3 +211,127 @@ func TestCompressNoTodoInjection(t *testing.T) {
 		}
 	}
 }
+
+// validateToolGroups asserts that every assistant message with tool_calls is
+// followed by a tool result for each of its ids, and that no tool result
+// appears without its assistant message. A history that violates this is
+// rejected by OpenAI-compatible APIs.
+func validateToolGroups(t *testing.T, msgs []types.Message) {
+	t.Helper()
+	pending := map[string]bool{}
+	for i, m := range msgs {
+		switch m.Role {
+		case types.RoleAssistant:
+			if len(pending) > 0 {
+				t.Errorf("message %d: assistant message starts before all tool results arrived (%v)", i, pending)
+			}
+			for _, tc := range m.ToolCalls {
+				pending[tc.ID] = true
+			}
+		case types.RoleTool:
+			if !pending[m.ToolCallID] {
+				t.Errorf("message %d: tool result %q has no preceding assistant tool_call", i, m.ToolCallID)
+				continue
+			}
+			delete(pending, m.ToolCallID)
+		}
+	}
+	if len(pending) > 0 {
+		t.Errorf("assistant tool_calls without tool results: %v", pending)
+	}
+}
+
+// TestCompressHistoryKeepsToolGroupsIntact guards the boundary bug: the old
+// fixed offset could keep an assistant tool_calls message while summarizing its
+// remaining tool results away.
+func TestCompressHistoryKeepsToolGroupsIntact(t *testing.T) {
+	a := &Agent{
+		CompressionThreshold: 10,
+		ContextLength:        1000,
+		Provider:             &MockProvider{},
+	}
+
+	history := []types.Message{
+		{Role: types.RoleUser, Content: "u1"},
+		{Role: types.RoleAssistant, Content: "a1"},
+		{Role: types.RoleUser, Content: "u2"},
+		{Role: types.RoleAssistant, ToolCalls: []types.ToolCall{
+			{ID: "X", Name: "bash"}, {ID: "Y", Name: "bash"}, {ID: "Z", Name: "bash"},
+		}},
+		{Role: types.RoleTool, ToolCallID: "X", Name: "bash", Content: "x"},
+		{Role: types.RoleTool, ToolCallID: "Y", Name: "bash", Content: "y"},
+		{Role: types.RoleTool, ToolCallID: "Z", Name: "bash", Content: "z"},
+		{Role: types.RoleAssistant, Content: "a2"},
+		{Role: types.RoleUser, Content: "u3"},
+		{Role: types.RoleAssistant, Content: "a3"},
+		{Role: types.RoleUser, Content: "u4"},
+		{Role: types.RoleAssistant, Content: "a4"},
+		{Role: types.RoleUser, Content: "u5"},
+		{Role: types.RoleAssistant, Content: "a5"},
+	}
+
+	got, err := a.compressHistory(context.Background(), history)
+	if err != nil {
+		t.Fatalf("compressHistory: %v", err)
+	}
+	if len(got) >= len(history) {
+		t.Fatalf("expected compression to shrink the history, got %d of %d", len(got), len(history))
+	}
+	validateToolGroups(t, got)
+
+	// The three tool results of the protected group must all be present.
+	for _, id := range []string{"X", "Y", "Z"} {
+		found := false
+		for _, m := range got {
+			if m.Role == types.RoleTool && m.ToolCallID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("tool result %q was summarized away while its assistant message was kept", id)
+		}
+	}
+}
+
+// TestCompressHistoryKeepsPriorSummary checks that an earlier compressed
+// summary lands in the summarization input instead of being dropped.
+func TestCompressHistoryKeepsPriorSummary(t *testing.T) {
+	var summarizerInput string
+	a := &Agent{
+		CompressionThreshold: 10,
+		ContextLength:        1000,
+		Provider: &MockProvider{ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+			if len(req.Messages) > 1 {
+				summarizerInput = req.Messages[1].Content
+			}
+			return &types.ChatResponse{Content: "NEW SUMMARY"}, nil
+		}},
+	}
+
+	const oldSummary = "OLD-SUMMARY-MARKER"
+	// The system message sits between u4 and a4 so that it falls inside the
+	// summarized middle region.
+	history := []types.Message{
+		{Role: types.RoleUser, Content: "u1"},
+		{Role: types.RoleAssistant, Content: "a1"},
+		{Role: types.RoleUser, Content: "u2"},
+		{Role: types.RoleAssistant, Content: "a2"},
+		{Role: types.RoleUser, Content: "u3"},
+		{Role: types.RoleAssistant, Content: "a3"},
+		{Role: types.RoleUser, Content: "u4"},
+		{Role: types.RoleSystem, Content: oldSummary},
+		{Role: types.RoleAssistant, Content: "a4"},
+		{Role: types.RoleUser, Content: "u5"},
+		{Role: types.RoleAssistant, Content: "a5"},
+		{Role: types.RoleUser, Content: "u6"},
+		{Role: types.RoleAssistant, Content: "a6"},
+	}
+
+	if _, err := a.compressHistory(context.Background(), history); err != nil {
+		t.Fatalf("compressHistory: %v", err)
+	}
+	if !strings.Contains(summarizerInput, oldSummary) {
+		t.Errorf("prior summary missing from the summarization input:\n%s", summarizerInput)
+	}
+}

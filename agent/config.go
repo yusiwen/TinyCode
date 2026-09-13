@@ -12,14 +12,14 @@ const (
 type AgentConfig struct {
 	Name         string
 	Mode         AgentMode
-	Hidden       bool     // hidden from Tab switching and user-facing lists
+	Hidden       bool // hidden from Tab switching and user-facing lists
 	Description  string
 	SystemPrompt string
-	MaxSteps     int       // 0 = unlimited
-	Model        string    // "<provider>/<model>", e.g. "deepseek/deepseek-v4-pro"
-	AllowedTools []string  // tool names allowed ("*" = all)
-	DeniedTools  []string  // tool names explicitly denied
-	Permissions  Ruleset   // permission rules (replaces DeniedTools, Phase 3)
+	MaxSteps     int      // 0 = unlimited
+	Model        string   // "<provider>/<model>", e.g. "deepseek/deepseek-v4-pro"
+	AllowedTools []string // tool names allowed ("*" = all)
+	DeniedTools  []string // tool names explicitly denied
+	Permissions  Ruleset  // permission rules (replaces DeniedTools, Phase 3)
 }
 
 // IsToolAllowed returns true if the named tool is permitted by this config.
@@ -72,10 +72,12 @@ func DefaultAgents() map[string]*AgentConfig {
 				{Action: "git_log", Resource: "*", Effect: EffectAllow},
 				{Action: "web_search", Resource: "*", Effect: EffectAllow},
 				{Action: "web_extract", Resource: "*", Effect: EffectAllow},
-				{Action: "lsp_go_to_definition", Resource: "*", Effect: EffectAllow},
-				{Action: "lsp_find_references", Resource: "*", Effect: EffectAllow},
+				// Names must match lsp.ToolType exactly (lsp_definition,
+				// lsp_references, lsp_hover, lsp_symbols).
+				{Action: "lsp_definition", Resource: "*", Effect: EffectAllow},
+				{Action: "lsp_references", Resource: "*", Effect: EffectAllow},
 				{Action: "lsp_hover", Resource: "*", Effect: EffectAllow},
-				{Action: "lsp_document_symbols", Resource: "*", Effect: EffectAllow},
+				{Action: "lsp_symbols", Resource: "*", Effect: EffectAllow},
 				{Action: "load_skill", Resource: "*", Effect: EffectAllow},
 				{Action: "todo", Resource: "*", Effect: EffectAllow},
 			},
@@ -99,7 +101,7 @@ func DefaultAgents() map[string]*AgentConfig {
 				"When delegating to sub-agents via task(), use relative paths (relative to the current " +
 				"working directory), not absolute paths. Sub-agents run in the same project workspace " +
 				"and inherit the working directory from the parent agent.",
-			MaxSteps:    50,
+			MaxSteps: 50,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},
 			},

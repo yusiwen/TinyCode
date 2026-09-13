@@ -114,6 +114,100 @@ func TestFilterToolsDeny(t *testing.T) {
 	}
 }
 
+// TestTranslateToolLists covers the config-to-ruleset translation used for
+// per-agent allowed_tools/denied_tools overrides.
+func TestTranslateToolLists(t *testing.T) {
+	allowAll := Ruleset{{Action: "*", Resource: "*", Effect: EffectAllow}}
+	readOnly := Ruleset{
+		{Action: "*", Resource: "*", Effect: EffectDeny},
+		{Action: "read_file", Resource: "*", Effect: EffectAllow},
+		{Action: "search_files", Resource: "*", Effect: EffectAllow},
+	}
+
+	t.Run("denied adds to the base ruleset", func(t *testing.T) {
+		rules := TranslateToolLists(allowAll, nil, []string{"bash"})
+		if Evaluate("bash", "*", rules...) != EffectDeny {
+			t.Error("bash should be denied")
+		}
+		if Evaluate("write_file", "*", rules...) != EffectAllow {
+			t.Error("write_file should stay allowed")
+		}
+	})
+
+	t.Run("allowed acts as a whitelist", func(t *testing.T) {
+		rules := TranslateToolLists(allowAll, []string{"read_file"}, nil)
+		if Evaluate("read_file", "*", rules...) != EffectAllow {
+			t.Error("read_file should be allowed")
+		}
+		if Evaluate("bash", "*", rules...) != EffectDeny {
+			t.Error("bash should be denied by the whitelist")
+		}
+		if Evaluate("write_file", "*", rules...) != EffectDeny {
+			t.Error("write_file should be denied by the whitelist")
+		}
+	})
+
+	t.Run("denied wins over allowed", func(t *testing.T) {
+		rules := TranslateToolLists(readOnly, []string{"read_file", "bash"}, []string{"bash"})
+		if Evaluate("bash", "*", rules...) != EffectDeny {
+			t.Error("bash is in both lists and must end up denied")
+		}
+		if Evaluate("read_file", "*", rules...) != EffectAllow {
+			t.Error("read_file should be allowed")
+		}
+	})
+
+	t.Run("base ruleset is preserved and not mutated", func(t *testing.T) {
+		base := Ruleset{
+			{Action: "*", Resource: "*", Effect: EffectAllow},
+			{Action: "task", Resource: "*", Effect: EffectDeny},
+		}
+		rules := TranslateToolLists(base, nil, []string{"bash"})
+		if Evaluate("task", "*", rules...) != EffectDeny {
+			t.Error("base deny rule for task was lost")
+		}
+		if len(base) != 2 {
+			t.Errorf("base ruleset was mutated: %v", base)
+		}
+	})
+
+	t.Run("nil lists keep the base behaviour", func(t *testing.T) {
+		rules := TranslateToolLists(readOnly, nil, nil)
+		if Evaluate("bash", "*", rules...) != EffectDeny {
+			t.Error("base deny-all must survive an empty translation")
+		}
+		if Evaluate("read_file", "*", rules...) != EffectAllow {
+			t.Error("base allow must survive an empty translation")
+		}
+	})
+
+	t.Run("empty allowed list means no override", func(t *testing.T) {
+		rules := TranslateToolLists(readOnly, []string{}, nil)
+		if Evaluate("read_file", "*", rules...) != EffectAllow {
+			t.Error("an empty allowed list must not deny every tool")
+		}
+	})
+
+	t.Run("whitelist cannot re-grant a named base deny", func(t *testing.T) {
+		// Shaped like the "general" sub-agent: allow all, but deny delegation.
+		base := Ruleset{
+			{Action: "*", Resource: "*", Effect: EffectAllow},
+			{Action: "task", Resource: "*", Effect: EffectDeny},
+			{Action: "skill_manage", Resource: "*", Effect: EffectDeny},
+		}
+		rules := TranslateToolLists(base, []string{"*"}, nil)
+		if Evaluate("bash", "*", rules...) != EffectAllow {
+			t.Error("bash should remain allowed")
+		}
+		if Evaluate("task", "*", rules...) != EffectDeny {
+			t.Error("a configured whitelist must not re-grant task")
+		}
+		if Evaluate("skill_manage", "*", rules...) != EffectDeny {
+			t.Error("a configured whitelist must not re-grant skill_manage")
+		}
+	})
+}
+
 func TestFilterToolsWhitelist(t *testing.T) {
 	all := []string{"bash", "read_file", "write_file", "search_files"}
 	rules := []Rule{
@@ -129,6 +223,26 @@ func TestFilterToolsWhitelist(t *testing.T) {
 	for i, name := range filtered {
 		if name != expected[i] {
 			t.Fatalf("index %d: got %s, want %s", i, name, expected[i])
+		}
+	}
+}
+
+// TestPlanAgentLSPToolNames guards the allow-list against tool-name drift: the
+// names must match lsp.ToolType values exactly, or plan mode silently loses the
+// LSP tools.
+func TestPlanAgentLSPToolNames(t *testing.T) {
+	plan := DefaultAgents()["plan"]
+	if plan == nil {
+		t.Fatal("plan agent missing")
+	}
+	for _, name := range []string{"lsp_definition", "lsp_references", "lsp_hover", "lsp_symbols"} {
+		if !ToolAllowedFor(plan, name) {
+			t.Errorf("plan mode should allow %q", name)
+		}
+	}
+	for _, name := range []string{"lsp_go_to_definition", "lsp_find_references", "lsp_document_symbols"} {
+		if ToolAllowedFor(plan, name) {
+			t.Errorf("plan mode still references the non-existent tool name %q", name)
 		}
 	}
 }

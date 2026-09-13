@@ -4,12 +4,14 @@ import "github.com/yusiwen/tinycode/tool"
 
 // StreamMsg is sent from the agent goroutine to the TUI for each streaming delta.
 type StreamMsg struct {
+	RunID          uint64 // generation id of the producing run (0 in legacy tests)
 	ReasoningDelta string
 	TextDelta      string
 }
 
 // StreamDone is sent when the agent completes (final answer or error).
 type StreamDone struct {
+	RunID            uint64 // generation id of the producing run (0 in legacy tests)
 	Content          string
 	ReasoningContent string
 	Error            error
@@ -44,6 +46,7 @@ type ToolCallInfo struct {
 
 // ToolCallMsg is sent when the agent invokes a tool.
 type ToolCallMsg struct {
+	RunID  uint64 // generation id of the producing run (0 in legacy tests)
 	MsgIdx int    // assistant message index
 	Name   string
 	Arg    string
@@ -51,9 +54,15 @@ type ToolCallMsg struct {
 
 // ToolResultMsg is sent when the tool returns (used to track duration).
 type ToolResultMsg struct {
+	RunID  uint64
 	MsgIdx int
 	Name   string        // tool name, so TUI can react (e.g. mark todoDirty)
 	AckCh  chan struct{} // non-nil for "todo" — agent blocks until render confirmed
+}
+
+// sessionTitleMsg carries the result of asynchronous session-title generation.
+type sessionTitleMsg struct {
+	Title string
 }
 
 // LSPDiagMsg is sent when LSP diagnostics are available.

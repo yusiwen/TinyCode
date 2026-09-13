@@ -14,18 +14,18 @@ import (
 type ToolType string
 
 const (
-	ToolGoToDefinition ToolType = "lsp_definition"
-	ToolFindReferences ToolType = "lsp_references"
-	ToolHover          ToolType = "lsp_hover"
+	ToolGoToDefinition  ToolType = "lsp_definition"
+	ToolFindReferences  ToolType = "lsp_references"
+	ToolHover           ToolType = "lsp_hover"
 	ToolDocumentSymbols ToolType = "lsp_symbols"
 )
 
 // ToolFactory creates an agent.Tool for the given LSP operation.
 func ToolFactory(tt ToolType) agent.Tool {
 	desc := map[ToolType]string{
-		ToolGoToDefinition: "Find the definition of a symbol at a given file:line:character. Pass file_path, line, character.",
-		ToolFindReferences: "Find all references to a symbol at a given file:line:character. Pass file_path, line, character.",
-		ToolHover:          "Get type information and documentation for a symbol at a given file:line:character. Pass file_path, line, character.",
+		ToolGoToDefinition:  "Find the definition of a symbol at a given file:line:character. Pass file_path, line, character.",
+		ToolFindReferences:  "Find all references to a symbol at a given file:line:character. Pass file_path, line, character.",
+		ToolHover:           "Get type information and documentation for a symbol at a given file:line:character. Pass file_path, line, character.",
 		ToolDocumentSymbols: "List all symbols (functions, types, variables) defined in a file. Pass file_path.",
 	}
 
@@ -70,8 +70,14 @@ func ToolFactory(tt ToolType) agent.Tool {
 
 			// Prefer persistent LSP connection if available
 			fileURI := "file://" + absPath
-			line := int(args["line"].(float64))
-			character := int(args["character"].(float64))
+			line, haveLine := optionalIntArg(args, "line")
+			character, haveChar := optionalIntArg(args, "character")
+			// Position-free tools (document symbols) must not require a
+			// position; the others reject a missing or malformed one instead
+			// of panicking on a failed type assertion.
+			if tt != ToolDocumentSymbols && (!haveLine || !haveChar) {
+				return "", fmt.Errorf("%s requires integer 'line' and 'character' arguments (0-indexed)", tt)
+			}
 			if IsAvailable() {
 				return executeViaPersistent(ctx, tt, fileURI, line, character)
 			}
@@ -82,12 +88,18 @@ func ToolFactory(tt ToolType) agent.Tool {
 				// Fallback: infer from file extension
 				ext := filepath.Ext(absPath)
 				switch ext {
-				case ".go":     lang = "go"
-				case ".py":     lang = "python"
-				case ".ts", ".tsx", ".js", ".jsx": lang = "typescript"
-				case ".rs":     lang = "rust"
-				case ".java":   lang = "java"
-				case ".c", ".cpp", ".h", ".hpp": lang = "cpp"
+				case ".go":
+					lang = "go"
+				case ".py":
+					lang = "python"
+				case ".ts", ".tsx", ".js", ".jsx":
+					lang = "typescript"
+				case ".rs":
+					lang = "rust"
+				case ".java":
+					lang = "java"
+				case ".c", ".cpp", ".h", ".hpp":
+					lang = "cpp"
 				}
 			}
 
@@ -109,9 +121,6 @@ func ToolFactory(tt ToolType) agent.Tool {
 			}
 
 			// Execute the requested operation
-			line = int(args["line"].(float64))
-			character = int(args["character"].(float64))
-
 			switch tt {
 			case ToolGoToDefinition:
 				loc, err := srv.Client.GoToDefinition(fileURI, line, character)
@@ -234,6 +243,23 @@ func executeViaPersistent(ctx context.Context, tt ToolType, fileURI string, line
 
 	return "", fmt.Errorf("unknown LSP tool type: %s", tt)
 }
+
+// optionalIntArg reads an integer argument without panicking when it is
+// missing or has an unexpected JSON type. The bool reports whether the value
+// was present and usable.
+func optionalIntArg(args map[string]any, key string) (int, bool) {
+	switch v := args[key].(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	default:
+		return 0, false
+	}
+}
+
 func findProjectRoot(filePath string) string {
 	dir := filepath.Dir(filePath)
 	for {

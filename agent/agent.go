@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"strings"
 
 	"github.com/yusiwen/tinycode/tlog"
@@ -36,11 +37,11 @@ type Agent struct {
 	// TodoStorer (used by compression for active-todo injection)
 	TodoStorer interface{ FormatForInjection() string }
 
-	SystemPrompt string
-	MaxSteps     int
-	MaxTokens    int
-	Verbose      bool // when true, print detailed tool results
-	ShowThinking bool // when true, display reasoning_content from thinking mode
+	SystemPrompt    string
+	MaxSteps        int
+	MaxTokens       int
+	Verbose         bool                   // when true, print detailed tool results
+	ShowThinking    bool                   // when true, display reasoning_content from thinking mode
 	StreamCallbacks *types.StreamCallbacks // optional streaming callbacks (TUI mode)
 
 	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
@@ -48,11 +49,11 @@ type Agent struct {
 
 // ANSI color codes for terminal output.
 const (
-	colorCyan    = "\033[36m"
-	colorGray    = "\033[90m"
-	colorYellow  = "\033[33m"
-	colorDim     = "\033[2m"
-	colorReset   = "\033[0m"
+	colorCyan   = "\033[36m"
+	colorGray   = "\033[90m"
+	colorYellow = "\033[33m"
+	colorDim    = "\033[2m"
+	colorReset  = "\033[0m"
 
 	thinkingPrefix = "| "
 )
@@ -108,7 +109,7 @@ const (
 // New creates an Agent with sensible defaults.
 func New(provider LLMProvider) *Agent {
 	return &Agent{
-		Provider:     provider,
+		Provider: provider,
 		SystemPrompt: "You are TinyCode, an AI coding assistant. " +
 			"Use tools when needed to accomplish the user's request. " +
 			"Think step by step. You have a limited budget of 20 tool calls " +
@@ -182,12 +183,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		maxSteps = a.Config.MaxSteps
 	}
 
-	// Set plan mode write restriction
-	if a.Config != nil && a.Config.Name == "plan" {
-		types.PlanModeWriteRestricted = true
-	} else {
-		types.PlanModeWriteRestricted = false
-	}
+	// Set plan mode write restriction on the run context (not package state),
+	// so concurrent sub-agent runs cannot flip it for each other.
+	ctx = types.WithPlanWriteRestriction(ctx, a.Config != nil && a.Config.Name == "plan")
 
 	for step < maxSteps {
 		tlog.Info("agent.loop", "llm call", "step", step, "mode", a.agentPrefix())
@@ -204,36 +202,36 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				Parameters:  t.Parameters,
 			})
 		}
-					// Determine streaming callbacks: use Agent-level if set (TUI mode),
-					// otherwise create default callbacks for terminal display.
-					callbacks := a.StreamCallbacks
-					tlog.Debug("agent.loop", "callbacks_check", "step", step, "has_callbacks", callbacks != nil)
-					if callbacks == nil {
-						var reasoningFirstToken bool
-						callbacks = &types.StreamCallbacks{
-							OnReasoningDelta: func(text string) {
-								if a.ShowThinking {
-									if !reasoningFirstToken {
-										reasoningFirstToken = true
-										fmt.Print(colorDim + colorYellow + thinkingPrefix)
-									}
-									fmt.Print(text)
-								}
-							},
-							OnTextDelta: func(text string) {
-								fmt.Print(colorReset + text)
-							},
+		// Determine streaming callbacks: use Agent-level if set (TUI mode),
+		// otherwise create default callbacks for terminal display.
+		callbacks := a.StreamCallbacks
+		tlog.Debug("agent.loop", "callbacks_check", "step", step, "has_callbacks", callbacks != nil)
+		if callbacks == nil {
+			var reasoningFirstToken bool
+			callbacks = &types.StreamCallbacks{
+				OnReasoningDelta: func(text string) {
+					if a.ShowThinking {
+						if !reasoningFirstToken {
+							reasoningFirstToken = true
+							fmt.Print(colorDim + colorYellow + thinkingPrefix)
 						}
+						fmt.Print(text)
 					}
+				},
+				OnTextDelta: func(text string) {
+					fmt.Print(colorReset + text)
+				},
+			}
+		}
 
-				// Call provider
-				resp, err := a.Provider.Chat(ctx, types.ChatRequest{
-					Messages:       messages,
-					Tools:           toolDefs,
-					MaxTokens:       a.MaxTokens,
-					Model:           a.getModel(),
-					StreamCallbacks: callbacks,
-				})
+		// Call provider
+		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+			Messages:        messages,
+			Tools:           toolDefs,
+			MaxTokens:       a.MaxTokens,
+			Model:           a.getModel(),
+			StreamCallbacks: callbacks,
+		})
 		if err != nil {
 			tlog.Error("agent.loop", "llm error", "step", step, "error", err)
 			a.HandleContextError(err)
@@ -348,31 +346,43 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
 
 				var result string
-				found := false
-				for _, t := range a.Tools {
-					if t.Name == tc.Name {
-						if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
-							result = fmt.Sprintf("[DENIED] %s is not available in %s mode.", t.Name, a.Config.Name)
+				// A panicking tool must not take down the whole agent: convert
+				// it into an error result for this tool call only.
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							result = fmt.Sprintf("error: tool %s panicked: %v", tc.Name, r)
+							tlog.Error("agent.loop", "tool panic", "tool", tc.Name,
+								"panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+						}
+					}()
+
+					found := false
+					for _, t := range a.Tools {
+						if t.Name == tc.Name {
+							if a.Config != nil && !ToolAllowedFor(a.Config, t.Name) {
+								result = fmt.Sprintf("[DENIED] %s is not available in %s mode.", t.Name, a.Config.Name)
+								found = true
+								break
+							}
 							found = true
+							var args map[string]any
+							if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
+								result = fmt.Sprintf("error parsing args: %v", err)
+							} else {
+								var execErr error
+								result, execErr = t.Execute(ctx, args)
+								if execErr != nil {
+									result = fmt.Sprintf("error: %v", execErr)
+								}
+							}
 							break
 						}
-						found = true
-						var args map[string]any
-						if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
-							result = fmt.Sprintf("error parsing args: %v", err)
-						} else {
-							var execErr error
-							result, execErr = t.Execute(ctx, args)
-							if execErr != nil {
-								result = fmt.Sprintf("error: %v", execErr)
-							}
-						}
-						break
 					}
-				}
-				if !found {
-					result = fmt.Sprintf("unknown tool: %s", tc.Name)
-				}
+					if !found {
+						result = fmt.Sprintf("unknown tool: %s", tc.Name)
+					}
+				}()
 
 				if callbacks != nil && callbacks.OnToolResult != nil {
 					callbacks.OnToolResult(tc.Name)
@@ -421,10 +431,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 
 			messages = append(messages, types.Message{
-				Role:        types.RoleTool,
-				Content:     r.Truncated,
-				Name:        r.Name,
-				ToolCallID:  toolCalls[r.Index].ID,
+				Role:       types.RoleTool,
+				Content:    r.Truncated,
+				Name:       r.Name,
+				ToolCallID: toolCalls[r.Index].ID,
 			})
 		}
 		// Step boundary — signal the TUI to prepare a new message for the next step

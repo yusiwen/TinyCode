@@ -1,5 +1,7 @@
 package types
 
+import "context"
+
 // Role constants for messages.
 const (
 	RoleSystem    = "system"
@@ -34,10 +36,10 @@ type MemoryStore interface {
 
 // ChatRequest holds parameters for an LLM chat call.
 type ChatRequest struct {
-	Messages       []Message
+	Messages        []Message
 	Tools           []ToolDef
 	MaxTokens       int
-	Model           string // optional: override provider's default model
+	Model           string           // optional: override provider's default model
 	StreamCallbacks *StreamCallbacks // optional SSE callbacks for real-time display
 }
 
@@ -71,6 +73,19 @@ type ToolCall struct {
 	Arguments string // raw JSON
 }
 
-// PlanModeWriteRestricted controls whether bash blocks write operations.
-// Set by agent when entering plan mode; checked by bash tool.
-var PlanModeWriteRestricted bool
+// planWriteKey is the context key for the plan-mode write restriction.
+type planWriteKey struct{}
+
+// WithPlanWriteRestriction returns a context marked as plan mode (read-only).
+// The restriction travels with the run instead of living in package state, so
+// concurrent sub-agents cannot enable or disable it for each other.
+func WithPlanWriteRestriction(ctx context.Context, restricted bool) context.Context {
+	return context.WithValue(ctx, planWriteKey{}, restricted)
+}
+
+// PlanWriteRestricted reports whether the current run is plan mode. The bash
+// tool uses it to block write operations.
+func PlanWriteRestricted(ctx context.Context) bool {
+	restricted, _ := ctx.Value(planWriteKey{}).(bool)
+	return restricted
+}

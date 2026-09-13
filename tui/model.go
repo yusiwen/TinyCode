@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -30,11 +32,11 @@ type Button struct {
 
 // lineSrc records the source of each rendered line in msgLines.
 type lineSrc struct {
-	MsgIdx      int
-	SourceField string // "content" / "reasoning" / "label" / "user" / "system" / "button"
-	Text        string // plain text for extraction
-	CharStart   int
-	CharEnd     int
+	MsgIdx        int
+	SourceField   string // "content" / "reasoning" / "label" / "user" / "system" / "button"
+	Text          string // plain text for extraction
+	CharStart     int
+	CharEnd       int
 	ContentOffset int // bytes of prefix ("> ", "→ ", "    ") to skip for msg.Content offset
 }
 
@@ -67,6 +69,16 @@ type TuiModel struct {
 	streamCh     chan tea.Msg
 	curAssistant *chatMessage // current streaming assistant message
 
+	// Run lifecycle: only one agent run may be active at a time. runID is a
+	// generation counter stamped on every stream message so output from a
+	// superseded run can be ignored. All fields are guarded by runMu because
+	// the agent goroutine and Update may both touch them.
+	runMu          sync.Mutex
+	runID          uint64
+	runActive      bool
+	runCancel      context.CancelFunc
+	runInterrupted bool
+
 	// Input history
 	lastInput string
 
@@ -75,19 +87,19 @@ type TuiModel struct {
 	providerCursor    int
 
 	// Mouse selection (message-level — deprecated, to be replaced)
-	selecting      bool
-	mouseDrag      bool
-	selectStart    int
-	selectEnd      int
+	selecting   bool
+	mouseDrag   bool
+	selectStart int
+	selectEnd   int
 
 	// Character-level selection (new)
-	charSelStart selPos
-	charSelEnd   selPos
+	charSelStart     selPos
+	charSelEnd       selPos
 	charSelStartLine int
 	charSelStartCol  int
 	charSelEndLine   int
 	charSelEndCol    int
-	lineSrcs     []lineSrc
+	lineSrcs         []lineSrc
 
 	// Buttons (rebuilt each View)
 	activeButtons []Button
@@ -96,37 +108,37 @@ type TuiModel struct {
 	grid *CellGrid
 
 	// Incremental render tracking
-	msgRowCount []int      // rendered row count per message (0 = not yet rendered)
-	msgDirty    []bool     // true = needs re-render
+	msgRowCount []int  // rendered row count per message (0 = not yet rendered)
+	msgDirty    []bool // true = needs re-render
 
 	// Status bar message (transient, replaces system messages)
 	statusMsg string
 
 	// Input history (up/down arrows)
-	inputHistory  []string
-	historyPos    int    // -1 = current draft, 0+ = history index
-	historyDraft  string // saved current input when browsing history
+	inputHistory []string
+	historyPos   int    // -1 = current draft, 0+ = history index
+	historyDraft string // saved current input when browsing history
 
 	// Quit confirmation
 	quitConfirm bool
 
 	// Session persistence
-	SessionDir      string
-	currentBranch   string // current branch ID (same as main session ID for main)
-	sessionStore    *session.Store
+	SessionDir    string
+	currentBranch string // current branch ID (same as main session ID for main)
+	sessionStore  *session.Store
 
 	// Scroll tracking
 	streamDoneNotified bool // true after first GotoBottom on stream completion
 
 	// Session stats
-	sessionStart      time.Time
-	sessionTokens     int
-	sessionTitle      string // auto-generated conversation title
-	sessionToolCalls  int
+	sessionStart     time.Time
+	sessionTokens    int
+	sessionTitle     string // auto-generated conversation title
+	sessionToolCalls int
 
 	// LSP diagnostics tracking
-	diagTotal   int    // total errors across all files
-	diagFile    string // most recent file with errors (for display)
+	diagTotal int    // total errors across all files
+	diagFile  string // most recent file with errors (for display)
 
 	// Todo store
 	todoStore *tool.TodoStore
@@ -146,13 +158,13 @@ type TuiModel struct {
 	cmdPaletteSel   int    // selected index
 
 	// Dialog overlay
-	dialogMode      bool       // test dialog active
-	dialogItems     []string   // dialog option labels
-	dialogSel       int        // selected option index
-	dialogResult    string     // selected result or empty
-	dialogMsg       string     // dialog heading message
-	dialogOnDone    func(string)  // callback invoked with selected value
-	dialogOnCancel  func()        // callback invoked when dialog is cancelled
+	dialogMode     bool         // test dialog active
+	dialogItems    []string     // dialog option labels
+	dialogSel      int          // selected option index
+	dialogResult   string       // selected result or empty
+	dialogMsg      string       // dialog heading message
+	dialogOnDone   func(string) // callback invoked with selected value
+	dialogOnCancel func()       // callback invoked when dialog is cancelled
 }
 
 // cmdEntry describes one command in the floating palette.
@@ -215,30 +227,36 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	s.Spinner = spinner.Dot
 
 	m := &TuiModel{
-		agent:     ag,
-		config:    cfg,
-		registry:  reg,
-		provReg:   provReg,
-		input:     t,
-		spinner:   s,
-		todoStore: todoStore,
-		modeName: reg.CurrentName(),
-		status:   StatusIdle,
-		streamCh: make(chan tea.Msg, 200),
-		selectStart: -1,
-		selectEnd:   -1,
-		charSelStart: selPos{Offset: -1},
-		charSelEnd:   selPos{Offset: -1},
-		sessionStart: time.Now(),
-		SessionDir:      cfg.SessionDir,
-		currentBranch:   "", // no session yet
-		sessionStore:    session.NewStore(cfg.SessionDir),
+		agent:         ag,
+		config:        cfg,
+		registry:      reg,
+		provReg:       provReg,
+		input:         t,
+		spinner:       s,
+		todoStore:     todoStore,
+		modeName:      reg.CurrentName(),
+		status:        StatusIdle,
+		streamCh:      make(chan tea.Msg, 200),
+		selectStart:   -1,
+		selectEnd:     -1,
+		charSelStart:  selPos{Offset: -1},
+		charSelEnd:    selPos{Offset: -1},
+		sessionStart:  time.Now(),
+		SessionDir:    cfg.SessionDir,
+		currentBranch: "", // no session yet
+		sessionStore:  session.NewStore(cfg.SessionDir),
 	}
 
 	// Load session if resume ID provided
+	resumedOK := false
 	if len(resume) > 0 && resume[0] != "" {
 		sess, err := session.Load(resume[0], cfg.SessionDir)
 		if err == nil {
+			resumedOK = true
+			// Track the resumed session so forks, "Allow session" persistence
+			// and saving on quit all update this session instead of minting a
+			// new one.
+			m.currentBranch = resume[0]
 			for _, sm := range sess.Messages {
 				cm := chatMessage{
 					Role:             sm.Role,
@@ -258,6 +276,11 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 			for _, p := range sess.AllowedPaths {
 				tool.DefaultSandbox.AllowAlways(p)
 			}
+		} else {
+			m.messages = append(m.messages, chatMessage{
+				Role:    "system",
+				Content: fmt.Sprintf("Failed to resume session %q: %v", resume[0], err),
+			})
 		}
 	}
 
@@ -298,9 +321,8 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	if ag != nil && len(ag.Tools) > 0 {
 		toolCount := len(ag.Tools)
 		skillCount := len(skill.Discover("."))
-		resumed := len(resume) > 0
-		
-		if resumed {
+
+		if resumedOK {
 			msg := fmt.Sprintf("_Resumed session: %s_\n\nTinyCode ready — %d tools, %d skills loaded", resume[0], toolCount, skillCount)
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: msg})
 		} else {
@@ -331,6 +353,10 @@ func (m *TuiModel) checkPermissionDialog() bool {
 	if label != "" {
 		title = "🔒 [" + label + "] Write to " + displayPath + "?"
 	}
+	// Capture the request identity now: the queue head can change while the
+	// user is deciding, and the answer must apply to the request that was shown.
+	reqID := tool.PendingPermissionID()
+	reqPath := path
 	m.showDialogWithCancel(title, []string{
 		"Allow once",
 		"Allow session",
@@ -353,46 +379,46 @@ func (m *TuiModel) checkPermissionDialog() bool {
 			allowed = false
 			mode = "denied"
 		}
-		if allowed && mode == "session" {
+		if allowed && mode == "session" && reqPath != "" {
 			// Persist to session file on Allow session
 			if m.SessionDir != "" && m.currentBranch != "" {
 				// Read existing session, append path, write back
 				if existing, err := session.Load(m.currentBranch, m.SessionDir); err == nil {
-					paths := existing.AllowedPaths
-					// Dedup
-					has := false
-					for _, p := range paths {
-						if p == tool.PendingPermissionPath() {
-							has = true
-							break
-						}
-					}
-					if !has {
-						paths = append(paths, tool.PendingPermissionPath())
-					}
-					existing.AllowedPaths = paths
+					existing.AllowedPaths = appendUniquePath(existing.AllowedPaths, reqPath)
 					existing.Flush()
 				} else {
-					sess := session.Session{
-						ID:           m.currentBranch,
-						AllowedPaths: []string{tool.PendingPermissionPath()},
-					}
+					// session.New sets the unexported dir field, so the file
+					// lands in SessionDir (a bare struct literal would write to
+					// the process working directory).
+					sess := session.New(m.currentBranch, m.SessionDir)
+					sess.AllowedPaths = []string{reqPath}
 					sess.Flush()
 				}
 			}
 		}
-		if allowed && mode == "always" {
-			// Persist to global config on Allow always
-			m.config.Sandbox.AllowedPaths = append(m.config.Sandbox.AllowedPaths, tool.PendingPermissionPath())
-			if err := m.config.Save(); err != nil {
+		if allowed && mode == "always" && reqPath != "" {
+			// Persist to the user's global config on "Always allow". Only the
+			// sandbox.allowed_paths key is touched, so project-local (untrusted)
+			// values and today's defaults are never written to the user file.
+			if err := config.AddAllowedPath(reqPath); err != nil {
 				tlog.Warn("tui.permission", "save_config_error", "err", err)
 			}
 		}
-		tool.ResolvePermission(tool.PendingPermissionPath(), allowed, mode)
+		tool.ResolvePermissionByID(reqID, allowed, mode)
 	}, func() {
-		tool.ResolvePermission(tool.PendingPermissionPath(), false, "cancelled")
+		tool.ResolvePermissionByID(reqID, false, "cancelled")
 	})
 	return true
+}
+
+// appendUniquePath appends path unless it is already present.
+func appendUniquePath(paths []string, path string) []string {
+	for _, p := range paths {
+		if p == path {
+			return paths
+		}
+	}
+	return append(paths, path)
 }
 
 // showDialog activates the dialog overlay with the given items.
@@ -513,6 +539,14 @@ func (m *TuiModel) MarkAllDirty() {
 	for i := range m.msgDirty {
 		m.msgDirty[i] = true
 	}
+}
+
+// resetSessionStats clears the per-session token and tool-call counters when
+// the transcript is replaced by a different conversation (fork or branch
+// switch), so the status bar never shows stats from another conversation.
+func (m *TuiModel) resetSessionStats() {
+	m.sessionTokens = 0
+	m.sessionToolCalls = 0
 }
 
 // ensureMsgTracking ensures msgDirty and msgRowCount arrays match m.messages length.

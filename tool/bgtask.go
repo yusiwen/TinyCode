@@ -13,6 +13,11 @@ import (
 
 var nextTaskID atomic.Int64
 
+// bgTaskTimeout bounds a background sub-agent run. It matches the synchronous
+// task tool so both paths terminate abandoned sub-agents after the same period.
+// It is a variable so tests can shorten it; production uses the 120s default.
+var bgTaskTimeout = 120 * time.Second
+
 // TaskState represents the state of a background task.
 type TaskState int
 
@@ -24,15 +29,18 @@ const (
 )
 
 // BgTask holds the status and result of a background task.
+// Its fields are guarded by the owning manager's mutex.
 type BgTask struct {
-	ID       string
-	Agent    string
-	Goal     string
-	State    TaskState
-	Result   string
-	Error    string
-	Done     chan struct{} // closed when task completes
-	started  time.Time
+	ID      string
+	Agent   string
+	Goal    string
+	State   TaskState
+	Result  string
+	Error   string
+	Done    chan struct{} // closed when task completes
+	started time.Time
+
+	doneOnce sync.Once // ensures Done is closed exactly once
 }
 
 // BackgroundTaskManager tracks all running background tasks.
@@ -69,9 +77,7 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		// Look up sub-agent config
 		cfg := deps.GetAgentConfig(name)
 		if cfg == nil {
-			task.State = TaskFailed
-			task.Error = fmt.Sprintf("unknown agent %q", name)
-			close(task.Done)
+			mgr.finalize(task, TaskFailed, fmt.Sprintf("unknown agent %q", name), "")
 			return
 		}
 
@@ -94,44 +100,69 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		tlog.Debug("task.bg", "start", "id", id, "agent", name, "goal", goal,
 			"tools", len(subTools), "maxSteps", cfg.MaxSteps)
 
-		// Run with context timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		// Run with a cancellable context so the sub-agent is stopped at the
+		// deadline even if it ignores ctx and blocks. The watchdog settles the
+		// task state and releases Collect waiters at the hard timeout; the
+		// once-guarded completion path below is idempotent with it.
+		ctx, cancel := context.WithTimeout(context.Background(), bgTaskTimeout)
 		defer cancel()
+
+		watchdog := time.AfterFunc(bgTaskTimeout, func() {
+			cancel()
+			mgr.finalize(task, TaskTimedOut, "timed out after 120s", "")
+		})
+		defer watchdog.Stop()
 
 		out, err := sub.Run(ctx, goal)
 
-		mgr.mu.Lock()
 		if err != nil {
 			tlog.Debug("task.bg", "error", "id", id, "err", err)
 			if ctx.Err() != nil {
-				task.State = TaskTimedOut
-				task.Error = "timed out after 120s"
+				result := ""
 				if out != "" {
-					task.Result = fmt.Sprintf("[task %q timed out — partial result]\n%s", name, out)
+					result = fmt.Sprintf("[task %q timed out — partial result]\n%s", name, out)
 				}
+				mgr.finalize(task, TaskTimedOut, "timed out after 120s", result)
+			} else if stringsContains(err.Error(), "max steps") && out != "" {
+				mgr.finalize(task, TaskDone, err.Error(),
+					fmt.Sprintf("[task %q hit max steps — partial result]\n%s", name, out))
 			} else {
-				task.State = TaskFailed
-				task.Error = err.Error()
-				if stringsContains(err.Error(), "max steps") && out != "" {
-					task.Result = fmt.Sprintf("[task %q hit max steps — partial result]\n%s", name, out)
-					task.State = TaskDone
-				}
+				mgr.finalize(task, TaskFailed, err.Error(), "")
 			}
-		} else {
-			task.State = TaskDone
-			task.Result = out
-			tlog.Debug("task.bg", "done", "id", id, "output_size", len(out))
+			return
 		}
-		mgr.mu.Unlock()
-		close(task.Done)
+
+		tlog.Debug("task.bg", "done", "id", id, "output_size", len(out))
+		mgr.finalize(task, TaskDone, "", out)
 	}()
 
 	return id
 }
 
+// finalize records a terminal state and releases Collect waiters exactly once.
+// A task that already reached a terminal state (e.g. via the watchdog) is left
+// untouched, so a late-completing sub-agent cannot overwrite it.
+func (mgr *BackgroundTaskManager) finalize(task *BgTask, state TaskState, errMsg, result string) {
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	if task.State == TaskRunning {
+		task.State = state
+		task.Error = errMsg
+		task.Result = result
+	}
+	task.doneOnce.Do(func() { close(task.Done) })
+}
+
 // Collect waits for a background task to complete and returns its result.
 // Returns an error if the task ID is unknown.
 func (mgr *BackgroundTaskManager) Collect(taskID string) (string, error) {
+	return mgr.CollectContext(context.Background(), taskID)
+}
+
+// CollectContext waits for a background task to complete and returns its result,
+// returning early when ctx is done. The background task itself keeps running.
+// Returns an error if the task ID is unknown.
+func (mgr *BackgroundTaskManager) CollectContext(ctx context.Context, taskID string) (string, error) {
 	mgr.mu.Lock()
 	task, ok := mgr.tasks[taskID]
 	mgr.mu.Unlock()
@@ -140,24 +171,34 @@ func (mgr *BackgroundTaskManager) Collect(taskID string) (string, error) {
 		return "", fmt.Errorf("task_collect: unknown task %q", taskID)
 	}
 
-	// Wait for completion
-	<-task.Done
+	// Wait for completion or caller cancellation. Done is closed by finalize,
+	// which is also driven by the watchdog, so this always returns within the
+	// background task's hard deadline.
+	select {
+	case <-task.Done:
+	case <-ctx.Done():
+		return "", fmt.Errorf("task_collect: %w", ctx.Err())
+	}
 
-	switch task.State {
+	mgr.mu.Lock()
+	state, result, errMsg := task.State, task.Result, task.Error
+	mgr.mu.Unlock()
+
+	switch state {
 	case TaskDone:
-		return task.Result, nil
+		return result, nil
 	case TaskTimedOut:
-		if task.Result != "" {
-			return task.Result, nil
+		if result != "" {
+			return result, nil
 		}
 		return "", fmt.Errorf("task_collect: task %q timed out", taskID)
 	case TaskFailed:
-		if task.Result != "" {
-			return task.Result, nil
+		if result != "" {
+			return result, nil
 		}
-		return "", fmt.Errorf("task_collect: task %q failed: %s", taskID, task.Error)
+		return "", fmt.Errorf("task_collect: task %q failed: %s", taskID, errMsg)
 	default:
-		return "", fmt.Errorf("task_collect: task %q in unexpected state %v", taskID, task.State)
+		return "", fmt.Errorf("task_collect: task %q in unexpected state %v", taskID, state)
 	}
 }
 

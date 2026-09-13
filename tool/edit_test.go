@@ -304,3 +304,115 @@ func TestEditFuzzyIndentationCorrection(t *testing.T) {
 		t.Errorf("expected 'return 42', got:\n%s", string(data))
 	}
 }
+
+// runFuzzyEdit writes content to a temp file, applies one edit and returns the
+// resulting file content.
+func runFuzzyEdit(t *testing.T, content, oldString, newString string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fuzzy.txt")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	edits := []editOp{{OldString: oldString, NewString: newString}}
+	b, _ := json.Marshal(edits)
+	if _, err := Edit().Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	}); err != nil {
+		t.Fatalf("edit %q: %v", oldString, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// TestFuzzyEditReplacesOriginalSpan guards the offset bug: the fuzzy strategies
+// used to slice the ORIGINAL text with offsets computed on the NORMALIZED text,
+// which replaced the wrong bytes (leaving debris such as "bazbar").
+func TestFuzzyEditReplacesOriginalSpan(t *testing.T) {
+	cases := []struct {
+		name      string
+		content   string
+		oldString string
+		newString string
+		want      string
+	}{
+		{
+			name:      "whitespace normalized run",
+			content:   "foo    bar\n",
+			oldString: "foo bar",
+			newString: "baz",
+			want:      "baz\n",
+		},
+		{
+			name:      "unicode em dash expansion",
+			content:   "a\u2014b\n",
+			oldString: "a--b",
+			newString: "X",
+			want:      "X\n",
+		},
+		{
+			name:      "unicode smart quotes",
+			content:   "say \u201Chi\u201D now\n",
+			oldString: `say "hi" now`,
+			newString: "done",
+			want:      "done\n",
+		},
+		{
+			name:      "indent flexible keeps the rest of the line",
+			content:   "    if x {\n        y()\n    }\n",
+			oldString: "if x {\n    y()\n}",
+			newString: "if z {\n    w()\n}",
+			want:      "    if z {\n        w()\n    }\n",
+		},
+		{
+			name:      "line trimmed trailing spaces",
+			content:   "alpha   \nbeta\n",
+			oldString: "alpha\nbeta",
+			newString: "gamma",
+			want:      "gamma\n",
+		},
+		{
+			name:      "escape normalized",
+			content:   "line1\nline2\n",
+			oldString: `line1\nline2`,
+			newString: "merged",
+			want:      "merged\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runFuzzyEdit(t, tc.content, tc.oldString, tc.newString)
+			if got != tc.want {
+				t.Errorf("edited content = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFuzzyEditNoMatch is the negative control: text that cannot be matched
+// must leave the file untouched.
+func TestFuzzyEditNoMatch(t *testing.T) {
+	const content = "hello world\n"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nomatch.txt")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	edits := []editOp{{OldString: "completely different", NewString: "x"}}
+	b, _ := json.Marshal(edits)
+	if _, err := Edit().Execute(context.Background(), map[string]any{
+		"path":  path,
+		"edits": json.RawMessage(b),
+	}); err == nil {
+		t.Fatal("expected an error for an unmatchable old_string")
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != content {
+		t.Errorf("file was modified despite no match: %q", data)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,12 +38,12 @@ func TestTaskToolBasic(t *testing.T) {
 		},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
 			return &agent.AgentConfig{
-				Name:        name,
-				Mode:        agent.AgentModeSubagent,
-				Description: "Test sub-agent",
+				Name:         name,
+				Mode:         agent.AgentModeSubagent,
+				Description:  "Test sub-agent",
 				SystemPrompt: "You are a test sub-agent.",
-				MaxSteps:    3,
-				DeniedTools: []string{"write_file"},
+				MaxSteps:     3,
+				DeniedTools:  []string{"write_file"},
 			}
 		},
 	}
@@ -246,5 +247,221 @@ func TestBgTaskStatus(t *testing.T) {
 	// Unknown task
 	if mgr.Status("nonexistent") != "" {
 		t.Fatal("expected empty status for unknown task")
+	}
+}
+
+// blockingProvider blocks inside Chat until its context is cancelled and then
+// records that cancellation. It models a sub-agent that would keep running
+// forever if the caller abandoned it without cancelling its context.
+type blockingProvider struct {
+	started    chan struct{}
+	cancelled  chan struct{}
+	startOnce  sync.Once
+	cancelOnce sync.Once
+}
+
+func newBlockingProvider() *blockingProvider {
+	return &blockingProvider{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+}
+
+func (p *blockingProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+	p.startOnce.Do(func() { close(p.started) })
+	<-ctx.Done()
+	p.cancelOnce.Do(func() { close(p.cancelled) })
+	return nil, ctx.Err()
+}
+
+func (p *blockingProvider) SupportsStream() bool { return false }
+func (p *blockingProvider) Name() string         { return "blocking" }
+
+// subagentDeps returns deps with a permissive config for the given provider.
+func subagentDeps(provider agent.LLMProvider) *TaskToolDeps {
+	return &TaskToolDeps{
+		Provider: provider,
+		AllTools: []agent.Tool{{Name: "bash"}},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{
+				Name:     name,
+				Mode:     agent.AgentModeSubagent,
+				MaxSteps: 100,
+			}
+		},
+	}
+}
+
+// TestTaskToolTimeoutCancelsSubAgent verifies that a timed-out synchronous task
+// returns the timeout error promptly and actually cancels the sub-agent's
+// context instead of leaving it running.
+func TestTaskToolTimeoutCancelsSubAgent(t *testing.T) {
+	orig := taskTimeout
+	taskTimeout = 150 * time.Millisecond
+	defer func() { taskTimeout = orig }()
+
+	prov := newBlockingProvider()
+	deps := subagentDeps(prov)
+
+	start := time.Now()
+	_, err := TaskTool(deps).Execute(context.Background(), map[string]any{
+		"agent": "explore",
+		"goal":  "block forever",
+	})
+	elapsed := time.Since(start)
+
+	if err == nil || !strings.Contains(err.Error(), "timed out after 120s") {
+		t.Fatalf("expected timeout error, got: %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("timeout returned too slowly: %s", elapsed)
+	}
+
+	select {
+	case <-prov.cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sub-agent context was not cancelled after timeout (sub-agent still running)")
+	}
+}
+
+// TestTaskToolParentCancelCancelsSubAgent verifies that cancelling the tool's
+// own context stops the sub-agent and returns promptly.
+func TestTaskToolParentCancelCancelsSubAgent(t *testing.T) {
+	prov := newBlockingProvider()
+	deps := subagentDeps(prov)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := TaskTool(deps).Execute(ctx, map[string]any{
+			"agent": "explore",
+			"goal":  "block forever",
+		})
+		done <- err
+	}()
+
+	select {
+	case <-prov.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sub-agent never started")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "context canceled") {
+			t.Fatalf("expected context cancellation error, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("task tool did not return after parent context cancellation")
+	}
+
+	select {
+	case <-prov.cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sub-agent context was not cancelled after parent cancellation")
+	}
+}
+
+// TestBgTaskTimeoutCancelsSubAgent verifies the background path terminates and
+// cancels an abandoned sub-agent at the deadline.
+func TestBgTaskTimeoutCancelsSubAgent(t *testing.T) {
+	orig := bgTaskTimeout
+	bgTaskTimeout = 150 * time.Millisecond
+	defer func() { bgTaskTimeout = orig }()
+
+	prov := newBlockingProvider()
+	mgr := NewBackgroundTaskManager()
+	id := mgr.Start(subagentDeps(prov), "explore", "block forever")
+
+	if _, err := mgr.Collect(id); err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected timeout error, got: %v", err)
+	}
+
+	select {
+	case <-prov.cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background sub-agent context was not cancelled on timeout")
+	}
+
+	if status := mgr.Status(id); status != "timeout" {
+		t.Fatalf("expected 'timeout' status, got: %q", status)
+	}
+}
+
+// TestBgTaskCollectContextCancellation verifies task_collect honours its own
+// context instead of blocking until the background task finishes.
+func TestBgTaskCollectContextCancellation(t *testing.T) {
+	orig := bgTaskTimeout
+	bgTaskTimeout = 350 * time.Millisecond
+	defer func() { bgTaskTimeout = orig }()
+
+	prov := newBlockingProvider()
+	mgr := NewBackgroundTaskManager()
+	id := mgr.Start(subagentDeps(prov), "explore", "block forever")
+
+	select {
+	case <-prov.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background sub-agent never started")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := mgr.CollectContext(ctx, id)
+	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("expected context deadline error, got: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("CollectContext ignored cancellation for %s", elapsed)
+	}
+
+	// Let the watchdog terminate the task so no goroutine outlives the test.
+	select {
+	case <-prov.cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background sub-agent context was not cancelled")
+	}
+	if _, err := mgr.Collect(id); err == nil {
+		t.Fatal("expected an error for the timed-out background task")
+	}
+}
+
+// TestBgTaskUnknownAgentConcurrentStatus checks the unknown-agent early exit is
+// consistent under concurrent Status polling (it previously wrote task state
+// without holding the manager lock).
+func TestBgTaskUnknownAgentConcurrentStatus(t *testing.T) {
+	mgr := NewBackgroundTaskManager()
+	id := mgr.Start(&TaskToolDeps{
+		Provider:       &mockTaskProvider{},
+		GetAgentConfig: func(string) *agent.AgentConfig { return nil },
+	}, "nope", "goal")
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = mgr.Status(id)
+			}
+		}
+	}()
+
+	_, err := mgr.Collect(id)
+	close(stop)
+	wg.Wait()
+
+	if err == nil || !strings.Contains(err.Error(), "unknown agent") {
+		t.Fatalf("expected 'unknown agent' error, got: %v", err)
+	}
+	if status := mgr.Status(id); status != "failed" {
+		t.Fatalf("expected 'failed' status, got: %q", status)
 	}
 }

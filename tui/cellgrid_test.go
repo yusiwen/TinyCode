@@ -198,3 +198,55 @@ func TestCellGridStyleToLipgloss(t *testing.T) {
 		_ = ls.Render("test")
 	}
 }
+
+// TestWordWrapPreservesInteriorSpacing guards code-block alignment: runs of
+// interior spaces must survive wrapping (strings.Fields used to collapse them).
+func TestWordWrapPreservesInteriorSpacing(t *testing.T) {
+	style := CellStyle{}
+	wrapped := wordWrap("x = 1    # comment", 80, style)
+
+	var sb strings.Builder
+	for _, c := range wrapped {
+		sb.WriteString(c.Text)
+	}
+	if got := sb.String(); got != "x = 1    # comment" {
+		t.Errorf("wrapped text = %q, want the original spacing", got)
+	}
+}
+
+// TestWordWrapWrapsWithoutTrailingSpaces checks that a wrapped line does not end
+// in the whitespace run that preceded the wrap point.
+func TestWordWrapWrapsWithoutTrailingSpaces(t *testing.T) {
+	style := CellStyle{}
+	wrapped := wordWrap("alpha    beta    gamma", 12, style)
+	if len(wrapped) < 2 {
+		t.Fatalf("expected the line to wrap, got %d chunk(s): %+v", len(wrapped), wrapped)
+	}
+	for i, c := range wrapped {
+		if strings.HasSuffix(c.Text, " ") {
+			t.Errorf("chunk %d ends with a space: %q", i, c.Text)
+		}
+	}
+	// Re-joining with the dropped separator must not corrupt the words.
+	joined := ""
+	for _, c := range wrapped {
+		joined += c.Text
+	}
+	for _, word := range []string{"alpha", "beta", "gamma"} {
+		if !strings.Contains(joined, word) {
+			t.Errorf("word %q lost during wrapping: %q", word, joined)
+		}
+	}
+}
+
+// TestWordWrapKeepsIndent checks the indentation handling is unchanged.
+func TestWordWrapKeepsIndent(t *testing.T) {
+	style := CellStyle{}
+	wrapped := wordWrap("    indented line", 80, style)
+	if len(wrapped) != 1 || wrapped[0].Text != "    indented line" {
+		t.Errorf("indent handling changed: %+v", wrapped)
+	}
+	if got := wordWrap("    ", 80, style); len(got) != 1 || got[0].Text != "    " {
+		t.Errorf("whitespace-only line changed: %+v", got)
+	}
+}
