@@ -44,24 +44,17 @@ func ReadFile() Tool {
 				return "", fmt.Errorf("path is required")
 			}
 
-			// Layer 2: Path restriction check (with Pattern C interactive prompt)
-			if err := DefaultSandbox.CheckPath(path); err != nil {
-				if ad, ok := err.(*AccessDenied); ok {
-					allowed, mode := RequestPermission(ctx, ad.Path)
-					if allowed {
-						DefaultSandbox.AllowAlways(path)
-						// User approved — fall through to read below
-					} else if mode == "cancelled" {
-						return "", fmt.Errorf("read cancelled")
-					} else {
-						return ad.DenyHint(), nil
-					}
-				} else {
-					return "", fmt.Errorf("path check: %w", err)
-				}
+			// Layer 2: Path restriction check (with Pattern C interactive prompt).
+			// All I/O uses the resolved path returned by the gate.
+			safePath, denied, err := CheckPathAccess(ctx, path)
+			if err != nil {
+				return "", err
+			}
+			if denied != "" {
+				return denied, nil
 			}
 
-			data, err := os.ReadFile(path)
+			data, err := os.ReadFile(safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
@@ -148,33 +141,26 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("path is required")
 			}
 
-			// Layer 2: Path restriction check (with Pattern C interactive prompt)
-			if err := DefaultSandbox.CheckPath(path); err != nil {
-				if ad, ok := err.(*AccessDenied); ok {
-					allowed, mode := RequestPermission(ctx, ad.Path)
-					if allowed {
-						DefaultSandbox.AllowAlways(path)
-						// User approved — fall through to write below
-					} else if mode == "cancelled" {
-						return "", fmt.Errorf("write cancelled")
-					} else {
-						return ad.DenyHint(), nil
-					}
-				} else {
-					return "", fmt.Errorf("path check: %w", err)
-				}
+			// Layer 2: Path restriction check (with Pattern C interactive prompt).
+			// All I/O uses the resolved path returned by the gate.
+			safePath, denied, err := CheckPathAccess(ctx, path)
+			if err != nil {
+				return "", err
+			}
+			if denied != "" {
+				return denied, nil
 			}
 
 			if lsp.IsAvailable() {
 				// Snapshot baseline BEFORE write
-				lsp.SnapshotBaseline(path)
+				lsp.SnapshotBaseline(safePath)
 			}
 
-			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 				return "", fmt.Errorf("mkdir: %w", err)
 			}
 
-			if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(safePath, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 
@@ -183,7 +169,7 @@ func WriteFile() Tool {
 
 			// LSP diagnostics: only new errors introduced by this edit
 			if lsp.IsAvailable() {
-				if newDiags := lsp.GetNewDiagnostics(path); len(newDiags) > 0 {
+				if newDiags := lsp.GetNewDiagnostics(safePath); len(newDiags) > 0 {
 					result += lsp.FormatDiagnostics(path, newDiags)
 				}
 			}
@@ -227,6 +213,17 @@ func SearchFiles() Tool {
 			if p, ok := args["path"].(string); ok && p != "" {
 				searchPath = p
 			}
+
+			// Layer 2: searching reads file contents, so the search root must
+			// respect the path sandbox like read_file does.
+			safePath, denied, err := CheckPathAccess(ctx, searchPath)
+			if err != nil {
+				return "", err
+			}
+			if denied != "" {
+				return denied, nil
+			}
+			searchPath = safePath
 
 			glob, _ := args["file_glob"].(string)
 
@@ -357,8 +354,7 @@ func searchGoNative(ctx context.Context, pattern, searchPath, glob string) (stri
 
 		// Skip binary files by checking first few bytes
 		isBinary := false
-		f, err := os.Open(path)
-		if err == nil {
+		if f, err := os.Open(path); err == nil {
 			buf := make([]byte, 512)
 			n, _ := f.Read(buf)
 			f.Close()
@@ -368,12 +364,12 @@ func searchGoNative(ctx context.Context, pattern, searchPath, glob string) (stri
 			return nil
 		}
 
-		f, err = os.Open(path)
+		f, err := os.Open(path)
 		if err != nil {
 			return nil
 		}
-		defer f.Close()
-
+		// Close per file: a defer inside the walk callback would keep every
+		// visited file open until the whole walk finishes.
 		scanner := bufio.NewScanner(f)
 		lineNum := 0
 		fileMatches := 0
@@ -390,6 +386,7 @@ func searchGoNative(ctx context.Context, pattern, searchPath, glob string) (stri
 				matchCount++
 			}
 		}
+		f.Close()
 
 		return nil
 	})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -16,23 +17,23 @@ import (
 // Session stores conversation history.
 type Session struct {
 	mu           sync.Mutex
-	ID           string          `json:"id"`
-	Title        string          `json:"title,omitempty"`
-	Preview      string          `json:"preview,omitempty"`
-	ModelName    string          `json:"model_name,omitempty"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
-	MessageCount int             `json:"message_count"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title,omitempty"`
+	Preview      string    `json:"preview,omitempty"`
+	ModelName    string    `json:"model_name,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	MessageCount int       `json:"message_count"`
 
 	// Branch tree support
-	ParentSessionID string          `json:"parent_session,omitempty"`
-	ForkAt          int             `json:"fork_at,omitempty"` // message index where fork happened
+	ParentSessionID string `json:"parent_session,omitempty"`
+	ForkAt          int    `json:"fork_at,omitempty"` // message index where fork happened
 
 	// Permission paths allowed for this session (Allow session)
 	AllowedPaths []string `json:"allowed_paths,omitempty"`
 
-	Messages     []types.Message `json:"messages"`
-	dir          string
+	Messages []types.Message `json:"messages"`
+	dir      string
 }
 
 // New creates a new session.
@@ -76,12 +77,46 @@ func (s *Session) Flush() error {
 		}
 	}
 
-	path := filepath.Join(s.dir, s.ID+".json")
+	path, err := pathFor(s.dir, s.ID)
+	if err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return writeFileAtomic(path, data)
+}
+
+// writeFileAtomic writes data to path via a temp file in the same directory,
+// fsyncs it and renames it into place. Sessions contain the full conversation,
+// so a crash mid-write must not leave a truncated JSON file behind, and the file
+// is created with mode 0600.
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp session file: %w", err)
+	}
+	tmpName := tmp.Name()
+	// Remove the temp file unless the rename below consumed it.
+	defer func() { _ = os.Remove(tmpName) }()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp session file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temp session file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp session file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace session file: %w", err)
+	}
+	return nil
 }
 
 func truncate(s string, n int) string {
@@ -92,9 +127,50 @@ func truncate(s string, n int) string {
 	return string(runes[:n]) + "…"
 }
 
+// validIDRe restricts session ids and fork labels to a path-safe charset. Ids
+// become file names, so separators, ".." and absolute paths must be rejected.
+var validIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
+// ValidateID reports whether id is a legal session id or branch label.
+func ValidateID(id string) error {
+	if id == "" {
+		return fmt.Errorf("session id is required")
+	}
+	if !validIDRe.MatchString(id) {
+		return fmt.Errorf("invalid session id %q: use 1-128 chars of [A-Za-z0-9._-], starting with a letter or digit", id)
+	}
+	return nil
+}
+
+// pathFor returns the JSON file for id and verifies it stays inside dir.
+func pathFor(dir, id string) (string, error) {
+	if err := ValidateID(id); err != nil {
+		return "", err
+	}
+	if dir == "" {
+		return "", fmt.Errorf("session directory is not set")
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve session dir: %w", err)
+	}
+	p := filepath.Join(absDir, id+".json")
+	rel, err := filepath.Rel(absDir, p)
+	if err != nil {
+		return "", fmt.Errorf("resolve session path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("session id %q escapes %s", id, absDir)
+	}
+	return p, nil
+}
+
 // Load reads a session from disk.
 func Load(id, dir string) (*Session, error) {
-	path := filepath.Join(dir, id+".json")
+	path, err := pathFor(dir, id)
+	if err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -126,13 +202,23 @@ func (st *Store) Load(id string) (*Session, error) {
 
 // Delete removes a session from disk.
 func (st *Store) Delete(id string) error {
-	path := filepath.Join(st.Dir, id+".json")
+	path, err := pathFor(st.Dir, id)
+	if err != nil {
+		return err
+	}
 	return os.Remove(path)
 }
 
 // Fork creates and persists a new branch session.
 // parentID is the source session. Messages up to forkAt (exclusive) are copied.
 func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, error) {
+	// The label comes from user input (/fork <label>) and becomes part of the
+	// branch file name, so it must be path-safe.
+	if label != "" {
+		if err := ValidateID(label); err != nil {
+			return nil, fmt.Errorf("invalid fork label: %w", err)
+		}
+	}
 	parent, err := st.Load(parentID)
 	if err != nil {
 		return nil, fmt.Errorf("load parent: %w", err)
@@ -140,6 +226,14 @@ func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, erro
 
 	// Build branch ID
 	branchID := parentID + "-" + label
+	if label != "" {
+		// Refuse to clobber an existing branch instead of overwriting it.
+		if existing, err := pathFor(st.Dir, branchID); err == nil {
+			if _, statErr := os.Stat(existing); statErr == nil {
+				return nil, fmt.Errorf("branch %q already exists", branchID)
+			}
+		}
+	}
 	if label == "" {
 		entries, err := os.ReadDir(st.Dir)
 		if err != nil {
@@ -161,7 +255,14 @@ func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, erro
 		}
 	}
 
-	// Copy shared messages up to forkAt
+	// Copy shared messages up to forkAt. Callers pass an in-memory message
+	// count that can exceed what was persisted, so clamp instead of panicking.
+	if forkAt < 0 {
+		forkAt = 0
+	}
+	if forkAt > len(parent.Messages) {
+		forkAt = len(parent.Messages)
+	}
 	shared := make([]types.Message, forkAt)
 	copy(shared, parent.Messages[:forkAt])
 
@@ -233,6 +334,9 @@ func (st *Store) Search(query string) []SessionInfo {
 
 // ExportMarkdown returns the conversation as a Markdown string.
 func (s *Session) ExportMarkdown() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# Session: %s\n\n", s.Title))
 	b.WriteString(fmt.Sprintf("**Model:** %s  \n", s.ModelName))

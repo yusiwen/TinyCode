@@ -37,7 +37,7 @@ func SetSummarizer(fn func(ctx context.Context, content string) (string, error))
 
 func WebExtract() Tool {
 	return Tool{
-		Name:        "web_extract",
+		Name: "web_extract",
 		Description: "Fetch and extract content from web page URLs. Returns page content in markdown format. " +
 			"Max 5 URLs per call. Fallback chain: direct HTTP → Cloudflare retry → Google Cache → Wayback Machine.",
 		Parameters: map[string]any{
@@ -150,7 +150,7 @@ func extractURL(ctx context.Context, urlStr string) (string, error) {
 }
 
 func fetchURL(ctx context.Context, urlStr, userAgent string) (string, int, bool, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := newSSRFProtectedClient(30 * time.Second)
 	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
 	if err != nil {
 		return "", 0, false, fmt.Errorf("create request: %w", err)
@@ -207,7 +207,7 @@ func sniffContentType(body string) string {
 func tryWayback(ctx context.Context, urlStr string) string {
 	cdxURL := fmt.Sprintf("https://web.archive.org/cdx/search/cdx?url=%s&output=json&limit=3",
 		url.QueryEscape(urlStr))
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := newSSRFProtectedClient(15 * time.Second)
 	req, err := http.NewRequestWithContext(ctx, "GET", cdxURL, nil)
 	if err != nil {
 		return ""
@@ -236,66 +236,260 @@ func tryWayback(ctx context.Context, urlStr string) string {
 	return ""
 }
 
+// maxSSRFRedirects caps how many HTTP redirect hops the hardened client follows.
+const maxSSRFRedirects = 5
+
+// newSSRFProtectedClient returns an *http.Client hardened against SSRF.
+//
+// The target host is resolved exactly once per connection, every resolved IP is
+// validated against the shared SSRF policy, and the connection is then pinned to
+// that already-validated IP. A DNS rebinding attacker therefore cannot swap the
+// destination between the check and the connect. Every redirect target is
+// re-validated with the same policy and the hop count is capped.
+func newSSRFProtectedClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			// A proxy resolves the hostname itself, which would defeat the
+			// pinned-IP guarantee enforced by DialContext below.
+			Proxy:                 nil,
+			DialContext:           ssrfDialContext(dialer),
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          16,
+			IdleConnTimeout:       30 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: time.Second,
+		},
+		CheckRedirect: ssrfRedirectPolicy(maxSSRFRedirects),
+	}
+}
+
+// ssrfDialContext resolves the host once, validates every resolved IP, and dials
+// only an address that already passed validation.
+func ssrfDialContext(dialer *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("split host port %q: %w", addr, err)
+		}
+		ips, err := resolveValidatedHost(ctx, host, !skipSSRFCheck)
+		if err != nil {
+			return nil, err
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("no usable address for %q", host)
+		}
+		return nil, fmt.Errorf("dial %q: %w", host, lastErr)
+	}
+}
+
+// ssrfRedirectPolicy returns a CheckRedirect hook that re-validates every
+// redirect target with the shared SSRF policy and refuses extra hops.
+func ssrfRedirectPolicy(maxHops int) func(req *http.Request, via []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxHops {
+			return fmt.Errorf("stopped after %d redirects", maxHops)
+		}
+		if skipSSRFCheck {
+			return nil
+		}
+		if err := checkSSRF(req.URL.String()); err != nil {
+			return fmt.Errorf("redirect blocked: %w", err)
+		}
+		return nil
+	}
+}
+
+// browserPreflightTimeout bounds the redirect-chain probe run before a
+// headless browser is launched.
+const browserPreflightTimeout = 10 * time.Second
+
+// checkBrowserTarget validates a URL before it is handed to a headless
+// Chromium process. Chromium performs its own DNS resolution and follows
+// redirects itself, so in addition to validating the address we walk the HTTP
+// redirect chain with the SSRF-protected client: a chain that leaves the public
+// internet is refused before the browser starts.
+//
+// Page-level redirects (JavaScript, meta refresh) cannot be observed this way
+// and remain a residual risk; a request-interception proxy would be needed to
+// close them.
+func checkBrowserTarget(rawURL string) error {
+	if skipSSRFCheck {
+		return nil
+	}
+	if err := checkSSRF(rawURL); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil // let the browser path report the malformed URL
+	}
+	// Ask for a single byte: the response body is irrelevant, only the
+	// redirect chain is being validated.
+	req.Header.Set("Range", "bytes=0-0")
+
+	resp, err := newSSRFProtectedClient(browserPreflightTimeout).Do(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "redirect blocked") {
+			return fmt.Errorf("browser target refused: %w", err)
+		}
+		// Any other failure (DNS, TLS, connection) is reported by the browser
+		// path itself; do not mask it here.
+		return nil
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// resolveValidatedHost resolves host exactly once. When enforce is true every
+// resolved address must pass the SSRF policy, so a hostname that mixes public
+// and private addresses is rejected instead of silently dialed.
+func resolveValidatedHost(ctx context.Context, host string, enforce bool) ([]net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		if enforce {
+			if err := validatePublicIP(ip, host); err != nil {
+				return nil, err
+			}
+		}
+		return []net.IP{ip}, nil
+	}
+
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("SSRF: DNS resolution failed for %q: %w", host, err)
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		if enforce {
+			if err := validatePublicIP(addr.IP, host); err != nil {
+				return nil, err
+			}
+		}
+		ips = append(ips, addr.IP)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("SSRF: no addresses resolved for host %q", host)
+	}
+	return ips, nil
+}
+
+// validatePublicIP rejects any address that is not a globally routable unicast IP.
+func validatePublicIP(ip net.IP, host string) error {
+	if isPrivateIP(ip) {
+		return fmt.Errorf("SSRF: blocked non-public IP %q for host %q", ip.String(), host)
+	}
+	return nil
+}
+
+// blockedHosts lists cloud metadata endpoints that must never be fetched.
+var blockedHosts = map[string]bool{
+	"169.254.169.254":          true,
+	"169.254.170.2":            true,
+	"169.254.169.253":          true,
+	"metadata.google.internal": true,
+	"metadata.goog":            true,
+	"100.100.100.200":          true,
+}
+
+// checkSSRF validates a URL against the SSRF policy. Cloud metadata hostnames
+// and any host resolving to a private, loopback, link-local, unspecified,
+// CGNAT, or multicast address are rejected.
 func checkSSRF(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
-	host := u.Hostname()
-
-	blockedHosts := map[string]bool{
-		"169.254.169.254":          true,
-		"169.254.170.2":            true,
-		"169.254.169.253":          true,
-		"metadata.google.internal": true,
-		"metadata.goog":            true,
-		"100.100.100.200":          true,
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("SSRF: unsupported URL scheme %q", u.Scheme)
 	}
-	if blockedHosts[host] {
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("SSRF: missing host in %q", rawURL)
+	}
+	if blockedHosts[strings.ToLower(host)] {
 		return fmt.Errorf("SSRF: blocked host %q (cloud metadata)", host)
 	}
-
-	ips, err := net.LookupHost(host)
-	if err != nil {
-		return fmt.Errorf("SSRF: DNS resolution failed for %q: %w", host, err)
-	}
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
-		}
-		if isPrivateIP(ip) {
-			return fmt.Errorf("SSRF: blocked private IP %q for host %q", ipStr, host)
-		}
+	if _, err := resolveValidatedHost(context.Background(), host, true); err != nil {
+		return err
 	}
 	return nil
 }
 
+// isPrivateIP reports whether ip is not a globally routable unicast address.
 func isPrivateIP(ip net.IP) bool {
-	if ip.IsLoopback() {
+	if ip == nil {
 		return true
 	}
-	if ip.IsLinkLocalUnicast() {
-		return true
-	}
+	// IPv4 and IPv4-mapped IPv6 addresses are checked explicitly so the
+	// special ranges below cannot be smuggled in as ::ffff:a.b.c.d.
 	if ip4 := ip.To4(); ip4 != nil {
 		switch {
-		case ip4[0] == 10:
+		case ip4[0] == 0: // 0.0.0.0/8 "this network" (includes 0.0.0.0)
 			return true
-		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
+		case ip4[0] == 10: // 10.0.0.0/8
 			return true
-		case ip4[0] == 192 && ip4[1] == 168:
+		case ip4[0] == 127: // 127.0.0.0/8 loopback
 			return true
-		case ip4[0] == 127:
+		case ip4[0] == 169 && ip4[1] == 254: // 169.254.0.0/16 link-local / metadata
+			return true
+		case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31: // 172.16.0.0/12
+			return true
+		case ip4[0] == 192 && ip4[1] == 168: // 192.168.0.0/16
+			return true
+		case ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127: // 100.64.0.0/10 CGNAT
+			return true
+		// Note: 198.18.0.0/15 is deliberately NOT blocked. Sandboxes and
+		// transparent egress proxies commonly map public names into that
+		// benchmarking range, so blocking it breaks legitimate fetches.
+		case ip4[0] == 192 && ip4[1] == 0 && ip4[2] == 0: // 192.0.0.0/24 IETF protocol assignments
+			return true
+		case ip4[0] >= 240: // 240.0.0.0/4 reserved, includes 255.255.255.255
 			return true
 		}
 	}
-	if ip.To16() != nil {
-		if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsPrivate() {
+
+	// IPv4-compatible IPv6 (::a.b.c.d) is not covered by To4, and NAT64
+	// (64:ff9b::/96) embeds an IPv4 address; both could smuggle a loopback or
+	// private target past the checks above.
+	if ip16 := ip.To16(); ip16 != nil {
+		allZero := true
+		for _, b := range ip16[:12] {
+			if b != 0 {
+				allZero = false
+				break
+			}
+		}
+		if allZero {
+			return true
+		}
+		if ip16[0] == 0x00 && ip16[1] == 0x64 && ip16[2] == 0xff && ip16[3] == 0x9b {
 			return true
 		}
 	}
-	return false
+
+	// Covers IPv6 loopback, link-local, unique-local, unspecified (::),
+	// multicast, and link-local multicast ranges; !IsGlobalUnicast also rejects
+	// the IPv4/6 broadcast and other non-unicast forms.
+	return !ip.IsGlobalUnicast() ||
+		ip.IsUnspecified() ||
+		ip.IsLoopback() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() ||
+		ip.IsPrivate()
 }
 
 // ── HTML to Markdown converter ──
@@ -483,6 +677,11 @@ func renderNode(n *html.Node, sb *strings.Builder, depth int) {
 // tryBrowser attempts to fetch page content using a headless Chromium browser.
 // Returns empty string if no browser is available or rendering fails.
 func tryBrowser(ctx context.Context, urlStr string) string {
+	// Never hand a non-public URL to Chromium.
+	if err := checkBrowserTarget(urlStr); err != nil {
+		return ""
+	}
+
 	// Find available browser
 	browserPath := ""
 	for _, name := range browserCommands {

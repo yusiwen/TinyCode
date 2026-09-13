@@ -28,14 +28,14 @@ type patchOp struct {
 	typ        patchOpType
 	path       string
 	chunks     []patchChunk
-	newSrc     string // for add ops: full content
+	newSrc     string   // for add ops: full content
 	pendingCtx []string // context lines being accumulated before the next - line
 }
 
 // ApplyPatch returns a Tool that applies V4A format patches.
 func ApplyPatch() Tool {
 	return Tool{
-		Name:        "apply_patch",
+		Name: "apply_patch",
 		Description: "Apply a V4A-format patch to one or more files. " +
 			"Supports UPDATE (modify), ADD (create), and DELETE operations. " +
 			"All operations are validated before any writes. " +
@@ -66,6 +66,21 @@ func ApplyPatch() Tool {
 			}
 
 			// Phase 2: Validate all operations
+			// Sandbox gate first: every path in the patch must be inside the
+			// allowed area (or be approved by the user) before any I/O. The
+			// resolved path replaces the requested one so every later read,
+			// write and delete acts on the checked target.
+			for i := range ops {
+				safePath, denied, err := CheckPathAccess(ctx, ops[i].path)
+				if err != nil {
+					return "", err
+				}
+				if denied != "" {
+					return denied, nil
+				}
+				ops[i].path = safePath
+			}
+
 			for _, op := range ops {
 				switch op.typ {
 				case opUpdate:

@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusiwen/tinycode/types"
@@ -91,5 +92,92 @@ func TestStore(t *testing.T) {
 	}
 	if len(loaded.Messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(loaded.Messages))
+	}
+}
+
+// TestFlushIsAtomicAndPrivate checks that Flush writes the whole file through a
+// temp file (no leftovers), keeps mode 0600 and replaces previous content.
+func TestFlushIsAtomicAndPrivate(t *testing.T) {
+	dir := t.TempDir()
+	s := New("atomic", dir)
+	s.Append(types.Message{Role: "user", Content: "first"})
+	if err := s.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	path := filepath.Join(dir, "atomic.json")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("session file mode = %o, want 600", perm)
+	}
+
+	// Replacing the content must not append or corrupt the file.
+	s.Messages = nil
+	s.Append(types.Message{Role: "user", Content: "second"})
+	if err := s.Flush(); err != nil {
+		t.Fatalf("second flush: %v", err)
+	}
+	loaded, err := Load("atomic", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Messages) != 1 || loaded.Messages[0].Content != "second" {
+		t.Errorf("reloaded messages = %+v, want a single 'second'", loaded.Messages)
+	}
+
+	// No temp files may be left behind.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") {
+			t.Errorf("leftover temp file: %s", e.Name())
+		}
+	}
+}
+
+// TestExportMarkdownDoesNotRaceAppend runs export concurrently with appends;
+// the race detector fails this without the session mutex.
+func TestExportMarkdownDoesNotRaceAppend(t *testing.T) {
+	dir := t.TempDir()
+	s := New("export-race", dir)
+	s.Append(types.Message{Role: "user", Content: "hello"})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 50; i++ {
+			s.Append(types.Message{Role: "assistant", Content: "reply"})
+		}
+	}()
+	for i := 0; i < 50; i++ {
+		if md := s.ExportMarkdown(); !strings.Contains(md, "# Session:") {
+			t.Errorf("export lost its header")
+			break
+		}
+	}
+	<-done
+}
+
+// TestForkRejectsDuplicateLabel guards against silently overwriting an existing
+// branch when the same label is used twice.
+func TestForkRejectsDuplicateLabel(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	parent := store.Create("dup-parent")
+	parent.Append(types.Message{Role: "user", Content: "hi"})
+	if err := parent.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Fork("dup-parent", 1, "same"); err != nil {
+		t.Fatalf("first fork: %v", err)
+	}
+	if _, err := store.Fork("dup-parent", 1, "same"); err == nil {
+		t.Error("second fork with the same label succeeded, want an error")
 	}
 }

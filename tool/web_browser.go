@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 )
 
 // ── Browser detection chain ──
@@ -73,6 +74,12 @@ func findBrowser() string {
 
 // crawlViaExec uses a Chromium binary with --dump-dom to extract page content.
 func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) {
+	// Chromium performs its own DNS resolution, so validate the target with the
+	// shared SSRF policy before the process is launched at all.
+	if err := checkBrowserTarget(url); err != nil {
+		return "", err
+	}
+
 	ctx2, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
 
@@ -98,31 +105,70 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 }
 
 // crawlViaRod uses go-rod to render the page (auto-downloads Chromium if needed).
-func crawlViaRod(ctx context.Context, url string) (string, error) {
-	// rod.NewBrowser() auto-downloads to ~/.cache/rod/ on first call
-	browser := rod.New().MustConnect()
+// Every rod call uses its error-returning form: a panic inside a tool goroutine
+// would terminate the whole agent process.
+func crawlViaRod(ctx context.Context, url string) (content string, err error) {
+	// Chromium performs its own DNS resolution, so validate the target with the
+	// shared SSRF policy before the browser is launched at all.
+	if err := checkBrowserTarget(url); err != nil {
+		return "", err
+	}
+
+	// Defensive recovery: rod's control loop can still panic on protocol
+	// errors, and a panic in a tool goroutine would kill the process.
+	defer func() {
+		if r := recover(); r != nil {
+			content = ""
+			err = fmt.Errorf("rod: recovered from panic: %v", r)
+		}
+	}()
+
+	// rod.NewBrowser() auto-downloads to ~/.cache/rod/ on first call.
+	browser := rod.New().Context(ctx)
+	if err := browser.Connect(); err != nil {
+		return "", fmt.Errorf("connect browser: %w", err)
+	}
 	defer browser.Close()
 
-	page := browser.MustPage(url)
+	page, err := browser.Page(proto.TargetCreateTarget{URL: url})
+	if err != nil {
+		return "", fmt.Errorf("open page %s: %w", url, err)
+	}
 	defer page.Close()
 
-	page.MustWaitLoad()
+	if err := page.WaitLoad(); err != nil {
+		return "", fmt.Errorf("wait for page load: %w", err)
+	}
 
-	// Scroll to trigger lazy-loaded content
-	page.MustEval(`window.scrollTo(0, document.body.scrollHeight)`)
-	page.MustWait("1s")
-	page.MustEval(`window.scrollTo(0, 0)`)
+	// Scroll to trigger lazy-loaded content.
+	if _, err := page.Eval(`window.scrollTo(0, document.body.scrollHeight)`); err != nil {
+		return "", fmt.Errorf("scroll to bottom: %w", err)
+	}
+	if err := page.Wait(rod.Eval("1s")); err != nil {
+		return "", fmt.Errorf("wait after scroll: %w", err)
+	}
+	if _, err := page.Eval(`window.scrollTo(0, 0)`); err != nil {
+		return "", fmt.Errorf("scroll to top: %w", err)
+	}
 
-	// Extract title and content
-	title := page.MustEval(`document.title`).Str()
-	content := page.MustEval(`document.body.innerText`).Str()
+	// Extract title and content.
+	titleObj, err := page.Eval(`document.title`)
+	if err != nil {
+		return "", fmt.Errorf("read document title: %w", err)
+	}
+	contentObj, err := page.Eval(`document.body.innerText`)
+	if err != nil {
+		return "", fmt.Errorf("read document body: %w", err)
+	}
 
-	if content == "" {
+	title := titleObj.Value.Str()
+	body := contentObj.Value.Str()
+	if body == "" {
 		return "", fmt.Errorf("no content extracted from %s", url)
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s\n\n_Source: %s_\n\n---\n\n%s", title, url, content))
+	sb.WriteString(fmt.Sprintf("# %s\n\n_Source: %s_\n\n---\n\n%s", title, url, body))
 	return sb.String(), nil
 }
 
@@ -151,6 +197,10 @@ func WebExtractBrowser() Tool {
 			url, _ := args["url"].(string)
 			if url == "" {
 				return "", fmt.Errorf("url is required")
+			}
+			// Block non-public targets before any Chromium process is spawned.
+			if err := checkBrowserTarget(url); err != nil {
+				return "", err
 			}
 			mode, _ := args["mode"].(string)
 			if mode == "" {

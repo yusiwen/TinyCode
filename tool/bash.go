@@ -12,6 +12,41 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
+// maxOutputBytes caps how much of each stream (stdout/stderr) is retained, so
+// a runaway command cannot exhaust the agent's memory.
+const maxOutputBytes = 1 << 20 // 1 MiB per stream
+
+// limitedBuffer is a bytes.Buffer that silently stops storing data once the
+// limit is reached, while still reporting the full write length so the child
+// process keeps running instead of seeing a short write.
+type limitedBuffer struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	// A zero limit means "use the default cap", never "unlimited".
+	limit := b.limit
+	if limit <= 0 {
+		limit = maxOutputBytes
+	}
+	if b.buf.Len() >= limit {
+		b.truncated = true
+		return len(p), nil
+	}
+	room := limit - b.buf.Len()
+	if len(p) > room {
+		b.buf.Write(p[:room])
+		b.truncated = true
+		return len(p), nil
+	}
+	return b.buf.Write(p)
+}
+
+func (b *limitedBuffer) Len() int       { return b.buf.Len() }
+func (b *limitedBuffer) String() string { return b.buf.String() }
+
 // checkPlanModeWrite returns an error if the command contains write operations.
 func checkPlanModeWrite(cmd string) error {
 	trimmed := strings.TrimSpace(cmd)
@@ -23,7 +58,7 @@ func checkPlanModeWrite(cmd string) error {
 		"mkfs", "mount", "umount",
 	}
 	for _, wc := range writeCommands {
-		if strings.HasPrefix(cmd, wc+" ") || strings.HasPrefix(cmd, wc+"\t") {
+		if strings.HasPrefix(trimmed, wc+" ") || strings.HasPrefix(trimmed, wc+"\t") {
 			return fmt.Errorf("write command '%s' is not allowed in plan mode", wc)
 		}
 	}
@@ -131,7 +166,7 @@ func removeQuoted(s string) string {
 
 func Bash() Tool {
 	return Tool{
-		Name:        "bash",
+		Name: "bash",
 		Description: "Execute a shell command and return its combined stdout+stderr. " +
 			"Use this to run commands, build code, run tests, install packages, etc.",
 		Parameters: map[string]any{
@@ -159,7 +194,7 @@ func Bash() Tool {
 			}
 
 			// Plan mode: block write operations
-			if types.PlanModeWriteRestricted {
+			if types.PlanWriteRestricted(ctx) {
 				if err := checkPlanModeWrite(cmdStr); err != nil {
 					tlog.Warn("shell.bash", "plan_mode_blocked", "command", cmdStr, "reason", err.Error())
 					return fmt.Sprintf("\n[PLAN MODE BLOCKED] %s\n\nPlan mode does not allow file modifications. "+
@@ -185,12 +220,26 @@ func Bash() Tool {
 			defer cancel()
 
 			cmd := exec.CommandContext(cmdCtx, "bash", "-c", cmdStr)
+			// Run the shell in its own process group and kill the whole group
+			// on timeout, so background children do not survive the call.
+			configureProcessGroup(cmd)
+			cmd.Cancel = func() error {
+				if cmd.Process == nil {
+					return nil
+				}
+				return killProcessGroup(cmd.Process.Pid)
+			}
+			// Give the I/O copiers a short grace period after the kill so a
+			// stubborn grandchild holding the pipes cannot block Wait forever.
+			cmd.WaitDelay = 5 * time.Second
 
 			if wd, ok := args["workdir"].(string); ok && wd != "" {
 				cmd.Dir = wd
 			}
 
-			var stdout, stderr bytes.Buffer
+			var stdout, stderr limitedBuffer
+			stdout.limit = maxOutputBytes
+			stderr.limit = maxOutputBytes
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 
@@ -206,6 +255,9 @@ func Bash() Tool {
 				sb.WriteString("STDERR:\n")
 				sb.WriteString(stderr.String())
 				sb.WriteString("\n")
+			}
+			if stdout.truncated || stderr.truncated {
+				sb.WriteString(fmt.Sprintf("[output truncated at %d bytes per stream]\n", maxOutputBytes))
 			}
 
 			if err != nil {

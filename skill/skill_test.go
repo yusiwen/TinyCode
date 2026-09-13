@@ -294,3 +294,71 @@ func TestListAll(t *testing.T) {
 	// User skills may or may not exist depending on test environment
 	_ = hasUser
 }
+
+func TestValidateName(t *testing.T) {
+	valid := []string{"a", "code-review", "my_skill.v2", "skill123"}
+	for _, name := range valid {
+		if err := ValidateName(name); err != nil {
+			t.Errorf("ValidateName(%q) = %v, want nil", name, err)
+		}
+	}
+	invalid := []string{"", ".", "..", "../..", "a/b", "/etc/passwd", `a\b`, "..foo", "Upper"}
+	for _, name := range invalid {
+		if err := ValidateName(name); err == nil {
+			t.Errorf("ValidateName(%q) = nil, want error", name)
+		}
+	}
+}
+
+// TestSkillPathTraversalRejected guards against LLM-supplied names escaping
+// the user skill directory through filepath.Join path cleaning.
+func TestSkillPathTraversalRejected(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	marker := filepath.Join(home, "important.txt")
+	if err := os.WriteFile(marker, []byte("keep me"), 0644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	for _, name := range []string{"..", "../..", "../../..", "../../../../tmp", "a/b", "/tmp/evil", ""} {
+		if err := DeleteOne(name); err == nil {
+			t.Errorf("DeleteOne(%q) succeeded, want error", name)
+		}
+		if _, err := EditOne(name, "---\nname: x\ndescription: y\n---\n"); err == nil {
+			t.Errorf("EditOne(%q) succeeded, want error", name)
+		}
+	}
+
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("file outside the skill directory was removed: %v", err)
+	}
+}
+
+// TestCreateOneRejectsTraversalName checks that the name parsed out of
+// LLM-generated frontmatter cannot write outside ~/.tinycode/skills.
+func TestCreateOneRejectsTraversalName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	escape := "---\nname: ../../pwned\ndescription: escaped\n---\nbody\n"
+	if _, err := CreateOne(escape); err == nil {
+		t.Error("CreateOne with traversal name succeeded, want error")
+	}
+	if _, err := os.Stat(filepath.Join(home, "pwned")); err == nil {
+		t.Error("CreateOne wrote outside the skill directory")
+	}
+
+	good := "---\nname: good-skill\ndescription: fine\n---\nbody\n"
+	name, err := CreateOne(good)
+	if err != nil {
+		t.Fatalf("CreateOne(good) failed: %v", err)
+	}
+	if name != "good-skill" {
+		t.Errorf("CreateOne returned name %q, want good-skill", name)
+	}
+	want := filepath.Join(home, ".tinycode", "skills", "good-skill", "SKILL.md")
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("expected skill file at %s: %v", want, err)
+	}
+}

@@ -5,9 +5,56 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
+
+// skillNameRe restricts skill names to a safe, path-free charset. Names are
+// derived from LLM-generated content, so they must never be able to escape
+// the user skill directory (see userSkillPath).
+var skillNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// ValidateName reports whether name is a legal skill name. It rejects empty
+// names, path separators, "..", absolute paths and anything outside
+// [a-z0-9._-] starting with an alphanumeric character.
+func ValidateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("skill name is required")
+	}
+	if !skillNameRe.MatchString(name) {
+		return fmt.Errorf("invalid skill name %q: use 1-64 chars of [a-z0-9._-], starting with a letter or digit", name)
+	}
+	return nil
+}
+
+// userSkillPath resolves the on-disk directory for a user skill and verifies
+// that it stays inside UserSkillDir. It is the single choke point for all
+// mutating skill operations (create/edit/delete).
+func userSkillPath(name string) (string, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if err := ValidateName(name); err != nil {
+		return "", err
+	}
+	root := UserSkillDir()
+	if root == "" {
+		return "", fmt.Errorf("cannot resolve user skill directory")
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve skill dir: %w", err)
+	}
+	dir := filepath.Join(rootAbs, name)
+	rel, err := filepath.Rel(rootAbs, dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve skill path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("skill path %q escapes %s", name, rootAbs)
+	}
+	return dir, nil
+}
 
 //go:embed builtin/*.md
 var builtinFS embed.FS
@@ -118,7 +165,11 @@ func LoadContent(name string, cwd string) string {
 }
 
 // loaded tracks which skills have been loaded via load_skill tool (cross-session dedup).
-var loaded = make(map[string]bool)
+// Tool calls run concurrently, so every access is guarded by loadedMu.
+var (
+	loadedMu sync.Mutex
+	loaded   = make(map[string]bool)
+)
 
 // UserSkillDir returns the user's skill directory (~/.tinycode/skills/).
 func UserSkillDir() string {
@@ -131,28 +182,32 @@ func UserSkillDir() string {
 
 // ResetOne clears the loaded cache for a single skill, allowing re-load.
 func ResetOne(name string) {
+	loadedMu.Lock()
 	delete(loaded, strings.ToLower(name))
+	loadedMu.Unlock()
 }
 
 // DeleteOne removes a user skill from disk. Returns an error if the skill
 // is builtin (read-only) or does not exist.
 func DeleteOne(name string) error {
-	name = strings.ToLower(name)
+	name = strings.ToLower(strings.TrimSpace(name))
 	// Don't allow deleting builtin skills
-	if FindByName(name, "") != nil {
-		s := FindByName(name, "")
-		if s != nil && s.Builtin {
-			return fmt.Errorf("cannot delete builtin skill: %s", name)
-		}
+	if s := FindByName(name, ""); s != nil && s.Builtin {
+		return fmt.Errorf("cannot delete builtin skill: %s", name)
 	}
-	dir := filepath.Join(UserSkillDir(), name)
+	dir, err := userSkillPath(name)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("skill not found: %s", name)
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("delete %s: %w", name, err)
 	}
+	loadedMu.Lock()
 	delete(loaded, name)
+	loadedMu.Unlock()
 	return nil
 }
 
@@ -164,8 +219,11 @@ func CreateOne(content string) (string, error) {
 	if s == nil || s.Name == "" {
 		return "", fmt.Errorf("invalid SKILL.md: missing name in frontmatter")
 	}
-	name := strings.ToLower(s.Name)
-	dir := filepath.Join(UserSkillDir(), name)
+	name := strings.ToLower(strings.TrimSpace(s.Name))
+	dir, err := userSkillPath(name)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("mkdir %s: %w", dir, err)
 	}
@@ -179,15 +237,16 @@ func CreateOne(content string) (string, error) {
 
 // EditOne updates an existing user skill. For builtin skills, creates a user override.
 func EditOne(name string, content string) (isOverride bool, err error) {
-	normalized := strings.ToLower(name)
+	normalized := strings.ToLower(strings.TrimSpace(name))
 	// Check if existing is builtin
-	if FindByName(normalized, "") != nil {
-		if s := FindByName(normalized, ""); s != nil && s.Builtin {
-			// Create user override (don't touch the embedded file)
-			isOverride = true
-		}
+	if s := FindByName(normalized, ""); s != nil && s.Builtin {
+		// Create user override (don't touch the embedded file)
+		isOverride = true
 	}
-	dir := filepath.Join(UserSkillDir(), normalized)
+	dir, err := userSkillPath(normalized)
+	if err != nil {
+		return isOverride, err
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return isOverride, fmt.Errorf("mkdir %s: %w", dir, err)
 	}
@@ -223,20 +282,31 @@ type SkillWithSource struct {
 // Use as the Execute body of the load_skill tool.
 func LoadOnce(name, cwd string) (string, bool) {
 	name = strings.ToLower(name)
+	// Reserve the name under the lock so two concurrent loads cannot both
+	// report a fresh load; release it again if the skill does not exist.
+	loadedMu.Lock()
 	if loaded[name] {
-		return "", false
-	}
-	content := LoadContent(name, cwd)
-	if content == "" {
+		loadedMu.Unlock()
 		return "", false
 	}
 	loaded[name] = true
+	loadedMu.Unlock()
+
+	content := LoadContent(name, cwd)
+	if content == "" {
+		loadedMu.Lock()
+		delete(loaded, name)
+		loadedMu.Unlock()
+		return "", false
+	}
 	return content, true
 }
 
 // ResetLoaded clears the loaded-skills cache (used in tests).
 func ResetLoaded() {
+	loadedMu.Lock()
 	loaded = make(map[string]bool)
+	loadedMu.Unlock()
 }
 
 // --- internal helpers ---
