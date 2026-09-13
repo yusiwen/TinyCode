@@ -13,8 +13,8 @@ import (
 func startMockServer(t *testing.T) (*Client, context.CancelFunc) {
 	t.Helper()
 
-	clientStdinR, clientStdinW := io.Pipe()     // client → server
-	serverStdoutR, serverStdoutW := io.Pipe()   // server → client
+	clientStdinR, clientStdinW := io.Pipe()   // client → server
+	serverStdoutR, serverStdoutW := io.Pipe() // server → client
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -101,7 +101,7 @@ func TestMCPInitialize(t *testing.T) {
 	client, cancel := startMockServer(t)
 	defer cancel()
 
-	info, err := client.Initialize()
+	info, err := client.Initialize(context.Background())
 	if err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
@@ -114,10 +114,10 @@ func TestMCPListTools(t *testing.T) {
 	client, cancel := startMockServer(t)
 	defer cancel()
 
-	if _, err := client.Initialize(); err != nil {
+	if _, err := client.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -133,14 +133,14 @@ func TestMCPCallTool(t *testing.T) {
 	client, cancel := startMockServer(t)
 	defer cancel()
 
-	if _, err := client.Initialize(); err != nil {
+	if _, err := client.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	if _, err := client.ListTools(); err != nil {
+	if _, err := client.ListTools(context.Background()); err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
 
-	result, err := client.CallTool("echo", map[string]any{"text": "hello"})
+	result, err := client.CallTool(context.Background(), "echo", map[string]any{"text": "hello"})
 	if err != nil {
 		t.Fatalf("CallTool: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestMCPErrorResponse(t *testing.T) {
 		}
 	}()
 
-	_, err := client.Initialize()
+	_, err := client.Initialize(context.Background())
 	if err == nil {
 		t.Fatal("expected error for server error response")
 	}
@@ -208,10 +208,10 @@ func TestMCPResourcesList(t *testing.T) {
 		}
 	}()
 
-	if _, err := client.Initialize(); err != nil {
+	if _, err := client.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	resources, err := client.ListResources()
+	resources, err := client.ListResources(context.Background())
 	if err != nil {
 		t.Fatalf("ListResources: %v", err)
 	}
@@ -244,10 +244,10 @@ func TestMCPReadResource(t *testing.T) {
 		}
 	}()
 
-	if _, err := client.Initialize(); err != nil {
+	if _, err := client.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	result, err := client.ReadResource("file:///data/config.json")
+	result, err := client.ReadResource(context.Background(), "file:///data/config.json")
 	if err != nil {
 		t.Fatalf("ReadResource: %v", err)
 	}

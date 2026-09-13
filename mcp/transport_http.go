@@ -2,13 +2,20 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
+
+// httpRequestTimeout bounds a single HTTP MCP request when the caller's
+// context carries no earlier deadline. Without it a blackholed endpoint would
+// hang forever.
+const httpRequestTimeout = 30 * time.Second
 
 // HTTPClient is an MCP client that communicates via HTTP POST.
 type HTTPClient struct {
@@ -28,12 +35,18 @@ func NewHTTPClient(baseURL string, headers map[string]string) *HTTPClient {
 	return &HTTPClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		headers: headers,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: httpRequestTimeout},
 		nextID:  1,
 	}
 }
 
-func (c *HTTPClient) buildMessage(method string, params json.RawMessage) []byte {
+// Close releases idle HTTP connections held by the client.
+func (c *HTTPClient) Close() error {
+	c.client.CloseIdleConnections()
+	return nil
+}
+
+func (c *HTTPClient) buildMessage(method string, params json.RawMessage) ([]byte, int) {
 	c.mu.Lock()
 	id := c.nextID
 	c.nextID++
@@ -46,11 +59,11 @@ func (c *HTTPClient) buildMessage(method string, params json.RawMessage) []byte 
 		Params:  params,
 	}
 	body, _ := json.Marshal(msg)
-	return body
+	return body, id
 }
 
-func (c *HTTPClient) sendMessage(body []byte) (json.RawMessage, error) {
-	req, err := http.NewRequest("POST", c.baseURL, bytes.NewReader(body))
+func (c *HTTPClient) sendMessage(ctx context.Context, id int, body []byte) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -70,7 +83,7 @@ func (c *HTTPClient) sendMessage(body []byte) (json.RawMessage, error) {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxMessageSize))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -80,6 +93,13 @@ func (c *HTTPClient) sendMessage(body []byte) (json.RawMessage, error) {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
+	// A response carrying a different request id belongs to another call and
+	// must not be returned as ours. An omitted id is tolerated because some
+	// servers reply without one.
+	if rpcResp.ID != 0 && rpcResp.ID != id {
+		return nil, fmt.Errorf("response id %d does not match request id %d", rpcResp.ID, id)
+	}
+
 	if rpcResp.Error != nil {
 		return nil, rpcResp.Error
 	}
@@ -87,12 +107,12 @@ func (c *HTTPClient) sendMessage(body []byte) (json.RawMessage, error) {
 	return rpcResp.Result, nil
 }
 
-func (c *HTTPClient) send(method string, params json.RawMessage) (json.RawMessage, error) {
-	body := c.buildMessage(method, params)
-	return c.sendMessage(body)
+func (c *HTTPClient) send(ctx context.Context, method string, params json.RawMessage) (json.RawMessage, error) {
+	body, id := c.buildMessage(method, params)
+	return c.sendMessage(ctx, id, body)
 }
 
-func (c *HTTPClient) Initialize() (*ServerInfo, error) {
+func (c *HTTPClient) Initialize(ctx context.Context) (*ServerInfo, error) {
 	params := map[string]any{
 		"protocolVersion": "2025-03-26",
 		"clientInfo": map[string]string{
@@ -101,7 +121,7 @@ func (c *HTTPClient) Initialize() (*ServerInfo, error) {
 		},
 	}
 	rawParams, _ := json.Marshal(params)
-	raw, err := c.send("initialize", rawParams)
+	raw, err := c.send(ctx, "initialize", rawParams)
 	if err != nil {
 		return nil, fmt.Errorf("initialize: %w", err)
 	}
@@ -116,8 +136,8 @@ func (c *HTTPClient) Initialize() (*ServerInfo, error) {
 	return &result.ServerInfo, nil
 }
 
-func (c *HTTPClient) ListTools() ([]Tool, error) {
-	raw, err := c.send("tools/list", nil)
+func (c *HTTPClient) ListTools(ctx context.Context) ([]Tool, error) {
+	raw, err := c.send(ctx, "tools/list", nil)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
@@ -132,13 +152,13 @@ func (c *HTTPClient) ListTools() ([]Tool, error) {
 	return result.Tools, nil
 }
 
-func (c *HTTPClient) CallTool(name string, args map[string]any) (*ToolResult, error) {
+func (c *HTTPClient) CallTool(ctx context.Context, name string, args map[string]any) (*ToolResult, error) {
 	params := map[string]any{
 		"name":      name,
 		"arguments": args,
 	}
 	rawParams, _ := json.Marshal(params)
-	raw, err := c.send("tools/call", rawParams)
+	raw, err := c.send(ctx, "tools/call", rawParams)
 	if err != nil {
 		return nil, fmt.Errorf("tools/call %q: %w", name, err)
 	}
@@ -150,8 +170,8 @@ func (c *HTTPClient) CallTool(name string, args map[string]any) (*ToolResult, er
 	return &result, nil
 }
 
-func (c *HTTPClient) ListResources() ([]Resource, error) {
-	raw, err := c.send("resources/list", nil)
+func (c *HTTPClient) ListResources(ctx context.Context) ([]Resource, error) {
+	raw, err := c.send(ctx, "resources/list", nil)
 	if err != nil {
 		return nil, fmt.Errorf("resources/list: %w", err)
 	}
@@ -164,9 +184,9 @@ func (c *HTTPClient) ListResources() ([]Resource, error) {
 	return result.Resources, nil
 }
 
-func (c *HTTPClient) ReadResource(uri string) (*ResourceResult, error) {
+func (c *HTTPClient) ReadResource(ctx context.Context, uri string) (*ResourceResult, error) {
 	params, _ := json.Marshal(map[string]any{"uri": uri})
-	raw, err := c.send("resources/read", params)
+	raw, err := c.send(ctx, "resources/read", params)
 	if err != nil {
 		return nil, fmt.Errorf("resources/read: %w", err)
 	}

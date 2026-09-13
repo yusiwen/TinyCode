@@ -17,9 +17,9 @@ import (
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
-	"github.com/yusiwen/tinycode/types"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/tui"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // Build-time overrides (set via ldflags in Makefile)
@@ -35,6 +35,16 @@ func init() {
 }
 
 func main() {
+	if err := newRootCmd().Execute(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// newRootCmd builds the CLI command tree. It is a function rather than a
+// package-level variable so tests can execute the real command with isolated
+// flags (for example to prove that the informational commands never touch
+// session files).
+func newRootCmd() *cobra.Command {
 	var apiKey string
 	var baseURL string
 	var model string
@@ -54,7 +64,7 @@ func main() {
 			cfg := config.LoadConfig()
 
 			// Initialize logger
-			logDir := filepath.Join(os.ExpandEnv(cfg.SessionDir), "..", "log")
+			logDir := filepath.Join(expandPath(cfg.SessionDir), "..", "log")
 			lvl := tlog.ParseLevel(cfg.LogLevel)
 			if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
 				lvl = tlog.ParseLevel(envLevel)
@@ -67,9 +77,9 @@ func main() {
 
 			// Expand $HOME in sessionDir
 			if sessionDir != "" {
-				cfg.SessionDir = os.ExpandEnv(sessionDir)
+				cfg.SessionDir = expandPath(sessionDir)
 			} else {
-				cfg.SessionDir = os.ExpandEnv(cfg.SessionDir)
+				cfg.SessionDir = expandPath(cfg.SessionDir)
 			}
 
 			// Build provider registry from config
@@ -122,7 +132,18 @@ func main() {
 			provReg := agent.NewProviderRegistry(records)
 
 			if cfg.LSP != nil && cfg.LSP.Enabled {
-				lsp.Init(cfg.SessionDir)
+				// The language server workspace is the project, not the
+				// directory that stores sessions.
+				lspRoot := ""
+				if cfg.Sandbox != nil {
+					lspRoot = cfg.Sandbox.ProjectRoot
+				}
+				if lspRoot == "" {
+					if wd, err := os.Getwd(); err == nil {
+						lspRoot = wd
+					}
+				}
+				lsp.Init(lspRoot)
 			}
 
 			// Wire sandbox config
@@ -143,11 +164,12 @@ func main() {
 					if override.SystemPrompt != "" {
 						aCfg.SystemPrompt = override.SystemPrompt
 					}
-					if override.AllowedTools != nil {
-						aCfg.AllowedTools = override.AllowedTools
-					}
-					if override.DeniedTools != nil {
-						aCfg.DeniedTools = override.DeniedTools
+					// Every built-in agent ships a Permissions ruleset, which
+					// takes precedence over AllowedTools/DeniedTools. Translate
+					// the configured lists into rules so they are not silently
+					// ignored (see agent.TranslateToolLists).
+					if override.AllowedTools != nil || override.DeniedTools != nil {
+						aCfg.Permissions = agent.TranslateToolLists(aCfg.Permissions, override.AllowedTools, override.DeniedTools)
 					}
 					if override.Model != "" {
 						// Support "<provider>/<model>" and bare "<model>" formats
@@ -167,8 +189,24 @@ func main() {
 			aCfg := reg.Current()
 			ag.Config = aCfg
 			ag.ShowThinking = true
-			ag.CompressionThreshold = 500000 // 50% of 1M context for DeepSeek V4 Flash
-			ag.ContextLength = 1000000      // DeepSeek V4 Flash supports 1M tokens
+
+			// Context window, compression threshold and truncation limits come
+			// from the config (defaults: 1M / 500K, see config.DefaultConfig).
+			// The fallbacks keep the agent usable if a config zeroes them.
+			ag.ContextLength = cfg.ContextLength
+			if ag.ContextLength <= 0 {
+				ag.ContextLength = 1000000
+			}
+			ag.CompressionThreshold = cfg.CompressionThreshold
+			if ag.CompressionThreshold <= 0 {
+				ag.CompressionThreshold = ag.ContextLength / 2
+			}
+			if cfg.Truncation != nil {
+				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
+			}
+			if cfg.SearXNGURL != "" {
+				tool.SetSearXNG(cfg.SearXNGURL)
+			}
 
 			// Load project context files (AGENTS.md, CLAUDE.md, .tinycode.md)
 			if ctx := loadProjectContext(); ctx != "" {
@@ -265,11 +303,13 @@ func main() {
 				Parameters: wb.Parameters, Execute: wb.Execute,
 			})
 
-			// LSP tools
-			ag.AddTool(lsp.ToolFactory(lsp.ToolGoToDefinition))
-			ag.AddTool(lsp.ToolFactory(lsp.ToolFindReferences))
-			ag.AddTool(lsp.ToolFactory(lsp.ToolHover))
-			ag.AddTool(lsp.ToolFactory(lsp.ToolDocumentSymbols))
+			// LSP tools. They read files through a language server, so they are
+			// wrapped in the sandbox path gate (the lsp package cannot import
+			// tool itself).
+			ag.AddTool(tool.WithPathGate(lsp.ToolFactory(lsp.ToolGoToDefinition)))
+			ag.AddTool(tool.WithPathGate(lsp.ToolFactory(lsp.ToolFindReferences)))
+			ag.AddTool(tool.WithPathGate(lsp.ToolFactory(lsp.ToolHover)))
+			ag.AddTool(tool.WithPathGate(lsp.ToolFactory(lsp.ToolDocumentSymbols)))
 
 			// Skills
 			ls := tool.LoadSkill()
@@ -287,8 +327,8 @@ func main() {
 			bgTaskMgr := tool.NewBackgroundTaskManager()
 			allToolList := ag.Tools // snapshot of tools registered so far
 			taskTool := tool.TaskTool(&tool.TaskToolDeps{
-				Provider: provReg.Current(),
-				AllTools: allToolList,
+				Provider:  provReg.Current(),
+				AllTools:  allToolList,
 				BgTaskMgr: bgTaskMgr,
 				GetAgentConfig: func(name string) *agent.AgentConfig {
 					cfg, err := reg.Get(name)
@@ -334,54 +374,7 @@ func main() {
 				}
 				return resp.Content, nil
 			})
-			// Connect MCP servers and register their tools
-			var mcpCount int
-			var mcpToolList []agent.Tool
-			if len(cfg.MCPServers) > 0 {
-				fmt.Print("  Connecting to MCP servers... ")
-				mcpToolList, _ = tool.ConnectMCPServers(context.Background(), cfg.MCPServers)
-				for _, mt := range mcpToolList {
-					ag.AddTool(mt)
-				}
-				mcpCount = len(mcpToolList)
-				if mcpCount > 0 {
-					fmt.Printf("%d tools from %d server(s)\n", mcpCount, len(cfg.MCPServers))
-					tlog.Info("main", "mcp tools registered", "count", mcpCount)
-				} else {
-					fmt.Println("no tools found")
-				}
-			}
-			// Sandbox project root: config → CWD
-			rootDir := ""
-			if cfg.Sandbox != nil {
-				rootDir = cfg.Sandbox.ProjectRoot
-			}
-			if rootDir == "" {
-				cwd, err := os.Getwd()
-				if err == nil {
-					rootDir = cwd
-				}
-			}
-			if rootDir != "" {
-				tool.DefaultSandbox.ProjectRoot = rootDir
-			}
-
-			// Pattern D: auto-allow CWD and its parent directory
-			if cwd, err := os.Getwd(); err == nil {
-				parent := filepath.Dir(cwd)
-				tool.DefaultSandbox.AutoAllowPaths = []string{cwd, parent}
-			}
-			// Load persistent allowed paths from config.json
-			if cfg.Sandbox != nil {
-				for _, p := range cfg.Sandbox.AllowedPaths {
-					tool.DefaultSandbox.AllowAlways(p)
-				}
-			}
-
 			store := session.NewStore(cfg.SessionDir)
-			sess := store.Create("default")
-			ag.SessionStore = sess
-			defer sess.Flush()
 
 			if searchSessions != "" {
 				infos := store.Search(searchSessions)
@@ -447,6 +440,61 @@ func main() {
 				return nil
 			}
 
+			// The informational commands above returned already. Everything
+			// below belongs to a real run: connecting MCP servers, wiring the
+			// sandbox, and creating the session file that a run appends to.
+			//
+			// Connect MCP servers and register their tools
+			var mcpCount int
+			var mcpToolList []agent.Tool
+			if len(cfg.MCPServers) > 0 {
+				fmt.Print("  Connecting to MCP servers... ")
+				mcpToolList, _ = tool.ConnectMCPServers(context.Background(), cfg.MCPServers)
+				for _, mt := range mcpToolList {
+					ag.AddTool(mt)
+				}
+				mcpCount = len(mcpToolList)
+				if mcpCount > 0 {
+					fmt.Printf("%d tools from %d server(s)\n", mcpCount, len(cfg.MCPServers))
+					tlog.Info("main", "mcp tools registered", "count", mcpCount)
+				} else {
+					fmt.Println("no tools found")
+				}
+			}
+			// Sandbox project root: config → CWD
+			rootDir := ""
+			if cfg.Sandbox != nil {
+				rootDir = cfg.Sandbox.ProjectRoot
+			}
+			if rootDir == "" {
+				cwd, err := os.Getwd()
+				if err == nil {
+					rootDir = cwd
+				}
+			}
+			if rootDir != "" {
+				tool.DefaultSandbox.ProjectRoot = rootDir
+			}
+
+			// Pattern D: auto-allow the working directory. The parent directory
+			// is deliberately NOT auto-allowed: it can be $HOME or "/", which
+			// would make project-root containment meaningless.
+			if cwd, err := os.Getwd(); err == nil {
+				tool.DefaultSandbox.AutoAllowPaths = []string{cwd}
+			}
+			// Load persistent allowed paths from config.json
+			if cfg.Sandbox != nil {
+				for _, p := range cfg.Sandbox.AllowedPaths {
+					tool.DefaultSandbox.AllowAlways(p)
+				}
+			}
+
+			// The session is created last: an informational command must never
+			// create or flush a session file.
+			sess := store.Create("default")
+			ag.SessionStore = sess
+			defer sess.Flush()
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -462,9 +510,9 @@ func main() {
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
 				}
-								if !ag.ContentStreamed {
-									fmt.Println(result)
-								}
+				if !ag.ContentStreamed {
+					fmt.Println(result)
+				}
 				return nil
 			}
 
@@ -491,9 +539,25 @@ func main() {
 	rootCmd.Flags().StringVar(&exportSession, "export-session", "", "Export a session as Markdown")
 	rootCmd.Flags().StringVar(&searchSessions, "search-sessions", "", "Search session content")
 
-	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
+	return rootCmd
+}
+
+// expandPath expands $VARS and a leading "~" in a configured path, so values
+// like "~/.tinycode/sessions" behave the way users expect.
+func expandPath(p string) string {
+	p = os.ExpandEnv(p)
+	if p == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return p
 	}
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
 }
 
 // loadProjectContext reads project-level context files (AGENTS.md, CLAUDE.md, .tinycode.md)

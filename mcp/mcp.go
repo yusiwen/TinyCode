@@ -1,22 +1,39 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
-	initTimeout = 5 * time.Second
+	// maxMessageSize caps a single Content-Length framed JSON-RPC message.
+	// 8 MiB is far above any realistic MCP payload while preventing a hostile
+	// or broken server from forcing an unbounded allocation.
+	maxMessageSize = 8 << 20
+
+	// maxHeaderBytes bounds a single header line while parsing Content-Length
+	// framing, so a peer that never sends a newline cannot grow memory forever.
+	maxHeaderBytes = 8 << 10
+
+	// maxSkippedMessages bounds how many unrelated frames (notifications or
+	// responses addressed to another request) are discarded while waiting for
+	// the response matching the current request id.
+	maxSkippedMessages = 100
 )
+
+// errClientClosed is returned once the client has been closed.
+var errClientClosed = errors.New("mcp client is closed")
 
 // Tool represents a tool exposed by an MCP server.
 type Tool struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
 }
 
@@ -47,10 +64,10 @@ type ResourceResult struct {
 
 // ResourceContent carries the actual content data.
 type ResourceContent struct {
-	URI     string `json:"uri"`
+	URI      string `json:"uri"`
 	MIMEType string `json:"mimeType,omitempty"`
-	Text    string `json:"text"`
-	Blob    string `json:"blob,omitempty"`
+	Text     string `json:"text"`
+	Blob     string `json:"blob,omitempty"`
 }
 
 // ServerInfo holds the identification from an MCP server.
@@ -80,13 +97,14 @@ func (e *jsonrpcError) Error() string {
 
 // MCPClient is the interface all MCP transports implement.
 type MCPClient interface {
-	Initialize() (*ServerInfo, error)
-	ListTools() ([]Tool, error)
-	CallTool(name string, args map[string]any) (*ToolResult, error)
-	ListResources() ([]Resource, error)
-	ReadResource(uri string) (*ResourceResult, error)
+	Initialize(ctx context.Context) (*ServerInfo, error)
+	ListTools(ctx context.Context) ([]Tool, error)
+	CallTool(ctx context.Context, name string, args map[string]any) (*ToolResult, error)
+	ListResources(ctx context.Context) ([]Resource, error)
+	ReadResource(ctx context.Context, uri string) (*ResourceResult, error)
 	Tools() []Tool
 	Info() *ServerInfo
+	Close() error
 }
 
 // Client manages a JSON-RPC 2.0 connection to an MCP server over stdio.
@@ -95,8 +113,21 @@ type Client struct {
 	stdout io.Reader
 	stderr io.Reader
 
-	mu       sync.Mutex
-	nextID   int
+	// mu serializes a complete request/response exchange: from reserving the
+	// request id and writing the frame to reading the matching response. This
+	// keeps concurrent callers from interleaving frames or stealing each
+	// other's responses.
+	mu     sync.Mutex
+	nextID int
+
+	// stateMu guards closed, kill and closeErr. It is deliberately separate
+	// from mu so Close can tear down a blocked exchange without waiting for it.
+	stateMu sync.Mutex
+	closed  bool
+	kill    func()
+
+	closeOnce sync.Once
+	closeErr  error
 
 	serverInfo *ServerInfo
 	tools      []Tool
@@ -112,8 +143,41 @@ func NewClient(stdin io.Writer, stdout io.Reader, stderr io.Reader) *Client {
 	}
 }
 
+// SetKillFunc registers a transport-level termination function, for example
+// killing the stdio child process. It is invoked by Close and whenever an
+// in-flight exchange is cancelled, so a read blocked on a dead peer is
+// unblocked and the goroutine can exit.
+func (c *Client) SetKillFunc(fn func()) {
+	c.stateMu.Lock()
+	c.kill = fn
+	c.stateMu.Unlock()
+}
+
+// Close releases the transport. It is safe to call multiple times and from
+// any goroutine, including while a request is in flight.
+func (c *Client) Close() error {
+	c.closeOnce.Do(func() {
+		c.stateMu.Lock()
+		c.closed = true
+		kill := c.kill
+		c.stateMu.Unlock()
+
+		// When a kill function is registered the transport owner (for example
+		// the stdio subprocess wrapper) is responsible for tearing down the
+		// underlying process and pipes.
+		if kill != nil {
+			kill()
+			return
+		}
+		if closer, ok := c.stdin.(io.Closer); ok {
+			c.closeErr = closer.Close()
+		}
+	})
+	return c.closeErr
+}
+
 // Initialize sends the initialize request and waits for a response.
-func (c *Client) Initialize() (*ServerInfo, error) {
+func (c *Client) Initialize(ctx context.Context) (*ServerInfo, error) {
 	params := map[string]any{
 		"protocolVersion": "2025-03-26",
 		"clientInfo": map[string]string{
@@ -121,7 +185,7 @@ func (c *Client) Initialize() (*ServerInfo, error) {
 			"version": "0.0.4",
 		},
 	}
-	raw, err := c.send("initialize", params)
+	raw, err := c.send(ctx, "initialize", params)
 	if err != nil {
 		return nil, fmt.Errorf("initialize: %w", err)
 	}
@@ -137,8 +201,8 @@ func (c *Client) Initialize() (*ServerInfo, error) {
 }
 
 // ListTools retrieves the list of tools from the MCP server.
-func (c *Client) ListTools() ([]Tool, error) {
-	raw, err := c.send("tools/list", nil)
+func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
+	raw, err := c.send(ctx, "tools/list", nil)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
@@ -154,12 +218,12 @@ func (c *Client) ListTools() ([]Tool, error) {
 }
 
 // CallTool invokes a tool by name with the given arguments.
-func (c *Client) CallTool(name string, args map[string]any) (*ToolResult, error) {
+func (c *Client) CallTool(ctx context.Context, name string, args map[string]any) (*ToolResult, error) {
 	params := map[string]any{
 		"name":      name,
 		"arguments": args,
 	}
-	raw, err := c.send("tools/call", params)
+	raw, err := c.send(ctx, "tools/call", params)
 	if err != nil {
 		return nil, fmt.Errorf("tools/call %q: %w", name, err)
 	}
@@ -172,8 +236,8 @@ func (c *Client) CallTool(name string, args map[string]any) (*ToolResult, error)
 }
 
 // ListResources retrieves the list of resources from the MCP server.
-func (c *Client) ListResources() ([]Resource, error) {
-	raw, err := c.send("resources/list", nil)
+func (c *Client) ListResources(ctx context.Context) ([]Resource, error) {
+	raw, err := c.send(ctx, "resources/list", nil)
 	if err != nil {
 		return nil, fmt.Errorf("resources/list: %w", err)
 	}
@@ -188,11 +252,11 @@ func (c *Client) ListResources() ([]Resource, error) {
 }
 
 // ReadResource reads the content of a resource identified by its URI.
-func (c *Client) ReadResource(uri string) (*ResourceResult, error) {
+func (c *Client) ReadResource(ctx context.Context, uri string) (*ResourceResult, error) {
 	params := map[string]any{
 		"uri": uri,
 	}
-	raw, err := c.send("resources/read", params)
+	raw, err := c.send(ctx, "resources/read", params)
 	if err != nil {
 		return nil, fmt.Errorf("resources/read %q: %w", uri, err)
 	}
@@ -214,12 +278,30 @@ func (c *Client) Info() *ServerInfo {
 	return c.serverInfo
 }
 
-// serve implements a synchronous send/recv over the stdio transport.
-func (c *Client) send(method string, params any) (json.RawMessage, error) {
+// send performs one synchronous request/response exchange over the stdio
+// transport. The whole exchange is serialized by c.mu so concurrent callers
+// cannot interleave frames or read each other's responses.
+func (c *Client) send(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("send %q: %w", method, err)
+	}
+
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.stateMu.Lock()
+	closed := c.closed
+	c.stateMu.Unlock()
+	if closed {
+		return nil, fmt.Errorf("send %q: %w", method, errClientClosed)
+	}
+	// The context may have been cancelled while waiting for the exchange lock.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("send %q: %w", method, err)
+	}
+
 	id := c.nextID
 	c.nextID++
-	c.mu.Unlock()
 
 	msg := jsonrpcMessage{
 		JSONRPC: "2.0",
@@ -240,42 +322,81 @@ func (c *Client) send(method string, params any) (json.RawMessage, error) {
 		return nil, fmt.Errorf("marshal request %q: %w", method, err)
 	}
 
-	// Write with Content-Length framing
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
-	if _, err := fmt.Fprint(c.stdin, header); err != nil {
-		return nil, fmt.Errorf("write header for %q: %w", method, err)
-	}
-	if _, err := fmt.Fprint(c.stdin, string(body)); err != nil {
-		return nil, fmt.Errorf("write body for %q: %w", method, err)
-	}
-
-	// Read response
-	resp, err := c.readMessage()
-	if err != nil {
-		return nil, fmt.Errorf("read response for %q: %w", method, err)
+	// Build the whole frame first and write it with a single Write so a peer
+	// never observes a header without its body.
+	frame := make([]byte, 0, len(body)+32)
+	frame = append(frame, fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))...)
+	frame = append(frame, body...)
+	if _, err := c.stdin.Write(frame); err != nil {
+		return nil, fmt.Errorf("write request %q: %w", method, err)
 	}
 
-	var rpcResp jsonrpcMessage
-	if err := json.Unmarshal(resp, &rpcResp); err != nil {
-		return nil, fmt.Errorf("parse response for %q: %w", method, err)
-	}
+	return c.readResponse(ctx, method, id)
+}
 
-	if rpcResp.Error != nil {
-		return nil, rpcResp.Error
+// readResponse reads frames until the response for id arrives, skipping
+// notifications and responses addressed to other requests.
+func (c *Client) readResponse(ctx context.Context, method string, id int) (json.RawMessage, error) {
+	type readResult struct {
+		msg json.RawMessage
+		err error
 	}
+	done := make(chan readResult, 1)
 
-	return rpcResp.Result, nil
+	go func() {
+		msg, err := c.readMatchingResponse(id)
+		done <- readResult{msg: msg, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err != nil {
+			return nil, fmt.Errorf("read response for %q: %w", method, res.err)
+		}
+		var rpcResp jsonrpcMessage
+		if err := json.Unmarshal(res.msg, &rpcResp); err != nil {
+			return nil, fmt.Errorf("parse response for %q: %w", method, err)
+		}
+		if rpcResp.Error != nil {
+			return nil, rpcResp.Error
+		}
+		return rpcResp.Result, nil
+	case <-ctx.Done():
+		// The read is still blocked. Tear the transport down so the reader
+		// goroutine cannot leak and the stream is not silently desynchronized.
+		_ = c.Close()
+		return nil, fmt.Errorf("read response for %q: %w", method, ctx.Err())
+	}
+}
+
+// readMatchingResponse returns the raw frame whose JSON-RPC id equals id.
+// Notifications (no id) and responses addressed to other requests are skipped
+// up to maxSkippedMessages frames.
+func (c *Client) readMatchingResponse(id int) ([]byte, error) {
+	for skipped := 0; skipped < maxSkippedMessages; skipped++ {
+		raw, err := c.readMessage()
+		if err != nil {
+			return nil, err
+		}
+		var msg jsonrpcMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			return nil, fmt.Errorf("parse message: %w", err)
+		}
+		if msg.ID == id {
+			return raw, nil
+		}
+	}
+	return nil, fmt.Errorf("no response for request id %d after %d unrelated messages", id, maxSkippedMessages)
 }
 
 // readMessage reads one Content-Length framed message.
 func (c *Client) readMessage() ([]byte, error) {
-	// Use bufio-style reader via bufio.Reader
-	buf := make([]byte, 0, 4096)
+	contentLength := -1
+
+	buf := make([]byte, 0, 256)
 	tmp := make([]byte, 1)
-	
-	var contentLength int
 	for {
-		// Read one byte at a time until we've parsed headers
+		// Read one byte at a time until we've parsed headers.
 		n, err := c.stdout.Read(tmp)
 		if err != nil {
 			return nil, fmt.Errorf("read: %w", err)
@@ -284,23 +405,42 @@ func (c *Client) readMessage() ([]byte, error) {
 			continue
 		}
 		b := tmp[0]
-		
-		if b == '\n' {
-			line := strings.TrimRight(string(buf), "\r")
-			buf = buf[:0]
-			if line == "" {
-				break // end of headers
-			}
-			if strings.HasPrefix(line, "Content-Length: ") {
-				fmt.Sscanf(line, "Content-Length: %d", &contentLength)
-			}
-		} else {
+
+		if b != '\n' {
 			buf = append(buf, b)
+			if len(buf) > maxHeaderBytes {
+				return nil, fmt.Errorf("header line exceeds %d bytes", maxHeaderBytes)
+			}
+			continue
 		}
+
+		line := strings.TrimRight(string(buf), "\r")
+		buf = buf[:0]
+		if line == "" {
+			break // end of headers
+		}
+
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue // ignore malformed header lines
+		}
+		// Header names are case-insensitive; unknown headers are ignored.
+		if !strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			continue
+		}
+
+		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil {
+			return nil, fmt.Errorf("invalid Content-Length header %q: %w", value, err)
+		}
+		contentLength = parsed
 	}
 
-	if contentLength == 0 {
+	if contentLength < 0 {
 		return nil, fmt.Errorf("missing Content-Length header")
+	}
+	if contentLength > maxMessageSize {
+		return nil, fmt.Errorf("Content-Length %d exceeds limit of %d bytes", contentLength, maxMessageSize)
 	}
 
 	body := make([]byte, contentLength)
