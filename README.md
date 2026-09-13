@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-495-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-519-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -62,11 +62,11 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 ### LSP Integration
 - **Config**: `"lsp": { "enabled": true }` in config.json (default: disabled). 7 supported languages with auto-detection: Go (`gopls`), Python (`pyright`), TypeScript/JS (`typescript-language-server`), Rust (`rust-analyzer`), C++ (`clangd`), Java (Eclipse JDT).
 - **4 tools** exposed to LLM: `lsp_definition` (→ `Definition at path:line:col`), `lsp_references` (→ `Found N references`), `lsp_hover` (→ type info + docs), `lsp_symbols` (→ all symbols in file). All require `file_path`, `line`, `character` (0-indexed).
-- **Architecture**: Each call starts a fresh LSP process: `exec.Command("gopls")` → stdin/stdout pipes → JSON-RPC with Content-Length framing → `Initialize` → `StartReader()` (background diagnostics listener) → tool operation → `Close()`.
+- **Architecture**: `lsp.Init(<project root>)` records the workspace (the language server is rooted at the project, not at the session directory) and the server starts lazily on the first `TouchFile`. One reader goroutine owns the stream and dispatches responses to per-id channels plus `publishDiagnostics` to a diagnostics channel; the connection is reused by every later tool call and shut down on `Close()`. If no persistent client is available, a tool falls back to a one-shot `exec.Command` server for that call.
 - **Incremental Diagnostics** — `SnapshotBaseline` captures diagnostic state before edit/write_file/apply_patch, `GetNewDiagnostics` computes delta. Tools report only new errors via LSP — LLM sees focused feedback. (a2e3e07)
-- **TUI Error Tracking** — LSPDiagMsg carries per-file diagnostic sets. Status bar shows `errors: N` with live count. `/diagnostics` command lists all current file errors in viewport. (290818a)
-- **Mock test framework** — `io.Pipe` based, no LSP server required, 15+ tests covering all 4 tool types. (8065ae5)
-- **Limitation**: Per-call process startup (~500ms overhead). Not a persistent LSP connection despite the long-lived design intent.
+- **TUI Error Tracking** — the status bar shows `errors: N` and `/diagnostics` lists current file errors. (290818a)
+- **Mock test framework** — `io.Pipe` based, no LSP server required; covers all 4 tool types, concurrent request correlation and reader-death handling. (8065ae5)
+- **Limitation**: the first call of a session pays the server startup cost (~500 ms); subsequent calls reuse the connection. The one-shot fallback (no persistent client) still pays it per call.
 
 ### Todo System
 - **TodoStore**: In-memory task list with CRUD (create/read/update/merge/delete/summary). Enforces one `in_progress`, max 256 items, max 4000 chars per task.

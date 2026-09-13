@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,6 +149,9 @@ type Client struct {
 	closeOnce sync.Once
 	closeErr  error
 
+	// metaMu guards serverInfo and tools, which Initialize/ListTools write and
+	// Tools/Info read; calls may overlap with other requests.
+	metaMu     sync.Mutex
 	serverInfo *ServerInfo
 	tools      []Tool
 }
@@ -271,7 +275,15 @@ func (c *Client) dispatch(raw []byte) (matched, pending bool) {
 	// A method means this is a notification or a server-initiated request, not
 	// a response to one of ours. Server request ids share our id space, so they
 	// must never be mistaken for a response.
-	if msg.Method != "" || msg.ID == 0 {
+	if msg.Method != "" {
+		if msg.ID != 0 {
+			// A request from the server expects an answer; dropping it leaves
+			// the server waiting forever.
+			c.answerServerRequest(msg.Method, msg.ID)
+		}
+		return false, c.hasPending()
+	}
+	if msg.ID == 0 {
 		return false, c.hasPending()
 	}
 
@@ -290,6 +302,32 @@ func (c *Client) dispatch(raw []byte) (matched, pending bool) {
 	default:
 	}
 	return true, pending
+}
+
+// answerServerRequest replies to a request initiated by the MCP server. The
+// replies are deliberately minimal: the methods this client implements are
+// answered, everything else gets a "method not found" error so the server is
+// never left waiting. Write errors are logged and swallowed because this runs on
+// the single reader goroutine, which must not die because of one bad reply.
+func (c *Client) answerServerRequest(method string, id int) {
+	resp := jsonrpcMessage{JSONRPC: "2.0", ID: id}
+	switch method {
+	case "ping":
+		resp.Result = json.RawMessage(`{}`)
+	case "roots/list":
+		resp.Result = json.RawMessage(`{"roots":[]}`)
+	default:
+		resp.Error = &jsonrpcError{Code: -32601, Message: "method not found: " + method}
+	}
+
+	body, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("mcp: marshal reply to %q: %v", method, err)
+		return
+	}
+	if err := c.writeFrame(body); err != nil {
+		log.Printf("mcp: write reply to %q: %v", method, err)
+	}
 }
 
 // hasPending reports whether any request is currently registered.
@@ -357,7 +395,9 @@ func (c *Client) Initialize(ctx context.Context) (*ServerInfo, error) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("parse initialize result: %w", err)
 	}
+	c.metaMu.Lock()
 	c.serverInfo = &result.ServerInfo
+	c.metaMu.Unlock()
 	return &result.ServerInfo, nil
 }
 
@@ -374,7 +414,9 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("parse tools/list result: %w", err)
 	}
+	c.metaMu.Lock()
 	c.tools = result.Tools
+	c.metaMu.Unlock()
 	return result.Tools, nil
 }
 
@@ -431,12 +473,20 @@ func (c *Client) ReadResource(ctx context.Context, uri string) (*ResourceResult,
 
 // Tools returns the cached tool list from the last ListTools call.
 func (c *Client) Tools() []Tool {
-	return c.tools
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	return append([]Tool(nil), c.tools...)
 }
 
 // ServerInfo returns the cached server info from Init.
 func (c *Client) Info() *ServerInfo {
-	return c.serverInfo
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	if c.serverInfo == nil {
+		return nil
+	}
+	info := *c.serverInfo
+	return &info
 }
 
 // send performs one request/response exchange over the stdio transport.
