@@ -4,20 +4,20 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // --- helpers ---
 
 func testModelWithMessages(messages []chatMessage) *TuiModel {
 	m := &TuiModel{
-		ready:    true,
-		width:    80,
-		height:   40,
-		messages: messages,
-		selectStart: -1,
-		selectEnd:   -1,
+		ready:        true,
+		width:        80,
+		height:       40,
+		messages:     messages,
+		selectStart:  -1,
+		selectEnd:    -1,
 		charSelStart: selPos{Offset: -1},
 		charSelEnd:   selPos{Offset: -1},
 	}

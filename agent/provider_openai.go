@@ -15,11 +15,12 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
+
 // OpenAIProvider implements LLMProvider for OpenAI-compatible APIs (DeepSeek, OpenAI, Groq, etc.).
 type OpenAIProvider struct {
-	client *openai.Client
-	model  string
-	apiKey string
+	client  *openai.Client
+	model   string
+	apiKey  string
 	baseURL string
 }
 
@@ -42,12 +43,12 @@ func (p *OpenAIProvider) Name() string {
 func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	// Build messages with reasoning_content support (DeepSeek thinking mode).
 	type rawMsg struct {
-		Role             string             `json:"role"`
-		Content          string             `json:"content"`
-		Name             string             `json:"name,omitempty"`
-		ToolCallID       string             `json:"tool_call_id,omitempty"`
-		ToolCalls        []openai.ToolCall  `json:"tool_calls,omitempty"`
-		ReasoningContent string             `json:"reasoning_content,omitempty"`
+		Role             string            `json:"role"`
+		Content          string            `json:"content"`
+		Name             string            `json:"name,omitempty"`
+		ToolCallID       string            `json:"tool_call_id,omitempty"`
+		ToolCalls        []openai.ToolCall `json:"tool_calls,omitempty"`
+		ReasoningContent string            `json:"reasoning_content,omitempty"`
 	}
 
 	rawMsgs := make([]rawMsg, len(req.Messages))
@@ -163,10 +164,10 @@ func (p *OpenAIProvider) chatBatch(ctx context.Context, body io.ReadCloser, star
 	var rawResp struct {
 		Choices []struct {
 			Message struct {
-				Role             string             `json:"role"`
-				Content          string             `json:"content"`
-				ToolCalls        []openai.ToolCall  `json:"tool_calls,omitempty"`
-				ReasoningContent string             `json:"reasoning_content,omitempty"`
+				Role             string            `json:"role"`
+				Content          string            `json:"content"`
+				ToolCalls        []openai.ToolCall `json:"tool_calls,omitempty"`
+				ReasoningContent string            `json:"reasoning_content,omitempty"`
 			} `json:"message"`
 		} `json:"choices"`
 	}

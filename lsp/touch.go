@@ -11,12 +11,12 @@ import (
 )
 
 var (
-	mu           sync.Mutex
-	lspAvailable bool
-	server       *Server
-	client       *Client
-	conn         *Conn
-	projectRoot  string
+	mu            sync.Mutex
+	lspAvailable  bool
+	server        *Server
+	client        *Client
+	conn          *Conn
+	projectRoot   string
 	diagBaselines map[string][]Diagnostic // path → pre-write diagnostics
 )
 
@@ -101,22 +101,25 @@ func GetNewDiagnostics(path string) []Diagnostic {
 	if err != nil || len(current) == 0 {
 		return nil
 	}
-	
+
 	mu.Lock()
 	baseline := diagBaselines[path]
 	mu.Unlock()
-	
+
 	if len(baseline) == 0 {
 		return current
 	}
-	
+
 	// Build a set of baseline diagnostic signatures (line:message)
-	type sig struct{ line, col int; msg string }
+	type sig struct {
+		line, col int
+		msg       string
+	}
 	baselineSet := make(map[sig]bool, len(baseline))
 	for _, d := range baseline {
 		baselineSet[sig{line: d.Range.Start.Line, col: d.Range.Start.Character, msg: d.Message}] = true
 	}
-	
+
 	// Return diagnostics not in the baseline
 	var newDiags []Diagnostic
 	for _, d := range current {
@@ -124,7 +127,7 @@ func GetNewDiagnostics(path string) []Diagnostic {
 			newDiags = append(newDiags, d)
 		}
 	}
-	
+
 	tlog.Debug("lsp.baseline", "delta", "file", path, "baseline", len(baseline), "current", len(current), "new", len(newDiags))
 	return newDiags
 }

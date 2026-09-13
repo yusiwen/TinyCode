@@ -244,7 +244,10 @@ func TestIncrementalDiagnostics(t *testing.T) {
 		{Severity: 2, Range: Range{Start: Position{Line: 8, Character: 0}}, Message: "another warning"},
 	}
 
-	type sig struct{ line, col int; msg string }
+	type sig struct {
+		line, col int
+		msg       string
+	}
 	baselineSet := make(map[sig]bool, len(baseline))
 	for _, d := range baseline {
 		baselineSet[sig{line: d.Range.Start.Line, col: d.Range.Start.Character, msg: d.Message}] = true

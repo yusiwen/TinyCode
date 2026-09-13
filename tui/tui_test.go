@@ -3,10 +3,10 @@ package tui
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/tool"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // newTestTUI creates a TUI model with minimal valid dependencies.
