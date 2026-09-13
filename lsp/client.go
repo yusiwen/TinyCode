@@ -154,6 +154,9 @@ func (c *Client) DocumentSymbols(uri string) ([]SymbolInformation, error) {
 
 // Diagnostics returns diagnostics (errors/warnings) for a document.
 // Opens the file in LSP and waits up to 5 seconds for diagnostics.
+// Every pushed diagnostic notification is also recorded in the package-level
+// diagnostics registry (see DiagnosticsSnapshot), so the TUI can read the live
+// per-file error state without issuing its own LSP request.
 // Returns nil on timeout or if no diagnostics arrive.
 func (c *Client) Diagnostics(uri string, content string) ([]Diagnostic, error) {
 	// Open the document
@@ -174,6 +177,10 @@ func (c *Client) Diagnostics(uri string, content string) ([]Diagnostic, error) {
 	for {
 		select {
 		case push := <-c.conn.diagChan:
+			// Record every push, including ones for another file: the registry
+			// must reflect what the server last reported even when this call is
+			// waiting for a different document.
+			recordDiagnostics(uriToPath(push.URI), push.Diagnostics)
 			if push.URI == uri {
 				return push.Diagnostics, nil
 			}

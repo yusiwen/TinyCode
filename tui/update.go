@@ -361,11 +361,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Always advance spinner and keep tick pipeline alive
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		if m.status == StatusStreaming {
-			return m, cmd
-		}
-		// Keep ticks flowing even when idle so spinner is ready when streaming starts
-		return m, cmd
+		// Piggyback the diagnostics refresh on this periodic tick. The registry
+		// read happens inside the returned command, never on the Update path.
+		return m, tea.Batch(cmd, m.lspDiagCmd())
 
 	case ChatMsg:
 		// Refuse a second concurrent run: the previous run may still be
@@ -421,10 +419,16 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderAckCh = msg.AckCh
 		}
 		m.autoScroll()
-		return m, m.waitForStream()
+		return m, tea.Batch(m.waitForStream(), m.lspDiagCmd())
 	case LSPDiagMsg:
 		m.diagTotal = msg.Count
+		m.diagFiles = msg.Files
+		if m.diagFiles == 0 && msg.Count > 0 {
+			// Tolerate a legacy sender that only filled Count.
+			m.diagFiles = 1
+		}
 		m.diagFile = msg.FilePath
+		m.diagDetails = copyDiagDetails(msg.Details)
 		m.autoScroll()
 		return m, nil
 	case StreamMsg:
@@ -1136,12 +1140,19 @@ Mouse:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
 		m.autoScroll()
 	case "/diagnostics":
-		if !lsp.IsAvailable() {
+		// Refresh from the in-memory registry (a map copy, never an LSP read)
+		// so the listing is current even if the last tick has not landed yet.
+		if m.diagSource != nil {
+			m.applyDiagInfo(m.diagSource())
+		}
+		switch {
+		case m.diagTotal > 0:
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: m.diagnosticsListing()})
+			m.autoScroll()
+		case !lsp.IsAvailable():
 			m.ShowStatus("LSP not available (set lsp.enabled=true in config.json)")
-		} else if m.diagTotal == 0 {
+		default:
 			m.ShowStatus("No LSP diagnostics.")
-		} else {
-			m.ShowStatus(fmt.Sprintf("%d LSP errors in %s", m.diagTotal, m.diagFile))
 		}
 		return m, nil
 	case "/skill":

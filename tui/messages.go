@@ -65,10 +65,15 @@ type sessionTitleMsg struct {
 	Title string
 }
 
-// LSPDiagMsg is sent when LSP diagnostics are available.
+// LSPDiagMsg carries a fresh LSP diagnostics snapshot to the TUI. The TUI
+// produces it itself (see TuiModel.lspDiagCmd) from the lsp package's
+// in-memory registry on update ticks and right after a tool result, so the
+// status bar and /diagnostics stay current without blocking Update.
 type LSPDiagMsg struct {
-	FilePath string
-	Count    int
+	FilePath string   // most recently updated file with errors ("" if none)
+	Count    int      // total errors across all files
+	Files    int      // number of files with errors
+	Details  []string // one line per affected file, ordered by path
 }
 
 // TuiStatus indicates the current TUI state.

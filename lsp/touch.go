@@ -26,6 +26,8 @@ func Init(root string) {
 	defer mu.Unlock()
 	projectRoot = root
 	// LSP server is started lazily on first TouchFile call
+	// Drop diagnostics recorded for a previous workspace.
+	resetDiagnostics()
 }
 
 // IsAvailable returns true if LSP is initialized and not broken.

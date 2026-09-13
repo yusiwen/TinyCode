@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
@@ -137,8 +138,13 @@ type TuiModel struct {
 	sessionToolCalls int
 
 	// LSP diagnostics tracking
-	diagTotal int    // total errors across all files
-	diagFile  string // most recent file with errors (for display)
+	diagTotal   int      // total errors across all files
+	diagFiles   int      // number of files with errors
+	diagFile    string   // most recent file with errors (for display)
+	diagDetails []string // one line per affected file
+	// diagSource reads the current LSP diagnostics snapshot. It is a field so
+	// tests can inject a stub; it defaults to lsp.DiagnosticsSnapshot.
+	diagSource func() lsp.DiagnosticsInfo
 
 	// Todo store
 	todoStore *tool.TodoStore
@@ -245,6 +251,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		SessionDir:    cfg.SessionDir,
 		currentBranch: "", // no session yet
 		sessionStore:  session.NewStore(cfg.SessionDir),
+		diagSource:    lsp.DiagnosticsSnapshot,
 	}
 
 	// Load session if resume ID provided
