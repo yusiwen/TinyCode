@@ -57,32 +57,17 @@
   },
 
   "agents": {
+    "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), model.",
     "plan": {
       "max_steps": 20,
-      "permissions": [
-        {"action": "*", "resource": "*", "effect": "allow"},
-        {"action": "write_file", "resource": "*", "effect": "deny"},
-        {"action": "git_commit", "resource": "*", "effect": "deny"},
-        {"action": "sandbox_allow", "resource": "*", "effect": "deny"},
-        {"action": "task", "resource": "*", "effect": "deny"},
-        {"action": "skill_manage", "resource": "*", "effect": "deny"}
-      ]
-    },
-    "build": {
-      "max_steps": 50
+      "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]
     },
     "explore": {
-      "description": "Read-only code search — only read_file and search_files",
       "max_steps": 15
     },
     "general": {
       "max_steps": 20,
-      "permissions": [
-        {"action": "*", "resource": "*", "effect": "allow"},
-        {"action": "write_file", "resource": "*", "effect": "deny"},
-        {"action": "git_commit", "resource": "*", "effect": "deny"},
-        {"action": "task", "resource": "*", "effect": "deny"}
-      ]
+      "denied_tools": ["task", "task_collect", "skill_manage", "todo"]
     }
   },
 
@@ -131,6 +116,9 @@
       "project_root": "Restrict file tool access to this directory (default: current dir)",
       "deny_commands": "Shell commands that are always blocked"
     },
-    "mcp_servers": "List of MCP servers. Supported transports: 'stdio' (local subprocess) and 'http' (remote endpoint)."
+    "mcp_servers": "List of MCP servers. Supported transports: 'stdio' (local subprocess) and 'http' (remote endpoint).",
+    "session_dir": "Where sessions are stored. A leading ~ is expanded to $HOME.",
+    "truncation": "Tool-output truncation limits: max_lines, max_bytes, output_dir (used only when the output exceeds a limit).",
+    "agents": "allowed_tools replaces the agent's ruleset with a whitelist; denied_tools is applied on top of the built-in rules."
   }
 }

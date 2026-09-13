@@ -1,7 +1,7 @@
 NAME=tinycode
 BINDIR=bin
-VERSION=$(shell /usr/bin/git --no-pager describe --tags 2>/dev/null || echo "dev")
-COMMIT_SHA=$(shell /usr/bin/git --no-pager rev-parse --short HEAD 2>/dev/null || echo "unknown")
+VERSION=$(shell git --no-pager describe --tags 2>/dev/null || echo "dev")
+COMMIT_SHA=$(shell git --no-pager rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILDTIME=$(shell date -u)
 GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "main.Version=$(VERSION)" \
 		-X "main.CommitSHA=$(COMMIT_SHA)" \
@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test lint clean all
+.PHONY: default build run test test-race lint staticcheck fmt fmt-check clean all
 
 default: build
 
@@ -33,9 +33,29 @@ test:
 	fi; \
 	exit $$status
 
+# Race detector run. Any data race fails the build.
+test-race:
+	go test -race ./... -count=1
+
+# Blocking lint: `go vet` failures fail the build.
 lint:
 	go vet ./...
-	@which staticcheck > /dev/null 2>&1 && staticcheck ./... || true
+
+# Optional stricter linter; skipped when staticcheck is not installed. It is
+# deliberately separate so `make lint` can never be a no-op.
+staticcheck:
+	@if which staticcheck > /dev/null 2>&1; then staticcheck ./...; else echo "staticcheck not installed — skipped"; fi
+
+# Format the tracked Go sources in place.
+fmt:
+	gofmt -w $$(git ls-files '*.go')
+
+# Fail when a tracked Go file is not gofmt-clean.
+fmt-check:
+	@files="$$(gofmt -l $$(git ls-files '*.go'))"; \
+	if [ -n "$$files" ]; then \
+		echo "=== gofmt required for: ==="; echo "$$files"; exit 1; \
+	fi
 
 clean:
 	rm -rf $(BINDIR)

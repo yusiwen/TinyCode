@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-417-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-495-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -116,7 +116,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 │                      TinyCode                              │
 ├──────────────────────┬───────────────────┬────────────────┤
 │   TUI (Bubble Tea)   │   Agent Layer      │   Tool Layer   │
-│                      │   (ReAct Loop)     │   (21 tools + MCP)│
+│                      │   (ReAct Loop)     │   (24 tools + MCP)│
 │  CellGrid            │                    │                │
 │  Viewport            │  Plan (primary)    │  bash          │
 │  Input Area          │  Build (primary)   │  read_file     │
@@ -250,7 +250,7 @@ config/         Config loading (JSON, env, CLI flags)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
 skill/          SKILL.md discovery (3-layer), Load/LoadOnce/CRUD
-tool/           Tool definitions (21 tools + MCP: edit, todo, skill, LSP, web, mcp)
+tool/           Tool definitions (24 tools + MCP: edit, todo, skill, LSP, web, mcp)
 tui/            Bubble Tea TUI (CellGrid, components, key/mouse, cmd palette)
 types/          Shared types (Message, ToolCall, StreamCallbacks)
 main.go         CLI entry point with cobra
