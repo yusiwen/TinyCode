@@ -38,3 +38,52 @@ jobs:
 
       - name: Test with race detector
         run: make test-race
+
+      - name: Test repeated in one process
+        run: make test-repeat
+
+  cross:
+    name: Cross-compile + vet (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      # These targets are the ones the Makefile releases, and the linux job also
+      # type-checks the linux-only files (openat2 sandbox check, process groups).
+      - name: Build
+        run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build ./...
+
+      - name: Vet
+        run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go vet ./...
+
+  staticcheck:
+    name: staticcheck
+    runs-on: ubuntu-latest
+    # Advisory for now: staticcheck usually lags a new Go release, and this
+    # project's CI toolchain tracks a very recent one. Drop continue-on-error
+    # once a staticcheck release supports it.
+    continue-on-error: true
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      - name: Run staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...

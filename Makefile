@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race lint staticcheck fmt fmt-check clean all
+.PHONY: default build run test test-race test-repeat lint staticcheck fmt fmt-check clean all
 
 default: build
 
@@ -36,6 +36,10 @@ test:
 # Race detector run. Any data race fails the build.
 test-race:
 	go test -race ./... -count=1
+
+# Repeat the suite in one process to catch leaked global state between runs.
+test-repeat:
+	go test ./... -count=3
 
 # Blocking lint: `go vet` failures fail the build.
 lint:

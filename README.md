@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-519-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-545-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -64,7 +64,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **4 tools** exposed to LLM: `lsp_definition` (→ `Definition at path:line:col`), `lsp_references` (→ `Found N references`), `lsp_hover` (→ type info + docs), `lsp_symbols` (→ all symbols in file). All require `file_path`, `line`, `character` (0-indexed).
 - **Architecture**: `lsp.Init(<project root>)` records the workspace (the language server is rooted at the project, not at the session directory) and the server starts lazily on the first `TouchFile`. One reader goroutine owns the stream and dispatches responses to per-id channels plus `publishDiagnostics` to a diagnostics channel; the connection is reused by every later tool call and shut down on `Close()`. If no persistent client is available, a tool falls back to a one-shot `exec.Command` server for that call.
 - **Incremental Diagnostics** — `SnapshotBaseline` captures diagnostic state before edit/write_file/apply_patch, `GetNewDiagnostics` computes delta. Tools report only new errors via LSP — LLM sees focused feedback. (a2e3e07)
-- **TUI Error Tracking** — the status bar shows `errors: N` and `/diagnostics` lists current file errors. (290818a)
+- **TUI Error Tracking** — an in-memory registry (severity-1 diagnostics per file) is refreshed off the event loop after each tool result and on the spinner tick, so the status bar `errors: N` and `/diagnostics` reflect the live state. (290818a)
 - **Mock test framework** — `io.Pipe` based, no LSP server required; covers all 4 tool types, concurrent request correlation and reader-death handling. (8065ae5)
 - **Limitation**: the first call of a session pays the server startup cost (~500 ms); subsequent calls reuse the connection. The one-shot fallback (no persistent client) still pays it per call.
 
@@ -247,6 +247,7 @@ viewport.SetContent() → terminal display
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
+internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
 skill/          SKILL.md discovery (3-layer), Load/LoadOnce/CRUD
