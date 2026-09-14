@@ -36,6 +36,7 @@ type chatMessage struct {
 	Streaming        bool
 	Blocks           []ContentBlock
 	TodoSnapshot     []tool.TodoItem // snapshot taken at StreamDone (for per-message TODO display)
+	Banner           *welcomeInfo    // non-nil: render as the styled startup banner
 }
 
 // ToolCallInfo records one tool invocation during a message.

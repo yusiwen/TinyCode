@@ -21,6 +21,9 @@ type CellStyle struct {
 	Underline bool
 	Fg        lipgloss.Color
 	Bg        lipgloss.Color
+	// Link is an OSC 8 hyperlink target (e.g. "https://example.com"). Empty
+	// means plain text. Two runs are only merged when their Link is equal.
+	Link string
 }
 
 // Cell is one visible character in the grid.
@@ -259,7 +262,11 @@ func (g *CellGrid) Render() string {
 			}
 			// Render styled segment
 			ls := styleToLipgloss(style)
-			b.WriteString(ls.Render(text.String()))
+			rendered := ls.Render(text.String())
+			if style.Link != "" {
+				rendered = hyperlink(style.Link, rendered)
+			}
+			b.WriteString(rendered)
 		}
 		if r < g.rows-1 {
 			b.WriteByte('\n')
@@ -401,6 +408,17 @@ func wordWrap(text string, maxWidth int, style CellStyle) []CellChunk {
 	return chunks
 }
 
+// hyperlink wraps text in an OSC 8 hyperlink sequence, which makes the text
+// clickable (Cmd/Ctrl+click) in terminals that support it. Terminals without
+// support ignore the sequence and render the styled text unchanged, so this is
+// always safe to emit.
+func hyperlink(url, text string) string {
+	if url == "" {
+		return text
+	}
+	return "\x1b]8;;" + url + "\x1b\\" + text + "\x1b]8;;\x1b\\"
+}
+
 // --- Theme-aware style constructors (updated by ApplyTheme) ---
 
 var (
@@ -414,4 +432,10 @@ var (
 	CodeStyle      CellStyle
 	SystemStyle    CellStyle
 	StatusBarStyle CellStyle
+
+	// Welcome banner styles (see welcome.go)
+	bannerArtStyle    CellStyle
+	bannerAccentStyle CellStyle
+	bannerKeyStyle    CellStyle
+	bannerLinkStyle   CellStyle
 )

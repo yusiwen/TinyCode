@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 501 test functions, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 554 test functions, race-detector clean.
 
 ## Quick Reference
 
@@ -364,16 +364,17 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`lineSrc`** struct: `MsgIdx`, `SourceField`, `Text`, `CharStart`, `CharEnd`, `ContentOffset`
 
 ### `cellgrid.go`
-- **`CellStyle`** struct: `Bold`, `Italic`, `Underline`, `Fg lipgloss.Color`, `Bg`
+- **`CellStyle`** struct: `Bold`, `Italic`, `Underline`, `Fg lipgloss.Color`, `Bg`, `Link string` (OSC 8 hyperlink target; runs only merge when equal)
 - **`Cell`** struct: `Rune rune`, `Style CellStyle`, `Width int` (1 or 2 for CJK)
 - **`CellChunk`** struct: `Text string`, `Style CellStyle`
 - **`CellGrid`** — virtual framebuffer:
   - `NewCellGrid(width, height int) *CellGrid`
   - `Append(runes []rune, style)`, `AppendChunk(chunk)`, `AppendChunks(chunks)`, `AppendInline(chunks)`
-  - `Render() string` — ANSI output, groups same-style runs
+  - `Render() string` — ANSI output, groups same-style runs; runs carrying `Style.Link` are wrapped by `hyperlink()`
   - `Fill(startRow, startCol, endRow, endCol, style)` — selection highlight
   - `ExtractText(startRow, startCol, endRow, endCol) string` — CJK-aware
   - `Reset()`, `RowCount() int`, `RowText(row) string`, `Get(row, col) Cell`
+- `hyperlink(url, text) string` — OSC 8 wrapper; terminals without hyperlink support ignore it
 - `wordWrap(text, maxWidth, style) []CellChunk` — preserves indent
 - `styleCache` + RWMutex for CellStyle→lipgloss memoization
 
@@ -386,11 +387,20 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`MessageComponent`** interface: `Render(msg chatMessage, sel bool) []CellChunk`
 - **`BlockComponent`** interface: `Render(block ContentBlock, sel bool) []CellChunk`
 - Components: `UserComponent`, `SystemComponent`, `AssistantComponent`, `ReasoningComponent` (foldable [+]/[-]), `AnswerComponent`, `ToolCallComponent`, `ParagraphComponent`, `HeadingComponent`, `CodeComponent`, `ListComponent`, `QuoteComponent`, `HRComponent`, `TableComponent`, `ButtonComponent`
+- `SystemComponent` renders `chatMessage.Banner` through `welcome.go` (colored, no `→` prefix); plain system messages keep the dim `→ ` prefix
 
 ### `messages.go`
 - **`TuiStatus`** (int): `StatusIdle=0`, `StatusStreaming`, `StatusError`
 - TUI messages: `StreamMsg`, `StreamDone`, `ChatMsg`, `ToolCallMsg`, `ToolResultMsg`, `LSPDiagMsg`, `modeSwitchMsg`
-- **`chatMessage`** (internal): `Role`, `Content`, `ReasoningContent`, `ReasoningFolded`, `ToolCalls []ToolCallInfo`, `Streaming`, `Blocks []ContentBlock`, `TodoSnapshot []tool.TodoItem`
+- **`chatMessage`** (internal): `Role`, `Content`, `ReasoningContent`, `ReasoningFolded`, `ToolCalls []ToolCallInfo`, `Streaming`, `Blocks []ContentBlock`, `TodoSnapshot []tool.TodoItem`, `Banner *welcomeInfo`
+
+### `welcome.go` — Startup Banner
+- **`welcomeInfo`** struct: `Tools`, `Skills`, `Agents` — counters shown in the banner
+- **`newWelcomeMessage(info) chatMessage`** — builds the start-up system message: `Content` is a plain-text fallback (copies), `Banner` selects the styled renderer
+- **`renderWelcomeLines(info, width) [][]CellChunk`** — lays the banner out as one row per line: ASCII wordmark (dropped below `welcomeMinWidth`), counters, `Get started` shortcuts, config/source footer
+- The Source row is an OSC 8 hyperlink (`welcomeSourceLink`, underlined, wordmark color) so it is clickable in supporting terminals; the Config row stays plain text
+- Each row is placed with `AppendInline` (see `view.go`) so the art and column alignment are never word-wrapped; over-wide rows degrade to wrapped plain text
+- `flattenWelcomeLines` collapses rows to one chunk per row for chunk-per-row callers
 
 ### `update.go`
 - **`(*TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd)`** — central event loop
@@ -407,13 +417,15 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 ### `view.go`
 - **`(*TuiModel) View() string`** — full TUI layout
 - Incremental rendering: dirty-message tracking, only re-renders from first dirty (~2.3ms)
+- Banner messages (`msg.Banner != nil`) bypass word-wrap and place each pre-laid-out row inline
+- `stripANSI` removes both CSI and OSC sequences, so OSC 8 hyperlinks never leak into selection/copy text
 - Status bar: mode icon, model, spinner, provider, tokens, tool calls, msg count, diagnostics, duration, history
 - Character-level selection via `grid.Fill()` with SelectionStyle
 
 ### `theme.go`
-- **`Theme`** struct: `Name` + 20 color fields (CellGrid + Lipgloss colors)
+- **`Theme`** struct: `Name` + 23 color fields (CellGrid + Lipgloss + welcome-banner colors)
 - **`ThemeDefault`**, **`ThemeNord`**
-- `ApplyTheme(t Theme)` — updates global styles, clears cache, triggers MarkAllDirty
+- `ApplyTheme(t Theme)` — updates global styles (incl. `bannerArtStyle`/`bannerAccentStyle`/`bannerKeyStyle`), clears cache, triggers MarkAllDirty
 - `ThemeNames() []string`, `LookupTheme(name string) *Theme`
 
 ---

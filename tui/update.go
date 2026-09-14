@@ -599,6 +599,15 @@ func (m *TuiModel) messageAtLine(contentLine int) int {
 			n = 1
 		case "system":
 			n = 1
+			if msg.Banner != nil {
+				// The banner occupies one grid row per laid-out line, which
+				// depends on the viewport width (the ASCII art may be dropped).
+				w := m.vp.Width
+				if w <= 0 {
+					w = termW
+				}
+				n = len(renderWelcomeLines(*msg.Banner, w))
+			}
 		case "assistant":
 			if msg.ReasoningContent != "" {
 				n += visibleLines(msg.ReasoningContent, termW)

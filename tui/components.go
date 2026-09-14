@@ -57,6 +57,17 @@ func (UserComponent) Render(msg chatMessage, sel bool) []CellChunk {
 type SystemComponent struct{}
 
 func (SystemComponent) Render(msg chatMessage, sel bool) []CellChunk {
+	// The startup banner has its own colored layout.
+	if msg.Banner != nil {
+		chunks := flattenWelcomeLines(renderWelcomeLines(*msg.Banner, 0))
+		if sel {
+			for i := range chunks {
+				chunks[i].Style = SelectionStyle
+			}
+		}
+		return chunks
+	}
+
 	style := SystemStyle
 	if sel {
 		style = SelectionStyle

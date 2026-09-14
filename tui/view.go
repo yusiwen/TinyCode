@@ -185,21 +185,29 @@ func (m *TuiModel) View() string {
 			}
 
 			startRow := g.RowCount()
-			for ci := 0; ci < len(chunks); ci++ {
-				chunk := chunks[ci]
-				if strings.HasPrefix(chunk.Text, "[") && ci+1 < len(chunks) &&
-					strings.HasPrefix(chunks[ci+1].Text, " ") {
-					g.AppendInline([]CellChunk{chunk, chunks[ci+1]})
-					ci++
-					continue
+			if msg.Banner != nil {
+				// Banner rows are pre-laid-out: each line occupies exactly one
+				// grid row so the ASCII art and the column alignment survive.
+				for _, line := range renderWelcomeLines(*msg.Banner, g.width) {
+					g.AppendInline(line)
 				}
-				if strings.ContainsAny(chunk.Text, "│─") {
-					g.AppendChunk(chunk)
-					continue
-				}
-				wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
-				for _, wc := range wrapped {
-					g.AppendChunk(wc)
+			} else {
+				for ci := 0; ci < len(chunks); ci++ {
+					chunk := chunks[ci]
+					if strings.HasPrefix(chunk.Text, "[") && ci+1 < len(chunks) &&
+						strings.HasPrefix(chunks[ci+1].Text, " ") {
+						g.AppendInline([]CellChunk{chunk, chunks[ci+1]})
+						ci++
+						continue
+					}
+					if strings.ContainsAny(chunk.Text, "│─") {
+						g.AppendChunk(chunk)
+						continue
+					}
+					wrapped := wordWrap(chunk.Text, g.width, chunk.Style)
+					for _, wc := range wrapped {
+						g.AppendChunk(wc)
+					}
 				}
 			}
 			endRow := g.RowCount()
@@ -237,6 +245,10 @@ func (m *TuiModel) View() string {
 				case "system":
 					field = "system"
 					offset = 4
+					if msg.Banner != nil {
+						// Banner rows are indented by two columns, not four.
+						offset = 2
+					}
 				case "assistant":
 					if text == "Response:" {
 						field = "label"
@@ -480,11 +492,20 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 			}
 		case "system":
 			before := len(msgLines)
-			sc := SystemComponent{}
-			rendered := chunksToStrings(sc.Render(msg, false))
+			var chunks []CellChunk
+			offset := 4
+			if msg.Banner != nil {
+				// Lay the banner out for this viewport, then collapse it to
+				// one styled string per row (this path has no inline support).
+				chunks = flattenWelcomeLines(renderWelcomeLines(*msg.Banner, vpWidth))
+				offset = 2
+			} else {
+				chunks = SystemComponent{}.Render(msg, false)
+			}
+			rendered := chunksToStrings(chunks)
 			msgLines = append(msgLines, rendered...)
 			for li := before; li < len(msgLines); li++ {
-				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "system", Text: stripANSI(rendered[li-before]), ContentOffset: 4})
+				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "system", Text: stripANSI(rendered[li-before]), ContentOffset: offset})
 			}
 		}
 	}
@@ -573,7 +594,9 @@ func renderAssistantMessageStatic(msg chatMessage) []CellChunk {
 	return ac.Render(msg, false)
 }
 
-// stripANSI removes ANSI escape sequences from a string.
+// stripANSI removes ANSI escape sequences from a string. Both CSI sequences
+// (ESC [ … final byte) and OSC sequences (ESC ] … BEL or ESC \) are removed, so
+// OSC 8 hyperlinks emitted by the grid never leak into copied text.
 func stripANSI(s string) string {
 	var b strings.Builder
 	i := 0
@@ -584,6 +607,19 @@ func stripANSI(s string) string {
 				i++
 			}
 			if i < len(s) {
+				i++
+			}
+		} else if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == ']' {
+			i += 2
+			for i < len(s) {
+				if s[i] == '\a' {
+					i++
+					break
+				}
+				if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\' {
+					i += 2
+					break
+				}
 				i++
 			}
 		} else {

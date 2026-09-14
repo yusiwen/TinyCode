@@ -30,6 +30,11 @@ type Theme struct {
 	InputFg       lipgloss.Color
 	InputBg       lipgloss.Color
 	PlaceholderFg lipgloss.Color
+
+	// --- Welcome banner colors ---
+	BannerArtFg    lipgloss.Color // ASCII wordmark
+	BannerAccentFg lipgloss.Color // counters and section headers
+	BannerKeyFg    lipgloss.Color // command and key names
 }
 
 var (
@@ -58,6 +63,10 @@ var (
 		InputFg:       lipgloss.Color("#FFFFFF"),
 		InputBg:       lipgloss.Color("#000000"),
 		PlaceholderFg: lipgloss.Color("#555555"),
+
+		BannerArtFg:    lipgloss.Color("#00FFFF"),
+		BannerAccentFg: lipgloss.Color("#FFD700"),
+		BannerKeyFg:    lipgloss.Color("#00FF00"),
 	}
 
 	ThemeNord = Theme{
@@ -85,6 +94,10 @@ var (
 		InputFg:       lipgloss.Color("#D8DEE9"),
 		InputBg:       lipgloss.Color("#3B4252"),
 		PlaceholderFg: lipgloss.Color("#4C566A"),
+
+		BannerArtFg:    lipgloss.Color("#88C0D0"),
+		BannerAccentFg: lipgloss.Color("#EBCB8B"),
+		BannerKeyFg:    lipgloss.Color("#A3BE8C"),
 	}
 )
 
@@ -116,6 +129,14 @@ func ApplyTheme(t Theme) {
 	CodeStyle = CellStyle{Fg: t.InlineCodeFg}
 	SystemStyle = CellStyle{Fg: t.SystemFg}
 	StatusBarStyle = CellStyle{Fg: t.StatusBarFg}
+
+	// Welcome banner styles
+	bannerArtStyle = CellStyle{Fg: t.BannerArtFg, Bold: true}
+	bannerAccentStyle = CellStyle{Fg: t.BannerAccentFg, Bold: true}
+	bannerKeyStyle = CellStyle{Fg: t.BannerKeyFg}
+	// Hyperlinks share the wordmark color and are underlined as a cue; the
+	// OSC 8 target is attached per chunk (see footerChunks).
+	bannerLinkStyle = CellStyle{Fg: t.BannerArtFg, Underline: true}
 
 	// Lipgloss styles
 	headerStyle = lipgloss.NewStyle().
