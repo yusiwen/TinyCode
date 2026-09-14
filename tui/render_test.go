@@ -7,24 +7,13 @@ import (
 
 // --- Builder helpers for ContentBlock ---
 
-func txt(s string) TextChunk          { return TextChunk{Text: s} }
-func bold(s string) TextChunk         { return TextChunk{Text: s, Bold: true} }
-func italic(s string) TextChunk       { return TextChunk{Text: s, Italic: true} }
-func code(s string) TextChunk         { return TextChunk{Text: s, Code: true} }
-func link(text, url string) TextChunk { return TextChunk{Text: text, Link: url} }
+func txt(s string) TextChunk    { return TextChunk{Text: s} }
+func bold(s string) TextChunk   { return TextChunk{Text: s, Bold: true} }
+func italic(s string) TextChunk { return TextChunk{Text: s, Italic: true} }
+func code(s string) TextChunk   { return TextChunk{Text: s, Code: true} }
 
 func para(chunks ...TextChunk) ContentBlock {
 	return ContentBlock{Type: "paragraph", Chunks: chunks}
-}
-func h3(s string) ContentBlock {
-	return ContentBlock{Type: "heading", Level: 3, Chunks: []TextChunk{{Text: s}}}
-}
-func ul(items ...string) ContentBlock {
-	var blockItems []ContentBlock
-	for _, item := range items {
-		blockItems = append(blockItems, ContentBlock{Chunks: []TextChunk{{Text: item}}})
-	}
-	return ContentBlock{Type: "list", Items: blockItems}
 }
 func codeBlock(lang, code string) ContentBlock {
 	return ContentBlock{Type: "code", Language: lang, Code: code}
