@@ -92,16 +92,11 @@ func TestPermissionRequestResolve(t *testing.T) {
 		allowed, mode = RequestPermission(ctx, "/test/path.txt")
 	}()
 
-	// Give it time to block
-	time.Sleep(50 * time.Millisecond)
-
-	// Simulate the user's response via TUI
-	if !HasPendingPermission() {
-		t.Fatal("expected pending permission after RequestPermission")
-	}
-	if path := PendingPermissionPath(); path != "/test/path.txt" {
-		t.Fatalf("expected path /test/path.txt, got %s", path)
-	}
+	// Wait until the request reaches the queue head, then answer it the way the
+	// TUI would. Polling instead of sleeping keeps the test independent of how
+	// quickly the requesting goroutine gets scheduled — a window the race
+	// detector widens.
+	waitForHeadPath(t, "/test/path.txt")
 
 	resolved := ResolvePermission("/test/path.txt", true, "once")
 	if !resolved {
@@ -133,9 +128,8 @@ func TestPermissionRequestCancel(t *testing.T) {
 		allowed, mode = RequestPermission(ctx, "/test/path.txt")
 	}()
 
-	time.Sleep(50 * time.Millisecond)
-
-	// Cancel the context (simulates Ctrl+C / interrupt)
+	// Cancel a request that is blocked and waiting (Ctrl+C / interrupt).
+	waitForHeadPath(t, "/test/path.txt")
 	cancel()
 	wg.Wait()
 
@@ -160,9 +154,9 @@ func TestPermissionRequestDeny(t *testing.T) {
 		allowed, _ = RequestPermission(ctx, "/test/path.txt")
 	}()
 
-	time.Sleep(50 * time.Millisecond)
-
-	// User denies
+	// Wait for the request to be pending, then deny it. Resolving an empty
+	// queue would leave the goroutine blocked and hang the test binary.
+	waitForHeadPath(t, "/test/path.txt")
 	ResolvePermission("", false, "denied")
 	wg.Wait()
 
@@ -230,11 +224,7 @@ func TestWriteFileBlockedWithoutPermission(t *testing.T) {
 		errCh <- err
 	}()
 
-	time.Sleep(100 * time.Millisecond)
-
-	if !HasPendingPermission() {
-		t.Fatal("expected pending permission after blocked write")
-	}
+	waitForHeadPath(t, blockedPath)
 
 	// User allows
 	ResolvePermission("", true, "always")
@@ -366,12 +356,17 @@ func TestCheckPathAccessOnceIsNotCached(t *testing.T) {
 
 	target := filepath.Join(os.TempDir(), "tinycode-once-test.txt")
 
+	// The resolver goroutine answers once the request is queued. The bounded
+	// context turns a missed handshake into a fast, legible failure instead of
+	// blocking until the go test timeout.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		ResolvePermission("", true, "once")
 	}()
 
-	safePath, denied, err := CheckPathAccess(context.Background(), target)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	safePath, denied, err := CheckPathAccess(ctx, target)
 	if err != nil {
 		t.Fatalf("CheckPathAccess returned error: %v", err)
 	}
@@ -524,7 +519,7 @@ func TestResolvePermissionByID(t *testing.T) {
 		a, m := RequestPermission(ctx, "/second/path")
 		secondCh <- answer{a, m}
 	}()
-	time.Sleep(100 * time.Millisecond) // let the second request enqueue
+	waitForQueuedPath(t, "/second/path")
 
 	// Answer the *tail* by path: the head must stay pending.
 	if !ResolvePermission("/second/path", true, "session") {
@@ -570,6 +565,29 @@ func waitForHeadPath(t *testing.T, path string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for pending path %q (head=%q)", path, PendingPermissionPath())
+}
+
+// waitForQueuedPath waits until a request for path is queued anywhere in the
+// FIFO, which the head-only helper cannot express.
+func waitForQueuedPath(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pendingMu.Lock()
+		queued := false
+		for _, req := range pendingQueue {
+			if req.Path == path {
+				queued = true
+				break
+			}
+		}
+		pendingMu.Unlock()
+		if queued {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %q to be queued", path)
 }
 
 // TestCheckPathAccessReturnsResolvedPath pins the contract that callers do their
