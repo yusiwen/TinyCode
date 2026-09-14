@@ -176,6 +176,8 @@ func fetchURL(ctx context.Context, urlStr, userAgent string) (string, int, bool,
 	return bodyStr, 200, false, nil
 }
 
+// minContentLen is the shortest markdown extract worth returning: anything
+// smaller is treated as a failed extraction rather than a usable page.
 var minContentLen = 10
 
 func processContent(content string) string {
@@ -188,7 +190,7 @@ func processContent(content string) string {
 		return content
 	}
 	out = strings.TrimSpace(out)
-	if len(out) < 10 {
+	if len(out) < minContentLen {
 		return ""
 	}
 	if len(out) > 5000 {

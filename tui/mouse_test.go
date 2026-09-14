@@ -45,7 +45,7 @@ func TestMouseWheelScrollUp(t *testing.T) {
 	m := oneMsgModel()
 	// Content taller than viewport so scrolling works
 	m.vp.SetContent(strings.Repeat("line\n", 50))
-	m.vp.LineDown(10) // scroll down first
+	m.vp.ScrollDown(10) // scroll down first
 	initial := m.vp.YOffset
 	if initial == 0 {
 		t.Skip("viewport not scrollable — content may not exceed height")

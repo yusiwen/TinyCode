@@ -144,14 +144,6 @@ func ApplyTheme(t Theme) {
 		Bold(true).
 		Padding(0, 1)
 
-	modeStyle = lipgloss.NewStyle().
-		Foreground(t.ModeFg).
-		Bold(true)
-
-	thinkingStyle = lipgloss.NewStyle().
-		Foreground(t.ThinkingFg).
-		Faint(true)
-
 	selectedStyle = lipgloss.NewStyle().
 		Foreground(t.SelectionFg).
 		Background(t.SelectionBg)
@@ -162,24 +154,6 @@ func ApplyTheme(t Theme) {
 
 	spinnerStyle = lipgloss.NewStyle().
 		Foreground(t.SpinnerFg)
-
-	userStyle = lipgloss.NewStyle().
-		Foreground(t.UserFg).
-		Bold(true)
-
-	assistantLabelStyle = lipgloss.NewStyle().
-		Foreground(t.ResponseFg).
-		Bold(true)
-
-	errorStyle = lipgloss.NewStyle().
-		Foreground(t.ErrorFg)
-
-	footerStyle = lipgloss.NewStyle().
-		Foreground(t.DimFg)
-
-	inputPromptStyle = lipgloss.NewStyle().
-		Foreground(t.ModeFg).
-		Bold(true)
 
 	dimStyle = lipgloss.NewStyle().
 		Foreground(t.DimFg)

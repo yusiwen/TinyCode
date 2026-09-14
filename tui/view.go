@@ -434,14 +434,6 @@ func (m *TuiModel) renderStatusBar() string {
 	return statusBarStyle.Render(status)
 }
 
-// providerName returns the current provider's display name.
-func (m *TuiModel) providerName() string {
-	if m.provReg == nil {
-		return "unknown"
-	}
-	return m.provReg.Current().Name()
-}
-
 // formatDuration formats a duration like "4h31m" or "32s".
 func formatDuration(d time.Duration) string {
 	d = d.Round(time.Second)
@@ -628,13 +620,6 @@ func stripANSI(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// renderAssistantMessage delegates to the AssistantComponent.
-// Kept for backward compatibility; tests and callers use this function.
-func (m *TuiModel) renderAssistantMessage(msg chatMessage, sel bool) []string {
-	answerComponent := AssistantComponent{}
-	return chunksToStrings(answerComponent.Render(msg, sel))
 }
 
 // wrapLine splits a line into multiple lines, each no wider than maxWidth.

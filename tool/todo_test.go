@@ -297,6 +297,9 @@ func TestTodoStoreReadReturnsCopy(t *testing.T) {
 	got[0].Content = "mutated"
 	got[0].Status = StatusCompleted
 	got = append(got, TodoItem{ID: "ghost", Content: "ghost", Status: StatusPending})
+	if len(got) != 2 {
+		t.Fatalf("append did not extend the returned slice: %d", len(got))
+	}
 
 	again := store.Read()
 	if len(again) != 1 {

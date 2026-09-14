@@ -131,11 +131,10 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if sel {
 		bracketStyle = SelectionStyle
 	}
-	markerChunks := []CellChunk{CellChunk{Text: "[+]", Style: bracketStyle}}
-	if !msg.ReasoningFolded {
-		// Expanded: no standalone marker — merge [-] with first line below
-		markerChunks = nil
-	} else {
+	// Folded: a standalone marker with the line count. Expanded: no marker, the
+	// [-] toggle is merged with the first line below.
+	var markerChunks []CellChunk
+	if msg.ReasoningFolded {
 		markerChunks = []CellChunk{
 			{Text: "[+]", Style: bracketStyle},
 			{Text: fmt.Sprintf(" %d lines of reasoning", lineCount), Style: markerStyle},

@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -53,35 +52,6 @@ func renderView(m *TuiModel) *TuiModel {
 	return m
 }
 
-// buildMsgLines duplicates the msgLines construction logic from View().
-func buildMsgLines(m *TuiModel) []string {
-	var msgLines []string
-	for _, msg := range m.messages {
-		switch msg.Role {
-		case "user":
-			msgLines = append(msgLines, "> "+msg.Content)
-		case "assistant":
-			if msg.ReasoningContent != "" {
-				for _, rLine := range strings.Split(msg.ReasoningContent, "\n") {
-					msgLines = append(msgLines, "    "+rLine)
-				}
-			}
-			msgLines = append(msgLines, "Assistant:")
-			if len(msg.Blocks) > 0 {
-				blockLines := renderBlocks(msg.Blocks, false)
-				for _, bl := range blockLines {
-					msgLines = append(msgLines, "    "+bl)
-				}
-			} else if msg.Content != "" {
-				msgLines = append(msgLines, msg.Content)
-			}
-		case "system":
-			msgLines = append(msgLines, "→ "+msg.Content)
-		}
-	}
-	return msgLines
-}
-
 // --- Tests ---
 
 func TestAutoScrollFillsViewport(t *testing.T) {
@@ -125,7 +95,7 @@ func TestAutoScrollNoScrollWhenScrolledUp(t *testing.T) {
 	m = renderView(m)
 
 	// Scroll up to see older messages
-	m.vp.LineUp(2)
+	m.vp.ScrollUp(2)
 	if m.vp.AtBottom() {
 		t.Skip("viewport didn't scroll up — reduce viewport height")
 	}
@@ -203,7 +173,7 @@ func TestAutoScrollScrolledUpThenScrollBack(t *testing.T) {
 	m = renderView(m)
 
 	// Scroll up
-	m.vp.LineUp(5)
+	m.vp.ScrollUp(5)
 	beforeY := m.vp.YOffset
 
 	// Add message while scrolled up — should not move

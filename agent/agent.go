@@ -85,17 +85,6 @@ func (a *Agent) stepDetail(format string, args ...any) {
 	}
 }
 
-// showThinking prints the model's reasoning content in dim yellow with | prefix.
-// Only shown when ShowThinking is enabled and reasoning_content is non-empty.
-func (a *Agent) showThinking(reasoning string) {
-	if !a.ShowThinking || reasoning == "" {
-		return
-	}
-	for _, line := range strings.Split(strings.TrimRight(reasoning, "\n"), "\n") {
-		fmt.Print(colorDim + colorYellow + "| " + line + colorReset + "\n")
-	}
-}
-
 const (
 	MemoryModeNone     = 0
 	MemoryModeAuto     = 1

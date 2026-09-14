@@ -13,7 +13,6 @@ import (
 var (
 	mu            sync.Mutex
 	lspAvailable  bool
-	server        *Server
 	client        *Client
 	conn          *Conn
 	projectRoot   string

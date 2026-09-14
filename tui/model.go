@@ -530,12 +530,6 @@ func (m *TuiModel) clearCharSelection() {
 	m.charSelEndCol = 0
 }
 
-// sendStreamMsg is a tea.Cmd that reads from the stream channel.
-func (m *TuiModel) sendStreamMsg() tea.Msg {
-	msg := <-m.streamCh
-	return msg
-}
-
 // ShowStatus sets a transient status bar message.
 func (m *TuiModel) ShowStatus(msg string) {
 	m.statusMsg = msg

@@ -29,11 +29,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Button == tea.MouseButtonWheelUp {
-			m.vp.LineUp(3)
+			m.vp.ScrollUp(3)
 			return m, nil
 		}
 		if msg.Button == tea.MouseButtonWheelDown {
-			m.vp.LineDown(3)
+			m.vp.ScrollDown(3)
 			return m, nil
 		}
 		if msg.Button == tea.MouseButtonLeft {
