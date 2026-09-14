@@ -5,7 +5,6 @@ package tool
 import (
 	"errors"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 
 	"golang.org/x/sys/unix"
@@ -24,17 +23,21 @@ var openat2Unsupported atomic.Bool
 // kernel definitively says the path escapes (EXDEV); missing paths, unsupported
 // kernels and any other error report false. The layer can therefore only
 // tighten the sandbox, never loosen it.
+//
+// RESOLVE_BENEATH rejects absolute symlinks outright, wherever they point, so a
+// caller that gates a safe path on this result must probe the OS-resolved form:
+// see the CheckPath call site.
 func kernelEscapeCheck(root, path string) bool {
 	if openat2Unsupported.Load() {
 		return false
 	}
 
-	rel, err := filepath.Rel(root, path)
-	if err != nil || rel == "." {
-		return false
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		// Lexically outside root: CheckPath's own containment test decides.
+	// The remainder keeps ".." components (see relBeneath) so the kernel
+	// resolves the path exactly as the real open would.
+	rel, ok := relBeneath(root, path)
+	if !ok {
+		// The root itself, or a path that is not lexically beneath it:
+		// CheckPath's own containment test decides.
 		return false
 	}
 

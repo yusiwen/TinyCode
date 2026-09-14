@@ -594,7 +594,13 @@ func TestCheckPathAccessReturnsResolvedPath(t *testing.T) {
 	DefaultSandbox = &SandboxConfig{ProjectRoot: root, allowedPaths: make(map[string]bool)}
 	defer func() { DefaultSandbox = saved }()
 
-	safePath, denied, err := CheckPathAccess(context.Background(), link)
+	// The in-root symlink resolves inside the root, so no permission may be
+	// requested. The bounded context keeps a regression loud: a check that
+	// wrongly asks for approval fails here in milliseconds instead of blocking
+	// the test binary until the go test timeout.
+	inRootCtx, cancelInRoot := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelInRoot()
+	safePath, denied, err := CheckPathAccess(inRootCtx, link)
 	if err != nil || denied != "" {
 		t.Fatalf("expected access, got denied=%q err=%v", denied, err)
 	}

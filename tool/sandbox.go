@@ -157,10 +157,17 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 	// lexical check alone would accept a link (or a link plus "..") that
 	// points outside.
 	if rel, err := filepath.Rel(realRoot, realAbs); err == nil && !escapes(rel) {
-		// On Linux the kernel re-evaluates the requested path with
-		// RESOLVE_BENEATH: a path that escapes only because of a race or a
-		// magic link is denied even though the resolved comparison passed.
-		if kernelEscapeCheck(root, rawAbs) {
+		// On Linux the kernel re-evaluates the path with RESOLVE_BENEATH: if a
+		// directory along it was swapped for an escaping symlink (or is a
+		// magic link) after EvalSymlinks ran, the probe returns EXDEV and the
+		// access is denied even though the resolved comparison passed.
+		//
+		// The probe must run on realAbs, the form the caller will actually
+		// open (CheckPathAccess returns ResolvePath). Probing rawAbs would be
+		// wrong: RESOLVE_BENEATH rejects absolute symlinks wherever they
+		// point, so a symlink inside the root pointing back inside the root
+		// would be reported as an escape even though it resolves here.
+		if kernelEscapeCheck(root, realAbs) {
 			return &AccessDenied{
 				Path:    rawAbs,
 				Message: fmt.Sprintf("Path %q escapes the project root %q.", rawAbs, sc.ProjectRoot),
