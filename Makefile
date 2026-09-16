@@ -45,10 +45,12 @@ test-repeat:
 lint:
 	go vet ./...
 
-# Optional stricter linter; skipped when staticcheck is not installed. It is
-# deliberately separate so `make lint` can never be a no-op.
+# Stricter linter, pinned so local runs match CI. Deliberately separate from
+# `lint` so a missing tool can never turn that target into a no-op.
+STATICCHECK_VERSION ?= v0.8.1
+
 staticcheck:
-	@if which staticcheck > /dev/null 2>&1; then staticcheck ./...; else echo "staticcheck not installed — skipped"; fi
+	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
 
 # Format the tracked Go sources in place.
 fmt:

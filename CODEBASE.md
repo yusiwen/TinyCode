@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 554 test functions, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 560 test functions, race-detector clean.
 
 ## Quick Reference
 
@@ -232,6 +232,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`AccessDenied`** error: `Path`, `Message`, `DenyHint() string`
 - **`CheckCommand(cmd string) error`** — blocklist matching (substring match; not a security boundary)
 - **`CheckPath(absPath string) error`** — kernel-order symlink resolution (`resolveRealPath`, applied to the raw path before any lexical clean, so `link/..` cannot escape) + project-root containment + auto-allow + cached allows
+- **`SetInteractive(bool)` / `IsInteractive()`** — declare whether a permission dialog can be shown. Default true; a one-shot CLI run calls `SetInteractive(false)`, and a denial then returns `AccessDenied.NonInteractiveHint()` immediately instead of blocking in `RequestPermission` forever
 - **`CheckPathAccess(ctx, path) (string, error)`** — the shared gate used by `read_file`, `write_file`, `edit`, `apply_patch`, `search_files`; returns a user-facing denial message or ("", nil)
 - **`WithPathGate(t agent.Tool) agent.Tool`** — wraps a tool implemented in another package (the `lsp_*` tools) so its `path`/`file_path` argument goes through the same gate
 - **`RequestPermission(ctx, path) (bool, string)`** — enqueues a FIFO request and blocks on its own channel until the TUI resolves it or ctx is cancelled
@@ -497,12 +498,13 @@ User Input (textarea / CLI arg)
 - **Sandbox check-vs-open race**: file I/O uses the OS-resolved path returned by `CheckPathAccess`, and on Linux `CheckPath` additionally asks the kernel with `openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)` whether the *resolved* path really resolves inside the root (`tool/pathbeneath_linux.go`, inert on kernels < 5.6 and on other platforms). The probe runs on the resolved form because `RESOLVE_BENEATH` rejects absolute symlinks outright, and it is fed by `relBeneath`, which keeps `..` components so `link/..` is resolved the way the OS would. The I/O still happens on the resolved path rather than through the verified fd, so a swap between the check and the open remains theoretically possible.
 - **bash process group**: a descendant that calls `setsid(2)` escapes the group kill performed on timeout.
 - **Chromium fallback**: the rod path installs request interception (`Browser.HijackRequests`) and applies the SSRF policy to every request the browser makes — 3xx hops, JavaScript/`meta refresh` redirects, XHR/fetch, iframes and subresources; local-only schemes (`data:`, `blob:`, `about:`) are allowed since they never touch the network. Both browser paths also pin the top-level host to the address this process validated (`browserHostRule` → Chromium `--host-resolver-rules=MAP <host> <ip>`), so the initial navigation cannot be DNS-rebound; the pin falls back to the default launcher if the pinned one fails to start. Not covered: rebinding of redirect-target and subresource hostnames (their names only appear while the page loads, so they are checked at interception time but resolved again by Chromium), the `--dump-dom` exec path (`crawlViaExec`, `tryBrowser`) which cannot intercept requests at all and keeps only the pre-flight check plus the top-level pin, and browser-internal loads the Fetch domain may not pause (e.g. WebSocket upgrades, cached/service-worker responses).
+- **MCP loopback**: a loopback-configured endpoint exempts exactly that authority (`netsafe.AllowAuthority`), so it cannot be redirected to another loopback port; every other SSRF rule still applies.
 - **MCP**: requests are concurrent (one reader goroutine with per-id dispatch) and a cancelled call only unregisters itself, leaving the transport usable; `tool.CloseMCPServers()` (called from `main.go`) closes every client and reaps stdio children on exit. Server-initiated requests are answered (`ping` and `roots/list` with a result, anything else with a `-32601` error) so a server is never left waiting, and `serverInfo`/`tools` are mutex-guarded. Remaining: the unmatched-message skip budget is shared by all pending calls rather than per-request.
 - **`CheckCommand` and plan-mode checks** are advisory substring heuristics, not an OS-level boundary.
 
 ## Testing
 
-- **501 test functions** across all packages (`go test ./... -count=1`)
+- **560 test functions** across all packages (`go test ./... -count=1`)
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
 - LSP: 15+ tests with `io.Pipe`-based mock (no real LSP server needed) + single-reader correlation tests
@@ -520,7 +522,8 @@ make build          # → bin/tinycode (CGO_ENABLED=0, stripped)
 make test           # go test ./... -count=1
 make test-race      # go test -race ./... -count=1
 make test-repeat    # go test ./... -count=3 (catches leaked global state)
-make lint           # go vet (+ staticcheck when installed)
+make lint           # go vet (blocking)
+make staticcheck    # staticcheck, pinned via STATICCHECK_VERSION (v0.8.1)
 make fmt-check      # fail when a tracked Go file is not gofmt-clean
 make run PROMPT="..."  # one-shot mode
 ./bin/tinycode      # TUI mode
@@ -546,7 +549,7 @@ make run PROMPT="..."  # one-shot mode
 
 - `ci` job: build, `gofmt` gate, `go vet`, tests, `-race`, and a repeated (`-count=3`) run, on Go 1.27.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
-- `staticcheck` job: advisory (`continue-on-error`) because staticcheck lags new Go releases; make it blocking once a release supports the CI toolchain.
+- `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
 - Toolchain drift: CI is on Go 1.27, the Nix flake pins 1.26 and `go.mod` declares 1.24.2. `gofmt` output differs between releases, so **the CI toolchain is authoritative for formatting**; align the others (or add a `toolchain` directive) when convenient.
 
 ## Dev Environment

@@ -72,10 +72,6 @@ jobs:
   staticcheck:
     name: staticcheck
     runs-on: ubuntu-latest
-    # Advisory for now: staticcheck usually lags a new Go release, and this
-    # project's CI toolchain tracks a very recent one. Drop continue-on-error
-    # once a staticcheck release supports it.
-    continue-on-error: true
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -85,5 +81,8 @@ jobs:
         with:
           go-version: 1.27
 
+      # Blocking, and pinned: `latest` could red the build without a code
+      # change. Bump the pin together with the Makefile's
+      # STATICCHECK_VERSION when a newer release is wanted.
       - name: Run staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+        run: make staticcheck
