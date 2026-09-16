@@ -228,8 +228,9 @@ func TestHTTPTransportReachesLoopbackServer(t *testing.T) {
 }
 
 // TestHTTPTransportLoopbackScopedToConfiguredEndpoint pins the security
-// boundary: loopback is reachable only when the configured endpoint is itself
-// loopback, so a public MCP endpoint cannot be redirected to a local service.
+// boundary: the loopback exemption covers exactly the configured authority, so
+// a local MCP endpoint cannot redirect this client into a different local
+// service, and a public endpoint cannot reach loopback at all.
 func TestHTTPTransportLoopbackScopedToConfiguredEndpoint(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -238,19 +239,25 @@ func TestHTTPTransportLoopbackScopedToConfiguredEndpoint(t *testing.T) {
 	if !ok {
 		t.Fatal("expected the MCP transport to use *http.Transport")
 	}
-	// Validation must pass for the configured loopback endpoint; the dial then
-	// fails only because nothing listens on that port.
-	if _, err := local.DialContext(ctx, "tcp", "127.0.0.1:1"); err == nil {
-		t.Log("unexpectedly connected to 127.0.0.1:1")
+	// The configured authority passes validation; the dial fails only because
+	// nothing listens there.
+	if _, err := local.DialContext(ctx, "tcp", "127.0.0.1:9000"); err == nil {
+		t.Log("unexpectedly connected to 127.0.0.1:9000")
 	} else if strings.Contains(err.Error(), "SSRF") {
-		t.Fatalf("a configured loopback endpoint must stay reachable, got: %v", err)
+		t.Fatalf("the configured loopback endpoint must stay reachable, got: %v", err)
+	}
+	// Every other loopback port is blocked, even though the endpoint is local.
+	if _, err := local.DialContext(ctx, "tcp", "127.0.0.1:9001"); err == nil {
+		t.Fatal("a different loopback port must not be reachable from a loopback-configured client")
+	} else if !strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("expected an SSRF block for a different loopback port, got: %v", err)
 	}
 
 	remote, ok := NewHTTPClient("https://mcp.example.com/mcp", nil).client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("expected the MCP transport to use *http.Transport")
 	}
-	if _, err := remote.DialContext(ctx, "tcp", "127.0.0.1:1"); err == nil {
+	if _, err := remote.DialContext(ctx, "tcp", "127.0.0.1:9000"); err == nil {
 		t.Fatal("a public MCP endpoint must not be able to dial loopback")
 	} else if !strings.Contains(err.Error(), "SSRF") {
 		t.Fatalf("expected an SSRF block for a public endpoint, got: %v", err)

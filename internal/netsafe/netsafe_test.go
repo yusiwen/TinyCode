@@ -266,7 +266,7 @@ func TestNewClientPinnedDialerBlocksNonPublic(t *testing.T) {
 	}
 }
 
-func TestAllowLoopbackScopedToLoopbackAddresses(t *testing.T) {
+func TestAllowAuthorityScopedToConfiguredEndpoint(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -286,25 +286,70 @@ func TestAllowLoopbackScopedToLoopbackAddresses(t *testing.T) {
 	defer cancel()
 	addr := listener.Addr().String()
 
-	allowed := NewClient(2*time.Second, true, AllowLoopback()).Transport.(*http.Transport)
+	allowed := NewClient(2*time.Second, true, AllowAuthority(addr)).Transport.(*http.Transport)
 	conn, err := allowed.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		t.Fatalf("AllowLoopback must reach a loopback listener, got: %v", err)
+		t.Fatalf("AllowAuthority must reach the configured loopback listener, got: %v", err)
 	}
 	conn.Close()
 
 	// Loopback is still blocked for every other target, even with the option.
 	if _, err := allowed.DialContext(ctx, "tcp", "169.254.169.254:80"); err == nil {
-		t.Fatal("AllowLoopback must not unblock non-loopback targets")
+		t.Fatal("AllowAuthority must not unblock non-loopback targets")
 	} else if !strings.Contains(err.Error(), "SSRF") {
 		t.Fatalf("expected an SSRF error, got: %v", err)
 	}
 
+	// The exemption is scoped to the configured authority: another loopback
+	// port (or host) stays blocked, so a local endpoint cannot redirect the
+	// client into a different local service.
+	other, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer other.Close()
+	if _, err := allowed.DialContext(ctx, "tcp", other.Addr().String()); err == nil {
+		t.Fatal("a different loopback port must stay blocked")
+	} else if !strings.Contains(err.Error(), "SSRF") {
+		t.Fatalf("expected an SSRF error for another loopback port, got: %v", err)
+	}
+
 	strict := NewClient(2*time.Second, true).Transport.(*http.Transport)
 	if _, err := strict.DialContext(ctx, "tcp", addr); err == nil {
-		t.Fatal("expected loopback to be blocked without AllowLoopback")
+		t.Fatal("expected loopback to be blocked without the option")
 	} else if !strings.Contains(err.Error(), "SSRF") {
 		t.Fatalf("expected an SSRF error, got: %v", err)
+	}
+}
+
+// TestAllowAuthorityNormalization covers IPv6 and host-name normalization so a
+// configured authority matches however the URL spells it.
+func TestAllowAuthorityNormalization(t *testing.T) {
+	cases := []struct {
+		configured string
+		host       string
+		port       string
+		want       bool
+	}{
+		{"127.0.0.1:9000", "127.0.0.1", "9000", true},
+		{"localhost:9000", "LOCALHOST", "9000", true},
+		{"[::1]:9000", "::1", "9000", true},
+		{"[0:0:0:0:0:0:0:1]:9000", "::1", "9000", true},
+		{"127.0.0.1:9000", "127.0.0.1", "9001", false},
+		{"127.0.0.1:9000", "127.0.0.2", "9000", false},
+	}
+	for _, tc := range cases {
+		cfg := clientConfig{allowedAuthority: normalizeAuthority(tc.configured)}
+		if got := cfg.loopbackAllowed(tc.host, tc.port); got != tc.want {
+			t.Errorf("loopbackAllowed(%q, %q) with configured %q = %v, want %v",
+				tc.host, tc.port, tc.configured, got, tc.want)
+		}
+	}
+
+	// With no option, nothing is exempt.
+	empty := clientConfig{}
+	if empty.loopbackAllowed("127.0.0.1", "9000") {
+		t.Error("an empty config must not allow loopback")
 	}
 }
 

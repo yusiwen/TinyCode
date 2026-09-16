@@ -230,15 +230,46 @@ func IsLoopbackHost(host string) bool {
 type Option func(*clientConfig)
 
 type clientConfig struct {
-	allowLoopback bool
+	// allowedAuthority is the single host:port whose loopback addresses may be
+	// reached. Empty means loopback is blocked everywhere.
+	allowedAuthority string
 }
 
-// AllowLoopback permits loopback addresses while every other SSRF rule stays in
-// force. It exists for callers whose endpoint is deliberately local, such as a
-// localhost MCP development server; callers should only enable it when the
-// configured endpoint itself is loopback.
-func AllowLoopback() Option {
-	return func(c *clientConfig) { c.allowLoopback = true }
+// AllowAuthority permits loopback addresses for one authority (host:port) while
+// every other SSRF rule stays in force. It exists for callers whose configured
+// endpoint is deliberately local, such as a localhost MCP development server.
+//
+// The exemption is deliberately scoped to that authority rather than the whole
+// client: without it, a local endpoint could redirect the client to any other
+// loopback service (a container API, an admin port, a database), which is an
+// SSRF primitive we do not want to hand out.
+func AllowAuthority(hostport string) Option {
+	return func(c *clientConfig) { c.allowedAuthority = normalizeAuthority(hostport) }
+}
+
+// normalizeAuthority canonicalizes a host:port for comparison: IPv6 literals are
+// unbracketed and re-canonicalized, host names are lower-cased and the port is
+// kept verbatim.
+func normalizeAuthority(authority string) string {
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil {
+		host, port = authority, ""
+	}
+	host = strings.Trim(host, "[]")
+	if ip := net.ParseIP(host); ip != nil {
+		host = ip.String()
+	} else {
+		host = strings.ToLower(host)
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// loopbackAllowed reports whether the loopback exemption covers host:port.
+func (c *clientConfig) loopbackAllowed(host, port string) bool {
+	if c.allowedAuthority == "" {
+		return false
+	}
+	return normalizeAuthority(net.JoinHostPort(strings.Trim(host, "[]"), port)) == c.allowedAuthority
 }
 
 // NewClient returns an *http.Client hardened against SSRF.
@@ -268,26 +299,26 @@ func NewClient(timeout time.Duration, enforce bool, opts ...Option) *http.Client
 		Timeout: timeout,
 		Transport: &http.Transport{
 			Proxy:                 nil,
-			DialContext:           dialContext(dialer, enforce, cfg.allowLoopback),
+			DialContext:           dialContext(dialer, enforce, &cfg),
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          maxIdleConns,
 			IdleConnTimeout:       idleConnTimeout,
 			TLSHandshakeTimeout:   tlsHandshakeTimeout,
 			ExpectContinueTimeout: expectContinueTimeout,
 		},
-		CheckRedirect: redirectPolicy(maxSSRFRedirects, enforce, cfg.allowLoopback),
+		CheckRedirect: redirectPolicy(maxSSRFRedirects, enforce, &cfg),
 	}
 }
 
 // dialContext resolves the host once, validates every resolved IP, and dials
 // only an address that already passed validation.
-func dialContext(dialer *net.Dialer, enforce, allowLoopback bool) func(ctx context.Context, network, addr string) (net.Conn, error) {
+func dialContext(dialer *net.Dialer, enforce bool, cfg *clientConfig) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, fmt.Errorf("split host port %q: %w", addr, err)
 		}
-		ips, err := resolveValidatedHost(ctx, host, enforce, allowLoopback)
+		ips, err := resolveValidatedHost(ctx, host, enforce, cfg.loopbackAllowed(host, port))
 		if err != nil {
 			return nil, err
 		}
@@ -310,7 +341,7 @@ func dialContext(dialer *net.Dialer, enforce, allowLoopback bool) func(ctx conte
 // target with the shared SSRF policy and refuses extra hops. Validation runs
 // under the same bounded context as CheckURL, so a redirect to a hostile
 // resolver cannot stall the request indefinitely.
-func redirectPolicy(maxHops int, enforce, allowLoopback bool) func(req *http.Request, via []*http.Request) error {
+func redirectPolicy(maxHops int, enforce bool, cfg *clientConfig) func(req *http.Request, via []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if len(via) >= maxHops {
 			return fmt.Errorf("stopped after %d redirects", maxHops)
@@ -318,9 +349,20 @@ func redirectPolicy(maxHops int, enforce, allowLoopback bool) func(req *http.Req
 		if !enforce {
 			return nil
 		}
-		if err := checkURL(req.URL.String(), allowLoopback); err != nil {
+		if err := checkURL(req.URL.String(), cfg.loopbackAllowed(req.URL.Hostname(), urlPort(req.URL))); err != nil {
 			return fmt.Errorf("redirect blocked: %w", err)
 		}
 		return nil
 	}
+}
+
+// urlPort returns the effective port of a URL, defaulting by scheme.
+func urlPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,7 +55,17 @@ func NewHTTPClient(baseURL string, headers map[string]string) *HTTPClient {
 func newSSRFProtectedClient(baseURL string) *http.Client {
 	var opts []netsafe.Option
 	if u, err := url.Parse(baseURL); err == nil && netsafe.IsLoopbackHost(u.Hostname()) {
-		opts = append(opts, netsafe.AllowLoopback())
+		// Exempt exactly the configured authority: a local endpoint may not
+		// redirect this client to some other loopback service.
+		port := u.Port()
+		if port == "" {
+			if u.Scheme == "https" {
+				port = "443"
+			} else {
+				port = "80"
+			}
+		}
+		opts = append(opts, netsafe.AllowAuthority(net.JoinHostPort(u.Hostname(), port)))
 	}
 	return netsafe.NewClient(httpRequestTimeout, true, opts...)
 }
