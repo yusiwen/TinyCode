@@ -525,6 +525,10 @@ func newRootCmd() *cobra.Command {
 				prompt = args[0]
 			}
 
+			// A one-shot run has no dialog, so the sandbox must refuse a denied
+			// path instead of blocking forever on a permission request.
+			tool.SetInteractive(prompt == "")
+
 			if prompt != "" {
 				// One-shot mode
 				fmt.Printf("🤖 TinyCode (model: %s)\n", provReg.CurrentName())

@@ -33,6 +33,16 @@ To allow access, tell me one of:
   - "deny %s" — block this access`, e.Message, e.Path, e.Path, e.Path)
 }
 
+// NonInteractiveHint is the refusal returned when no dialog can be shown. It
+// tells the model to stop retrying and hand the decision back to the user.
+func (e *AccessDenied) NonInteractiveHint() string {
+	return fmt.Sprintf(`[SECURITY] %s
+
+This run cannot ask for permission. Do not retry this path. Either work inside
+the project root, or ask the user to change the sandbox configuration
+(project_root / allowed_paths) or run interactively.`, e.Message)
+}
+
 // ── Pattern D: Permission Caching & Auto-approve ──
 
 // SandboxConfig holds security configuration for tool execution.
@@ -230,6 +240,22 @@ func (sc *SandboxConfig) ResetAllowed() {
 }
 
 // ── Pattern C: Interactive Permission Queue ──
+
+// interactive reports whether a user interface exists that can answer a
+// permission request. It defaults to true so library users keep the previous
+// behaviour; a non-interactive front end (one-shot CLI, background job) must
+// call SetInteractive(false), otherwise a denial would block forever waiting for
+// an answer that can never arrive.
+var interactive atomic.Bool
+
+func init() { interactive.Store(true) }
+
+// SetInteractive declares whether this process can show a permission dialog.
+// Call it once during startup, before any tool runs.
+func SetInteractive(enabled bool) { interactive.Store(enabled) }
+
+// IsInteractive reports the current mode (used by tests and front ends).
+func IsInteractive() bool { return interactive.Load() }
 
 // PermissionRequest is queued when a path needs user approval.
 // All fields except done are guarded by pendingMu; done is closed once the
@@ -471,6 +497,11 @@ func CheckPathAccess(ctx context.Context, path string) (safePath, denied string,
 		if !ok {
 			return "", "", fmt.Errorf("path check: %w", checkErr)
 		}
+		if !IsInteractive() {
+			// No dialog: report the refusal instead of blocking forever.
+			return "", ad.NonInteractiveHint(), nil
+		}
+
 		allowed, mode := RequestPermission(ctx, ad.Path)
 		if !allowed {
 			if mode == "cancelled" {

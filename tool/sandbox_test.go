@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -639,5 +640,60 @@ func TestCheckPathAccessReturnsResolvedPath(t *testing.T) {
 	defer cancel()
 	if safe, _, _ := CheckPathAccess(ctx, outside); safe != "" {
 		t.Errorf("refused path returned a usable path %q", safe)
+	}
+}
+
+// TestNonInteractiveDenialReturnsImmediately guards the one-shot CLI case: with
+// no dialog available, a denied path must be refused instead of blocking in
+// RequestPermission forever.
+func TestNonInteractiveDenialReturnsImmediately(t *testing.T) {
+	tmpDir := t.TempDir()
+	saved := DefaultSandbox
+	DefaultSandbox = &SandboxConfig{ProjectRoot: tmpDir, allowedPaths: make(map[string]bool)}
+	defer func() { DefaultSandbox = saved }()
+
+	if !IsInteractive() {
+		t.Fatal("interactive mode must default to true")
+	}
+
+	SetInteractive(false)
+	defer SetInteractive(true)
+	if IsInteractive() {
+		t.Fatal("SetInteractive(false) did not take effect")
+	}
+
+	outside := filepath.Join(os.TempDir(), "tinycode-noninteractive.txt")
+	done := make(chan struct{})
+	var (
+		denied string
+		err    error
+	)
+	go func() {
+		defer close(done)
+		_, denied, err = CheckPathAccess(context.Background(), outside)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("CheckPathAccess blocked with no interactive answerer")
+	}
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if denied == "" {
+		t.Fatal("expected a refusal message")
+	}
+	if !strings.Contains(denied, "cannot ask for permission") {
+		t.Errorf("refusal should explain the non-interactive mode, got %q", denied)
+	}
+
+	// The interactive path must still queue a request (existing behaviour).
+	SetInteractive(true)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, _, err := CheckPathAccess(ctx, outside); err == nil {
+		t.Error("expected the interactive path to wait for an answer and then time out")
 	}
 }
