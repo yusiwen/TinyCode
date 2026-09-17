@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,40 +66,117 @@ func appendBrowserProxyArgs(args []string, proxyURL string) []string {
 // Browser commands to try in order for system-installed Chromium.
 // (browserCommands is declared in web_extract.go)
 
-// playwrightChromiumPath returns the path to a Chromium installed by Playwright.
+// playwrightChromiumPath returns the path to a browser installed by Playwright,
+// or "" when Playwright has no browser in its cache.
 func playwrightChromiumPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	// Platform-specific Playwright cache directory
-	var playwrightDir string
-	switch runtime.GOOS {
-	case "darwin":
-		playwrightDir = filepath.Join(home, "Library", "Caches", "ms-playwright")
-	default:
-		playwrightDir = filepath.Join(home, ".cache", "ms-playwright")
+	return findPlaywrightBrowser(playwrightCacheDir(home, runtime.GOOS), runtime.GOOS)
+}
+
+// playwrightCacheDir is where Playwright unpacks the browsers it downloads.
+func playwrightCacheDir(home, goos string) string {
+	if goos == "darwin" {
+		return filepath.Join(home, "Library", "Caches", "ms-playwright")
 	}
-	entries, err := os.ReadDir(playwrightDir)
+	return filepath.Join(home, ".cache", "ms-playwright")
+}
+
+// findPlaywrightBrowser looks for a usable browser in a Playwright cache
+// directory, newest revision first.
+//
+// Playwright has changed its layout more than once: the full browser now ships
+// as "Google Chrome for Testing.app" under chrome-mac-arm64/chrome-mac-x64 (it
+// used to be Chromium.app under chrome-mac), and there is a separate
+// chrome_headless_shell package. Only looking for the old path made every
+// current installation invisible, which silently fell back to rod downloading
+// its own browser.
+func findPlaywrightBrowser(cacheDir, goos string) string {
+	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		return ""
 	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "chromium-") {
-			// Platform-specific Chrome binary path within Playwright
-			var sub string
-			switch runtime.GOOS {
-			case "darwin":
-				sub = filepath.Join(playwrightDir, e.Name(), "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium")
-			default:
-				sub = filepath.Join(playwrightDir, e.Name(), "chrome-linux", "chrome")
-			}
-			if fi, err := os.Stat(sub); err == nil && fi.Mode().IsRegular() {
-				return sub
+
+	type pkg struct {
+		name  string
+		rev   int
+		shell bool
+	}
+	var pkgs []pkg
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(name, "chromium-"):
+			pkgs = append(pkgs, pkg{name: name, rev: playwrightRevision(name, "chromium-")})
+		case strings.HasPrefix(name, "chromium_headless_shell-"):
+			pkgs = append(pkgs, pkg{name: name, rev: playwrightRevision(name, "chromium_headless_shell-"), shell: true})
+		}
+	}
+	// Newest revision first, and the full browser before the headless shell: the
+	// shell is a stripped build, so it is only a fallback. The revision is parsed
+	// rather than compared as text, where "chromium-999" would outrank
+	// "chromium-1000".
+	sort.Slice(pkgs, func(i, j int) bool {
+		if pkgs[i].shell != pkgs[j].shell {
+			return !pkgs[i].shell
+		}
+		if pkgs[i].rev != pkgs[j].rev {
+			return pkgs[i].rev > pkgs[j].rev
+		}
+		return pkgs[i].name > pkgs[j].name
+	})
+
+	for _, p := range pkgs {
+		dir := p.name
+		for _, rel := range playwrightBrowserRelPaths(dir, goos) {
+			path := filepath.Join(cacheDir, rel)
+			if fi, err := os.Stat(path); err == nil && fi.Mode().IsRegular() {
+				return path
 			}
 		}
 	}
 	return ""
+}
+
+// playwrightRevision extracts the numeric revision from a Playwright package
+// directory name, or -1 when it cannot be parsed.
+func playwrightRevision(name, prefix string) int {
+	rev, err := strconv.Atoi(strings.TrimPrefix(name, prefix))
+	if err != nil {
+		return -1
+	}
+	return rev
+}
+
+// playwrightBrowserRelPaths lists the layouts to try inside one Playwright
+// package directory, the full browser before the headless shell.
+func playwrightBrowserRelPaths(dir, goos string) []string {
+	switch goos {
+	case "darwin":
+		return []string{
+			filepath.Join(dir, "chrome-mac-arm64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"),
+			filepath.Join(dir, "chrome-mac-x64", "Google Chrome for Testing.app", "Contents", "MacOS", "Google Chrome for Testing"),
+			filepath.Join(dir, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"),
+			filepath.Join(dir, "chrome-headless-shell-mac-arm64", "chrome-headless-shell"),
+			filepath.Join(dir, "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
+		}
+	case "windows":
+		return []string{
+			filepath.Join(dir, "chrome-win", "chrome.exe"),
+			filepath.Join(dir, "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
+		}
+	default: // linux
+		return []string{
+			filepath.Join(dir, "chrome-linux64", "chrome"),
+			filepath.Join(dir, "chrome-linux", "chrome"),
+			filepath.Join(dir, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+		}
+	}
 }
 
 // findBrowser returns the path to a usable Chromium/Chrome binary,
@@ -299,6 +378,12 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 	// caller's context so the browser is killed on cancel) is what rod's default
 	// launcher does as well.
 	l := launcher.New().Headless(true).Context(ctx)
+	// Use an installed browser rather than letting rod download one: findBrowser
+	// knows the system browsers and the Playwright cache, and downloading on the
+	// first crawl is slow and fails on a network-restricted host.
+	if bin := findBrowser(); bin != "" {
+		l = l.Bin(bin)
+	}
 	if rule := browserHostRule(url); rule != "" {
 		l = l.Append("host-resolver-rules", rule)
 	}
