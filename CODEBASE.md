@@ -222,6 +222,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`apply_patch`**: V4A format (`*** Begin Patch / *** Update File: / *** Add File: / *** Delete File: / *** End Patch`), 3 phases: parse → validate → apply; every target path passes the shared sandbox gate before any I/O
 - **`web_search`**: DuckDuckGo Lite (zero config) + optional SearXNG fallback (`SetSearXNG(baseURL)`)
 - **`web_extract`**: 5-level fallback (HTTP → Cloudflare → Google Cache → Wayback → Chromium), SSRF protection via `internal/netsafe`, LLM summarization for >5000 chars (`SetSummarizer(fn)`)
+- **Browser detection** (`tool/web_browser.go`): system browsers by name, then the Playwright cache — `findPlaywrightBrowser` accepts every layout Playwright has shipped (the current `Google Chrome for Testing.app` under `chrome-mac-arm64`/`chrome-mac-x64`, the older `chrome-mac/Chromium.app`, the linux/windows equivalents and `chrome_headless_shell`), newest revision first and the full browser before the shell. The rod path passes the detected binary to the launcher, so an installed browser is used instead of a download.
 - **`task`**: Sub-agent delegation (explore/general), sync or background mode, 120s timeout; a timed-out or cancelled sync task cancels the sub-agent's context (the result channel is buffered so the goroutine always exits)
 - **`todo`**: CRUD with `TodoStore` (max 256 items, 4000 chars/item, one in_progress); every method takes an `RWMutex` and `Read` returns a copy
 - **`sandbox_allow`**: Interactive permission dialog (Allow once / Allow session / Always allow / Deny)
@@ -511,6 +512,7 @@ User Input (textarea / CLI arg)
 
 - **625 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
+- `make test-browser` (`BROWSER_TEST=1`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; it skips without a browser, so `make test` never launches one
 - Statement coverage: types 100%, tlog 91.7%, skill 91.8%, browserproxy 90.5%, agent 89.9%, session 88.9%, netsafe 82.0%, mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
@@ -558,6 +560,7 @@ make run PROMPT="..."  # one-shot mode
 
 - `ci` job: build, `gofmt` gate, `go vet`, tests, `-race`, and a repeated (`-count=3`) run, on Go 1.27.
 - `release` job (`release.yml`, on tag push): cross-compiles the three archives via `make releases` on the same Go line, so the `go 1.27` directive is satisfied.
+- `browser` job: installs Chrome for Testing (`browser-actions/setup-chrome`) and runs `make test-browser`, the only place the real-browser paths are exercised.
 - `lsp` job: installs gopls at the Makefile's pinned `GOPLS_VERSION` (v0.23.0, matching the flake) and runs `make test-lsp` (`LSP_TEST=1`) so the integration tests that spawn a real language server actually run.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
 - `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).

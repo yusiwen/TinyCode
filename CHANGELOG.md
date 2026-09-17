@@ -74,6 +74,21 @@ back to its change and tests.
   subprocess). A double-forked descendant that re-parents to init before the walk
   remains out of reach, as documented.
 
+### Browser detection and smoke test
+
+- `findPlaywrightBrowser` now recognises the layouts Playwright actually ships.
+  It only knew `chromium-<rev>/chrome-mac/Chromium.app`, so a current
+  installation (Chrome for Testing under `chrome-mac-arm64`, or a
+  `chrome_headless_shell` package) was invisible and the browser tool silently
+  downloaded its own copy instead. Revisions are compared numerically (999 does
+  not outrank 1000), the full browser is preferred over the headless shell, and
+  the rod path hands the detected binary to its launcher.
+- `make test-browser` (`BROWSER_TEST=1`) drives both browser paths against a
+  loopback page that only shows its text after JavaScript runs, and asserts the
+  request reached the server through the filtering proxy (the proxy's `Via`
+  header). A `browser` CI job runs it with Chrome for Testing; the test skips
+  without a browser, so ordinary test runs never launch one.
+
 ### Testing and verification
 
 - Fuzz targets now cover the fuzzy edit matching (a match must be deterministic

@@ -91,6 +91,27 @@ jobs:
       - name: Vet
         run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go vet ./...
 
+  browser:
+    name: Browser smoke (real Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      # Provides a Chrome for Testing binary on PATH, which findBrowser picks up.
+      # The smoke test drives both browser paths through the filtering proxy
+      # against a loopback page and asserts the proxy was used.
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Browser smoke test
+        run: make test-browser
+
   staticcheck:
     name: staticcheck
     runs-on: ubuntu-latest

@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp install-gopls lint staticcheck fmt fmt-check fuzz clean all
+.PHONY: default build run test test-race test-repeat test-lsp test-browser install-gopls lint staticcheck fmt fmt-check fuzz clean all
 
 default: build
 
@@ -52,6 +52,13 @@ install-gopls:
 # PATH (the Nix devShell provides it) and LSP_TEST must be set to un-skip them.
 test-lsp:
 	LSP_TEST=1 go test -count=1 ./lsp/...
+
+# Real-browser smoke test: renders a local JavaScript page through both browser
+# paths and asserts the filtering proxy was used. Needs a Chromium/Chrome
+# (system install or the Playwright cache); skipped without BROWSER_TEST=1 so an
+# ordinary `make test` never launches a browser.
+test-browser:
+	BROWSER_TEST=1 go test -count=1 -timeout 5m -run TestBrowserSmokeThroughProxy ./tool/
 
 # Blocking lint: `go vet` failures fail the build.
 lint:
