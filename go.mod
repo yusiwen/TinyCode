@@ -1,6 +1,6 @@
 module github.com/yusiwen/tinycode
 
-go 1.24.2
+go 1.27
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0

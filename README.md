@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/TinyCode-v0.0.6-%23FFD700?style=for-the-badge" alt="TinyCode v0.0.6"/>
-  <img src="https://img.shields.io/badge/Go-1.24-%2300ADD8?style=for-the-badge&logo=go" alt="Go 1.24"/>
+  <img src="https://img.shields.io/badge/Go-1.27-%2300ADD8?style=for-the-badge&logo=go" alt="Go 1.27"/>
   <img src="https://img.shields.io/badge/License-MIT-%23green?style=for-the-badge" alt="MIT License"/>
 </p>
 
@@ -283,7 +283,7 @@ across machines.
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| Go | 1.24.2 (module `go` directive) | Pinned via Flake; CI uses `Go 1.24` |
+| Go | 1.27 (module `go` directive) | Pinned to the 1.27 line by the Flake (`pkgs.go_1_27`); CI uses `Go 1.27` |
 | Make | — | `build`, `run`, `test`, `lint`, cross-compile |
 | `staticcheck` | optional | Used by `make lint` (best-effort, `|| true`) |
 

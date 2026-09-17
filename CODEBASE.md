@@ -557,11 +557,11 @@ make run PROMPT="..."  # one-shot mode
 - `lsp` job: installs gopls at the Makefile's pinned `GOPLS_VERSION` (v0.23.0, matching the flake) and runs `make test-lsp` (`LSP_TEST=1`) so the integration tests that spawn a real language server actually run.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
 - `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
-- Toolchain drift: CI is on Go 1.27, the Nix flake pins 1.26 and `go.mod` declares 1.24.2. `gofmt` output differs between releases, so **the CI toolchain is authoritative for formatting**; align the others (or add a `toolchain` directive) when convenient.
+- Toolchain: CI, the Nix flake (`pkgs.go_1_27`) and the `go 1.27` directive in `go.mod` are all on the 1.27 line, so `gofmt`/`go vet` behave identically in every environment.
 
 ## Dev Environment
 
 - Nix flake (`flake.nix`) + `direnv` (`.envrc`) for reproducible toolchain
-- Go 1.24.2, gopls, gofumpt pinned
+- Go 1.27 (`pkgs.go_1_27`), gopls 0.23.0, gofumpt pinned
 - `nix develop` or `direnv allow` to activate; the shell provides `gopls`, so `make test-lsp` works there without touching the host environment
 - CI: GitHub Actions (build+lint+test on push/PR, cross-compile+release on tags)

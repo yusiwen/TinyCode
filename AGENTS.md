@@ -72,7 +72,7 @@ Each tool is `{Name, Description, Parameters (JSON Schema), Execute(ctx, args)}`
 
 ## Code Conventions
 
-- **Language**: Go 1.24, no external code generators
+- **Language**: Go 1.27, no external code generators
 - **Imports**: stdlib first, then third-party, then internal (grouped by blank lines)
 - **Error handling**: return `fmt.Errorf("context: %w", err)` with lowercase message
 - **Testing**: `_test.go` alongside source, `MockLLM` for agent loop tests
