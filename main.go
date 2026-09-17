@@ -83,53 +83,7 @@ func newRootCmd() *cobra.Command {
 			}
 
 			// Build provider registry from config
-			var records []agent.ProviderRecord
-			for i, pc := range cfg.Providers {
-				key := os.Getenv(pc.APIKey())
-				// Fallback: if no explicit api_key_env was set and the derived key is
-				// empty, try OPENAI_API_KEY as a generic fallback.
-				if key == "" && pc.APIKeyEnv == "" {
-					key = os.Getenv("OPENAI_API_KEY")
-				}
-				// CLI flags override the first provider's key (backward compat)
-				if i == 0 && apiKey != "" {
-					key = apiKey
-				}
-				modelName := pc.Model
-				if i == 0 && model != "" {
-					modelName = model
-				}
-				base := pc.BaseURL
-				if i == 0 && baseURL != "" {
-					base = baseURL
-				}
-				if base == "" {
-					base = "https://api.deepseek.com"
-				}
-
-				var prov agent.LLMProvider
-				switch pc.Type {
-				case "ollama":
-					prov = agent.NewOllamaProvider(base, modelName)
-				default:
-					// "openai" or unknown — use OpenAI-compatible provider
-					prov = agent.NewOpenAIProvider(key, base, modelName)
-				}
-				records = append(records, agent.ProviderRecord{
-					Name:     pc.Name,
-					Provider: prov,
-				})
-			}
-
-			// Fallback: if no providers configured, create a default one
-			if len(records) == 0 {
-				prov := agent.NewOpenAIProvider(apiKey, baseURL, model)
-				records = append(records, agent.ProviderRecord{
-					Name: "default", Provider: prov,
-				})
-			}
-
-			provReg := agent.NewProviderRegistry(records)
+			provReg := buildProviderRegistry(&cfg, apiKey, model, baseURL)
 
 			if cfg.LSP != nil && cfg.LSP.Enabled {
 				// The language server workspace is the project, not the
@@ -156,48 +110,8 @@ func newRootCmd() *cobra.Command {
 			}
 
 			reg := agent.NewRegistry()
-			for name, override := range cfg.Agents {
-				if aCfg, err := reg.Get(name); err == nil {
-					if override.MaxSteps > 0 {
-						aCfg.MaxSteps = override.MaxSteps
-					}
-					if override.SystemPrompt != "" {
-						aCfg.SystemPrompt = override.SystemPrompt
-					}
-					// An explicit ruleset wins over the legacy tool lists.
-					if len(override.Permissions) > 0 {
-						rules := make(agent.Ruleset, 0, len(override.Permissions))
-						for _, r := range override.Permissions {
-							resource := r.Resource
-							if resource == "" {
-								resource = "*"
-							}
-							switch r.Effect {
-							case "allow":
-								rules = append(rules, agent.Rule{Action: r.Action, Resource: resource, Effect: agent.EffectAllow})
-							case "deny":
-								rules = append(rules, agent.Rule{Action: r.Action, Resource: resource, Effect: agent.EffectDeny})
-							default:
-								return fmt.Errorf("agents.%s.permissions: unknown effect %q (use \"allow\" or \"deny\")", name, r.Effect)
-							}
-						}
-						aCfg.Permissions = rules
-					} else if override.AllowedTools != nil || override.DeniedTools != nil {
-						// Every built-in agent ships a Permissions ruleset, which
-						// takes precedence over AllowedTools/DeniedTools. Translate
-						// the configured lists into rules so they are not silently
-						// ignored (see agent.TranslateToolLists).
-						aCfg.Permissions = agent.TranslateToolLists(aCfg.Permissions, override.AllowedTools, override.DeniedTools)
-					}
-					if override.Model != "" {
-						// Support "<provider>/<model>" and bare "<model>" formats
-						if _, after, ok := strings.Cut(override.Model, "/"); ok {
-							aCfg.Model = after // use model part, ignore provider for now
-						} else {
-							aCfg.Model = override.Model
-						}
-					}
-				}
+			if err := applyAgentOverrides(reg, &cfg); err != nil {
+				return err
 			}
 			if cfg.DefaultMode != "" {
 				reg.Set(cfg.DefaultMode)
@@ -598,4 +512,125 @@ func loadProjectContext() string {
 		}
 	}
 	return ""
+}
+
+// resolveProviderKey returns the API key for one configured provider. An
+// explicit api_key_env wins; otherwise UPPER(name)_API_KEY is used. When no
+// explicit env var is configured and the derived one is empty, OPENAI_API_KEY is
+// the generic fallback. The --api-key flag overrides the primary provider only,
+// which preserves the single-provider behaviour without affecting the others.
+func resolveProviderKey(pc config.ProviderRecordConfig, primary bool, apiKeyFlag string, getenv func(string) string) string {
+	key := getenv(pc.APIKey())
+	if key == "" && pc.APIKeyEnv == "" {
+		key = getenv("OPENAI_API_KEY")
+	}
+	if primary && apiKeyFlag != "" {
+		key = apiKeyFlag
+	}
+	return key
+}
+
+// providerRuntime resolves a provider's model and base URL. Only the primary
+// provider accepts the --model/--base-url overrides, and an empty base URL falls
+// back to the DeepSeek endpoint.
+func providerRuntime(pc config.ProviderRecordConfig, primary bool, model, baseURL string) (string, string) {
+	modelName := pc.Model
+	if primary && model != "" {
+		modelName = model
+	}
+	base := pc.BaseURL
+	if primary && baseURL != "" {
+		base = baseURL
+	}
+	if base == "" {
+		base = "https://api.deepseek.com"
+	}
+	return modelName, base
+}
+
+// buildProviderRegistry turns the configured providers into a runtime registry.
+// An empty configuration yields a single default OpenAI-compatible provider so
+// the agent still starts.
+func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) *agent.ProviderRegistry {
+	var records []agent.ProviderRecord
+	for i, pc := range cfg.Providers {
+		primary := i == 0
+		key := resolveProviderKey(pc, primary, apiKey, os.Getenv)
+		modelName, base := providerRuntime(pc, primary, model, baseURL)
+
+		var prov agent.LLMProvider
+		switch pc.Type {
+		case "ollama":
+			prov = agent.NewOllamaProvider(base, modelName)
+		default:
+			// "openai" or unknown — use an OpenAI-compatible provider
+			prov = agent.NewOpenAIProvider(key, base, modelName)
+		}
+		records = append(records, agent.ProviderRecord{
+			Name:     pc.Name,
+			Provider: prov,
+		})
+	}
+
+	// Fallback: if no providers are configured, create a default one.
+	if len(records) == 0 {
+		records = append(records, agent.ProviderRecord{
+			Name:     "default",
+			Provider: agent.NewOpenAIProvider(apiKey, baseURL, model),
+		})
+	}
+	return agent.NewProviderRegistry(records)
+}
+
+// applyAgentOverrides folds the config's per-agent overrides into the registry.
+// Unknown agent names are ignored so a stale config entry cannot break startup,
+// but an invalid permission effect is an error: silently dropping it would grant
+// or deny the wrong tools.
+func applyAgentOverrides(reg *agent.Registry, cfg *config.Config) error {
+	for name, override := range cfg.Agents {
+		aCfg, err := reg.Get(name)
+		if err != nil {
+			continue
+		}
+		if override.MaxSteps > 0 {
+			aCfg.MaxSteps = override.MaxSteps
+		}
+		if override.SystemPrompt != "" {
+			aCfg.SystemPrompt = override.SystemPrompt
+		}
+		// An explicit ruleset wins over the legacy tool lists.
+		if len(override.Permissions) > 0 {
+			rules := make(agent.Ruleset, 0, len(override.Permissions))
+			for _, r := range override.Permissions {
+				resource := r.Resource
+				if resource == "" {
+					resource = "*"
+				}
+				switch r.Effect {
+				case "allow":
+					rules = append(rules, agent.Rule{Action: r.Action, Resource: resource, Effect: agent.EffectAllow})
+				case "deny":
+					rules = append(rules, agent.Rule{Action: r.Action, Resource: resource, Effect: agent.EffectDeny})
+				default:
+					return fmt.Errorf("agents.%s.permissions: unknown effect %q (use \"allow\" or \"deny\")", name, r.Effect)
+				}
+			}
+			aCfg.Permissions = rules
+		} else if override.AllowedTools != nil || override.DeniedTools != nil {
+			// Every built-in agent ships a Permissions ruleset, which takes
+			// precedence over AllowedTools/DeniedTools. Translate the configured
+			// lists into rules so they are not silently ignored (see
+			// agent.TranslateToolLists).
+			aCfg.Permissions = agent.TranslateToolLists(aCfg.Permissions, override.AllowedTools, override.DeniedTools)
+		}
+		if override.Model != "" {
+			// Support "<provider>/<model>" and bare "<model>" formats
+			if _, after, ok := strings.Cut(override.Model, "/"); ok {
+				aCfg.Model = after // use model part, ignore provider for now
+			} else {
+				aCfg.Model = override.Model
+			}
+		}
+	}
+	return nil
 }

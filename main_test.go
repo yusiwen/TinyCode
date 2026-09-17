@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/config"
 )
 
 func TestLoadProjectContextNoFile(t *testing.T) {
@@ -227,5 +230,158 @@ func TestInvalidAgentPermissionEffectIsRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "banana") {
 		t.Errorf("error should name the bad effect, got: %v", err)
+	}
+}
+
+// TestResolveProviderKeyPrecedence pins the API key lookup order: explicit
+// api_key_env, then NAME_API_KEY, then the generic OPENAI_API_KEY fallback, with
+// the --api-key flag overriding the primary provider only.
+func TestResolveProviderKeyPrecedence(t *testing.T) {
+	env := map[string]string{
+		"DS_API_KEY":     "from-derived",
+		"EXPLICIT_KEY":   "from-explicit",
+		"OPENAI_API_KEY": "from-fallback",
+	}
+	getenv := func(k string) string { return env[k] }
+
+	tests := []struct {
+		name    string
+		pc      config.ProviderRecordConfig
+		primary bool
+		flag    string
+		want    string
+	}{
+		{"derived NAME_API_KEY", config.ProviderRecordConfig{Name: "ds"}, false, "", "from-derived"},
+		{"explicit env wins", config.ProviderRecordConfig{Name: "ds", APIKeyEnv: "EXPLICIT_KEY"}, false, "", "from-explicit"},
+		{"generic fallback", config.ProviderRecordConfig{Name: "nokey"}, false, "", "from-fallback"},
+		{"explicit env disables fallback", config.ProviderRecordConfig{Name: "ds", APIKeyEnv: "MISSING_KEY"}, false, "", ""},
+		{"flag overrides primary", config.ProviderRecordConfig{Name: "ds"}, true, "from-flag", "from-flag"},
+		{"flag ignored for secondary", config.ProviderRecordConfig{Name: "ds"}, false, "from-flag", "from-derived"},
+	}
+	for _, tt := range tests {
+		if got := resolveProviderKey(tt.pc, tt.primary, tt.flag, getenv); got != tt.want {
+			t.Errorf("%s: resolveProviderKey = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// TestProviderRuntimeOverrides verifies model/base URL resolution and the
+// DeepSeek default endpoint.
+func TestProviderRuntimeOverrides(t *testing.T) {
+	pc := config.ProviderRecordConfig{Model: "configured-model", BaseURL: "https://configured.example"}
+
+	model, base := providerRuntime(pc, true, "flag-model", "https://flag.example")
+	if model != "flag-model" || base != "https://flag.example" {
+		t.Fatalf("primary got (%q, %q), want the CLI overrides", model, base)
+	}
+
+	model, base = providerRuntime(pc, false, "flag-model", "https://flag.example")
+	if model != "configured-model" || base != "https://configured.example" {
+		t.Fatalf("secondary got (%q, %q), want the configured values", model, base)
+	}
+
+	if _, base := providerRuntime(config.ProviderRecordConfig{}, false, "", ""); base != "https://api.deepseek.com" {
+		t.Fatalf("empty base URL = %q, want the DeepSeek endpoint", base)
+	}
+}
+
+// TestBuildProviderRegistry covers provider construction: type routing and the
+// single default provider used when nothing is configured.
+func TestBuildProviderRegistry(t *testing.T) {
+	reg := buildProviderRegistry(&config.Config{}, "", "", "")
+	if reg.Len() != 1 {
+		t.Fatalf("empty config produced %d providers, want 1", reg.Len())
+	}
+	if !strings.HasPrefix(reg.CurrentName(), "default") {
+		t.Fatalf("default provider name = %q", reg.CurrentName())
+	}
+
+	cfg := &config.Config{Providers: []config.ProviderRecordConfig{
+		{Name: "remote", Type: "openai", Model: "m"},
+		{Name: "local", Type: "ollama", Model: "llama"},
+	}}
+	reg = buildProviderRegistry(cfg, "", "", "")
+	if reg.Len() != 2 {
+		t.Fatalf("registry has %d providers, want 2", reg.Len())
+	}
+	records := reg.List()
+	if records[0].Name != "remote" || records[1].Name != "local" {
+		t.Fatalf("provider order = %q, %q", records[0].Name, records[1].Name)
+	}
+	if _, ok := records[0].Provider.(*agent.OpenAIProvider); !ok {
+		t.Errorf("openai provider is %T", records[0].Provider)
+	}
+	if _, ok := records[1].Provider.(*agent.OllamaProvider); !ok {
+		t.Errorf("ollama provider is %T", records[1].Provider)
+	}
+}
+
+// TestApplyAgentOverrides verifies how config overrides reach the registry:
+// explicit rulesets win, legacy tool lists are translated, unknown agents are
+// ignored and a bad effect is an error.
+func TestApplyAgentOverrides(t *testing.T) {
+	cfg := &config.Config{Agents: map[string]config.AgentOverride{
+		"build": {
+			MaxSteps:     7,
+			SystemPrompt: "be terse",
+			Model:        "deepseek/deepseek-v4-pro",
+			Permissions: []config.AgentRule{
+				{Action: "bash", Resource: "git *", Effect: "deny"},
+			},
+		},
+		"explore": {
+			AllowedTools: []string{"read_file"},
+			DeniedTools:  []string{"bash"},
+		},
+		"no-such-agent": {MaxSteps: 99},
+	}}
+
+	reg := agent.NewRegistry()
+	if err := applyAgentOverrides(reg, cfg); err != nil {
+		t.Fatalf("applyAgentOverrides: %v", err)
+	}
+
+	build, err := reg.Get("build")
+	if err != nil {
+		t.Fatalf("get build: %v", err)
+	}
+	if build.MaxSteps != 7 || build.SystemPrompt != "be terse" {
+		t.Fatalf("build = %+v, want the configured steps and prompt", build)
+	}
+	if build.Model != "deepseek-v4-pro" {
+		t.Fatalf("build model = %q, want the model part of provider/model", build.Model)
+	}
+	if len(build.Permissions) != 1 {
+		t.Fatalf("build permissions = %#v, want exactly the configured ruleset", build.Permissions)
+	}
+	rule := build.Permissions[0]
+	if rule.Action != "bash" || rule.Resource != "git *" || rule.Effect != agent.EffectDeny {
+		t.Fatalf("build rule = %+v", rule)
+	}
+
+	explore, err := reg.Get("explore")
+	if err != nil {
+		t.Fatalf("get explore: %v", err)
+	}
+	var blanketDeny, allowRead, denyBash bool
+	for _, r := range explore.Permissions {
+		switch {
+		case r.Action == "*" && r.Effect == agent.EffectDeny:
+			blanketDeny = true
+		case r.Action == "read_file" && r.Effect == agent.EffectAllow:
+			allowRead = true
+		case r.Action == "bash" && r.Effect == agent.EffectDeny:
+			denyBash = true
+		}
+	}
+	if !blanketDeny || !allowRead || !denyBash {
+		t.Fatalf("explore permissions = %#v, want a whitelist plus the bash deny", explore.Permissions)
+	}
+
+	bad := &config.Config{Agents: map[string]config.AgentOverride{
+		"build": {Permissions: []config.AgentRule{{Action: "bash", Effect: "maybe"}}},
+	}}
+	if err := applyAgentOverrides(agent.NewRegistry(), bad); err == nil {
+		t.Fatal("expected an error for an unknown permission effect")
 	}
 }
