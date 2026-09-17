@@ -4,6 +4,8 @@ package tool
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 
@@ -83,4 +85,48 @@ func kernelEscapeCheck(root, path string) bool {
 			return false
 		}
 	}
+}
+
+// openBeneathRoot opens rel relative to rootDir with the kernel enforcing that
+// the result stays beneath rootDir.
+//
+// It is the reason this layer exists: kernelEscapeCheck only *asks* whether a
+// path escapes and then the caller opens the path by name, so a component
+// swapped for an escaping symlink in between would still be followed. Here the
+// returned descriptor is the one the caller reads or writes, so the decision and
+// the open are the same operation.
+//
+// rel must be relative and should not carry ".." components; the caller derives
+// it with relBeneath from the OS-resolved forms.
+func openBeneathRoot(rootDir, rel string, flags int, perm os.FileMode) (*os.File, error) {
+	if openat2Unsupported.Load() {
+		return nil, errBeneathUnsupported
+	}
+
+	rootFd, err := unix.Open(rootDir, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open sandbox root %q: %w", rootDir, err)
+	}
+	defer unix.Close(rootFd)
+
+	how := &unix.OpenHow{
+		Flags:   uint64(flags) | unix.O_CLOEXEC,
+		Mode:    uint64(perm.Perm()),
+		Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_MAGICLINKS,
+	}
+
+	fd, err := unix.Openat2(rootFd, rel, how)
+	if err != nil {
+		switch {
+		case errors.Is(err, unix.ENOSYS), errors.Is(err, unix.EINVAL), errors.Is(err, unix.E2BIG):
+			// Kernel older than 5.6: remember it and let the caller fall back.
+			openat2Unsupported.Store(true)
+			return nil, errBeneathUnsupported
+		case errors.Is(err, unix.EXDEV):
+			return nil, fmt.Errorf("path %q escapes the sandbox root %q", rel, rootDir)
+		default:
+			return nil, &os.PathError{Op: "openat2", Path: filepath.Join(rootDir, rel), Err: err}
+		}
+	}
+	return os.NewFile(uintptr(fd), filepath.Join(rootDir, rel)), nil
 }

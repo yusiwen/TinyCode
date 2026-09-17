@@ -84,7 +84,7 @@ func ApplyPatch() Tool {
 			for _, op := range ops {
 				switch op.typ {
 				case opUpdate:
-					data, err := os.ReadFile(op.path)
+					data, err := readSandboxed(op.path)
 					if err != nil {
 						return "", fmt.Errorf("validate %s: %w", op.path, err)
 					}
@@ -158,14 +158,14 @@ func ApplyPatch() Tool {
 						lsp.SnapshotBaseline(op.path)
 					}
 
-					data, _ := os.ReadFile(op.path)
+					data, _ := readSandboxed(op.path)
 					content := string(data)
 					lines := 0
 					for _, chunk := range op.chunks {
 						content = strings.Replace(content, chunk.oldLine, chunk.newLine, 1)
 						lines += strings.Count(chunk.newLine, "\n") + 1
 					}
-					if err := os.WriteFile(op.path, []byte(content), 0644); err != nil {
+					if err := writeSandboxed(op.path, []byte(content), 0644); err != nil {
 						// Partial failure — report what succeeded so far
 						return fmt.Sprintf("Partial failure after updating %d file(s): %v",
 							len(results), err), nil
@@ -176,7 +176,7 @@ func ApplyPatch() Tool {
 					if err := os.MkdirAll(filepath.Dir(op.path), 0755); err != nil {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
-					if err := os.WriteFile(op.path, []byte(op.newSrc), 0644); err != nil {
+					if err := writeSandboxed(op.path, []byte(op.newSrc), 0644); err != nil {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
 					results = append(results, opResult{path: op.path, applied: "created", lines: strings.Count(op.newSrc, "\n") + 1})

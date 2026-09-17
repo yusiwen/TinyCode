@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -98,7 +97,7 @@ func Edit() Tool {
 				lsp.SnapshotBaseline(safePath)
 			}
 
-			data, err := os.ReadFile(safePath)
+			data, err := readSandboxed(safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
@@ -151,7 +150,7 @@ func Edit() Tool {
 				totalChanges += strings.Count(replacement, "\n") + 1
 			}
 
-			if err := os.WriteFile(safePath, []byte(content), 0644); err != nil {
+			if err := writeSandboxed(safePath, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 

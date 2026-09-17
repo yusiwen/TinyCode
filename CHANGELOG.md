@@ -89,6 +89,16 @@ back to its change and tests.
   header). A `browser` CI job runs it with Chrome for Testing; the test skips
   without a browser, so ordinary test runs never launch one.
 
+### Sandbox
+
+- File I/O in `read_file`, `write_file`, `edit` and `apply_patch` now opens
+  through the sandbox root with `openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)`
+  on Linux, so the kernel decides containment on the same descriptor that is read
+  or written and the documented check-then-open window is closed for in-root
+  paths. Paths allowed outside the root, other platforms and kernels older than
+  5.6 keep the previous plain-open behaviour, so the layer only ever adds
+  enforcement.
+
 ### Testing and verification
 
 - Fuzz targets now cover the fuzzy edit matching (a match must be deterministic

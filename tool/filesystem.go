@@ -54,7 +54,7 @@ func ReadFile() Tool {
 				return denied, nil
 			}
 
-			data, err := os.ReadFile(safePath)
+			data, err := readSandboxed(safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
@@ -160,7 +160,7 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("mkdir: %w", err)
 			}
 
-			if err := os.WriteFile(safePath, []byte(content), 0644); err != nil {
+			if err := writeSandboxed(safePath, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 
