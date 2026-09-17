@@ -126,3 +126,75 @@ func TestLevelFiltering(t *testing.T) {
 		t.Errorf("warn entry missing: %q", s)
 	}
 }
+
+// TestParseLevel maps level names case-insensitively and falls back to INFO for
+// anything unknown, so a typo in the config cannot silence the log.
+func TestParseLevel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want Level
+	}{
+		{"trace", LevelTrace},
+		{"TRACE", LevelTrace},
+		{"Trace", LevelTrace},
+		{"debug", LevelDebug},
+		{"info", LevelInfo},
+		{"warn", LevelWarn},
+		{"error", LevelError},
+		{"", LevelInfo},
+		{"verbose", LevelInfo},
+		{"warning", LevelInfo},
+	}
+	for _, tc := range tests {
+		if got := ParseLevel(tc.in); got != tc.want {
+			t.Errorf("ParseLevel(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestSetLevelFiltersOutput checks that SetLevel applies immediately and that
+// entries below the threshold are dropped rather than written.
+func TestSetLevelFiltersOutput(t *testing.T) {
+	restore := defaultLogger.file
+	defer func() {
+		defaultLogger.mu.Lock()
+		if defaultLogger.file != nil {
+			defaultLogger.file.Close()
+		}
+		defaultLogger.file = restore
+		defaultLogger.mu.Unlock()
+	}()
+
+	dir := t.TempDir()
+	Init(dir, LevelError)
+	SetLevel(LevelWarn)
+
+	Warn("svc", "kept-warning")
+	Info("svc", "dropped-info")
+	Trace("svc", "dropped-trace")
+	Error("svc", "kept-error")
+	Flush()
+
+	data, err := os.ReadFile(readOnlyFile(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "kept-warning") || !strings.Contains(content, "kept-error") {
+		t.Errorf("entries at or above the level were dropped:\n%s", content)
+	}
+	if strings.Contains(content, "dropped-info") || strings.Contains(content, "dropped-trace") {
+		t.Errorf("entries below the level were written:\n%s", content)
+	}
+	if !strings.Contains(content, "WARN") || !strings.Contains(content, "ERROR") {
+		t.Errorf("level names are missing:\n%s", content)
+	}
+	if strings.Contains(content, "INFO") {
+		t.Errorf("a filtered level still appeared:\n%s", content)
+	}
+
+	SetLevel(LevelTrace)
+	if defaultLogger.level != LevelTrace {
+		t.Errorf("SetLevel(Trace) left the level at %v", defaultLogger.level)
+	}
+}

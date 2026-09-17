@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"testing"
 )
 
@@ -87,5 +88,21 @@ func TestChatRequestAndResponse(t *testing.T) {
 	}
 	if resp.Content != "Hello! How can I help?" {
 		t.Fatalf("expected Content 'Hello! How can I help?', got %q", resp.Content)
+	}
+}
+
+// TestPlanWriteRestrictionContext covers the context flag that plan mode uses to
+// block writes: it must default to unrestricted and be readable and
+// overwritable.
+func TestPlanWriteRestrictionContext(t *testing.T) {
+	if PlanWriteRestricted(context.Background()) {
+		t.Error("a plain context must not be write-restricted")
+	}
+	restricted := WithPlanWriteRestriction(context.Background(), true)
+	if !PlanWriteRestricted(restricted) {
+		t.Error("a restricted context must report the restriction")
+	}
+	if PlanWriteRestricted(WithPlanWriteRestriction(restricted, false)) {
+		t.Error("the flag must be replaceable, not sticky")
 	}
 }

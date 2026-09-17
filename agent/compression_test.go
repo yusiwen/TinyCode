@@ -2,11 +2,15 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/yusiwen/tinycode/types"
 )
+
+// errSummarizerDown stands in for a provider that cannot summarize.
+var errSummarizerDown = errors.New("summarizer unavailable")
 
 func TestEstimateTokens(t *testing.T) {
 	tests := []struct {
@@ -333,5 +337,65 @@ func TestCompressHistoryKeepsPriorSummary(t *testing.T) {
 	}
 	if !strings.Contains(summarizerInput, oldSummary) {
 		t.Errorf("prior summary missing from the summarization input:\n%s", summarizerInput)
+	}
+}
+
+// historyForCompression builds a history long enough (four or more user turns)
+// for compression to have something to summarize.
+func historyForCompression() []types.Message {
+	var h []types.Message
+	for i := 0; i < 6; i++ {
+		h = append(h,
+			types.Message{Role: types.RoleUser, Content: "question"},
+			types.Message{Role: types.RoleAssistant, Content: "answer"},
+		)
+	}
+	return h
+}
+
+// TestCompressHistoryWrapper covers the exported wrapper: it reports whether the
+// history actually shrank, and leaves the history untouched when compression is
+// disabled or the summarizer fails.
+func TestCompressHistoryWrapper(t *testing.T) {
+	a := &Agent{
+		CompressionThreshold: 10,
+		ContextLength:        1000,
+		Provider: &MockProvider{ChatFunc: func(context.Context, types.ChatRequest) (*types.ChatResponse, error) {
+			return &types.ChatResponse{Content: "SUMMARY"}, nil
+		}},
+		History: historyForCompression(),
+	}
+	before := len(a.History)
+	if !a.CompressHistory() {
+		t.Fatal("CompressHistory reported no compression although the history is long enough")
+	}
+	if len(a.History) >= before {
+		t.Fatalf("history did not shrink: %d -> %d", before, len(a.History))
+	}
+
+	// Compression disabled: nothing to do and nothing to change.
+	off := &Agent{History: historyForCompression()}
+	if off.CompressHistory() {
+		t.Error("CompressHistory must report false without a threshold")
+	}
+	if len(off.History) != len(historyForCompression()) {
+		t.Error("CompressHistory changed the history although compression is off")
+	}
+
+	// A failing summarizer must not corrupt the history.
+	failing := &Agent{
+		CompressionThreshold: 10,
+		ContextLength:        1000,
+		Provider: &MockProvider{ChatFunc: func(context.Context, types.ChatRequest) (*types.ChatResponse, error) {
+			return nil, errSummarizerDown
+		}},
+		History: historyForCompression(),
+	}
+	want := len(failing.History)
+	if failing.CompressHistory() {
+		t.Error("CompressHistory must report false when the summarizer fails")
+	}
+	if len(failing.History) != want {
+		t.Errorf("history changed after a failed summarization: %d -> %d", want, len(failing.History))
 	}
 }
