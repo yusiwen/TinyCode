@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yusiwen/tinycode/lsp"
 )
@@ -183,11 +184,37 @@ var strategies = []strategyFunc{
 
 func fuzzyFind(content, search string) *fuzzyResult {
 	for _, fn := range strategies {
-		if r := fn(content, search); r != nil {
-			return r
+		r := fn(content, search)
+		if r == nil {
+			continue
 		}
+		// A byte-oriented strategy can cut a multi-byte character in half when
+		// the search text is not valid UTF-8 (a lone lead byte, a truncated
+		// sequence). Replacing that reported range would splice those bytes and
+		// leave the file with a broken encoding, so the match is refused and the
+		// remaining strategies get their turn.
+		if r.count == 1 && !runeAligned(content, r.start, r.end) {
+			continue
+		}
+		return r
 	}
 	return &fuzzyResult{count: 0}
+}
+
+// runeAligned reports whether the byte range [start,end) of content lies on
+// UTF-8 character boundaries. Content that is not valid UTF-8 has no boundaries
+// to honour, and an out-of-range span is never aligned.
+func runeAligned(content string, start, end int) bool {
+	if start < 0 || end < start || end > len(content) {
+		return false
+	}
+	if !utf8.ValidString(content) {
+		return true
+	}
+	if start > 0 && !utf8.RuneStart(content[start]) {
+		return false
+	}
+	return end == len(content) || utf8.RuneStart(content[end])
 }
 
 // 1. Exact match
