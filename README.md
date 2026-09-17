@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-560-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-564-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -66,6 +66,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Incremental Diagnostics** — `SnapshotBaseline` captures diagnostic state before edit/write_file/apply_patch, `GetNewDiagnostics` computes delta. Tools report only new errors via LSP — LLM sees focused feedback. (a2e3e07)
 - **TUI Error Tracking** — an in-memory registry (severity-1 diagnostics per file) is refreshed off the event loop after each tool result and on the spinner tick, so the status bar `errors: N` and `/diagnostics` reflect the live state. (290818a)
 - **Mock test framework** — `io.Pipe` based, no LSP server required; covers all 4 tool types, concurrent request correlation and reader-death handling. (8065ae5)
+- **Integration tests** — `make test-lsp` runs the suite against a real `gopls` (the Nix devShell provides it, `make install-gopls` installs the pinned version elsewhere); CI runs them in a dedicated job. They cover a valid file reporting no errors, a broken file reporting its undefined symbol, and the error clearing after a fix.
 - **Limitation**: the first call of a session pays the server startup cost (~500 ms); subsequent calls reuse the connection. The one-shot fallback (no persistent client) still pays it per call.
 
 ### Todo System

@@ -42,6 +42,28 @@ jobs:
       - name: Test repeated in one process
         run: make test-repeat
 
+  lsp:
+    name: LSP integration (gopls)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      # The gated LSP tests spawn a real language server. The version is pinned
+      # in the Makefile to match the flake's pkgs.gopls.
+      - name: Install gopls
+        run: |
+          make install-gopls
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run LSP integration tests
+        run: make test-lsp
+
   cross:
     name: Cross-compile + vet (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest

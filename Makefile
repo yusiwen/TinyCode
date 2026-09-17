@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat lint staticcheck fmt fmt-check clean all
+.PHONY: default build run test test-race test-repeat test-lsp install-gopls lint staticcheck fmt fmt-check clean all
 
 default: build
 
@@ -40,6 +40,18 @@ test-race:
 # Repeat the suite in one process to catch leaked global state between runs.
 test-repeat:
 	go test ./... -count=3
+
+# Language server used by the gated LSP integration tests. Keep this in step
+# with the flake's pkgs.gopls (0.23.0).
+GOPLS_VERSION ?= v0.23.0
+
+install-gopls:
+	go install golang.org/x/tools/gopls@$(GOPLS_VERSION)
+
+# The LSP integration tests spawn a real language server, so gopls must be on
+# PATH (the Nix devShell provides it) and LSP_TEST must be set to un-skip them.
+test-lsp:
+	LSP_TEST=1 go test -count=1 ./lsp/...
 
 # Blocking lint: `go vet` failures fail the build.
 lint:

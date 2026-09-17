@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 560 test functions, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 564 test functions, race-detector clean.
 
 ## Quick Reference
 
@@ -261,6 +261,9 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`NewClient(conn *Conn) *Client`**
 - Methods: `Initialize(rootURI) error`, `Shutdown() error`, `GoToDefinition(uri, line, char) (*Location, error)`, `FindReferences(uri, line, char) ([]Location, error)`, `Hover(uri, line, char) (*Hover, error)`, `DocumentSymbols(uri) ([]SymbolInformation, error)`, `Diagnostics(uri, content) ([]Diagnostic, error)` (5s timeout)
 - **`Diagnostic`** struct: `Range`, `Severity`, `Message`
+- **`Initialize(rootURI)`** — sends both `rootUri` and `workspaceFolders` (gopls 0.23 ignores `rootUri` alone)
+- **`SyncDocument(uri, content)`** / **`languageIDForPath`** — opens a document with its real text and switches to `didChange` on later syncs; the language id comes from the file extension. Sending an empty buffer (or a duplicate `didOpen`, which servers ignore) used to make gopls report phantom errors and miss real ones.
+- **`touch.go`**: `Init(root)` shuts a running server down when the workspace changes (a server is bound to the root it started with), `TouchFile` reads the file and uses the OS-resolved (`canonicalPath`) path for the URI, and the server process runs with `Dir` = the project
 - **`diagnostics.go`**: in-memory registry of the latest severity-1 diagnostics per file, updated whenever a `publishDiagnostics` push arrives; `DiagnosticsSnapshot() DiagnosticsInfo`, `DiagnosticsSummary() (files, errors int)`, `DiagnosticsDetails() []string`, reset by `Init(root)`
 
 ### `conn.go`
@@ -504,7 +507,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **560 test functions** across all packages (`go test ./... -count=1`)
+- **564 test functions** across all packages (`go test ./... -count=1`)
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
 - LSP: 15+ tests with `io.Pipe`-based mock (no real LSP server needed) + single-reader correlation tests
@@ -522,6 +525,8 @@ make build          # → bin/tinycode (CGO_ENABLED=0, stripped)
 make test           # go test ./... -count=1
 make test-race      # go test -race ./... -count=1
 make test-repeat    # go test ./... -count=3 (catches leaked global state)
+make test-lsp       # LSP integration tests; needs gopls on PATH (nix develop provides it)
+make install-gopls  # go install gopls@$(GOPLS_VERSION)
 make lint           # go vet (blocking)
 make staticcheck    # staticcheck, pinned via STATICCHECK_VERSION (v0.8.1)
 make fmt-check      # fail when a tracked Go file is not gofmt-clean
@@ -548,6 +553,7 @@ make run PROMPT="..."  # one-shot mode
 ## CI
 
 - `ci` job: build, `gofmt` gate, `go vet`, tests, `-race`, and a repeated (`-count=3`) run, on Go 1.27.
+- `lsp` job: installs gopls at the Makefile's pinned `GOPLS_VERSION` (v0.23.0, matching the flake) and runs `make test-lsp` (`LSP_TEST=1`) so the integration tests that spawn a real language server actually run.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
 - `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
 - Toolchain drift: CI is on Go 1.27, the Nix flake pins 1.26 and `go.mod` declares 1.24.2. `gofmt` output differs between releases, so **the CI toolchain is authoritative for formatting**; align the others (or add a `toolchain` directive) when convenient.
@@ -556,5 +562,5 @@ make run PROMPT="..."  # one-shot mode
 
 - Nix flake (`flake.nix`) + `direnv` (`.envrc`) for reproducible toolchain
 - Go 1.24.2, gopls, gofumpt pinned
-- `nix develop` or `direnv allow` to activate
+- `nix develop` or `direnv allow` to activate; the shell provides `gopls`, so `make test-lsp` works there without touching the host environment
 - CI: GitHub Actions (build+lint+test on push/PR, cross-compile+release on tags)
