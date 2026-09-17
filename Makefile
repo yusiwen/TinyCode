@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp install-gopls lint staticcheck fmt fmt-check clean all
+.PHONY: default build run test test-race test-repeat test-lsp install-gopls lint staticcheck fmt fmt-check fuzz clean all
 
 default: build
 
@@ -109,3 +109,25 @@ zip_releases = $(addsuffix .zip, $(PLATFORM_LIST))
 
 releases: $(gz_releases)
 	@echo "Release archives: $(gz_releases)"
+
+# Fuzz targets, as "<package>:<function>". `go test -fuzz` runs exactly one
+# target per invocation, so this loops over the list. The seed corpus of every
+# target already runs as part of `make test`; this explores further.
+FUZZTIME ?= 30s
+FUZZ_TARGETS = \
+	./tool:FuzzFuzzyFindInvariants \
+	./tool:FuzzCorrectIndentation \
+	./tool:FuzzLevenshtein \
+	./tool:FuzzRelBeneath \
+	./tui:FuzzWordWrapPreservesWords \
+	./tui:FuzzParseMarkdown \
+	./mcp:FuzzReadMessageBounds \
+	./internal/netsafe:FuzzIsBlockedIP \
+	./internal/netsafe:FuzzNormalizeAuthority
+
+fuzz:
+	@for target in $(FUZZ_TARGETS); do \
+		pkg=$${target%%:*}; fn=$${target##*:}; \
+		echo "=== $$fn ($$pkg) for $(FUZZTIME)"; \
+		go test -run=^$$ -fuzz=^$$fn$$ -fuzztime=$(FUZZTIME) $$pkg || exit 1; \
+	done

@@ -16,10 +16,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Must satisfy the `go` directive in go.mod, which CI keeps in step
+      # with the flake (see the ci job in main.yml).
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.24
+          go-version: 1.27
 
       - name: Cross-compile
         run: make releases

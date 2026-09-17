@@ -9,6 +9,8 @@ back to its change and tests.
 
 ## Unreleased
 
+## v0.0.7 — 2026-09-17
+
 ### Language server integration
 
 - LSP documents are synced with their real text (`didOpen` with content, then
@@ -49,6 +51,28 @@ back to its change and tests.
   (`-count=3`), a cross-compile/vet matrix and a blocking, pinned
   `staticcheck`. (`0bf8a1c`, `abe33ed`, `5b8df7d`, `b50ec21`)
 - Generated and exported output is written with private permissions. (`78f4d9e`)
+
+### Testing and verification
+
+- Fuzz targets now cover the fuzzy edit matching (a match must be deterministic
+  and its range must hold the text it claims), indentation correction, the
+  Levenshtein metric, the sandbox `relBeneath` helper, the TUI's word wrapping
+  and markdown parser, the MCP `Content-Length` frame reader and the SSRF IP
+  policy. `make fuzz` runs all of them (`FUZZTIME=30s` by default); their seed
+  corpora run with every `make test`.
+- Fuzzing found and fixed a silent file-corruption bug: a search holding a lone
+  UTF-8 lead byte matched the first byte of a multi-byte character, so the edit
+  replaced one third of it. It also found that `normalizeAuthority` was not
+  idempotent for authorities with an unmatched `]`, and that
+  `agent.ToolAllowedFor` panicked on a nil config.
+- Coverage: agent 89.9%, tlog 91.7%, skill 91.8%, session 88.9%, netsafe 84.7%,
+  mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
+  (610 test functions, 9 fuzz targets).
+
+### Release and tooling
+
+- `release.yml` moved to Go 1.27: the `go.mod` directive now requires it, so the
+  previous 1.24 pin would have failed the release pipeline.
 
 ## Historical feature log
 

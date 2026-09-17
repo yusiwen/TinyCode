@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 584 test functions, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 610 test functions + 9 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -508,7 +508,9 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **584 test functions** across all packages (`go test ./... -count=1`)
+- **610 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
+- `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
+- Statement coverage: agent 89.9%, tlog 91.7%, skill 91.8%, session 88.9%, netsafe 84.7%, mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
 - LSP: 36 tests — `io.Pipe`-based mock (no real server needed), single-reader correlation tests, server selection/error branches, baseline deltas, and `LSP_TEST=1` integration tests against real gopls
@@ -554,6 +556,7 @@ make run PROMPT="..."  # one-shot mode
 ## CI
 
 - `ci` job: build, `gofmt` gate, `go vet`, tests, `-race`, and a repeated (`-count=3`) run, on Go 1.27.
+- `release` job (`release.yml`, on tag push): cross-compiles the three archives via `make releases` on the same Go line, so the `go 1.27` directive is satisfied.
 - `lsp` job: installs gopls at the Makefile's pinned `GOPLS_VERSION` (v0.23.0, matching the flake) and runs `make test-lsp` (`LSP_TEST=1`) so the integration tests that spawn a real language server actually run.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
 - `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
