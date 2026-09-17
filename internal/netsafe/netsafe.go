@@ -15,6 +15,7 @@ package netsafe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -109,7 +110,7 @@ func resolveValidatedHost(ctx context.Context, host string, enforce, allowLoopba
 	if ip := net.ParseIP(host); ip != nil {
 		if enforce {
 			if err := validatePublicIP(ip, host, allowLoopback); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%w: %v", ErrBlocked, err)
 			}
 		}
 		return []net.IP{ip}, nil
@@ -123,7 +124,7 @@ func resolveValidatedHost(ctx context.Context, host string, enforce, allowLoopba
 	for _, addr := range addrs {
 		if enforce {
 			if err := validatePublicIP(addr.IP, host, allowLoopback); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%w: %v", ErrBlocked, err)
 			}
 		}
 		ips = append(ips, addr.IP)
@@ -133,6 +134,11 @@ func resolveValidatedHost(ctx context.Context, host string, enforce, allowLoopba
 	}
 	return ips, nil
 }
+
+// ErrBlocked marks a target the SSRF policy refuses. A caller that must report
+// *why* a request failed — the browser proxy answers 403 instead of 502 — can
+// classify it with errors.Is; anything else is a network failure.
+var ErrBlocked = errors.New("address blocked by the SSRF policy")
 
 // validatePublicIP rejects any address that is not a globally routable unicast
 // IP. When allowLoopback is set, loopback addresses are accepted as well.
@@ -316,6 +322,22 @@ func NewClient(timeout time.Duration, enforce bool, opts ...Option) *http.Client
 		},
 		CheckRedirect: redirectPolicy(maxSSRFRedirects, enforce, &cfg),
 	}
+}
+
+// DialValidatedContext dials addr after resolving the host once and validating
+// every resolved address against the SSRF policy; the returned connection is
+// pinned to the address that passed. It is the raw-connection counterpart of
+// NewClient, for callers that need a tunnel rather than an HTTP round trip (the
+// browser proxy's CONNECT path).
+//
+// enforce=false disables the policy, which the tests use to reach a local
+// listener.
+func DialValidatedContext(ctx context.Context, network, addr string, enforce bool) (net.Conn, error) {
+	dialer := &net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: dialKeepAlive,
+	}
+	return dialContext(dialer, enforce, &clientConfig{})(ctx, network, addr)
 }
 
 // dialContext resolves the host once, validates every resolved IP, and dials

@@ -12,10 +12,52 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/launcher/flags"
 	"github.com/go-rod/rod/lib/proto"
 
+	"github.com/yusiwen/tinycode/internal/browserproxy"
 	"github.com/yusiwen/tinycode/tlog"
 )
+
+// browserProxyFlags returns the Chromium flags that route the browser through
+// the loopback filtering proxy, as flag/value pairs plus bare switches.
+//
+// Chromium bypasses any proxy for loopback addresses by default, and the proxy
+// is precisely what stands between the browser and an internal service, so that
+// shortcut is disabled with the magic "<-loopback>" entry. QUIC/HTTP3 travels
+// over UDP and would leave without ever asking the proxy, so it is turned off
+// as well.
+func browserProxyFlags(proxyURL string) (valued [][2]string, bare []string) {
+	return [][2]string{
+		{"proxy-server", proxyURL},
+		{"proxy-bypass-list", "<-loopback>"},
+	}, []string{"disable-quic"}
+}
+
+// startBrowserProxy starts the loopback filtering proxy unless the package-wide
+// SSRF hook is set. A failure is reported to the caller and is not fatal: the
+// callers keep their other protections (the pre-flight check, the top-level host
+// pin and the rod request interceptor) and log that the proxy is missing.
+func startBrowserProxy() *browserproxy.Proxy {
+	proxy, err := browserproxy.Start(!skipSSRFCheck)
+	if err != nil {
+		tlog.Warn("web.browser", "proxy_start_failed", "err", err.Error())
+		return nil
+	}
+	return proxy
+}
+
+// appendBrowserProxyArgs appends the proxy flags to a Chromium argv.
+func appendBrowserProxyArgs(args []string, proxyURL string) []string {
+	valued, bare := browserProxyFlags(proxyURL)
+	for _, kv := range valued {
+		args = append(args, "--"+kv[0]+"="+kv[1])
+	}
+	for _, flag := range bare {
+		args = append(args, "--"+flag)
+	}
+	return args
+}
 
 // ── Browser detection chain ──
 
@@ -86,6 +128,16 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	ctx2, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
 
+	// This path cannot intercept requests, so without the proxy only the
+	// top-level URL was checked: subresources, redirect hops and JavaScript
+	// fetches went straight from Chromium to the network. The proxy sees them
+	// all because Chromium asks it for every hostname, and it resolves,
+	// validates and pins each one in this process.
+	proxy := startBrowserProxy()
+	if proxy != nil {
+		defer proxy.Close()
+	}
+
 	args := []string{
 		"--headless",
 		"--disable-gpu",
@@ -101,6 +153,9 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	// the initial navigation.
 	if rule := browserHostRule(url); rule != "" {
 		args = append(args, "--host-resolver-rules="+rule)
+	}
+	if proxy != nil {
+		args = appendBrowserProxyArgs(args, proxy.URL())
 	}
 	args = append(args, "--dump-dom", url)
 	cmd := exec.CommandContext(ctx2, browserPath, args...)
@@ -226,32 +281,49 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 		}
 	}()
 
-	// Pin the top-level host to the address we validated so the browser cannot
-	// be rebound to a private address. Only the top-level host can be pinned
-	// here (other names appear while the page loads); those are handled by the
-	// request interceptor below. When no rule applies (IP literal, checks
-	// skipped) the default launcher is used.
-	var browser *rod.Browser
+	// Route the browser through the loopback filtering proxy: every hostname it
+	// contacts — redirect hops, subresources, XHR/fetch, frames — is resolved,
+	// validated and pinned by this process instead of by Chromium.
+	proxy := startBrowserProxy()
+	if proxy != nil {
+		defer proxy.Close()
+	}
+
+	// Build the launcher explicitly rather than letting rod create one, so the
+	// proxy flags reach Chromium in every case. On top of that the top-level host
+	// is pinned to the address this process validated, which covers the case
+	// where the proxy could not be started.
+	//
+	// Append takes a flag name and its values; rod renders --name=value as a
+	// single argv element. The rest (headless, random debugging port, the
+	// caller's context so the browser is killed on cancel) is what rod's default
+	// launcher does as well.
+	l := launcher.New().Headless(true).Context(ctx)
 	if rule := browserHostRule(url); rule != "" {
-		// Append takes the flag name and its values; rod renders it as
-		// --host-resolver-rules=MAP host ip in a single argv element.
-		// Same launcher rod would build by default (headless, leakless, random
-		// debugging port), plus the pinning rule and the caller's context so the
-		// browser is killed when the call is cancelled.
-		l := launcher.New().Headless(true).Context(ctx).Append("host-resolver-rules", rule)
-		wsURL, launchErr := l.Launch()
-		if launchErr != nil {
-			// Pinning is best effort: fall back to the default launcher rather
-			// than losing the browser fallback entirely.
-			l.Cleanup()
-			tlog.Warn("web.browser", "pin_host_failed", "url", url, "err", launchErr.Error())
-			browser = rod.New().Context(ctx)
-		} else {
-			defer l.Cleanup()
-			browser = rod.New().ControlURL(wsURL).Context(ctx)
+		l = l.Append("host-resolver-rules", rule)
+	}
+	if proxy != nil {
+		valued, bare := browserProxyFlags(proxy.URL())
+		for _, kv := range valued {
+			l = l.Append(flags.Flag(kv[0]), kv[1])
 		}
-	} else {
+		for _, name := range bare {
+			l = l.Append(flags.Flag(name))
+		}
+	}
+
+	var browser *rod.Browser
+	wsURL, launchErr := l.Launch()
+	if launchErr != nil {
+		// Both protections are best effort here: fall back to rod's own launcher
+		// rather than losing the browser fallback entirely. The pre-flight check
+		// and the request interceptor installed below still apply.
+		l.Cleanup()
+		tlog.Warn("web.browser", "launch_flags_failed", "url", url, "err", launchErr.Error())
 		browser = rod.New().Context(ctx)
+	} else {
+		defer l.Cleanup()
+		browser = rod.New().ControlURL(wsURL).Context(ctx)
 	}
 	if err := browser.Connect(); err != nil {
 		return "", fmt.Errorf("connect browser: %w", err)

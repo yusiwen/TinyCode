@@ -52,6 +52,28 @@ back to its change and tests.
   `staticcheck`. (`0bf8a1c`, `abe33ed`, `5b8df7d`, `b50ec21`)
 - Generated and exported output is written with private permissions. (`78f4d9e`)
 
+### Browser sandbox
+
+- The headless browser now runs behind a loopback filtering proxy
+  (`internal/browserproxy`). Chromium resolves DNS, follows redirects and loads
+  subresources itself, so the previous pre-flight check and the rod request
+  interceptor could not cover the `--dump-dom` exec path, and a redirect or
+  subresource hostname was checked by name but resolved again by Chromium. Every
+  connection now asks the proxy, which resolves each hostname once, validates
+  every address against the shared SSRF policy and dials only a validated,
+  pinned address; private, loopback and metadata targets are refused with 403.
+  Redirects are handed back to the browser (so the next hop is validated too) and
+  QUIC is disabled because HTTP/3 would leave over UDP without asking the proxy.
+  Loopback does not bypass the proxy (`--proxy-bypass-list=<-loopback>`), and the
+  rod path keeps the request interceptor and the top-level host pin as fallbacks.
+- Policy refusals from `internal/netsafe` now wrap a sentinel (`ErrBlocked`) so
+  a caller can answer 403 for a blocked target and 502 for an unreachable one.
+- `bash` timeout now reaps a descendant that escaped into its own session with
+  `setsid(2)`: the process tree is collected and killed before the process group,
+  using the kernel's process table on darwin and `/proc` on linux (no `ps`
+  subprocess). A double-forked descendant that re-parents to init before the walk
+  remains out of reach, as documented.
+
 ### Testing and verification
 
 - Fuzz targets now cover the fuzzy edit matching (a match must be deterministic

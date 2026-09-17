@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 610 test functions + 9 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 625 test functions + 9 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -9,7 +9,8 @@
 | `main.go` | Cobra CLI entry, wires all packages together |
 | `agent/` | ReAct loop, LLM providers, context compression, agent registry, permissions |
 | `config/` | JSON config loading (defaults → user global → project local → env/CLI) |
-| `internal/netsafe/` | Shared SSRF policy: blocked-IP table, resolve-once + pinned-IP HTTP client, redirect re-validation, optional loopback allowance |
+| `internal/netsafe/` | Shared SSRF policy: blocked-IP table, resolve-once + pinned-IP HTTP client, redirect re-validation, validated raw dialing (`DialValidatedContext`), optional loopback allowance |
+| `internal/browserproxy/` | Loopback filtering HTTP proxy for Chromium: validates and pins every hostname the browser contacts (CONNECT tunnels and plain HTTP) |
 | `lsp/` | LSP client (JSON-RPC over stdio), 4 tool wrappers, diagnostics |
 | `mcp/` | Native MCP client (stdio + HTTP transports), JSON-RPC 2.0 |
 | `session/` | Session persistence (JSON on disk), fork/branch, export, search |
@@ -488,7 +489,7 @@ User Input (textarea / CLI arg)
 2. **Concurrent tool execution** — multiple tool calls per step run in goroutines + channel
 3. **Permissions engine** — Ruleset with last-match-wins, wildcard `*`/`?` support
 4. **MCP first-class** — native stdio/HTTP MCP client, no external SDK dependency
-5. **SSRF protection** — one shared policy in `internal/netsafe`: resolve once, validate every address, pin the validated IP in `DialContext`, re-validate each redirect hop, optional per-client loopback allowance; used by `web_extract`, the browser pre-flight/interceptor and the MCP HTTP transport
+5. **SSRF protection** — one shared policy in `internal/netsafe`: resolve once, validate every address (refusals wrap `ErrBlocked` so callers can answer 403), pin the validated IP in `DialContext`, re-validate each redirect hop, optional per-client loopback allowance; used by `web_extract`, the browser pre-flight/interceptor, the browser filtering proxy and the MCP HTTP transport
 6. **7 fuzzy edit strategies** — exact → trimmed → ws → indent → escape → unicode → block-anchor
 7. **5-level web extract fallback** — HTTP → Cloudflare → Google Cache → Wayback → Chromium, all behind a shared SSRF client that pins the validated IP in `DialContext` and re-validates every redirect hop; before Chromium starts, the observable HTTP redirect chain is walked with the same client (page-level JS/meta redirects remain a residual risk)
 8. **Session persistence** — JSON on disk (mode 0600), fork/branch support, AI-generated titles; ids and fork labels are charset-validated and contained inside the session directory
@@ -501,16 +502,16 @@ User Input (textarea / CLI arg)
 
 - **Sandbox check-vs-open race**: file I/O uses the OS-resolved path returned by `CheckPathAccess`, and on Linux `CheckPath` additionally asks the kernel with `openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)` whether the *resolved* path really resolves inside the root (`tool/pathbeneath_linux.go`, inert on kernels < 5.6 and on other platforms). The probe runs on the resolved form because `RESOLVE_BENEATH` rejects absolute symlinks outright, and it is fed by `relBeneath`, which keeps `..` components so `link/..` is resolved the way the OS would. The I/O still happens on the resolved path rather than through the verified fd, so a swap between the check and the open remains theoretically possible.
 - **bash process group**: on timeout the tool kills the process tree and then the group. The tree is collected *before* the group signal, because killing the shell re-parents the survivors to init; a `setsid(2)` descendant leaves the group but keeps its parent, so it is still in the tree and no longer survives. Enumeration is native — `kern.proc.all` on darwin (`tool/procchildren_darwin.go`), `/proc/<pid>/status` on linux (`tool/procchildren_linux.go`), `ps` only as the fallback for other unix platforms — so no subprocess is spawned on the kill path and no `ps` binary is required. Remaining: a descendant that double-forks (its immediate parent exits while the shell keeps running) re-parents to init before the walk can see it; closing that needs cgroups or a PID namespace, neither of which is portable.
-- **Chromium fallback**: the rod path installs request interception (`Browser.HijackRequests`) and applies the SSRF policy to every request the browser makes — 3xx hops, JavaScript/`meta refresh` redirects, XHR/fetch, iframes and subresources; local-only schemes (`data:`, `blob:`, `about:`) are allowed since they never touch the network. Both browser paths also pin the top-level host to the address this process validated (`browserHostRule` → Chromium `--host-resolver-rules=MAP <host> <ip>`), so the initial navigation cannot be DNS-rebound; the pin falls back to the default launcher if the pinned one fails to start. Not covered: rebinding of redirect-target and subresource hostnames (their names only appear while the page loads, so they are checked at interception time but resolved again by Chromium), the `--dump-dom` exec path (`crawlViaExec`, `tryBrowser`) which cannot intercept requests at all and keeps only the pre-flight check plus the top-level pin, and browser-internal loads the Fetch domain may not pause (e.g. WebSocket upgrades, cached/service-worker responses).
+- **Chromium fallback**: both browser paths now point Chromium at a loopback filtering proxy (`internal/browserproxy`, `--proxy-server` + `--proxy-bypass-list=<-loopback>`), so every hostname the browser contacts — the initial navigation, each redirect hop, XHR/fetch, iframes, images, WebSocket upgrades and the `--dump-dom` load — is resolved exactly once, validated and pinned by this process; a tunnel or request whose host is private/loopback/metadata is refused with 403. Redirects are handed back to the browser rather than followed by the proxy, so the next hop is validated too, and QUIC is disabled because HTTP/3 would leave over UDP without asking the proxy. On top of that the rod path keeps request interception (`Browser.HijackRequests`, in case the proxy could not be started) and both paths pin the top-level host with `--host-resolver-rules=MAP <host> <ip>`. Residual risk: the proxy is best effort — if it fails to start (or the launcher with the flags fails and rod's own launcher is used) the run falls back to the pre-flight check, the interceptor and the top-level pin; and protocols that do not use an HTTP proxy (WebRTC/STUN over UDP) are outside its reach.
 - **MCP loopback**: a loopback-configured endpoint exempts exactly that authority (`netsafe.AllowAuthority`), so it cannot be redirected to another loopback port; every other SSRF rule still applies.
 - **MCP**: requests are concurrent (one reader goroutine with per-id dispatch) and a cancelled call only unregisters itself, leaving the transport usable; `tool.CloseMCPServers()` (called from `main.go`) closes every client and reaps stdio children on exit. Server-initiated requests are answered (`ping` and `roots/list` with a result, anything else with a `-32601` error) so a server is never left waiting, and `serverInfo`/`tools` are mutex-guarded. The unmatched-message skip budget is tracked per pending call (`pendingCall.skipped`), so a request that never gets an answer fails on its own after `maxSkippedMessages` frames that answered nobody, leaving calls that are still within their budget — or already served — untouched.
 - **`CheckCommand` and plan-mode checks** are advisory substring heuristics, not an OS-level boundary.
 
 ## Testing
 
-- **610 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
+- **625 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
-- Statement coverage: agent 89.9%, tlog 91.7%, skill 91.8%, session 88.9%, netsafe 84.7%, mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
+- Statement coverage: types 100%, tlog 91.7%, skill 91.8%, browserproxy 90.5%, agent 89.9%, session 88.9%, netsafe 82.0%, mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
 - LSP: 36 tests — `io.Pipe`-based mock (no real server needed), single-reader correlation tests, server selection/error branches, baseline deltas, and `LSP_TEST=1` integration tests against real gopls
