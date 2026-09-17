@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 564 test functions, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 584 test functions, race-detector clean.
 
 ## Quick Reference
 
@@ -264,6 +264,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`Initialize(rootURI)`** — sends both `rootUri` and `workspaceFolders` (gopls 0.23 ignores `rootUri` alone)
 - **`SyncDocument(uri, content)`** / **`languageIDForPath`** — opens a document with its real text and switches to `didChange` on later syncs; the language id comes from the file extension. Sending an empty buffer (or a duplicate `didOpen`, which servers ignore) used to make gopls report phantom errors and miss real ones.
 - **`touch.go`**: `Init(root)` shuts a running server down when the workspace changes (a server is bound to the root it started with), `TouchFile` reads the file and uses the OS-resolved (`canonicalPath`) path for the URI, and the server process runs with `Dir` = the project
+- **`serverLanguage(projectRoot, filePath)`** / **`languageForPath`** — picks the server: project detection (`DetectLanguage`) first, then the touched file's own extension. A file no server handles returns `""`, which `lazyStart` turns into an error — it is never silently handed to `gopls`, whose "not included in your workspace" answers used to look like real diagnostics.
 - **`diagnostics.go`**: in-memory registry of the latest severity-1 diagnostics per file, updated whenever a `publishDiagnostics` push arrives; `DiagnosticsSnapshot() DiagnosticsInfo`, `DiagnosticsSummary() (files, errors int)`, `DiagnosticsDetails() []string`, reset by `Init(root)`
 
 ### `conn.go`
@@ -502,16 +503,16 @@ User Input (textarea / CLI arg)
 - **bash process group**: a descendant that calls `setsid(2)` escapes the group kill performed on timeout.
 - **Chromium fallback**: the rod path installs request interception (`Browser.HijackRequests`) and applies the SSRF policy to every request the browser makes — 3xx hops, JavaScript/`meta refresh` redirects, XHR/fetch, iframes and subresources; local-only schemes (`data:`, `blob:`, `about:`) are allowed since they never touch the network. Both browser paths also pin the top-level host to the address this process validated (`browserHostRule` → Chromium `--host-resolver-rules=MAP <host> <ip>`), so the initial navigation cannot be DNS-rebound; the pin falls back to the default launcher if the pinned one fails to start. Not covered: rebinding of redirect-target and subresource hostnames (their names only appear while the page loads, so they are checked at interception time but resolved again by Chromium), the `--dump-dom` exec path (`crawlViaExec`, `tryBrowser`) which cannot intercept requests at all and keeps only the pre-flight check plus the top-level pin, and browser-internal loads the Fetch domain may not pause (e.g. WebSocket upgrades, cached/service-worker responses).
 - **MCP loopback**: a loopback-configured endpoint exempts exactly that authority (`netsafe.AllowAuthority`), so it cannot be redirected to another loopback port; every other SSRF rule still applies.
-- **MCP**: requests are concurrent (one reader goroutine with per-id dispatch) and a cancelled call only unregisters itself, leaving the transport usable; `tool.CloseMCPServers()` (called from `main.go`) closes every client and reaps stdio children on exit. Server-initiated requests are answered (`ping` and `roots/list` with a result, anything else with a `-32601` error) so a server is never left waiting, and `serverInfo`/`tools` are mutex-guarded. Remaining: the unmatched-message skip budget is shared by all pending calls rather than per-request.
+- **MCP**: requests are concurrent (one reader goroutine with per-id dispatch) and a cancelled call only unregisters itself, leaving the transport usable; `tool.CloseMCPServers()` (called from `main.go`) closes every client and reaps stdio children on exit. Server-initiated requests are answered (`ping` and `roots/list` with a result, anything else with a `-32601` error) so a server is never left waiting, and `serverInfo`/`tools` are mutex-guarded. The unmatched-message skip budget is tracked per pending call (`pendingCall.skipped`), so a request that never gets an answer fails on its own after `maxSkippedMessages` frames that answered nobody, leaving calls that are still within their budget — or already served — untouched.
 - **`CheckCommand` and plan-mode checks** are advisory substring heuristics, not an OS-level boundary.
 
 ## Testing
 
-- **564 test functions** across all packages (`go test ./... -count=1`)
+- **584 test functions** across all packages (`go test ./... -count=1`)
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
-- LSP: 15+ tests with `io.Pipe`-based mock (no real LSP server needed) + single-reader correlation tests
-- MCP: 22 tests
+- LSP: 36 tests — `io.Pipe`-based mock (no real server needed), single-reader correlation tests, server selection/error branches, baseline deltas, and `LSP_TEST=1` integration tests against real gopls
+- MCP: 33 tests
 - TUI: CellGrid roundtrip, keyboard, mouse, streaming, selection, todo rendering
 - Edit: 14 tests covering 7 fuzzy strategies
 - Apply patch: 9 tests + sandbox gate tests
