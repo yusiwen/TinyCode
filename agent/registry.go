@@ -119,7 +119,13 @@ func (r *Registry) ToolAllowed(toolName string) bool {
 }
 
 // ToolAllowedFor checks if a given tool is permitted for a specific agent config.
+// A nil config carries no policy, so the tool is allowed — the same answer the
+// agent loop gives when it skips filtering for a nil Config. The nil check also
+// keeps callers such as tool.CheckToolPermission total instead of panicking.
 func ToolAllowedFor(cfg *AgentConfig, toolName string) bool {
+	if cfg == nil {
+		return true
+	}
 	// Phase 3: if Permissions is set, use Ruleset evaluation
 	if len(cfg.Permissions) > 0 {
 		return Evaluate(toolName, "*", cfg.Permissions...) != EffectDeny
