@@ -95,3 +95,31 @@ func TestDiagnosticsRegistryFiltersWarnings(t *testing.T) {
 		t.Fatalf("details = %v, want empty", details)
 	}
 }
+
+// TestRecordDiagnosticsLastPathFallback verifies that LastPath remains usable
+// after the most recently updated file is fixed: it falls back to a
+// deterministic path that still has errors, and to "" once the registry drains.
+func TestRecordDiagnosticsLastPathFallback(t *testing.T) {
+	resetDiagnostics()
+	t.Cleanup(resetDiagnostics)
+
+	errDiag := []Diagnostic{{Severity: 1, Range: Range{Start: Position{Line: 1}}, Message: "boom"}}
+	recordDiagnostics("/tmp/tinycode-lsp-a.go", errDiag)
+	recordDiagnostics("/tmp/tinycode-lsp-b.go", errDiag)
+	if info := DiagnosticsSnapshot(); info.LastPath != "/tmp/tinycode-lsp-b.go" {
+		t.Fatalf("LastPath = %q, want the most recently recorded file", info.LastPath)
+	}
+
+	// Fixing the most recent file must move LastPath to the file that is left.
+	recordDiagnostics("/tmp/tinycode-lsp-b.go", nil)
+	info := DiagnosticsSnapshot()
+	if info.Files != 1 || info.LastPath != "/tmp/tinycode-lsp-a.go" {
+		t.Fatalf("after fixing b.go: files=%d last=%q, want 1 and a.go", info.Files, info.LastPath)
+	}
+
+	// Draining the registry leaves no last path at all.
+	recordDiagnostics("/tmp/tinycode-lsp-a.go", nil)
+	if info := DiagnosticsSnapshot(); info.Files != 0 || info.LastPath != "" {
+		t.Fatalf("after draining: files=%d last=%q, want 0 and empty", info.Files, info.LastPath)
+	}
+}

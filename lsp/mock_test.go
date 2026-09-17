@@ -16,6 +16,7 @@ import (
 type mockLSP struct {
 	mu          sync.Mutex
 	diags       map[string][]Diagnostic
+	nullResults bool
 	serverRead  *io.PipeReader
 	clientWrite *io.PipeWriter
 	clientRead  *io.PipeReader
@@ -75,6 +76,16 @@ func (m *mockLSP) run() {
 				`{"jsonrpc":"2.0","id":%v,"result":null}`, msg.ID)))
 		case "exit":
 			return
+		case "textDocument/definition":
+			m.writeResult(msg.ID, `{"uri":"file:///demo/main.go","range":{"start":{"line":4,"character":5},"end":{"line":4,"character":9}}}`)
+		case "textDocument/references":
+			m.writeResult(msg.ID, `[`+
+				`{"uri":"file:///demo/main.go","range":{"start":{"line":1,"character":2},"end":{"line":1,"character":6}}},`+
+				`{"uri":"file:///demo/util.go","range":{"start":{"line":9,"character":0},"end":{"line":9,"character":4}}}]`)
+		case "textDocument/hover":
+			m.writeResult(msg.ID, `{"contents":{"kind":"markdown","value":"func main()"}}`)
+		case "textDocument/documentSymbol":
+			m.writeResult(msg.ID, `[{"name":"main","kind":12,"location":{"uri":"file:///demo/main.go","range":{"start":{"line":4,"character":0},"end":{"line":4,"character":4}}}}]`)
 		default:
 			if msg.ID != nil {
 				m.write(json.RawMessage(fmt.Sprintf(
@@ -82,6 +93,25 @@ func (m *mockLSP) run() {
 			}
 		}
 	}
+}
+
+// setNullResults makes the mock answer navigation/query requests with null, so
+// tests can cover the "nothing found" branches of the client and tools.
+func (m *mockLSP) setNullResults(v bool) {
+	m.mu.Lock()
+	m.nullResults = v
+	m.mu.Unlock()
+}
+
+// writeResult replies to a request with the canned result for its method.
+func (m *mockLSP) writeResult(id any, result string) {
+	m.mu.Lock()
+	null := m.nullResults
+	m.mu.Unlock()
+	if null {
+		result = "null"
+	}
+	m.write(json.RawMessage(fmt.Sprintf(`{"jsonrpc":"2.0","id":%v,"result":%s}`, id, result)))
 }
 
 func (m *mockLSP) pushDiags(params json.RawMessage) {
