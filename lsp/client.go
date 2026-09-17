@@ -3,6 +3,9 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,18 +17,91 @@ const (
 // Client is a high-level LSP client wrapping the JSON-RPC connection.
 type Client struct {
 	conn *Conn
+
+	// docs tracks the version of every document this client has opened, so a
+	// later sync sends a change instead of a duplicate didOpen; language servers
+	// ignore a second didOpen for the same URI, which used to leave them
+	// analysing an empty buffer.
+	docsMu sync.Mutex
+	docs   map[string]int
 }
 
 // NewClient creates an LSP client using the given connection.
 func NewClient(conn *Conn) *Client {
-	return &Client{conn: conn}
+	return &Client{conn: conn, docs: make(map[string]int)}
+}
+
+// SyncDocument makes the server's copy of uri match content. The first call
+// opens the document with its real text; later calls send a full-text change,
+// which is what keeps the server's view current after an edit (a duplicate
+// didOpen is ignored, so the server would otherwise keep analysing the text it
+// first saw).
+func (c *Client) SyncDocument(uri, content string) error {
+	c.docsMu.Lock()
+	version, open := c.docs[uri]
+	version++
+	c.docs[uri] = version
+	c.docsMu.Unlock()
+
+	if !open {
+		return c.conn.Notify("textDocument/didOpen", map[string]any{
+			"textDocument": map[string]any{
+				"uri":        uri,
+				"languageId": languageIDForPath(uriToPath(uri)),
+				"version":    version,
+				"text":       content,
+			},
+		})
+	}
+	return c.conn.Notify("textDocument/didChange", map[string]any{
+		"textDocument":   map[string]any{"uri": uri, "version": version},
+		"contentChanges": []map[string]any{{"text": content}},
+	})
+}
+
+// languageIDForPath returns the language id a language server expects for a
+// file, based on its extension. These are LSP language ids, which differ from
+// the language names used to pick a server (see DetectLanguage/FindConfig):
+// TypeScript React is "typescriptreact" here, not "typescript".
+func languageIDForPath(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go":
+		return "go"
+	case ".py", ".pyi":
+		return "python"
+	case ".ts":
+		return "typescript"
+	case ".tsx":
+		return "typescriptreact"
+	case ".js", ".mjs", ".cjs":
+		return "javascript"
+	case ".jsx":
+		return "javascriptreact"
+	case ".rs":
+		return "rust"
+	case ".java":
+		return "java"
+	case ".c":
+		return "c"
+	case ".cc", ".cpp", ".cxx", ".h", ".hpp":
+		return "cpp"
+	default:
+		return "plaintext"
+	}
 }
 
 // Initialize sends the initialize request and returns server capabilities.
 func (c *Client) Initialize(rootURI string) error {
 	params := map[string]any{
-		"processId":    nil,
-		"rootUri":      rootURI,
+		"processId": nil,
+		// rootUri is deprecated in favour of workspaceFolders; both are sent so
+		// every server generation roots the workspace at the project. With only
+		// rootUri, gopls 0.23 ignored it and reported that files of the project
+		// "are not included in your workspace".
+		"rootUri": rootURI,
+		"workspaceFolders": []map[string]any{
+			{"uri": rootURI, "name": "workspace"},
+		},
 		"capabilities": map[string]any{},
 	}
 
@@ -159,15 +235,9 @@ func (c *Client) DocumentSymbols(uri string) ([]SymbolInformation, error) {
 // per-file error state without issuing its own LSP request.
 // Returns nil on timeout or if no diagnostics arrive.
 func (c *Client) Diagnostics(uri string, content string) ([]Diagnostic, error) {
-	// Open the document
-	if err := c.conn.Notify("textDocument/didOpen", map[string]any{
-		"textDocument": map[string]any{
-			"uri":        uri,
-			"languageId": "go",
-			"version":    1,
-			"text":       content,
-		},
-	}); err != nil {
+	// Open the document (or update it when it is already open) so the server
+	// analyses the text we actually have.
+	if err := c.SyncDocument(uri, content); err != nil {
 		return nil, err
 	}
 

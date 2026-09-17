@@ -3,9 +3,11 @@ package lsp
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/yusiwen/tinycode/tlog"
 )
@@ -16,17 +18,58 @@ var (
 	client        *Client
 	conn          *Conn
 	projectRoot   string
+	serverCmd     *exec.Cmd               // persistent server process (lazyStart)
 	diagBaselines map[string][]Diagnostic // path → pre-write diagnostics
 )
 
 // Init initializes the LSP system. Call once at startup if LSP is enabled.
+// Init sets the workspace root. If a server is already running for a different
+// root it is shut down, because a language server is bound to the workspace it
+// was started with: leaving it alive made files of the new project report "not
+// included in your workspace" instead of real diagnostics.
 func Init(root string) {
 	mu.Lock()
 	defer mu.Unlock()
+
+	if client != nil && canonicalPath(projectRoot) != canonicalPath(root) {
+		shutdownLocked()
+	}
 	projectRoot = root
 	// LSP server is started lazily on first TouchFile call
 	// Drop diagnostics recorded for a previous workspace.
 	resetDiagnostics()
+}
+
+// shutdownLocked stops the persistent server and clears the session. The caller
+// holds mu.
+func shutdownLocked() {
+	if client != nil {
+		_ = client.Shutdown() // shutdown request + exit notification
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
+	client = nil
+	conn = nil
+	lspAvailable = false
+
+	if serverCmd != nil {
+		// Reap the child so it does not linger as a zombie; kill it if it does
+		// not exit on its own.
+		done := make(chan struct{})
+		cmd := serverCmd
+		go func() {
+			_ = cmd.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			_ = cmd.Process.Kill()
+			<-done
+		}
+		serverCmd = nil
+	}
 }
 
 // IsAvailable returns true if LSP is initialized and not broken.
@@ -39,6 +82,28 @@ func IsAvailable() bool {
 // TouchFile opens a file in the LSP server.
 // If withDiagnostics is true, waits up to 5 seconds for diagnostics.
 // Returns diagnostics if any, or nil on timeout/failure.
+// canonicalPath returns the OS-resolved absolute form of path.
+//
+// Language servers canonicalize the workspace root themselves, so sending a
+// document URI built from an unresolved path (macOS /tmp is a symlink to
+// /private/tmp) makes the server treat the document as outside the workspace and
+// answer with "not included in your workspace" instead of real diagnostics.
+func canonicalPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	// The file may not exist yet: resolve the deepest existing ancestor.
+	dir, base := filepath.Split(abs)
+	if resolvedDir, err := filepath.EvalSymlinks(filepath.Clean(dir)); err == nil {
+		return filepath.Join(resolvedDir, base)
+	}
+	return abs
+}
+
 func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	mu.Lock()
 	// Lazy start: spawn gopls on first use
@@ -50,25 +115,31 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	}
 	mu.Unlock()
 
-	// Build file URI
-	absPath, err := filepath.Abs(filePath)
-	if err != nil {
-		return nil, err
-	}
+	// Build the file URI from the canonical path so it matches the workspace
+	// root the server resolves to.
+	absPath := canonicalPath(filePath)
 	uri := "file://" + absPath
 
+	// Read the file once: the server must see the real text, otherwise it
+	// analyses an empty buffer and reports phantom errors (or none at all).
+	data, readErr := os.ReadFile(absPath)
+	if readErr != nil {
+		return nil, readErr
+	}
+	content := string(data)
+
 	if !withDiagnostics {
-		// Fire-and-forget: just send didOpen, no waiting
+		// Fire-and-forget: sync the document, no waiting
 		tlog.Debug("lsp.touch", "warmup", "file", absPath)
-		if err := client.NotifyOpen(uri); err != nil {
+		if err := client.SyncDocument(uri, content); err != nil {
 			log.Printf("LSP warmup: notify open: %v", err)
 		}
 		return nil, nil
 	}
 
-	// With diagnostics: open and wait
+	// With diagnostics: sync and wait
 	tlog.Debug("lsp.touch", "diagnostics", "file", absPath)
-	diags, err := client.Diagnostics(uri, "")
+	diags, err := client.Diagnostics(uri, content)
 	if err != nil {
 		log.Printf("LSP diagnostics: %v", err)
 		return nil, nil // silent failure
@@ -144,7 +215,13 @@ func lazyStart() error {
 	if cfg == nil {
 		return fmt.Errorf("no LSP server configured for %s", lang)
 	}
+	rootDir := canonicalPath(projectRoot)
 	cmd := exec.Command(cfg.Command, cfg.Args...)
+	// Run the server inside the project: a server that falls back to its working
+	// directory as the workspace would otherwise analyse the wrong tree.
+	if rootDir != "" {
+		cmd.Dir = rootDir
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		tlog.Warn("lsp.touch", "stdin_pipe_failed", "error", err.Error())
@@ -166,8 +243,9 @@ func lazyStart() error {
 	}
 
 	conn = NewConn(stdin, stdout)
+	serverCmd = cmd
 	c := NewClient(conn)
-	rootURI := "file://" + projectRoot
+	rootURI := "file://" + rootDir
 	if err := c.Initialize(rootURI); err != nil {
 		log.Printf("LSP init: %v", err)
 		cmd.Process.Kill()
@@ -177,17 +255,9 @@ func lazyStart() error {
 
 	client = c
 	lspAvailable = true
-	log.Printf("LSP: gopls started for %s", projectRoot)
+	log.Printf("LSP: gopls started for %s", rootDir)
 	return nil
 }
 
-// NotifyOpen sends a didOpen notification for a file.
-func (c *Client) NotifyOpen(uri string) error {
-	return c.conn.Notify("textDocument/didOpen", map[string]any{
-		"textDocument": map[string]any{
-			"uri":        uri,
-			"languageId": "go",
-			"version":    1,
-		},
-	})
-}
+// (Document open/change notifications live in Client.SyncDocument, which sends
+// the real text and switches to didChange once a document is open.)

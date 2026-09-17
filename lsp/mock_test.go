@@ -66,6 +66,10 @@ func (m *mockLSP) run() {
 				`{"jsonrpc":"2.0","id":%v,"result":{"capabilities":{}}}`, msg.ID)))
 		case "textDocument/didOpen":
 			m.pushDiags(msg.Params)
+		case "textDocument/didChange":
+			// A real server republishes diagnostics for a changed document; the
+			// client sends didChange for a document it has already opened.
+			m.pushDiags(msg.Params)
 		case "shutdown":
 			m.write(json.RawMessage(fmt.Sprintf(
 				`{"jsonrpc":"2.0","id":%v,"result":null}`, msg.ID)))

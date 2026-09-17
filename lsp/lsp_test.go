@@ -3,7 +3,9 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // setupDemoProject creates a minimal Go project in t.TempDir() for LSP tests.
@@ -67,6 +69,10 @@ func TestTouchFileWithDiag(t *testing.T) {
 	for _, d := range diags {
 		t.Logf("  [sev=%d] %s", d.Severity, d.Message)
 	}
+	// main.go is valid Go and must not report errors. Before the client synced
+	// the real content, gopls analysed an empty buffer and answered with the
+	// phantom error "expected ';', found 'EOF'".
+	assertNoErrors(t, "main.go", diags)
 }
 
 // TestTouchFileWithErrors verifies that a file with deliberate errors
@@ -80,13 +86,16 @@ func TestTouchFileWithErrors(t *testing.T) {
 	}
 	proj := setupDemoProject(t)
 
-	tmpDir := filepath.Join(proj, ".lsp_test")
-	os.MkdirAll(tmpDir, 0755)
-	defer os.RemoveAll(tmpDir)
-	errFile := filepath.Join(tmpDir, "broken.go")
+	// The file must live where the Go toolchain loads it: directories starting
+	// with "." are ignored, so an earlier version of this test wrote it into
+	// .lsp_test/ and could never observe a diagnostic for it.
+	errFile := filepath.Join(proj, "broken.go")
+	defer os.Remove(errFile)
+	// A helper (not another main) so the only error is the undefined symbol:
+	// the demo project's main.go already declares func main.
 	badContent := `package main
 
-func main() {
+func helper() {
 	undefinedFunc()
 }
 `
@@ -97,28 +106,88 @@ func main() {
 	Init(proj)
 	// LSP starts lazily on first TouchFile call
 
-	diags, err := TouchFile(errFile, true)
-	if err != nil {
-		t.Fatalf("TouchFile (errors) failed: %v", err)
-	}
-
-	if len(diags) == 0 {
-		t.Log("no diagnostics returned (gopls may need more time)")
-		return
-	}
-
+	diags := waitForErrors(t, errFile, true)
 	t.Logf("Got %d diagnostics for broken.go:", len(diags))
 
-	found := false
+	mentioned := false
 	for _, d := range diags {
 		t.Logf("  [sev=%d] %s", d.Severity, d.Message)
-		if d.Severity == 1 && d.Message != "" {
-			found = true
+		if d.Severity == 1 && strings.Contains(d.Message, "undefined") {
+			mentioned = true
 		}
 	}
-	if !found {
-		t.Error("expected at least one ERROR level diagnostic in broken.go")
+	if !mentioned {
+		t.Errorf("expected an undefined-symbol error in broken.go, got: %+v", diags)
 	}
+}
+
+// TestTouchFileAfterFixClearsErrors exercises the didChange path: after the file
+// is repaired and touched again, the error must disappear. Without the change
+// notification the server kept analysing the text it first received.
+func TestTouchFileAfterFixClearsErrors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping LSP integration test in short mode")
+	}
+	if os.Getenv("LSP_TEST") == "" {
+		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
+	}
+	proj := setupDemoProject(t)
+
+	file := filepath.Join(proj, "editable.go")
+	defer os.Remove(file)
+	if err := os.WriteFile(file, []byte("package main\n\nfunc helper() {\n\tundefinedFunc()\n}\n"), 0644); err != nil {
+		t.Fatalf("write editable.go: %v", err)
+	}
+
+	Init(proj)
+	waitForErrors(t, file, true)
+
+	if err := os.WriteFile(file, []byte("package main\n\nfunc helper() {\n\tprintln(\"ok\")\n}\n"), 0644); err != nil {
+		t.Fatalf("rewrite editable.go: %v", err)
+	}
+	waitForErrors(t, file, false)
+}
+
+// assertNoErrors fails when any severity-1 diagnostic is present.
+func assertNoErrors(t *testing.T, name string, diags []Diagnostic) {
+	t.Helper()
+	for _, d := range diags {
+		if d.Severity == 1 {
+			t.Errorf("%s should be clean, got error: %s", name, d.Message)
+		}
+	}
+}
+
+// waitForErrors polls TouchFile until the file's diagnostics do (want=true) or do
+// not (want=false) contain a severity-1 error, and returns them. The server
+// publishes asynchronously, so a single call is not enough.
+func waitForErrors(t *testing.T, path string, want bool) []Diagnostic {
+	t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	var last []Diagnostic
+	for time.Now().Before(deadline) {
+		diags, err := TouchFile(path, true)
+		if err != nil {
+			t.Fatalf("TouchFile(%s): %v", path, err)
+		}
+		last = diags
+		hasError := false
+		for _, d := range diags {
+			if d.Severity == 1 {
+				hasError = true
+				break
+			}
+		}
+		if hasError == want {
+			return diags
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if want {
+		t.Fatalf("expected an error for %s, never got one (last: %+v)", path, last)
+	}
+	t.Fatalf("expected %s to be clean, still reporting: %+v", path, last)
+	return nil
 }
 
 // TestFormatDiagnostics verifies the formatter works correctly.
