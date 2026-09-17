@@ -22,9 +22,10 @@ const (
 	// framing, so a peer that never sends a newline cannot grow memory forever.
 	maxHeaderBytes = 8 << 10
 
-	// maxSkippedMessages bounds how many unrelated frames (notifications or
-	// responses addressed to another request) are discarded while waiting for
-	// the response matching the current request id.
+	// maxSkippedMessages bounds how many frames that answer nobody (unrelated
+	// notifications or responses addressed to another request) may pass while a
+	// single request waits. The budget is per request: one flooding peer fails
+	// only the requests it actually starves, not every call in flight.
 	maxSkippedMessages = 100
 )
 
@@ -32,9 +33,15 @@ const (
 var errClientClosed = errors.New("mcp client is closed")
 
 // errNoMatchingResponse is delivered to a waiter whose response never arrived
-// because the peer kept sending unrelated frames (notifications or responses
-// addressed to other requests) beyond maxSkippedMessages.
+// because frames answering nobody kept arriving beyond maxSkippedMessages.
 var errNoMatchingResponse = errors.New("no matching response within the skip budget")
+
+// pendingCall is one in-flight request: the channel its response is delivered on,
+// plus how many frames answering nobody have been seen since it registered.
+type pendingCall struct {
+	ch      chan json.RawMessage
+	skipped int
+}
 
 // Tool represents a tool exposed by an MCP server.
 type Tool struct {
@@ -135,7 +142,7 @@ type Client struct {
 	// mu guards nextID, pending, closed, closeCause and kill.
 	mu      sync.Mutex
 	nextID  int
-	pending map[int]chan json.RawMessage
+	pending map[int]*pendingCall
 	closed  bool
 	kill    func()
 
@@ -163,7 +170,7 @@ func NewClient(stdin io.Writer, stdout io.Reader, stderr io.Reader) *Client {
 		stdout:  stdout,
 		stderr:  stderr,
 		nextID:  1,
-		pending: make(map[int]chan json.RawMessage),
+		pending: make(map[int]*pendingCall),
 		done:    make(chan struct{}),
 	}
 }
@@ -232,7 +239,6 @@ func (c *Client) startReader() {
 // readLoop reads frames until the stream fails, routing each one to its waiter.
 // It is the only reader of c.stdout.
 func (c *Client) readLoop() {
-	skipped := 0
 	for {
 		raw, err := c.readMessage()
 		if err != nil {
@@ -242,35 +248,45 @@ func (c *Client) readLoop() {
 			return
 		}
 
-		matched, pending := c.dispatch(raw)
-		if matched {
-			skipped = 0
-			continue
+		if !c.dispatch(raw) {
+			// The frame answered nobody. Charge it against the requests that are
+			// still waiting; a frame that answered no one while nothing waits is
+			// simply dropped.
+			c.chargeUnmatched()
 		}
-		if !pending {
-			// Nothing is waiting, so an unmatched frame is simply dropped and
-			// must not count against a future request's budget.
-			skipped = 0
-			continue
+	}
+}
+
+// chargeUnmatched counts one frame that answered no request against every
+// pending request and fails only the requests that exceed maxSkippedMessages.
+// Each request carries its own budget, so a peer that floods frames for one call
+// cannot abort unrelated calls that are still within theirs. Removing the
+// requests from the map before closing keeps a woken caller's unregister call
+// from racing the reader, and the stream stays framed so a later call works.
+func (c *Client) chargeUnmatched() {
+	c.mu.Lock()
+	var expired []chan json.RawMessage
+	for id, pc := range c.pending {
+		pc.skipped++
+		if pc.skipped > maxSkippedMessages {
+			expired = append(expired, pc.ch)
+			delete(c.pending, id)
 		}
-		skipped++
-		if skipped > maxSkippedMessages {
-			// The peer is flooding unrelated frames while a request is pending.
-			// Fail the waiters rather than reading the stream forever; the
-			// stream itself stays framed, so a later call can still succeed.
-			c.failPending()
-			skipped = 0
-		}
+	}
+	c.mu.Unlock()
+
+	for _, ch := range expired {
+		close(ch)
 	}
 }
 
 // dispatch routes one raw frame to the pending request registered under its id.
 // Notifications and responses addressed to unknown ids are dropped. It reports
-// whether a pending request matched and whether any request was pending at all.
-func (c *Client) dispatch(raw []byte) (matched, pending bool) {
+// whether the frame answered a pending request.
+func (c *Client) dispatch(raw []byte) bool {
 	var msg jsonrpcMessage
 	if err := json.Unmarshal(raw, &msg); err != nil {
-		return false, c.hasPending()
+		return false
 	}
 	// A method means this is a notification or a server-initiated request, not
 	// a response to one of ours. Server request ids share our id space, so they
@@ -281,27 +297,26 @@ func (c *Client) dispatch(raw []byte) (matched, pending bool) {
 			// the server waiting forever.
 			c.answerServerRequest(msg.Method, msg.ID)
 		}
-		return false, c.hasPending()
+		return false
 	}
 	if msg.ID == 0 {
-		return false, c.hasPending()
+		return false
 	}
 
 	c.mu.Lock()
-	ch, ok := c.pending[msg.ID]
-	pending = len(c.pending) > 0
+	pc, ok := c.pending[msg.ID]
 	c.mu.Unlock()
 	if !ok {
-		return false, pending
+		return false
 	}
 
 	// The channel is buffered with room for one response, so a waiter that
 	// already gave up cannot block the reader.
 	select {
-	case ch <- json.RawMessage(raw):
+	case pc.ch <- json.RawMessage(raw):
 	default:
 	}
-	return true, pending
+	return true
 }
 
 // answerServerRequest replies to a request initiated by the MCP server. The
@@ -330,27 +345,6 @@ func (c *Client) answerServerRequest(method string, id int) {
 	}
 }
 
-// hasPending reports whether any request is currently registered.
-func (c *Client) hasPending() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return len(c.pending) > 0
-}
-
-// failPending closes the response channel of every pending request so the
-// callers return an error. Closing is only ever done here, by the single reader
-// goroutine, so no channel is ever closed twice.
-func (c *Client) failPending() {
-	c.mu.Lock()
-	stale := c.pending
-	c.pending = make(map[int]chan json.RawMessage)
-	c.mu.Unlock()
-
-	for _, ch := range stale {
-		close(ch)
-	}
-}
-
 // reserve allocates the next unique request id and registers a response channel
 // for it under the same lock, so ids can never be reused while in flight and no
 // response can arrive before its waiter is registered.
@@ -363,7 +357,7 @@ func (c *Client) reserve() (int, chan json.RawMessage, error) {
 	id := c.nextID
 	c.nextID++
 	ch := make(chan json.RawMessage, 1)
-	c.pending[id] = ch
+	c.pending[id] = &pendingCall{ch: ch}
 	return id, ch, nil
 }
 

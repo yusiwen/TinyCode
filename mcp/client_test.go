@@ -180,6 +180,109 @@ func TestSendFailsAfterSkipBudgetExceeded(t *testing.T) {
 	}
 }
 
+// TestSkipBudgetIsPerRequest ensures the skip budget is tracked per request:
+// one request that never gets an answer fails on its own, while another request
+// that is still within its budget is served normally. Previously a single
+// exhausted budget failed every waiter of the client.
+func TestSkipBudgetIsPerRequest(t *testing.T) {
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+	defer closePipes(clientStdinR, clientStdinW, serverStdoutR, serverStdoutW)
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+
+	requests := make(chan jsonrpcMessage, 8)
+	go func() {
+		fs := newFrameStream(clientStdinR)
+		for {
+			body, err := fs.read()
+			if err != nil {
+				return
+			}
+			var req jsonrpcMessage
+			if json.Unmarshal([]byte(body), &req) != nil {
+				return
+			}
+			requests <- req
+		}
+	}()
+
+	notification := `{"jsonrpc":"2.0","method":"notifications/message"}`
+	type result struct {
+		raw json.RawMessage
+		err error
+	}
+
+	// Request A is registered first and is never answered.
+	aDone := make(chan result, 1)
+	go func() {
+		raw, err := client.send(context.Background(), "tools/list", nil)
+		aDone <- result{raw, err}
+	}()
+	<-requests
+
+	// Request C is only used to synchronize with the reader: because the single
+	// reader goroutine processes frames in order, C's response arriving proves
+	// that the notifications written before it were already charged.
+	cDone := make(chan result, 1)
+	go func() {
+		raw, err := client.send(context.Background(), "ping", nil)
+		cDone <- result{raw, err}
+	}()
+	reqC := <-requests
+
+	for i := 0; i < maxSkippedMessages; i++ {
+		if err := writeFrame(serverStdoutW, notification); err != nil {
+			t.Fatalf("write notification %d: %v", i, err)
+		}
+	}
+	if err := writeFrame(serverStdoutW, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{}}`, reqC.ID)); err != nil {
+		t.Fatalf("write response to C: %v", err)
+	}
+	select {
+	case got := <-cDone:
+		if got.err != nil {
+			t.Fatalf("request C failed: %v", got.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("request C was not served")
+	}
+
+	// B registers with a fresh budget: one more unrelated frame must exhaust A
+	// only, leaving B untouched.
+	bDone := make(chan result, 1)
+	go func() {
+		raw, err := client.send(context.Background(), "tools/list", nil)
+		bDone <- result{raw, err}
+	}()
+	reqB := <-requests
+
+	if err := writeFrame(serverStdoutW, notification); err != nil {
+		t.Fatalf("write final notification: %v", err)
+	}
+
+	select {
+	case got := <-aDone:
+		if !errors.Is(got.err, errNoMatchingResponse) {
+			t.Fatalf("request A error = %v, want the skip-budget error", got.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("request A was not failed after exhausting its own budget")
+	}
+
+	if err := writeFrame(serverStdoutW, fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"tools":[]}}`, reqB.ID)); err != nil {
+		t.Fatalf("write response to B: %v", err)
+	}
+	select {
+	case got := <-bDone:
+		if got.err != nil {
+			t.Fatalf("request B failed although it was within its budget: %v", got.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("request B was not served")
+	}
+}
+
 // TestSendSkipsNotificationAndUnmatchedID ensures an interleaved notification
 // and a response addressed to another request do not desynchronize the
 // exchange and are never returned as ours.
