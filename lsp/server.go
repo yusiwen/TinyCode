@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -129,4 +130,42 @@ func DetectLanguage(rootDir string) string {
 	}
 
 	return ""
+}
+
+// languageForPath maps a file extension to the language name used to look up a
+// server in DefaultConfigs. Unlike languageIDForPath it returns the language of
+// the *server*, not the LSP languageId: .tsx and .jsx are analysed by the
+// typescript server, and unknown extensions get no server at all.
+func languageForPath(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go":
+		return "go"
+	case ".py", ".pyi":
+		return "python"
+	case ".ts", ".tsx":
+		return "typescript"
+	case ".js", ".mjs", ".cjs", ".jsx":
+		return "javascript"
+	case ".rs":
+		return "rust"
+	case ".java":
+		return "java"
+	case ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp":
+		return "cpp"
+	default:
+		return ""
+	}
+}
+
+// serverLanguage picks the language whose server should handle filePath. Project
+// detection wins (a Go module containing one .py helper still gets gopls), and
+// the file's own extension is the fallback for projects without known marker
+// files. Returning "" means no server is configured, which must not silently
+// become gopls: running gopls over a non-Go tree yields "not included in your
+// workspace" noise instead of diagnostics.
+func serverLanguage(projectRoot, filePath string) string {
+	if lang := DetectLanguage(projectRoot); lang != "" {
+		return lang
+	}
+	return languageForPath(filePath)
 }

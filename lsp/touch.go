@@ -106,9 +106,9 @@ func canonicalPath(path string) string {
 
 func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	mu.Lock()
-	// Lazy start: spawn gopls on first use
+	// Lazy start: spawn the language server on first use
 	if client == nil {
-		if err := lazyStart(); err != nil {
+		if err := lazyStart(filePath); err != nil {
 			mu.Unlock()
 			return nil, err
 		}
@@ -204,15 +204,18 @@ func GetNewDiagnostics(path string) []Diagnostic {
 	return newDiags
 }
 
-// lazyStart starts the LSP server for the detected project language.
-func lazyStart() error {
-	tlog.Info("lsp.touch", "lazy_start", "root", projectRoot)
-	lang := DetectLanguage(projectRoot)
+// lazyStart starts the LSP server for filePath's project language, falling back
+// to the file's own extension when the project cannot be identified.
+func lazyStart(filePath string) error {
+	lang := serverLanguage(projectRoot, filePath)
+	tlog.Info("lsp.touch", "lazy_start", "root", projectRoot, "file", filePath, "language", lang)
 	if lang == "" {
-		lang = "go" // fallback
+		lspAvailable = false
+		return fmt.Errorf("no LSP server configured for %s", filePath)
 	}
 	cfg := FindConfig(lang)
 	if cfg == nil {
+		lspAvailable = false
 		return fmt.Errorf("no LSP server configured for %s", lang)
 	}
 	rootDir := canonicalPath(projectRoot)
@@ -237,7 +240,7 @@ func lazyStart() error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		log.Printf("LSP start: gopls not found: %v", err)
+		log.Printf("LSP start: %s not found: %v", cfg.Command, err)
 		lspAvailable = false
 		return err
 	}
@@ -255,7 +258,7 @@ func lazyStart() error {
 
 	client = c
 	lspAvailable = true
-	log.Printf("LSP: gopls started for %s", rootDir)
+	log.Printf("LSP: %s started for %s", cfg.Command, rootDir)
 	return nil
 }
 
