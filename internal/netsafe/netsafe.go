@@ -253,15 +253,23 @@ func AllowAuthority(hostport string) Option {
 func normalizeAuthority(authority string) string {
 	host, port, err := net.SplitHostPort(authority)
 	if err != nil {
-		host, port = authority, ""
+		// Not a host:port pair. Canonicalize the whole value as a bare host
+		// instead of re-joining it: JoinHostPort brackets any host containing a
+		// colon, so "0]0" became "[0]0]:" and normalizing the result again kept
+		// changing it. An exemption that cannot match its own canonical form is
+		// silently dead.
+		return canonicalHost(strings.Trim(authority, "[]"))
 	}
-	host = strings.Trim(host, "[]")
+	return net.JoinHostPort(canonicalHost(strings.Trim(host, "[]")), port)
+}
+
+// canonicalHost lower-cases a host name and re-canonicalizes an IP literal so
+// the same address in different spellings compares equal.
+func canonicalHost(host string) string {
 	if ip := net.ParseIP(host); ip != nil {
-		host = ip.String()
-	} else {
-		host = strings.ToLower(host)
+		return ip.String()
 	}
-	return net.JoinHostPort(host, port)
+	return strings.ToLower(host)
 }
 
 // loopbackAllowed reports whether the loopback exemption covers host:port.
