@@ -10,7 +10,14 @@ make build          # build to bin/tinycode
 make run PROMPT="..."  # build + run in one-shot mode
 make test           # run all tests
 make lint           # go vet + staticcheck
+make test-tui-visual   # TUI frame screenshots + PTY smoke (TUI_SHOT=1); needs Chromium
 ```
+
+When a TUI change has to be *seen* rather than asserted on: `make test-tui-visual`
+renders the committed frame scenarios to PNGs in `TUI_SHOT_DIR` (default `/tmp`) and
+starts `bin/tinycode` on a real 80x24 PTY. Update the frames with
+`go test ./tui -run Golden -update` after an intended layout change, and read the
+regenerated PNG to check the result.
 
 Run interactively:
 ```bash
