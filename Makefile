@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp test-browser install-gopls lint staticcheck fmt fmt-check fuzz clean all
+.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls lint staticcheck fmt fmt-check fuzz clean all
 
 default: build
 
@@ -59,6 +59,15 @@ test-lsp:
 # ordinary `make test` never launches a browser.
 test-browser:
 	BROWSER_TEST=1 go test -count=1 -timeout 5m -run TestBrowserSmokeThroughProxy ./tool/
+
+# On-demand visual check for the TUI: renders the committed frame scenarios to
+# PNGs (Chromium) and runs the built binary on a real 80x24 PTY, then asserts
+# the stream carried colour. Needs `bin/tinycode` (built here), a Chromium
+# (system install or the Playwright cache) and a PTY; everything is skipped
+# without TUI_SHOT=1, so an ordinary `make test` needs neither. PNGs land in
+# TUI_SHOT_DIR (default /tmp) for a reviewer or an agent to open.
+test-tui-visual: build
+	TUI_SHOT=1 go test -count=1 -timeout 5m -run 'TestFrameScreenshots|TestBinarySmokeUnderPTY' ./tui/
 
 # Blocking lint: `go vet` failures fail the build.
 lint:
