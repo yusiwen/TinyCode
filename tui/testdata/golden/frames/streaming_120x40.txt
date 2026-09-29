@@ -1,0 +1,40 @@
+> why does the loop stop after one tool call?
+
+
+    Reading agent/agent.go and checking the tool loop:
+      • step budget
+      • concurrent tool calls
+    [ Copy ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┃   1 Type your request (Ctrl+J for newline)...
+⚡ plan |  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m
