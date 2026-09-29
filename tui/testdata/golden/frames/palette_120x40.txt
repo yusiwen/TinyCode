@@ -1,0 +1,53 @@
+> switch to build mode
+
+
+    Use /build or press Tab.
+    [ Copy ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Commands:
+>  /help   Show help
+  /plan  Plan mode
+  /build  Build mode
+  /verbose  Toggle verbose output
+  /thinking  Toggle thinking display
+  /theme  Switch theme
+  /skill  Load a skill
+  /diagnostics  LSP diagnostics
+  /model  Switch model
+  /fork  Create session branch
+  /session  List/switch branch
+  /exit  Exit TinyCode
+↑↓ navigate · Enter execute · Esc cancel
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m

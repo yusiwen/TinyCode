@@ -1,0 +1,50 @@
+> add a retry to the http client
+
+
+
+    Retry the HTTP client
+
+    The doRequest helper returns the error unchanged, so a single 502ends the whole run. Wrap it in a bounded retry:
+      func (c *Client) do(ctx context.Context) (*Response, error) {
+          for attempt := 0; attempt < 3; attempt++ {
+              resp, err := c.roundTrip(ctx)
+              if err == nil {
+                  return resp, nil
+              }
+          }
+          return nil, ErrRetriesExhausted
+      }
+
+    Notes:
+      • Back off between attempts (250ms, 500ms).
+      • Do not retry a 4xx: the request itself is wrong.
+      • 中文与 emoji 的宽度也要对齐 🙂
+
+    │ attempt │ delay │
+    ├─────────┼───────┤
+    │ 1       │ 250ms │
+    │ 2       │ 500ms │
+
+    [ Copy ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┃   1 Type your request (Ctrl+J for newline)...
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m

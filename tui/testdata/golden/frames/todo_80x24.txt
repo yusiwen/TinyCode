@@ -1,0 +1,24 @@
+> port the retry logic
+
+
+
+  Todo (1/4)
+    [x] Read the current retry helper
+    [>] Add bounded retry with backoff
+    [ ] Cover the 4xx path with a test
+    [ ] Update CHANGELOG.md
+
+  → Calling tools:
+    • bash: go test ./agent/...
+
+    Three steps left.
+    [ Copy ]
+
+
+
+
+
+
+
+┃   1 Type your request (Ctrl+J for newline)...
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m

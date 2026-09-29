@@ -1,0 +1,24 @@
+    whole run. Wrap it in a bounded retry:                                      
+[38;2;136;136;136m      func (c *Client) do(ctx context.Context) (*Response, error) {[0m             
+[38;2;136;136;136m          for attempt := 0; attempt < 3; attempt++ {[0m                            
+[38;2;136;136;136m              resp, err := c.roundTrip(ctx)[0m                                     
+[38;2;136;136;136m              if err == nil {[0m                                                   
+[38;2;136;136;136m                  return resp, nil[0m                                              
+[38;2;136;136;136m              }[0m                                                                 
+[38;2;136;136;136m          }[0m                                                                     
+[38;2;136;136;136m          return nil, ErrRetriesExhausted[0m                                       
+[38;2;136;136;136m      }[0m                                                                         
+                                                                                
+    Notes:                                                                      
+      • Back off between attempts (250ms, 500ms).                               
+      • Do not retry a 4xx: the request itself is wrong.                        
+      • 中文与 emoji 的宽度也要对齐 🙂                                          
+                                                                                
+[1;38;2;255;215;0m    │ attempt │ delay │[0m                                                         
+[38;2;136;136;136m    ├─────────┼───────┤[0m                                                         
+    │ 1       │ 250ms │                                                         
+    │ 2       │ 500ms │                                                         
+                                                                                
+[38;2;136;136;136m    [ Copy ][0m                                                                    
+[37m[37m┃ [0m[0m[37m[37m  1 [0m[0m[37m[38;5;240mT[0m[0m[37m[38;5;240mype your request (Ctrl+J for newline)...[0m[0m                                 
+[38;2;170;170;170m⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m[0m

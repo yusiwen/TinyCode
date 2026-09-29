@@ -1,0 +1,40 @@
+> fix the diagnostics
+
+
+    gopls reports two unused imports.
+    [ Copy ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┃   1 Type your request (Ctrl+J for newline)...
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  errors: 3  session: 2562047h47m  │   diagnostics refreshed
