@@ -196,6 +196,12 @@ func findBrowser() string {
 	return ""
 }
 
+// FindBrowser returns the path to a usable Chromium/Chrome binary, or "" when
+// none is installed. It exposes the same discovery rules the web tools use to
+// callers outside this package, such as the TUI screenshot harness, so a second
+// copy of the system/Playwright search order cannot drift from this one.
+func FindBrowser() string { return findBrowser() }
+
 // crawlViaExec uses a Chromium binary with --dump-dom to extract page content.
 func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) {
 	// Chromium performs its own DNS resolution, so validate the target with the
