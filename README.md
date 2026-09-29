@@ -46,6 +46,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Spinner**: `⣾ ⣽ ⣻ ⢿ ⡿ ⣟` braille spinner in status bar during streaming. Tick pipeline kept alive even during idle. Spinner continues across intermediate steps. (42b8794, 9a0f55b, afc14e1)
 - **Auto-scroll**: viewport follows streaming output, pauses when user scrolls up
 - **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration, transient status messages
+- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 18 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), a headless `tea.Program` driver that types, resizes and quits, and `make test-tui-visual` (`TUI_SHOT=1`), which renders the frames to PNGs through Chromium and starts the built binary on a real 80x24 PTY. The tests pin the renderer to a TrueColor profile, because a non-TTY stdout otherwise strips every style from the frame.
 
 ### Agent Loop
 - ReAct loop with tool calling support (24 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, sandbox_allow, load_skill, skill_manage)
@@ -96,8 +97,9 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 
 ### CI/CD Pipeline
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
+- **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **359 tests passing**
+- **640 test functions + 9 fuzz targets** across all packages
 
 ### Skill System
 - **SKILL.md-based discovery** — three-layer scan: embedded (skill/builtin/) → ~/.tinycode/skills/ → project .tinycode/skills/ (upward search). Later sources override earlier. (cbd6db3)
@@ -304,6 +306,7 @@ The dev shell provides the Go toolchain, `gopls` (LSP), `gofumpt`
 make build      # static binary at ./bin/tinycode (CGO_ENABLED=0)
 make test
 make lint
+make test-tui-visual   # TUI screenshots + PTY smoke (TUI_SHOT=1); needs Chromium
 ```
 
 The Makefile remains the canonical build/release path; the flake pins the

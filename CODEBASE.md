@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 625 test functions + 9 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 640 test functions + 9 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -435,6 +435,12 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - Status bar: mode icon, model, spinner, provider, tokens, tool calls, msg count, diagnostics, duration, history
 - Character-level selection via `grid.Fill()` with SelectionStyle
 
+### Frame verification (test files)
+- `frame_golden_test.go` — makes a frame visible. `withTrueColor` pins the lipgloss profile to TrueColor and empties `styleCache` for the duration of a render (without it a non-TTY stdout renders pure ASCII and every style vanishes); `normalizeFrame` strips CSI **and** OSC escapes, trims trailing blanks per line and drops trailing blank lines; `assertGolden` compares against `testdata/golden/` and rewrites only under `-update`; `frameDiff` reports the first differing line, one context line and the first differing column. The scenario builders (`frameModel`, `frameWelcome`, `frameMarkdown`, `frameStreaming`, `frameTodo`, `frameDialog`, `framePalette`, `frameDiagnostics`, `frameLongOutput`) leave `sessionStart` at the zero time, so the status bar's session clock renders a constant (saturated) duration instead of the wall clock.
+- `tui/testdata/golden/frames/*.txt` — 18 plain-text frames (8 scenarios at 80x24 and 120x40, plus 200x50 for `markdown` and `longoutput`); `tui/testdata/golden/ansi/markdown_80x24.ansi` — one raw ANSI frame, so colour, bold, underline and OSC 8 links stay diffable. Tests: `TestGoldenFrames`, `TestGoldenFrameANSI` (every frame must still carry SGR) and `TestFrameScenariosRenderTwice`. Regenerate with `go test ./tui -run Golden -update`.
+- `program_driver_test.go` — runs the real `tea.Program` over `tea.WithInput(io.Pipe)` and `tea.WithOutput(lockedBuffer)`: `TestProgramDriverPaintsAndQuits`, `TestProgramDriverResizeStorm`, `TestProgramDriverCommandQuits`. Race-safe by construction: `Send` blocks until the event loop receives, messages are processed in order, and model fields are read only after `Run()` returns.
+- `frame_shot_test.go` — gated by `TUI_SHOT=1` (`make test-tui-visual`). `TestFrameScreenshots` converts a frame to HTML (`frameToHTML`, a small SGR→CSS renderer) and screenshots it at 2x in the Chromium that `tool.FindBrowser` locates; `TestBinarySmokeUnderPTY` starts `bin/tinycode` on an 80x24 PTY (`creack/pty`), waits for the startup frame, asserts the stream carried escapes, and quits with the double Ctrl+C. Both skip without the env var.
+
 ### `theme.go`
 - **`Theme`** struct: `Name` + 23 color fields (CellGrid + Lipgloss + welcome-banner colors)
 - **`ThemeDefault`**, **`ThemeNord`**
@@ -510,16 +516,20 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **625 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
+- **640 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; it skips without a browser, so `make test` never launches one
+- `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium and starts `bin/tinycode` on a real 80x24 PTY, asserting the stream carried colour and that the binary quits on the documented double Ctrl+C. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
 - Sandbox I/O: the portable wrapper tests (read/create/truncate, mode, missing file, in-root symlink, outside-root and unconfigured fallbacks) run everywhere; the `openat2` containment cases (escaping symlink and directory link, `..` escape, in-root relative symlink, create) are linux-only and run in the CI job
 - Statement coverage: types 100%, tlog 91.7%, skill 91.8%, browserproxy 90.5%, agent 89.9%, session 88.9%, netsafe 82.0%, mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
 - LSP: 36 tests — `io.Pipe`-based mock (no real server needed), single-reader correlation tests, server selection/error branches, baseline deltas, and `LSP_TEST=1` integration tests against real gopls
 - MCP: 33 tests
-- TUI: CellGrid roundtrip, keyboard, mouse, streaming, selection, todo rendering
+- TUI: CellGrid roundtrip, keyboard, mouse, streaming, selection, todo rendering — plus, since the frame work landed, three layers that can actually see the frame:
+  - `TestGoldenFrames` (18 plain-text frames: 8 scenarios at 80x24/120x40, plus 200x50 for wrapping and overflow) and `TestGoldenFrameANSI` (one raw ANSI frame) in `tui/frame_golden_test.go`, regenerated with `go test ./tui -run Golden -update`. Rendering is pinned to a TrueColor profile for the duration of a frame render and the `CellStyle` → lipgloss style cache is emptied, because without that lipgloss sees a non-TTY stdout and every style silently disappears. Each frame asserts it still carries SGR sequences, and every scenario is rendered twice and compared so the incremental grid path cannot drift.
+  - `tui/program_driver_test.go` drives the real `tea.Program` with `tea.WithInput(io.Pipe)` / `tea.WithOutput(buffer)`: typing, the double Ctrl+C quit, 25 resizes and a typed `/exit`, with model fields read only after `Run()` returns.
+  - `tui/frame_shot_test.go` (gated) renders the scenarios to PNG and smokes the built binary on a PTY. The status bar's session clock is pinned by a zero `sessionStart` in the scenario builders — `time.Since(zero)` saturates — so goldens and screenshots show a constant duration instead of the wall clock.
 - Edit: 14 tests covering 7 fuzzy strategies
 - Apply patch: 9 tests + sandbox gate tests
 - Sandbox: symlink escape, permission queue, "allow once" semantics, process-group kill
@@ -534,6 +544,8 @@ make test-race      # go test -race ./... -count=1
 make test-repeat    # go test ./... -count=3 (catches leaked global state)
 make test-lsp       # LSP integration tests; needs gopls on PATH (nix develop provides it)
 make install-gopls  # go install gopls@$(GOPLS_VERSION)
+make test-browser   # real-browser smoke test (BROWSER_TEST=1); needs Chromium
+make test-tui-visual # TUI screenshots + PTY smoke (TUI_SHOT=1); needs Chromium and a PTY
 make lint           # go vet (blocking)
 make staticcheck    # staticcheck, pinned via STATICCHECK_VERSION (v0.8.1)
 make fmt-check      # fail when a tracked Go file is not gofmt-clean
@@ -562,6 +574,7 @@ make run PROMPT="..."  # one-shot mode
 - `ci` job: build, `gofmt` gate, `go vet`, tests, `-race`, and a repeated (`-count=3`) run, on Go 1.27.
 - `release` job (`release.yml`, on tag push): cross-compiles the three archives via `make releases` on the same Go line, so the `go 1.27` directive is satisfied.
 - `browser` job: installs Chrome for Testing (`browser-actions/setup-chrome`) and runs `make test-browser`, the only place the real-browser paths are exercised.
+- `tui-visual` job: installs Chrome for Testing the same way and runs `make test-tui-visual` (`TUI_SHOT=1`), the only place the built binary is started on a PTY and the frames are rendered to PNG. The golden frames and the headless program driver run in the `ci` job, which needs neither a browser nor a terminal device.
 - `lsp` job: installs gopls at the Makefile's pinned `GOPLS_VERSION` (v0.23.0, matching the flake) and runs `make test-lsp` (`LSP_TEST=1`) so the integration tests that spawn a real language server actually run.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
 - `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
