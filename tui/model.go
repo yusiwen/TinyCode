@@ -80,6 +80,14 @@ type TuiModel struct {
 	runCancel      context.CancelFunc
 	runInterrupted bool
 
+	// Manual compression lifecycle. /compress runs its summarizer off the
+	// event loop, so it needs its own cancelable lifecycle; these fields share
+	// runMu with the run state because the two are mutually exclusive — both
+	// read or replace Agent.History, so neither may overlap the other.
+	compressActive      bool
+	compressCancel      context.CancelFunc
+	compressInterrupted bool
+
 	// Input history
 	lastInput string
 

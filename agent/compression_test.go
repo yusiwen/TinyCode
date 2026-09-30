@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusiwen/tinycode/types"
 )
@@ -366,8 +367,8 @@ func TestCompressHistoryWrapper(t *testing.T) {
 		History: historyForCompression(),
 	}
 	before := len(a.History)
-	if !a.CompressHistory() {
-		t.Fatal("CompressHistory reported no compression although the history is long enough")
+	if ok, err := a.CompressHistory(context.Background()); err != nil || !ok {
+		t.Fatalf("CompressHistory reported no compression although the history is long enough (ok=%v, err=%v)", ok, err)
 	}
 	if len(a.History) >= before {
 		t.Fatalf("history did not shrink: %d -> %d", before, len(a.History))
@@ -375,7 +376,7 @@ func TestCompressHistoryWrapper(t *testing.T) {
 
 	// Compression disabled: nothing to do and nothing to change.
 	off := &Agent{History: historyForCompression()}
-	if off.CompressHistory() {
+	if ok, _ := off.CompressHistory(context.Background()); ok {
 		t.Error("CompressHistory must report false without a threshold")
 	}
 	if len(off.History) != len(historyForCompression()) {
@@ -392,10 +393,60 @@ func TestCompressHistoryWrapper(t *testing.T) {
 		History: historyForCompression(),
 	}
 	want := len(failing.History)
-	if failing.CompressHistory() {
-		t.Error("CompressHistory must report false when the summarizer fails")
+	if ok, err := failing.CompressHistory(context.Background()); ok || err == nil {
+		t.Errorf("CompressHistory must report the summarizer failure (ok=%v, err=%v)", ok, err)
 	}
 	if len(failing.History) != want {
 		t.Errorf("history changed after a failed summarization: %d -> %d", want, len(failing.History))
+	}
+}
+
+// TestCompressHistoryHonorsCancelledContext guards issue #3: the summarization
+// call runs under the caller's context, so cancelling it ends a stalled
+// summarizer promptly and leaves the history untouched.
+func TestCompressHistoryHonorsCancelledContext(t *testing.T) {
+	entered := make(chan struct{})
+	a := &Agent{
+		CompressionThreshold: 10,
+		ContextLength:        1000,
+		Provider: &MockProvider{ChatFunc: func(ctx context.Context, _ types.ChatRequest) (*types.ChatResponse, error) {
+			close(entered)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}},
+		History: historyForCompression(),
+	}
+	before := append([]types.Message(nil), a.History...)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.CompressHistory(ctx)
+		done <- err
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the summarizer was never called")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("CompressHistory error = %v, want context.Canceled", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelling the context did not end the summarizer call")
+	}
+
+	if len(a.History) != len(before) {
+		t.Fatalf("a cancelled compression changed the history: %d -> %d messages", len(before), len(a.History))
+	}
+	for i := range before {
+		if a.History[i].Content != before[i].Content {
+			t.Errorf("message %d changed after a cancelled compression", i)
+		}
 	}
 }

@@ -282,6 +282,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Enter → submit
 		if msg.Type == tea.KeyEnter && !msg.Alt {
+			// A compression owns Agent.History; submitting here would lose the
+			// typed text to a refusal further down, so keep it in the input box.
+			if m.compressIsActive() {
+				m.ShowStatus("Cannot start a run: compression is in progress")
+				m.autoScroll()
+				return m, nil
+			}
 			if m.status != StatusStreaming && !m.runIsActive() && strings.TrimSpace(m.input.Value()) != "" {
 				return m.submitInput()
 			}
@@ -324,6 +331,15 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectStart = -1
 				m.selectEnd = -1
 				m.ShowStatus("✓ Copied to clipboard")
+				m.autoScroll()
+				return m, nil
+			}
+			// A compression in flight owns the summarizer request. Cancel it
+			// here, before the quit confirmation below, so the first Ctrl+C
+			// ends the wait instead of arming a quit.
+			if m.compressIsActive() {
+				m.cancelCompress()
+				m.ShowStatus("⏹ Cancelling compression…")
 				m.autoScroll()
 				return m, nil
 			}
@@ -372,10 +388,15 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChatMsg:
 		// Refuse a second concurrent run: the previous run may still be
-		// unwinding (e.g. right after an interrupt).
+		// unwinding (e.g. right after an interrupt). A compression in flight
+		// owns Agent.History and must not overlap the agent loop either.
 		ctx, runID, ok := m.beginRun()
 		if !ok {
-			m.ShowStatus("A run is already in progress")
+			if m.compressIsActive() {
+				m.ShowStatus("Cannot start a run: compression is in progress")
+			} else {
+				m.ShowStatus("A run is already in progress")
+			}
 			m.autoScroll()
 			return m, nil
 		}
@@ -554,6 +575,23 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case compressDoneMsg:
+		// The compression command reported back: History is settled again, so
+		// the next run may start.
+		m.finishCompress()
+		switch {
+		case errors.Is(msg.err, context.Canceled):
+			m.ShowStatus(fmt.Sprintf("⏹ Compression cancelled — history unchanged (%d messages)", msg.remaining))
+		case msg.err != nil:
+			m.ShowStatus(fmt.Sprintf("Compression failed: %v", msg.err))
+		case msg.compressed:
+			m.ShowStatus(fmt.Sprintf("Compressed: %d messages remaining", msg.remaining))
+		default:
+			m.ShowStatus(fmt.Sprintf("No compression needed (%d messages, below threshold)", msg.remaining))
+		}
+		m.autoScroll()
+		return m, nil
+
 	case modeSwitchMsg:
 		m.registry.Switch()
 		m.agent.Config = m.registry.Current()
@@ -707,12 +745,12 @@ func copyToClipboard(text string) {
 }
 
 // beginRun registers a new agent run and returns its context plus generation
-// id. ok is false when a run is already active, so the caller must not start
-// another one.
+// id. ok is false when a run is already active — or when a manual compression
+// owns Agent.History — so the caller must not start another one.
 func (m *TuiModel) beginRun() (context.Context, uint64, bool) {
 	m.runMu.Lock()
 	defer m.runMu.Unlock()
-	if m.runActive {
+	if m.runActive || m.compressActive {
 		return nil, m.runID, false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -779,6 +817,69 @@ func (m *TuiModel) runIsCurrent(id uint64) bool {
 	m.runMu.Lock()
 	defer m.runMu.Unlock()
 	return m.runActive && id == m.runID
+}
+
+// beginCompress registers a manual compression and returns the context its
+// summarizer call must run under. ok is false when a run is active or another
+// compression is already in flight: either one would touch Agent.History
+// concurrently with the summary.
+func (m *TuiModel) beginCompress() (context.Context, bool) {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	if m.runActive || m.compressActive {
+		return nil, false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.compressActive = true
+	m.compressCancel = cancel
+	m.compressInterrupted = false
+	return ctx, true
+}
+
+// finishCompress clears the compression lifecycle once its command reported
+// back, which is what lets the next run start.
+func (m *TuiModel) finishCompress() {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	m.compressActive = false
+	m.compressCancel = nil
+	m.compressInterrupted = false
+}
+
+// cancelCompress cancels an in-flight compression. It reports whether a live
+// compression was cancelled, and is idempotent so a repeated Ctrl+C keeps
+// showing the cancellation status instead of falling through to quit.
+func (m *TuiModel) cancelCompress() bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	if !m.compressActive || m.compressCancel == nil {
+		return false
+	}
+	if !m.compressInterrupted {
+		m.compressCancel()
+		m.compressInterrupted = true
+	}
+	return true
+}
+
+// compressIsActive reports whether a manual compression is in flight.
+func (m *TuiModel) compressIsActive() bool {
+	m.runMu.Lock()
+	defer m.runMu.Unlock()
+	return m.compressActive
+}
+
+// compressCmd runs the manual compression off the event loop: the summarizer
+// call gets the compression context (so Ctrl+C reaches a stalled request) and
+// reports its outcome back as a message. Update stays the only place model
+// state changes, and the command goroutine is the only reader of Agent.History
+// while it runs, because no agent run can start until the compression is done.
+func (m *TuiModel) compressCmd(ctx context.Context) tea.Cmd {
+	ag := m.agent
+	return func() tea.Msg {
+		compressed, err := ag.CompressHistory(ctx)
+		return compressDoneMsg{compressed: compressed, remaining: len(ag.History), err: err}
+	}
 }
 
 // persistSession writes the conversation to disk. It reuses the resumed or
@@ -949,12 +1050,18 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 			m.ShowStatus("Compression is disabled (CompressionThreshold=0)")
 			return m, nil
 		}
-		if m.agent.CompressHistory() {
-			m.ShowStatus(fmt.Sprintf("Compressed: %d messages remaining", len(m.agent.History)))
-		} else {
-			m.ShowStatus(fmt.Sprintf("No compression needed (%d messages, below threshold)", len(m.agent.History)))
+		// The summarizer runs as a command rather than inline: on the Update
+		// goroutine a stalled provider froze the whole interface, and the
+		// cancel that would end it could never be delivered, because the only
+		// goroutine that reads keys was the one blocked in the request.
+		ctx, ok := m.beginCompress()
+		if !ok {
+			m.ShowStatus("Cannot compress: a compression is already in progress")
+			return m, nil
 		}
-		return m, nil
+		m.ShowStatus("Compressing history… (Ctrl+C to cancel)")
+		m.autoScroll()
+		return m, m.compressCmd(ctx)
 
 	case "/dialog":
 		m.showDialog("Test dialog — choose an option:", []string{

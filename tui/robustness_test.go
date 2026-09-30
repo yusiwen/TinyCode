@@ -253,9 +253,16 @@ func TestCompressWorksWhenIdle(t *testing.T) {
 	if m.runIsActive() {
 		t.Fatal("precondition: no run should be active")
 	}
-	if _, cmd := m.handleCommand("/compress"); cmd != nil {
-		t.Errorf("expected nil cmd from /compress, got %v", cmd)
+	// /compress hands the summarizer to a command; the status message appears
+	// at once and the result arrives with the command's message.
+	_, cmd := m.handleCommand("/compress")
+	if cmd == nil {
+		t.Fatal("expected a command from /compress")
 	}
+	if !strings.Contains(m.statusMsg, "Compressing") {
+		t.Errorf("expected an in-flight status, got %q", m.statusMsg)
+	}
+	m.Update(cmd())
 	if got := atomic.LoadInt32(&summaryCalls); got != 1 {
 		t.Errorf("expected CompressHistory to run once when idle, provider summary calls = %d", got)
 	}
@@ -265,4 +272,13 @@ func TestCompressWorksWhenIdle(t *testing.T) {
 	if !strings.Contains(m.statusMsg, "Compressed") {
 		t.Errorf("expected a 'Compressed' status, got %q", m.statusMsg)
 	}
+	if m.compressIsActive() {
+		t.Error("compression state was not cleared by its own result message")
+	}
+
+	// A second message may start a run again.
+	if _, _, ok := m.beginRun(); !ok {
+		t.Error("a run must be allowed once the compression reported back")
+	}
+	m.finishRun(m.runID)
 }
