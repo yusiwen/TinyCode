@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -292,6 +293,62 @@ func findBrowser() string {
 // copy of the system/Playwright search order cannot drift from this one.
 func FindBrowser() string { return findBrowser() }
 
+// execBrowserArgs builds the argument list for the --dump-dom path. It is pure so
+// the flags can be asserted without launching a browser.
+//
+// Two flags carry findings from CI:
+//
+//   - --single-process is deliberately absent. It used to be added on Linux "for
+//     headless server environments", but Chromium documents it as unsupported and
+//     it aborts while rendering on the GitHub runner's Chromium
+//     ("signal: aborted (core dumped)"), which is how the exec half of the smoke
+//     test died.
+//   - --user-data-dir points at the caller's throwaway directory, so extraction
+//     never touches the user's real profile.
+func execBrowserArgs(profileDir, url, proxyURL, hostRule string) []string {
+	args := []string{
+		"--headless",
+		"--disable-gpu",
+		"--no-sandbox",
+		"--disable-breakpad",
+		"--user-data-dir=" + profileDir,
+	}
+	// Linux-specific flag for headless server environments.
+	if runtime.GOOS == "linux" {
+		args = append(args, "--disable-dev-shm-usage")
+	}
+	// Pin the top-level host to the address this process validated, so Chromium
+	// cannot be rebound to a private address by a second DNS answer. The exec
+	// path cannot intercept requests at all, so this is its only protection for
+	// the initial navigation.
+	if hostRule != "" {
+		args = append(args, "--host-resolver-rules="+hostRule)
+	}
+	if proxyURL != "" {
+		args = appendBrowserProxyArgs(args, proxyURL)
+	}
+	return append(args, "--dump-dom", url)
+}
+
+// lastLines returns at most n non-empty lines from the end of s, with the whole
+// result bounded so a chatty Chromium cannot flood an error message.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	kept := make([]string, 0, n)
+	for i := len(lines) - 1; i >= 0 && len(kept) < n; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		kept = append([]string{line}, kept...)
+	}
+	out := strings.Join(kept, " | ")
+	if len(out) > 500 {
+		out = out[len(out)-500:]
+	}
+	return out
+}
+
 // crawlViaExec uses a Chromium binary with --dump-dom to extract page content.
 func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) {
 	// Chromium performs its own DNS resolution, so validate the target with the
@@ -312,30 +369,31 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	if proxy != nil {
 		defer proxy.Close()
 	}
-
-	args := []string{
-		"--headless",
-		"--disable-gpu",
-		"--no-sandbox",
-	}
-	// Linux-specific flags for headless server environments
-	if runtime.GOOS == "linux" {
-		args = append(args, "--disable-dev-shm-usage", "--single-process")
-	}
-	// Pin the top-level host to the address this process validated, so Chromium
-	// cannot be rebound to a private address by a second DNS answer. The exec
-	// path cannot intercept requests at all, so this is its only protection for
-	// the initial navigation.
-	if rule := browserHostRule(url); rule != "" {
-		args = append(args, "--host-resolver-rules="+rule)
-	}
+	proxyURL := ""
 	if proxy != nil {
-		args = appendBrowserProxyArgs(args, proxy.URL())
+		proxyURL = proxy.URL()
 	}
-	args = append(args, "--dump-dom", url)
+
+	// A throwaway profile: without --user-data-dir Chromium reads and writes the
+	// user's real Chrome profile, which is invasive, fails where that profile is
+	// not writable ("Failed to create headless user data directory container"),
+	// and can collide with a Chrome the user already has open.
+	profileDir, err := os.MkdirTemp("", "tinycode-chrome-*")
+	if err != nil {
+		return "", fmt.Errorf("create a chrome profile dir: %w", err)
+	}
+	defer os.RemoveAll(profileDir)
+
+	args := execBrowserArgs(profileDir, url, proxyURL, browserHostRule(url))
 	cmd := exec.CommandContext(ctx2, browserPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
+		// Chromium only explains itself on stderr, and Output() puts that in the
+		// ExitError. Without it a core dump in CI leaves no trace of the reason.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && len(exit.Stderr) > 0 {
+			return "", fmt.Errorf("exec: %w: %s", err, lastLines(string(exit.Stderr), 3))
+		}
 		return "", fmt.Errorf("exec: %w", err)
 	}
 	if len(output) < 200 {
