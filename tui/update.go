@@ -135,17 +135,22 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		// A pty that was never given a window size reports 0x0, and an empty
+		// layout has no valid geometry at all: keep every dimension at least
+		// one cell (see minTerminalWidth) and never let the viewport or the
+		// input box go negative. For any real terminal this is a no-op.
+		m.width = max(msg.Width, minTerminalWidth)
+		m.height = max(msg.Height, minTerminalHeight)
+		viewportHeight := max(m.height-1-m.input.Height(), 0)
 		if !m.ready {
-			m.vp = viewport.New(msg.Width, msg.Height-1-m.input.Height())
+			m.vp = viewport.New(m.width, viewportHeight)
 			m.vp.YPosition = 0
 			m.ready = true
 		} else {
-			m.vp.Width = msg.Width
-			m.vp.Height = msg.Height - 1 - m.input.Height()
+			m.vp.Width = m.width
+			m.vp.Height = viewportHeight
 		}
-		m.input.SetWidth(msg.Width - 4)
+		m.input.SetWidth(max(m.width-4, 1))
 		return m, nil
 
 	case tea.KeyMsg:

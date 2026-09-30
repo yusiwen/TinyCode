@@ -231,3 +231,21 @@ func TestProgramDriverCommandQuits(t *testing.T) {
 		t.Fatalf("Run() returned an error after /exit: %v", err)
 	}
 }
+
+// TestProgramDriverZeroSizeWindow sends the size a size-less pty reports (0x0)
+// through the real event loop. Run() must return nil: a panic anywhere in the
+// render path comes back as ErrProgramPanic, which is the failure this guards.
+func TestProgramDriverZeroSizeWindow(t *testing.T) {
+	h := startProgram(t, driverModel(t))
+
+	h.send(tea.WindowSizeMsg{Width: 0, Height: 0})
+	// The status bar is appended independently of the grid, so it stays a
+	// stable marker even when the message area is one cell wide.
+	h.waitForOutput("plan")
+
+	h.typeKeys("\x03")
+	h.typeKeys("\x03")
+	if err := h.wait(); err != nil {
+		t.Fatalf("Run() returned an error after a 0x0 resize: %v", err)
+	}
+}

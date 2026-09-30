@@ -48,8 +48,34 @@ type CellGrid struct {
 	row   int // current append row
 }
 
-// NewCellGrid creates a grid with the given width and initial height.
+// Minimum grid geometry. A pty that was never given a window size reports 0x0
+// to TIOCGWINSZ (verified with `stty size` on such a terminal), and a zero-area
+// grid has no cell to write into, so its first Append panicked. Every caller may
+// keep asking for whatever the terminal reported; the grid only refuses to be
+// empty. The floor is one cell on purpose: a larger floor would make the model
+// lay out for a width the renderer does not truncate to, and for a genuinely
+// small terminal that is worse than a cramped but honest frame.
+const (
+	minTerminalWidth  = 1
+	minTerminalHeight = 1
+)
+
+// gridWidth returns the cell width a grid will really have for a requested
+// width, so callers can compare against it without repeating the clamp.
+func gridWidth(width int) int {
+	if width < minTerminalWidth {
+		return minTerminalWidth
+	}
+	return width
+}
+
+// NewCellGrid creates a grid with the given width and initial height. A
+// non-positive dimension is raised to the minimum (see minTerminalWidth).
 func NewCellGrid(width, height int) *CellGrid {
+	width = gridWidth(width)
+	if height < minTerminalHeight {
+		height = minTerminalHeight
+	}
 	return &CellGrid{
 		cells: make([]Cell, width*height),
 		width: width,
