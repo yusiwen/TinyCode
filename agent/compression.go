@@ -53,7 +53,10 @@ func groupEnd(messages []types.Message, idx int) int {
 	return len(messages)
 }
 
-// compressHistory compresses a.History when it exceeds the threshold.
+// compressHistory compresses a.History when it exceeds the threshold. It
+// returns the history unchanged (and nil error) when there is nothing to
+// compress, and a nil history plus the summarizer's error when the provider
+// call fails or the context is cancelled.
 func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) ([]types.Message, error) {
 	if a.CompressionThreshold <= 0 || a.ContextLength <= 0 {
 		return messages, nil
@@ -149,7 +152,10 @@ Provide a concise summary in 3-5 sentences.`, middleText.String())
 	}
 	resp, err := summarizer.Provider.Chat(ctx, summarizerReq)
 	if err != nil {
-		return messages, nil
+		// Report the failure instead of pretending there was nothing to do:
+		// the caller keeps its history either way, but only this way can it
+		// tell a cancelled run (context.Canceled) from a healthy no-op.
+		return nil, err
 	}
 	summary := resp.Content
 	if summary == "" {

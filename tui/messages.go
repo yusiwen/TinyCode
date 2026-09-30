@@ -66,6 +66,15 @@ type sessionTitleMsg struct {
 	Title string
 }
 
+// compressDoneMsg carries the outcome of a manual /compress. The summarizer
+// runs as a command, off the event loop, so the frame keeps rendering and
+// Ctrl+C can cancel the request while it is stalled.
+type compressDoneMsg struct {
+	compressed bool  // whether a.History was replaced
+	remaining  int   // messages left in a.History
+	err        error // summarizer error, context.Canceled when cancelled
+}
+
 // LSPDiagMsg carries a fresh LSP diagnostics snapshot to the TUI. The TUI
 // produces it itself (see TuiModel.lspDiagCmd) from the lsp package's
 // in-memory registry on update ticks and right after a tool result, so the

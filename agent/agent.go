@@ -462,14 +462,23 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	return resp.Content, nil
 }
 
-// CompressHistory compresses a.History in-place using the agent's provider
-// for summarization. Returns true if compression was applied.
-func (a *Agent) CompressHistory() bool {
+// CompressHistory compresses a.History in-place using the agent's provider for
+// summarization. The caller's context bounds the summarization call, so a
+// cancel ends a stalled summarizer instead of waiting for the provider's own
+// timeout (which the Ollama provider does not have).
+//
+// It reports whether the history was replaced and returns the summarizer error,
+// if any. On error or cancellation a.History is left untouched, so a caller can
+// retry with the transcript it already had.
+func (a *Agent) CompressHistory(ctx context.Context) (bool, error) {
 	before := len(a.History)
-	compressed, err := a.compressHistory(context.Background(), a.History)
-	if err != nil || compressed == nil {
-		return false
+	compressed, err := a.compressHistory(ctx, a.History)
+	if err != nil {
+		return false, err
+	}
+	if compressed == nil {
+		return false, nil
 	}
 	a.History = compressed
-	return len(a.History) < before
+	return len(a.History) < before, nil
 }
