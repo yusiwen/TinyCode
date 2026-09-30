@@ -269,6 +269,9 @@ var shotScenarios = []shotScenario{
 	{"markdown", frameSize{80, 24}, frameMarkdown},
 	{"todo", frameSize{80, 24}, frameTodo},
 	{"dialog", frameSize{80, 24}, frameDialog},
+	// The narrow end is worth an image as well as a golden: at 40 columns the
+	// banner art is dropped and every table has to be re-laid out.
+	{"narrow", frameSize{40, 12}, frameMarkdown},
 	{"longoutput", frameSize{120, 40}, frameLongOutput},
 }
 
@@ -288,7 +291,7 @@ func TestFrameScreenshots(t *testing.T) {
 	l := newShotLauncher(t, browserPath)
 	wsURL := l.MustLaunch()
 
-	browser := rod.New().ControlURL(wsURL).MustConnect()
+	browser := connectBrowser(t, wsURL)
 	defer browser.MustClose()
 
 	for _, sc := range shotScenarios {
@@ -538,6 +541,19 @@ func TestBinarySmokeWithoutTerminalSize(t *testing.T) {
 		t.Fatalf("the size-less run panicked\nstream tail:\n%s", tail(got, 800))
 	}
 	smoke.quit(t)
+}
+
+// connectBrowser attaches to a launched browser and bounds every CDP call.
+//
+// rod has no default timeout, so a wedged browser would otherwise hang until
+// the `go test -timeout` fires and the harness reports nothing useful. The
+// version is logged because it is the first thing worth knowing when a gated
+// run behaves differently on another machine.
+func connectBrowser(t *testing.T, wsURL string) *rod.Browser {
+	t.Helper()
+	browser := rod.New().ControlURL(wsURL).Timeout(shotTimeout).MustConnect()
+	t.Logf("connected browser %s", browser.MustVersion())
+	return browser
 }
 
 // newShotLauncher builds the rod launcher used for screenshots: an installed

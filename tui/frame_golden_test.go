@@ -321,22 +321,25 @@ func frameLongOutput(w, h int) *TuiModel {
 	return m
 }
 
-// frameScenario pairs a builder with the geometries it is captured at. Not
-// every scenario needs the widest terminal; the 200x50 goldens are reserved for
-// the two that exercise wrapping and overflow.
+// frameScenario pairs a builder with the geometries it is captured at. Adding a
+// tier is a one-line change: append a frameSize and regenerate with
+// `go test ./tui -run Golden -update`. Not every scenario needs every terminal:
+// 200x50 is reserved for the two that exercise wrapping and overflow, 100x30 for
+// a wide-but-not-extreme layout, and 40x12 for the narrow end where the banner
+// art is dropped and tables must still line up.
 var frameScenarios = []struct {
 	name  string
 	sizes []frameSize
 	build func(w, h int) *TuiModel
 }{
-	{"welcome", []frameSize{{80, 24}, {120, 40}}, frameWelcome},
-	{"markdown", []frameSize{{80, 24}, {120, 40}, {200, 50}}, frameMarkdown},
+	{"welcome", []frameSize{{80, 24}, {120, 40}, {100, 30}}, frameWelcome},
+	{"markdown", []frameSize{{80, 24}, {120, 40}, {200, 50}, {100, 30}, {40, 12}}, frameMarkdown},
 	{"streaming", []frameSize{{80, 24}, {120, 40}}, frameStreaming},
-	{"todo", []frameSize{{80, 24}, {120, 40}}, frameTodo},
-	{"dialog", []frameSize{{80, 24}, {120, 40}}, frameDialog},
-	{"palette", []frameSize{{80, 24}, {120, 40}}, framePalette},
+	{"todo", []frameSize{{80, 24}, {120, 40}, {40, 12}}, frameTodo},
+	{"dialog", []frameSize{{80, 24}, {120, 40}, {40, 12}}, frameDialog},
+	{"palette", []frameSize{{80, 24}, {120, 40}, {40, 12}}, framePalette},
 	{"diagnostics", []frameSize{{80, 24}, {120, 40}}, frameDiagnostics},
-	{"longoutput", []frameSize{{80, 24}, {120, 40}, {200, 50}}, frameLongOutput},
+	{"longoutput", []frameSize{{80, 24}, {120, 40}, {200, 50}, {100, 30}}, frameLongOutput},
 }
 
 // TestGoldenFrames pins the plain-text form of every scenario at every
