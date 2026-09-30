@@ -123,7 +123,10 @@ func openBeneathRoot(rootDir, rel string, flags int, perm os.FileMode) (*os.File
 			openat2Unsupported.Store(true)
 			return nil, errBeneathUnsupported
 		case errors.Is(err, unix.EXDEV):
-			return nil, fmt.Errorf("path %q escapes the sandbox root %q", rel, rootDir)
+			// Keep the kernel's errno in the chain: the containment refusal is
+			// documented as EXDEV (see openSandboxed) and callers branch on it,
+			// so the descriptive text is a prefix, not a replacement.
+			return nil, fmt.Errorf("path %q escapes the sandbox root %q: %w", rel, rootDir, err)
 		default:
 			return nil, &os.PathError{Op: "openat2", Path: filepath.Join(rootDir, rel), Err: err}
 		}
