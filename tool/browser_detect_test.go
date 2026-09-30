@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -302,5 +303,66 @@ func TestBrowserContainerFlags(t *testing.T) {
 		if !slices.Contains(args, want) {
 			t.Errorf("args are missing %s: %q", want, args)
 		}
+	}
+}
+
+// TestExecBrowserArgs pins the --dump-dom argument list. Two of the assertions
+// are findings from the browser job: --single-process aborts Chromium on the
+// runner, and the throwaway profile is what keeps extraction out of the user's
+// real profile (and working where that profile is not writable).
+func TestExecBrowserArgs(t *testing.T) {
+	args := execBrowserArgs(
+		"/tmp/tinycode-chrome-1",
+		"http://example.com/page",
+		"http://127.0.0.1:9",
+		"MAP example.com 203.0.113.1",
+	)
+
+	for _, want := range []string{
+		"--headless",
+		"--disable-gpu",
+		"--no-sandbox",
+		"--disable-breakpad",
+		"--user-data-dir=/tmp/tinycode-chrome-1",
+		"--host-resolver-rules=MAP example.com 203.0.113.1",
+		"--proxy-server=http://127.0.0.1:9",
+	} {
+		if !slices.Contains(args, want) {
+			t.Errorf("args are missing %q: %q", want, args)
+		}
+	}
+
+	// --single-process is documented as unsupported and aborts Chromium while
+	// rendering, which is how the exec half of the smoke test died.
+	if slices.Contains(args, "--single-process") {
+		t.Errorf("args contain --single-process: %q", args)
+	}
+
+	// Chromium expects the URL last, behind --dump-dom.
+	if len(args) < 2 || args[len(args)-2] != "--dump-dom" || args[len(args)-1] != "http://example.com/page" {
+		t.Errorf("args do not end with --dump-dom <url>: %q", args)
+	}
+
+	// No proxy and no rule: neither flag may appear out of nowhere.
+	bare := execBrowserArgs("/tmp/p", "http://example.com", "", "")
+	for _, arg := range bare {
+		if strings.HasPrefix(arg, "--proxy-server=") || strings.HasPrefix(arg, "--host-resolver-rules=") {
+			t.Errorf("bare args carry %q, want neither proxy nor pinning flags: %q", arg, bare)
+		}
+	}
+}
+
+// TestLastLines covers the bounded stderr tail that makes a Chromium abort
+// diagnosable in CI.
+func TestLastLines(t *testing.T) {
+	if got := lastLines("a\n\nb\nc\n", 2); got != "b | c" {
+		t.Errorf("lastLines = %q, want %q", got, "b | c")
+	}
+	if got := lastLines("", 3); got != "" {
+		t.Errorf("lastLines of an empty string = %q, want empty", got)
+	}
+	long := strings.Repeat("x", 900)
+	if got := lastLines(long, 1); len(got) != 500 {
+		t.Errorf("lastLines kept %d bytes, want it capped at 500", len(got))
 	}
 }
