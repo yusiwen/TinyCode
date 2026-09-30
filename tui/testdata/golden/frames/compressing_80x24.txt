@@ -1,0 +1,24 @@
+> keep going with the refactor
+
+
+    History is close to the context limit.
+    [ Copy ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┃   1 Type your request (Ctrl+J for newline)...
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m  │ Compressing history… (Ctrl+C to cancel)
