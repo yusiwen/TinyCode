@@ -304,6 +304,22 @@ func frameDiagnostics(w, h int) *TuiModel {
 	return m
 }
 
+// frameCompressing is /compress in flight (issue #3): the summarizer runs off
+// the event loop, so the transcript stays interactive and the only sign of work
+// is the cancellable status message in the status bar.
+func frameCompressing(w, h int) *TuiModel {
+	m := frameModel(w, h)
+	m.messages = []chatMessage{
+		{Role: "user", Content: "keep going with the refactor"},
+		{Role: "assistant", Content: "History is close to the context limit.", Blocks: parseMarkdown("History is close to the context limit.")},
+	}
+	// The state beginCompress() holds while the summarizer runs; a run cannot
+	// start until it clears.
+	m.compressActive = true
+	m.ShowStatus("Compressing history… (Ctrl+C to cancel)")
+	return m
+}
+
 // frameLongOutput is the overflow case: more answer text than the viewport can
 // hold, so the frame must show the tail without corrupting the layout.
 func frameLongOutput(w, h int) *TuiModel {
@@ -339,6 +355,7 @@ var frameScenarios = []struct {
 	{"dialog", []frameSize{{80, 24}, {120, 40}, {40, 12}}, frameDialog},
 	{"palette", []frameSize{{80, 24}, {120, 40}, {40, 12}}, framePalette},
 	{"diagnostics", []frameSize{{80, 24}, {120, 40}}, frameDiagnostics},
+	{"compressing", []frameSize{{80, 24}, {40, 12}}, frameCompressing},
 	{"longoutput", []frameSize{{80, 24}, {120, 40}, {200, 50}, {100, 30}}, frameLongOutput},
 }
 

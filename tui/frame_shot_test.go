@@ -273,6 +273,13 @@ var shotScenarios = []shotScenario{
 	// banner art is dropped and every table has to be re-laid out.
 	{"narrow", frameSize{40, 12}, frameMarkdown},
 	{"longoutput", frameSize{120, 40}, frameLongOutput},
+	// How the in-flight compression status is styled and laid out. The golden
+	// pins its text; the PNGs show the styling. Neither is a faithful narrow
+	// terminal yet: the capture is full-page, so a status bar wider than the
+	// geometry is rendered in full instead of truncated at the column count
+	// (issue #25).
+	{"compressing", frameSize{80, 24}, frameCompressing},
+	{"compressing-narrow", frameSize{40, 12}, frameCompressing},
 }
 
 // TestFrameScreenshots renders each scenario and writes a PNG next to the
