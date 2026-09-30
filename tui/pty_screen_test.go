@@ -9,7 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/creack/pty"
-	"github.com/go-rod/rod"
 	"github.com/mattn/go-runewidth"
 	"github.com/yusiwen/tinycode/tool"
 )
@@ -557,7 +556,7 @@ func TestBinaryScreenshotFromStream(t *testing.T) {
 	}
 
 	launcher := newShotLauncher(t, browserPath)
-	browser := rod.New().ControlURL(launcher.MustLaunch()).MustConnect()
+	browser := connectBrowser(t, launcher.MustLaunch())
 	defer browser.MustClose()
 
 	png := capturePNG(t, browser, shotDir(t), "tinycode-pty-welcome-80x24",

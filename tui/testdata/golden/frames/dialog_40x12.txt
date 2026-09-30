@@ -1,0 +1,16 @@
+> clean the build directory
+
+
+  → Calling tools:
+    • bash: rm -rf ../build
+
+    I need to remove files outside the
+    sandbox root.
+    [ Copy ]
+
+ Allow write outside the project root? ../build
+> [1] Allow once
+  [2] Allow for this session
+  [3] Deny
+↑↓ navigate · Enter select · 1-9 shortcut · Esc cancel
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m

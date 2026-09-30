@@ -1,0 +1,12 @@
+      • Do not retry a 4xx: the request
+      itself is wrong.
+      • 中文与 emoji 的宽度也要对齐 🙂
+
+    │ attempt │ delay │
+    ├─────────┼───────┤
+    │ 1       │ 250ms │
+    │ 2       │ 500ms │
+
+    [ Copy ]
+┃   1 Type your request (Ctrl+J for
+⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m
