@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -55,7 +56,14 @@ func TestOpenBeneathRootContainment(t *testing.T) {
 	if err := read("escape.txt"); err == nil {
 		t.Error("an absolute symlink pointing outside the root was opened")
 	} else if !isEXDEVOrNotFound(err) {
-		t.Errorf("escaping symlink error = %v, want EXDEV", err)
+		t.Errorf("escaping symlink error = %v, want it to wrap EXDEV", err)
+	} else if errors.Is(err, unix.EXDEV) {
+		// Both halves of the contract: the errno stays in the chain (the doc
+		// comment on openSandboxed promises EXDEV) and the message still names
+		// the path and the root, because that text is what reaches the user.
+		if !strings.Contains(err.Error(), "escape.txt") || !strings.Contains(err.Error(), root) {
+			t.Errorf("escaping symlink error = %v, want it to name the path and the root", err)
+		}
 	}
 	if err := read("escape-dir/secret.txt"); err == nil {
 		t.Error("a path through an escaping directory link was opened")
