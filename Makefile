@@ -61,13 +61,14 @@ test-browser:
 	BROWSER_TEST=1 go test -count=1 -timeout 5m -run TestBrowserSmokeThroughProxy ./tool/
 
 # On-demand visual check for the TUI: renders the committed frame scenarios to
-# PNGs (Chromium) and runs the built binary on a real 80x24 PTY, then asserts
-# the stream carried colour. Needs `bin/tinycode` (built here), a Chromium
-# (system install or the Playwright cache) and a PTY; everything is skipped
-# without TUI_SHOT=1, so an ordinary `make test` needs neither. PNGs land in
-# TUI_SHOT_DIR (default /tmp) for a reviewer or an agent to open.
+# PNGs (Chromium), runs the built binary on a real 80x24 PTY and again on a PTY
+# whose window size was never set (the 0x0 report), then asserts both streams
+# painted and both runs quit cleanly. Needs `bin/tinycode` (built here), a
+# Chromium (system install or the Playwright cache) and a PTY; everything is
+# skipped without TUI_SHOT=1, so an ordinary `make test` needs neither. PNGs
+# land in TUI_SHOT_DIR (default /tmp) for a reviewer or an agent to open.
 test-tui-visual: build
-	TUI_SHOT=1 go test -count=1 -timeout 5m -run 'TestFrameScreenshots|TestBinarySmokeUnderPTY' ./tui/
+	TUI_SHOT=1 go test -count=1 -timeout 5m -run 'TestFrameScreenshots|TestBinarySmoke' ./tui/
 
 # Blocking lint: `go vet` failures fail the build.
 lint:

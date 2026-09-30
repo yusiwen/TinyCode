@@ -34,8 +34,9 @@ func (m *TuiModel) View() string {
 		}
 	}
 
-	if m.grid == nil || m.grid.width != m.vp.Width {
-		// Resize: full rebuild
+	if m.grid == nil || m.grid.width != gridWidth(m.vp.Width) {
+		// Resize: full rebuild. Compare against the clamped width: comparing
+		// against a raw 0 would rebuild every frame for a zero-width viewport.
 		m.grid = NewCellGrid(m.vp.Width, 10)
 		m.lineSrcs = nil
 		m.MarkAllDirty()

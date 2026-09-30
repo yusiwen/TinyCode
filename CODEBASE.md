@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 640 test functions + 9 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 645 test functions + 9 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -381,7 +381,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`Cell`** struct: `Rune rune`, `Style CellStyle`, `Width int` (1 or 2 for CJK)
 - **`CellChunk`** struct: `Text string`, `Style CellStyle`
 - **`CellGrid`** — virtual framebuffer:
-  - `NewCellGrid(width, height int) *CellGrid`
+  - `NewCellGrid(width, height int) *CellGrid` — raises a non-positive dimension to one cell (`minTerminalWidth`), so a grid is never zero-area; `gridWidth(width)` exposes the same clamp for callers that compare against it (see `view.go`)
   - `Append(runes []rune, style)`, `AppendChunk(chunk)`, `AppendChunks(chunks)`, `AppendInline(chunks)`
   - `Render() string` — ANSI output, groups same-style runs; runs carrying `Style.Link` are wrapped by `hyperlink()`
   - `Fill(startRow, startCol, endRow, endCol, style)` — selection highlight
@@ -418,6 +418,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 ### `update.go`
 - **`(*TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd)`** — central event loop
 - Handles: mouse (scroll, click, char-level selection), key presses, window resize, stream messages, tool calls, LSP diagnostics, todo updates, permission dialogs
+- `tea.WindowSizeMsg` clamps every dimension to at least one cell (`minTerminalWidth`/`minTerminalHeight`) and never lets the viewport height or the input width go negative. A pty that was never given a window size reports `0 0`, and a zero-area `CellGrid` used to panic on its first `Append`; for a real terminal the clamp is a no-op, and the floor is one cell rather than a comfortable layout size so a genuinely narrow terminal is not laid out wider than the renderer's truncation width.
 - 15+ slash commands: `/exit`, `/compress`, `/help`, `/verbose`, `/fork`, `/session`, `/thinking`, `/model`, `/sessions`, `/theme`, `/diagnostics`, `/skill`, `/plan`, `/build`, `/dialog`
 - `beginRun()`/`finishRun(id)`/`cancelRun()` — one run at a time; Ctrl+C cancels the run's context (and any pending permission) while the status stays streaming until that run's terminal message; every stream message carries a `RunID` and superseded runs are dropped
 - `runAgent(ctx, id, prompt)` — sets StreamCallbacks, runs agent in goroutine, stamps all messages with the run id
@@ -439,7 +440,8 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - `frame_golden_test.go` — makes a frame visible. `withTrueColor` pins the lipgloss profile to TrueColor and empties `styleCache` for the duration of a render (without it a non-TTY stdout renders pure ASCII and every style vanishes); `normalizeFrame` strips CSI **and** OSC escapes, trims trailing blanks per line and drops trailing blank lines; `assertGolden` compares against `testdata/golden/` and rewrites only under `-update`; `frameDiff` reports the first differing line, one context line and the first differing column. The scenario builders (`frameModel`, `frameWelcome`, `frameMarkdown`, `frameStreaming`, `frameTodo`, `frameDialog`, `framePalette`, `frameDiagnostics`, `frameLongOutput`) leave `sessionStart` at the zero time, so the status bar's session clock renders a constant (saturated) duration instead of the wall clock.
 - `tui/testdata/golden/frames/*.txt` — 18 plain-text frames (8 scenarios at 80x24 and 120x40, plus 200x50 for `markdown` and `longoutput`); `tui/testdata/golden/ansi/markdown_80x24.ansi` — one raw ANSI frame, so colour, bold, underline and OSC 8 links stay diffable. Tests: `TestGoldenFrames`, `TestGoldenFrameANSI` (every frame must still carry SGR) and `TestFrameScenariosRenderTwice`. Regenerate with `go test ./tui -run Golden -update`.
 - `program_driver_test.go` — runs the real `tea.Program` over `tea.WithInput(io.Pipe)` and `tea.WithOutput(lockedBuffer)`: `TestProgramDriverPaintsAndQuits`, `TestProgramDriverResizeStorm`, `TestProgramDriverCommandQuits`. Race-safe by construction: `Send` blocks until the event loop receives, messages are processed in order, and model fields are read only after `Run()` returns.
-- `frame_shot_test.go` — gated by `TUI_SHOT=1` (`make test-tui-visual`). `TestFrameScreenshots` converts a frame to HTML (`frameToHTML`, a small SGR→CSS renderer) and screenshots it at 2x in the Chromium that `tool.FindBrowser` locates; `TestBinarySmokeUnderPTY` starts `bin/tinycode` on an 80x24 PTY (`creack/pty`), waits for the startup frame, asserts the stream carried escapes, and quits with the double Ctrl+C. Both skip without the env var.
+- `frame_shot_test.go` — gated by `TUI_SHOT=1` (`make test-tui-visual`). `TestFrameScreenshots` converts a frame to HTML (`frameToHTML`, a small SGR→CSS renderer) and screenshots it at 2x in the Chromium that `tool.FindBrowser` locates; `TestBinarySmokeUnderPTY` starts `bin/tinycode` on an 80x24 PTY (`creack/pty`), waits for the startup frame, asserts the stream carried escapes, and quits with the double Ctrl+C. `TestBinarySmokeWithoutTerminalSize` runs the same binary on a PTY started without a window size (TIOCGWINSZ answers `0 0`), the outer-layer guard for the geometry clamp. `assertBinaryFresh` fails when `bin/tinycode` is older than the newest `.go` file, because a stale binary makes these smoke tests lie in both directions. All of them skip without the env var.
+- `geometry_test.go` — the degenerate-geometry guards: `TestZeroSizeWindowKeepsGeometryUsable` drives the real resize handler with `0x0`, `0x24`, `80x0`, `-1x-1`, `1x1`, `2x1` and `4x3` (welcome banner and conversation) and requires a panic-free frame with `width/height >= 1`, `vp.Height >= 0` and a positive input width; `TestCellGridRefusesZeroArea` pins the `NewCellGrid` clamp; `TestZeroWidthWindowKeepsIncrementalRender` proves a zero-width viewport does not force a rebuild every frame.
 
 ### `theme.go`
 - **`Theme`** struct: `Name` + 23 color fields (CellGrid + Lipgloss + welcome-banner colors)
@@ -516,7 +518,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **640 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
+- **645 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; it skips without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium and starts `bin/tinycode` on a real 80x24 PTY, asserting the stream carried colour and that the binary quits on the documented double Ctrl+C. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -529,7 +531,7 @@ User Input (textarea / CLI arg)
 - TUI: CellGrid roundtrip, keyboard, mouse, streaming, selection, todo rendering — plus, since the frame work landed, three layers that can actually see the frame:
   - `TestGoldenFrames` (18 plain-text frames: 8 scenarios at 80x24/120x40, plus 200x50 for wrapping and overflow) and `TestGoldenFrameANSI` (one raw ANSI frame) in `tui/frame_golden_test.go`, regenerated with `go test ./tui -run Golden -update`. Rendering is pinned to a TrueColor profile for the duration of a frame render and the `CellStyle` → lipgloss style cache is emptied, because without that lipgloss sees a non-TTY stdout and every style silently disappears. Each frame asserts it still carries SGR sequences, and every scenario is rendered twice and compared so the incremental grid path cannot drift.
   - `tui/program_driver_test.go` drives the real `tea.Program` with `tea.WithInput(io.Pipe)` / `tea.WithOutput(buffer)`: typing, the double Ctrl+C quit, 25 resizes and a typed `/exit`, with model fields read only after `Run()` returns.
-  - `tui/frame_shot_test.go` (gated) renders the scenarios to PNG and smokes the built binary on a PTY. The status bar's session clock is pinned by a zero `sessionStart` in the scenario builders — `time.Since(zero)` saturates — so goldens and screenshots show a constant duration instead of the wall clock.
+  - `tui/frame_shot_test.go` (gated) renders the scenarios to PNG and smokes the built binary on a PTY — twice: at 80x24 and on a PTY whose window size was never set (`0 0`), which is the regression guard for `tui/geometry_test.go`'s clamp. The status bar's session clock is pinned by a zero `sessionStart` in the scenario builders — `time.Since(zero)` saturates — so goldens and screenshots show a constant duration instead of the wall clock.
 - Edit: 14 tests covering 7 fuzzy strategies
 - Apply patch: 9 tests + sandbox gate tests
 - Sandbox: symlink escape, permission queue, "allow once" semantics, process-group kill
