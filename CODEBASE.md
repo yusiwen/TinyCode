@@ -540,6 +540,30 @@ User Input (textarea / CLI arg)
 - Sandbox: symlink escape, permission queue, "allow once" semantics, process-group kill
 - SSRF: redirect blocking, DNS pinning, non-public IP ranges (network-free)
 
+### Harness rules (tests that drive an external process)
+
+The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `tui/pty_screen_test.go` or any new gated harness; `AGENTS.md` carries the short form, this is the design record they were derived from (the 5-minute `tui-visual` hang on `master`, run `36731349829`):
+
+- **One budget per stage, named in the failure.** `runStage` runs a stage in its own goroutine with `shotTimeout` and returns an error the caller labels (`screenshot todo: …`). Without it a wedged CDP (Chrome DevTools Protocol) call reports nothing until `go test -timeout` kills the package, and the goroutine dump is the only evidence. `TestRunStageReportsTimeout` pins this and needs no browser, so it also runs in the `ci` job.
+- **No panicking helpers inside a stage.** `capturePNG` uses rod's error-returning API (`Page`/`SetViewport`/`Navigate`/`WaitLoad`/`Screenshot`), never `Must*`: a panic in a subtest goroutine skips the deferred `browser.Close()`, and the deferred `t.Cleanup` that follows then blocks.
+- **Cleanup kills before it waits.** `launcher.Cleanup` only waits on `<-l.exit`, which never closes if the browser was never closed — that is what turned a failed screenshot into the package timeout. `cleanupLauncher` calls `Kill()` first and bounds the wait; `TestCleanupLauncherDoesNotWaitForever` pins it (the ~1 s inside is `launcher.Kill`'s own settle delay).
+- **A deadline belongs to one operation, not to a client.** `rod.Browser.Timeout` installs one expiring context, and `PageFromTarget` derives every page context from it (`context.WithCancel(b.ctx)`), so the deadline installed at connect covered all eight screenshots and expired mid-run on a loaded runner; each stage now takes a fresh `browser.Timeout(shotTimeout)` clone and the connect is bounded separately. `agent/provider_ollama.go` (#1) is the same mistake in the other direction — no request bound at all — while `provider_openai.go`'s 120 s client timeout is the blunt version of it: that one bounds a healthy long generation too.
+- **Timing knobs are injectable.** `shotTimeout` is a variable, so `shotTimeout = 1s` reproduced the CI hang locally within seconds and `1ms` proved the failure is clean, fast and attributed. A gated harness that cannot be starved on demand can only be debugged on CI.
+- **The golden frame is the assertion; the PNG supports it.** A screenshot is evidence only when its dimensions are pinned to the geometry it claims to show: the full-page capture widens to the longest line instead (1912 px for both a 40- and an 80-column scenario, issue #25), so the same scenario's golden and PNG must come from one builder and the artifact's size must be asserted.
+
+### How these numbers are measured
+
+Counts in this document are produced by these commands at the commit they describe; if one changes, change the command's output here in the same PR:
+
+```bash
+grep -rn '^func Test' --include=*_test.go . | wc -l    # 667 test functions
+grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 9 fuzz targets
+ls tui/testdata/golden/frames/*.txt | wc -l            # 27 plain-text frames
+ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
+```
+
+They drifted by eight (654 documented, 662 actual) before this rule existed, which is why the command sits next to the number rather than in a reviewer's head.
+
 ## Build & Run
 
 ```bash
@@ -584,6 +608,12 @@ make run PROMPT="..."  # one-shot mode
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the linux-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`).
 - `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
 - Toolchain: CI, the Nix flake (`pkgs.go_1_27`) and the `go 1.27` directive in `go.mod` are all on the 1.27 line, so `gofmt`/`go vet` behave identically in every environment.
+- **Annotation baseline, and why the gate is "no new annotations" rather than zero:** every job carries one `ubuntu-latest` migration notice from the runner image, and `browser` + `tui-visual` additionally carry `browser-actions/setup-chrome@v1`'s Node 20 deprecation warning, because the action targets Node 20 while the runner forces Node 24. Both are platform notices no change in this repository can remove, so a PR is clean when its counts match the baseline (verified on master `a4f815b` and on the previous green run):
+
+  ```bash
+  gh api "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/commits/$SHA/check-runs?per_page=50" \
+    --jq '.check_runs[] | "\(.name): \(.conclusion) annotations=\(.output.annotations_count)"'
+  ```
 
 ## Dev Environment
 
