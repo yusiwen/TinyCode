@@ -17,6 +17,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/launcher/flags"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/yusiwen/tinycode/tool"
 )
 
@@ -33,8 +34,10 @@ import (
 // shotEnv gates the visual harness.
 const shotEnv = "TUI_SHOT"
 
-// shotTimeout bounds every wait in the visual harness.
-const shotTimeout = 20 * time.Second
+// shotTimeout bounds every wait in the visual harness: one connect, one
+// screenshot stage, one PTY poll. It is a variable so the tests that exercise
+// the bound itself can lower it.
+var shotTimeout = 20 * time.Second
 
 func requireShot(t *testing.T) {
 	t.Helper()
@@ -299,7 +302,13 @@ func TestFrameScreenshots(t *testing.T) {
 	wsURL := l.MustLaunch()
 
 	browser := connectBrowser(t, wsURL)
-	defer browser.MustClose()
+	defer func() {
+		if err := runStage(func() error {
+			return browser.Timeout(shotTimeout).Close()
+		}); err != nil {
+			t.Errorf("close browser: %v", err)
+		}
+	}()
 
 	for _, sc := range shotScenarios {
 		t.Run(sc.name, func(t *testing.T) {
@@ -308,43 +317,147 @@ func TestFrameScreenshots(t *testing.T) {
 				frame = sc.build(sc.size.W, sc.size.H).View()
 			})
 			name := fmt.Sprintf("tinycode-frame-%s-%s", sc.name, sc.size)
-			capturePNG(t, browser, dir, name, frameToHTML(frame), sc.size)
+			// A fresh budget per scenario: one shared deadline over the whole
+			// run expired under a slow runner and took the job down (see
+			// connectBrowser).
+			err := runStage(func() error {
+				return capturePNG(browser.Timeout(shotTimeout), dir, name, frameToHTML(frame), sc.size)
+			})
+			if err != nil {
+				t.Fatalf("screenshot %s: %v", sc.name, err)
+			}
 		})
 	}
 }
 
-// capturePNG writes an HTML document and its screenshot, and returns the PNG
-// path. The size floor catches "the page rendered empty" without a pixel
-// comparison; the PNG magic catches a browser that returned something else.
-func capturePNG(t *testing.T, browser *rod.Browser, dir, name, document string, size frameSize) string {
-	t.Helper()
+// runStage runs one harness stage under its own budget. rod's calls honor their
+// context, but a wedged browser can still block one forever -- on CI the whole
+// job hung inside Browser.MustPage until the 5m package timeout -- so every
+// stage is bounded here and the caller names it in the failure. A stage that
+// runs out of budget keeps its goroutine (it is blocked inside rod); the error
+// says so, because the failure is reported rather than retried.
+func runStage(fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(shotTimeout):
+		return fmt.Errorf("no result within %s (a wedged CDP call; the stage goroutine stays blocked)", shotTimeout)
+	}
+}
 
+// cleanupLauncher ends a launched browser without ever waiting forever.
+// launcher.Cleanup only waits for the process to exit, so any panic that skips
+// the deferred browser close (a panicking subtest is enough) left it blocked on
+// <-l.exit and turned a failed screenshot into a five-minute package timeout;
+// killing the process group first is what makes that wait terminate.
+func cleanupLauncher(l *launcher.Launcher, budget time.Duration) {
+	l.Kill()
+
+	done := make(chan struct{})
+	go func() {
+		l.Cleanup()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(budget):
+	}
+}
+
+// TestRunStageReportsTimeout pins the stage bound: a stage that never returns
+// must be reported instead of hanging until the package timeout, which is how
+// the CI job died. The blocked goroutine is deliberately left behind, exactly
+// as a wedged CDP call would be. Ungated: it needs no browser.
+func TestRunStageReportsTimeout(t *testing.T) {
+	previous := shotTimeout
+	shotTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { shotTimeout = previous })
+
+	blocked := make(chan struct{})
+	defer close(blocked)
+
+	start := time.Now()
+	err := runStage(func() error {
+		<-blocked
+		return nil
+	})
+	if err == nil {
+		t.Fatal("runStage reported success for a stage that never finished")
+	}
+	if !strings.Contains(err.Error(), "wedged CDP call") {
+		t.Errorf("runStage error does not explain the timeout: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("runStage took %s to report the timeout", elapsed)
+	}
+}
+
+// TestCleanupLauncherDoesNotWaitForever pins the cleanup bound on the exact
+// state CI hung in: a launcher with no process to wait for. launcher.Cleanup on
+// its own blocks on <-l.exit forever. Ungated: it needs no browser. The ~1s
+// inside is launcher.Kill's own settle delay before it kills the group.
+func TestCleanupLauncherDoesNotWaitForever(t *testing.T) {
+	l := launcher.New().UserDataDir(t.TempDir())
+
+	start := time.Now()
+	cleanupLauncher(l, 100*time.Millisecond)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("cleanupLauncher took %s, want it bounded by its budget", elapsed)
+	}
+}
+
+// capturePNG writes an HTML document and its screenshot, and returns the PNG
+// path. It returns errors instead of panicking: a panic raised inside a subtest
+// goroutine skips the deferred browser close and the test result is reported by
+// the runtime instead. The size floor catches "the page rendered empty" without
+// a pixel comparison; the PNG magic catches a browser that returned something
+// else.
+func capturePNG(browser *rod.Browser, dir, name, document string, size frameSize) error {
 	htmlPath := filepath.Join(dir, name+".html")
 	pngPath := filepath.Join(dir, name+".png")
 	if err := os.WriteFile(htmlPath, []byte(document), 0o644); err != nil {
-		t.Fatalf("write %s: %v", htmlPath, err)
+		return fmt.Errorf("write %s: %w", htmlPath, err)
 	}
 
-	page := browser.MustPage()
-	defer page.MustClose()
+	page, err := browser.Page(proto.TargetCreateTarget{})
+	if err != nil {
+		return fmt.Errorf("create page: %w", err)
+	}
+	defer func() { _ = page.Close() }()
+
 	// 2x device pixel ratio: the text stays readable when the image is zoomed
 	// in to inspect a column alignment.
-	page.MustSetViewport(size.W*9, size.H*19, 2, false)
-	page.MustNavigate("file://" + htmlPath)
-	page.MustWaitLoad()
+	if err := page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+		Width:             size.W * 9,
+		Height:            size.H * 19,
+		DeviceScaleFactor: 2,
+		Mobile:            false,
+	}); err != nil {
+		return fmt.Errorf("set viewport: %w", err)
+	}
+	if err := page.Navigate("file://" + htmlPath); err != nil {
+		return fmt.Errorf("navigate: %w", err)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return fmt.Errorf("wait for load: %w", err)
+	}
 
-	shot := page.MustScreenshotFullPage()
+	shot, err := page.Screenshot(true, nil)
+	if err != nil {
+		return fmt.Errorf("capture: %w", err)
+	}
 	if err := os.WriteFile(pngPath, shot, 0o644); err != nil {
-		t.Fatalf("write %s: %v", pngPath, err)
+		return fmt.Errorf("write %s: %w", pngPath, err)
 	}
 	if len(shot) < 10_000 {
-		t.Fatalf("%s is only %d bytes: the page probably rendered empty", pngPath, len(shot))
+		return fmt.Errorf("%s is only %d bytes: the page probably rendered empty", pngPath, len(shot))
 	}
 	if !bytes.HasPrefix(shot, []byte("\x89PNG\r\n\x1a\n")) {
-		t.Fatalf("%s is not a PNG", pngPath)
+		return fmt.Errorf("%s is not a PNG", pngPath)
 	}
-	t.Logf("wrote %s (%d bytes)", pngPath, len(shot))
-	return pngPath
+	return nil
 }
 
 // --- Real binary under a PTY ---------------------------------------------
@@ -556,10 +669,23 @@ func TestBinarySmokeWithoutTerminalSize(t *testing.T) {
 // the `go test -timeout` fires and the harness reports nothing useful. The
 // version is logged because it is the first thing worth knowing when a gated
 // run behaves differently on another machine.
+// connectBrowser connects to the launcher's browser. The connect itself is
+// bounded, but the browser is handed back without that deadline: Timeout()
+// installs a single context deadline, and one installed at connect time covers
+// every later screenshot too, so on a slow runner it expired mid-run and a
+// screenshot call panicked with a context error that had nothing to do with the
+// frame. Each stage takes its own fresh budget instead.
 func connectBrowser(t *testing.T, wsURL string) *rod.Browser {
 	t.Helper()
-	browser := rod.New().ControlURL(wsURL).Timeout(shotTimeout).MustConnect()
-	t.Logf("connected browser %s", browser.MustVersion())
+	browser := rod.New().ControlURL(wsURL)
+	if err := runStage(browser.Connect); err != nil {
+		t.Fatalf("connect to %s: %v", wsURL, err)
+	}
+	version, err := browser.Version()
+	if err != nil {
+		t.Fatalf("read browser version: %v", err)
+	}
+	t.Logf("connected browser %s", version.Product)
 	return browser
 }
 
@@ -575,7 +701,7 @@ func newShotLauncher(t *testing.T, browserPath string) *launcher.Launcher {
 		Append("disable-gpu").
 		Append("disable-dev-shm-usage").
 		Append("hide-scrollbars")
-	t.Cleanup(l.Cleanup)
+	t.Cleanup(func() { cleanupLauncher(l, shotTimeout) })
 	return l
 }
 
