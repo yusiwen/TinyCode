@@ -502,14 +502,10 @@ func tryBrowser(ctx context.Context, urlStr string) string {
 		return ""
 	}
 
-	// Find available browser
-	browserPath := ""
-	for _, name := range browserCommands {
-		if path, err := exec.LookPath(name); err == nil {
-			browserPath = path
-			break
-		}
-	}
+	// Find available browser through the shared discovery: it honours
+	// CHROME_PATH, probes each candidate and knows the Playwright cache, none of
+	// which a bare LookPath loop over browserCommands can do.
+	browserPath := findBrowser()
 	if browserPath == "" {
 		return ""
 	}

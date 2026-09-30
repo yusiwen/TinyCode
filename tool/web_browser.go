@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-rod/rod"
@@ -179,21 +180,110 @@ func playwrightBrowserRelPaths(dir, goos string) []string {
 	}
 }
 
-// findBrowser returns the path to a usable Chromium/Chrome binary,
-// or tries rod's auto-download as the final fallback.
-// Returns empty string if nothing can be found.
-func findBrowser() string {
-	// 1. System-installed browsers
+// browserEnvOverrides are the environment variables that point the tools at a
+// specific browser. They win over every guess below: browser-actions/setup-chrome
+// publishes the binary it installed through its `chrome-path` output, so a
+// workflow sets CHROME_PATH and discovery does not have to reason about PATH
+// order or about which of several installed builds actually works.
+var browserEnvOverrides = []string{"CHROME_PATH", "CHROME"}
+
+// browserProbeTimeout bounds the `--version` probe. It is generous on purpose: a
+// real browser answers in a fraction of a second, but a loaded runner can be
+// much slower, and rejecting a working browser would be worse than waiting. A
+// distro package whose launcher cannot reach its daemon (the snap shim on GitHub
+// runners) does not fail fast at all - it hangs, which is how the browser smoke
+// test spent 35 s inside the extractor before being killed - so the bound is what
+// keeps that failure to one timeout per process (the answer is memoized).
+var browserProbeTimeout = 5 * time.Second
+
+var (
+	browserProbeMu    sync.Mutex
+	browserProbeCache = map[string]bool{}
+)
+
+// browserUsable reports whether the binary answers `--version` within
+// browserProbeTimeout. The answer is memoized because discovery runs on every
+// extraction and cannot change while the process lives.
+func browserUsable(path string) bool {
+	browserProbeMu.Lock()
+	if ok, hit := browserProbeCache[path]; hit {
+		browserProbeMu.Unlock()
+		return ok
+	}
+	browserProbeMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), browserProbeTimeout)
+	defer cancel()
+	ok := exec.CommandContext(ctx, path, "--version").Run() == nil
+
+	browserProbeMu.Lock()
+	browserProbeCache[path] = ok
+	browserProbeMu.Unlock()
+	return ok
+}
+
+// browserCandidates returns the paths to try, in preference order: an explicit
+// override, then the system commands, then the Playwright cache. Repeated paths
+// are dropped so one binary is probed once.
+func browserCandidates(getenv func(string) string, lookPath func(string) (string, error), playwright func() string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(path string) {
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+
+	for _, name := range browserEnvOverrides {
+		add(getenv(name))
+	}
 	for _, name := range browserCommands {
-		if path, err := exec.LookPath(name); err == nil {
+		if path, err := lookPath(name); err == nil {
+			add(path)
+		}
+	}
+	add(playwright())
+	return out
+}
+
+// firstUsableBrowser returns the first candidate the probe accepts, or "" when
+// none is usable.
+func firstUsableBrowser(candidates []string, probe func(string) bool) string {
+	for _, path := range candidates {
+		if probe(path) {
 			return path
 		}
 	}
-	// 2. Playwright-bundled Chromium
-	if pw := playwrightChromiumPath(); pw != "" {
-		return pw
-	}
 	return ""
+}
+
+// browserContainerFlags adds the flag Chromium needs where the kernel or the
+// container denies it a user namespace - a GitHub runner, a CI container, most
+// sandboxes. Without it Chromium aborts in the zygote with "No usable sandbox!"
+// and never publishes a debug URL, which is how the rod half of the smoke test
+// failed. (--disable-dev-shm-usage, the other container flag, is already in
+// rod's default set and is pinned by a test rather than added here.)
+//
+// --no-sandbox is not new to the browser paths: crawlViaExec has always passed
+// it. The enforced boundary for this browser is the validating proxy (every
+// hostname is resolved, checked and pinned before Chromium sees it), not
+// Chromium's own process sandbox, and the alternative here was a browser that
+// cannot start at all.
+func browserContainerFlags(l *launcher.Launcher) *launcher.Launcher {
+	return l.Set(flags.NoSandbox)
+}
+
+// findBrowser returns the path to a usable Chromium/Chrome binary, or "" when
+// none is installed. Every candidate is probed before it is returned, so a broken
+// installation is skipped instead of being handed to a caller that then hangs;
+// the rod path falls back to its own launcher when this returns "".
+func findBrowser() string {
+	return firstUsableBrowser(
+		browserCandidates(os.Getenv, exec.LookPath, playwrightChromiumPath),
+		browserUsable,
+	)
 }
 
 // FindBrowser returns the path to a usable Chromium/Chrome binary, or "" when
@@ -390,6 +480,7 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 	if bin := findBrowser(); bin != "" {
 		l = l.Bin(bin)
 	}
+	l = browserContainerFlags(l)
 	if rule := browserHostRule(url); rule != "" {
 		l = l.Append("host-resolver-rules", rule)
 	}
@@ -406,12 +497,26 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 	var browser *rod.Browser
 	wsURL, launchErr := l.Launch()
 	if launchErr != nil {
-		// Both protections are best effort here: fall back to rod's own launcher
-		// rather than losing the browser fallback entirely. The pre-flight check
-		// and the request interceptor installed below still apply.
+		// The proxy and pinning flags are best effort: retry without them rather
+		// than losing the browser fallback entirely. The retry keeps the flags
+		// that make Chromium start at all in a container - rod's bare launcher
+		// omits them and dies in the zygote with "No usable sandbox!", which is
+		// what this fallback used to do. The pre-flight check and the request
+		// interceptor installed below still apply.
 		l.Cleanup()
 		tlog.Warn("web.browser", "launch_flags_failed", "url", url, "err", launchErr.Error())
-		browser = rod.New().Context(ctx)
+
+		fallback := browserContainerFlags(launcher.New().Headless(true).Context(ctx))
+		if bin := findBrowser(); bin != "" {
+			fallback = fallback.Bin(bin)
+		}
+		fallbackURL, fallbackErr := fallback.Launch()
+		if fallbackErr != nil {
+			fallback.Cleanup()
+			return "", fmt.Errorf("launch browser: %w", fallbackErr)
+		}
+		defer fallback.Cleanup()
+		browser = rod.New().ControlURL(fallbackURL).Context(ctx)
 	} else {
 		defer l.Cleanup()
 		browser = rod.New().ControlURL(wsURL).Context(ctx)
@@ -447,23 +552,24 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 		return "", fmt.Errorf("wait for page load: %w", err)
 	}
 
-	// Scroll to trigger lazy-loaded content.
-	if _, err := page.Eval(`window.scrollTo(0, document.body.scrollHeight)`); err != nil {
+	// Scroll to trigger lazy-loaded content. rod's Eval sends the string as a
+	// function declaration and calls it, so a bare expression like
+	// `window.scrollTo(...)` becomes `(...).apply(...)` on undefined and throws
+	// "apply is not a function" - every expression here has to be a function.
+	if _, err := page.Eval(`() => window.scrollTo(0, document.body.scrollHeight)`); err != nil {
 		return "", fmt.Errorf("scroll to bottom: %w", err)
 	}
-	if err := page.Wait(rod.Eval("1s")); err != nil {
-		return "", fmt.Errorf("wait after scroll: %w", err)
-	}
-	if _, err := page.Eval(`window.scrollTo(0, 0)`); err != nil {
+	time.Sleep(time.Second)
+	if _, err := page.Eval(`() => window.scrollTo(0, 0)`); err != nil {
 		return "", fmt.Errorf("scroll to top: %w", err)
 	}
 
 	// Extract title and content.
-	titleObj, err := page.Eval(`document.title`)
+	titleObj, err := page.Eval(`() => document.title`)
 	if err != nil {
 		return "", fmt.Errorf("read document title: %w", err)
 	}
-	contentObj, err := page.Eval(`document.body.innerText`)
+	contentObj, err := page.Eval(`() => document.body.innerText`)
 	if err != nil {
 		return "", fmt.Errorf("read document body: %w", err)
 	}
