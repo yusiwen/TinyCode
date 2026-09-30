@@ -27,6 +27,72 @@ Run interactively:
 ./bin/tinycode --resume=TUI-20260607-235959  # resume session
 ```
 
+## Local Verification
+
+Inside the agent sandbox the suite needs two overrides: `HOME` (two `skill` tests
+write under `~/.tinycode`) and `GIT_CONFIG_GLOBAL` (the host sets
+`commit.gpgsign=true`, which fails the `tool` git tests). Redirect the Go caches
+too, since `~/go/pkg/mod` is not writable there.
+
+```bash
+export GOPATH=/tmp/dsh-go GOMODCACHE=/tmp/dsh-go/pkg/mod GOCACHE=/tmp/dsh-go/build
+export HOME=/tmp/dsh-home GIT_CONFIG_GLOBAL=/tmp/dsh-empty-gitconfig
+go test ./... -count=1
+go test ./... -count=1 -race
+```
+
+Every gated target skips itself without its env var, so a plain `make test` never
+launches a browser or needs a terminal device. Run them deliberately:
+
+```bash
+make test-tui-visual   # TUI_SHOT=1: needs a Chromium and a real PTY (/dev/ptmx,
+                       # so outside a sandbox that denies it), plus bin/tinycode fresh
+make test-browser      # BROWSER_TEST=1: needs a Chromium
+make test-lsp          # LSP_TEST=1: needs gopls on PATH
+```
+
+`tool.FindBrowser` discovers Chromium through `CHROME_PATH`, `CHROME`, `PATH` or
+the Playwright cache under `$HOME`. If `HOME` is redirected (as above), set
+`CHROME_PATH` or the visual harness skips with "no Chromium/Chrome installed".
+
+## Test Harness Rules
+
+Learned from building the TUI visual harness (issues #16–#28); they apply to every
+test that drives an external process — browser, PTY, subprocess:
+
+- **Bound and name every stage.** A stage that can block runs under its own budget
+  and the failure names it (`runStage` in `tui/frame_shot_test.go`), so a wedged
+  call is reported instead of hanging until `go test -timeout`.
+- **Return errors, never panic, inside a stage.** A panic in a subtest goroutine
+  skips the deferred cleanup: rod's `Must*` helpers did that and left
+  `launcher.Cleanup` waiting on `<-l.exit` forever — a 5-minute package timeout
+  with the real error buried.
+- **Cleanup kills before it waits**, and bounds the wait.
+- **A deadline belongs to one operation, not to a client.** `rod`'s `Timeout`
+  installs a single expiring context that every derived session inherits;
+  installed at connect it covered all eight screenshots and expired mid-run on a
+  slow runner. Take a fresh budget per stage. The Ollama provider (#1) is the
+  same shape in the other direction: it bounds nothing at all.
+- **Make timing knobs injectable** (package variable or env override). Shrinking
+  `shotTimeout` to 1 s reproduced the CI hang locally; 1 ms proved the failure is
+  clean, fast and attributed.
+- **A golden frame is the assertion; a PNG supports it.** Assert a visual
+  artifact's dimensions against the geometry it claims to show — the full-page
+  capture in #25 widened to the longest line instead.
+
+## CI Notes
+
+`main.yml` jobs: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run),
+`lsp`, `browser`, `tui-visual`, `cross` (linux/amd64, linux/arm64, darwin/arm64)
+and `staticcheck`. The annotation baseline is **not zero**: one `ubuntu-latest`
+migration notice per job, and `browser` + `tui-visual` additionally carry the
+`setup-chrome@v1` Node 20 deprecation warning. Gate on *no new* annotations:
+
+```bash
+gh api "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/commits/$SHA/check-runs?per_page=50" \
+  --jq '.check_runs[] | "\(.name): \(.conclusion) annotations=\(.output.annotations_count)"'
+```
+
 ## Project Structure
 
 ```
