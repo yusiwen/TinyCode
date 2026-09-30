@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -240,12 +241,18 @@ func frameToHTML(frame string) string {
 		}
 	}
 	flush(run.String())
+	return htmlDocument(body.String())
+}
 
+// htmlDocument wraps an HTML body in the terminal-looking page the screenshots
+// are taken from. Both the frame path and the replayed PTY screen path use it,
+// so a screenshot looks the same whichever way the body was produced.
+func htmlDocument(body string) string {
 	return `<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;padding:0;background:#0b0b0f}
 pre{margin:0;padding:10px 12px;color:#e8e8e8;white-space:pre;
-font:14px/1.35 "SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace}
-</style><pre>` + body.String() + "</pre>"
+font:14px/1.6 "SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace}
+</style><pre>` + body + "</pre>"
 }
 
 // --- Screenshots ----------------------------------------------------------
@@ -290,45 +297,87 @@ func TestFrameScreenshots(t *testing.T) {
 			withTrueColor(t, func() {
 				frame = sc.build(sc.size.W, sc.size.H).View()
 			})
-
-			htmlPath := filepath.Join(dir, fmt.Sprintf("tinycode-frame-%s.html", sc.name))
-			pngPath := filepath.Join(dir, fmt.Sprintf("tinycode-frame-%s-%s.png", sc.name, sc.size))
-			if err := os.WriteFile(htmlPath, []byte(frameToHTML(frame)), 0o644); err != nil {
-				t.Fatalf("write %s: %v", htmlPath, err)
-			}
-
-			page := browser.MustPage()
-			defer page.MustClose()
-			// 2x device pixel ratio: the text stays readable when the image is
-			// zoomed in to inspect a column alignment.
-			page.MustSetViewport(sc.size.W*9, sc.size.H*19, 2, false)
-			page.MustNavigate("file://" + htmlPath)
-			page.MustWaitLoad()
-
-			shot := page.MustScreenshotFullPage()
-			if err := os.WriteFile(pngPath, shot, 0o644); err != nil {
-				t.Fatalf("write %s: %v", pngPath, err)
-			}
-			// A roughly blank page still produces a valid PNG; the size guard
-			// catches "the frame did not render" without a pixel comparison.
-			if len(shot) < 10_000 {
-				t.Fatalf("%s is only %d bytes: the page probably rendered empty", pngPath, len(shot))
-			}
-			if !bytes.HasPrefix(shot, []byte("\x89PNG\r\n\x1a\n")) {
-				t.Fatalf("%s is not a PNG", pngPath)
-			}
-			t.Logf("wrote %s (%d bytes)", pngPath, len(shot))
+			name := fmt.Sprintf("tinycode-frame-%s-%s", sc.name, sc.size)
+			capturePNG(t, browser, dir, name, frameToHTML(frame), sc.size)
 		})
 	}
 }
 
+// capturePNG writes an HTML document and its screenshot, and returns the PNG
+// path. The size floor catches "the page rendered empty" without a pixel
+// comparison; the PNG magic catches a browser that returned something else.
+func capturePNG(t *testing.T, browser *rod.Browser, dir, name, document string, size frameSize) string {
+	t.Helper()
+
+	htmlPath := filepath.Join(dir, name+".html")
+	pngPath := filepath.Join(dir, name+".png")
+	if err := os.WriteFile(htmlPath, []byte(document), 0o644); err != nil {
+		t.Fatalf("write %s: %v", htmlPath, err)
+	}
+
+	page := browser.MustPage()
+	defer page.MustClose()
+	// 2x device pixel ratio: the text stays readable when the image is zoomed
+	// in to inspect a column alignment.
+	page.MustSetViewport(size.W*9, size.H*19, 2, false)
+	page.MustNavigate("file://" + htmlPath)
+	page.MustWaitLoad()
+
+	shot := page.MustScreenshotFullPage()
+	if err := os.WriteFile(pngPath, shot, 0o644); err != nil {
+		t.Fatalf("write %s: %v", pngPath, err)
+	}
+	if len(shot) < 10_000 {
+		t.Fatalf("%s is only %d bytes: the page probably rendered empty", pngPath, len(shot))
+	}
+	if !bytes.HasPrefix(shot, []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatalf("%s is not a PNG", pngPath)
+	}
+	t.Logf("wrote %s (%d bytes)", pngPath, len(shot))
+	return pngPath
+}
+
 // --- Real binary under a PTY ---------------------------------------------
 
-// assertBinaryFresh fails when bin/tinycode is older than the newest Go source in
-// the repository. A stale binary makes this smoke test lie in both directions:
-// it can pass while the tree is broken (a fix that was never built), and it can
+// terminalEnv builds the child environment for the PTY runs with the
+// colour-related variables pinned. The harness may itself run with NO_COLOR=1
+// and TERM=dumb (an agent shell or a CI job can), and termenv honours NO_COLOR
+// by dropping to the Ascii profile, which would make the binary paint a
+// monochrome frame and quietly turn the colour assertions below into no-ops.
+// Overriding instead of appending matters: a duplicate key would leave the
+// decision to whoever reads the environment first.
+func terminalEnv(home string) []string {
+	pinned := map[string]bool{
+		"HOME": true, "TERM": true, "COLORTERM": true, "NO_COLOR": true,
+		"CLICOLOR": true, "CLICOLOR_FORCE": true, "FORCE_COLOR": true,
+	}
+	env := make([]string, 0, len(os.Environ())+4)
+	for _, kv := range os.Environ() {
+		if key, _, ok := strings.Cut(kv, "="); ok && pinned[key] {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env,
+		"HOME="+home,
+		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+		"CLICOLOR_FORCE=1",
+	)
+}
+
+// sgrSequence matches a styling escape (CSI ... m), which is what "the terminal
+// received colour" means; cursor movement and mode changes are not styling.
+var sgrSequence = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// assertBinaryFresh fails when bin/tinycode is older than the newest file that
+// goes into it. A stale binary makes this smoke test lie in both directions: it
+// can pass while the tree is broken (a fix that was never built), and it can
 // fail on a bug that is already fixed. The Makefile target always rebuilds;
 // running `go test ./tui -run TestBinarySmoke` directly does not.
+//
+// Test files are skipped on purpose: they are inputs to `go test`, not to the
+// binary, so editing them must not report the binary as stale.
 func assertBinaryFresh(t *testing.T, binary string, info os.FileInfo) {
 	t.Helper()
 	var newest string
@@ -344,7 +393,9 @@ func assertBinaryFresh(t *testing.T, binary string, info os.FileInfo) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") {
+		base := d.Name()
+		isSource := (strings.HasSuffix(base, ".go") && !strings.HasSuffix(base, "_test.go")) || base == "go.mod"
+		if !isSource {
 			return nil
 		}
 		stat, err := d.Info()
@@ -402,7 +453,7 @@ func startBinaryPTY(t *testing.T, size *pty.Winsize) *ptySmoke {
 		"--log-level=error",
 	)
 	cmd.Dir = work
-	cmd.Env = append(os.Environ(), "HOME="+home, "TERM=xterm-256color")
+	cmd.Env = terminalEnv(home)
 
 	out := &lockedBuffer{}
 	var f *os.File
@@ -466,8 +517,8 @@ func TestBinarySmokeUnderPTY(t *testing.T) {
 
 	smoke := startBinaryPTY(t, &pty.Winsize{Rows: 24, Cols: 80})
 	waitForStream(t, smoke.out, "TinyCode")
-	if !strings.Contains(smoke.out.String(), "\x1b[") {
-		t.Errorf("the startup stream carried no escape sequences: termenv did not see the PTY as a colour terminal")
+	if !sgrSequence.MatchString(smoke.out.String()) {
+		t.Errorf("the startup stream carried no SGR styling: termenv did not see the PTY as a colour terminal")
 	}
 	smoke.quit(t)
 }
