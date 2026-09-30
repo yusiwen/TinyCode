@@ -314,3 +314,28 @@ func TestLifecycle(t *testing.T) {
 		t.Error("the proxy still accepts connections after Close")
 	}
 }
+
+// TestCloseReleasesListenerBeforeServe is the deterministic form of the race
+// TestLifecycle hits intermittently on CI ("the proxy still accepts connections
+// after Close", 0.033 s): http.Server only learns about a listener when Serve
+// registers it, so a Close that arrives before the serving goroutine gets there
+// used to return with the port still accepting.
+//
+// The state is built directly instead of being raced for, so the assertion does
+// not depend on the scheduler: the listener exists, Serve has never been called,
+// and Close must still release it.
+func TestCloseReleasesListenerBeforeServe(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	p := &Proxy{ln: ln, srv: &http.Server{}}
+
+	if err := p.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+	}
+	if conn, err := net.DialTimeout("tcp", ln.Addr().String(), 500*time.Millisecond); err == nil {
+		conn.Close()
+		t.Error("the listener still accepts connections after Close without a Serve")
+	}
+}

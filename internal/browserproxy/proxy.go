@@ -83,8 +83,8 @@ func Start(enforce bool) (*Proxy, error) {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		// Serve returns ErrServerClosed on Close; nothing else can be reported
-		// from here, so it is deliberately ignored.
+		// Serve returns ErrServerClosed on Close, or net.ErrClosed when Close
+		// got there first and closed the listener; neither is worth reporting.
 		_ = p.srv.Serve(ln)
 	}()
 	return p, nil
@@ -96,9 +96,17 @@ func (p *Proxy) URL() string {
 }
 
 // Close stops accepting connections and releases the listener.
+//
+// The listener is closed directly as well as through the server, because
+// http.Server only learns about a listener when Serve registers it: a Close
+// that races the serving goroutine would otherwise return while the port still
+// accepts connections, until Serve notices the shutdown and closes it.
 func (p *Proxy) Close() error {
 	p.closeOnce.Do(func() {
 		p.closeErr = p.srv.Close()
+		if err := p.ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) && p.closeErr == nil {
+			p.closeErr = err
+		}
 	})
 	return p.closeErr
 }
