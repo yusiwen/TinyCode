@@ -557,11 +557,22 @@ func TestBinaryScreenshotFromStream(t *testing.T) {
 
 	launcher := newShotLauncher(t, browserPath)
 	browser := connectBrowser(t, launcher.MustLaunch())
-	defer browser.MustClose()
+	defer func() {
+		if err := runStage(func() error {
+			return browser.Timeout(shotTimeout).Close()
+		}); err != nil {
+			t.Errorf("close browser: %v", err)
+		}
+	}()
 
-	png := capturePNG(t, browser, shotDir(t), "tinycode-pty-welcome-80x24",
-		htmlDocument(screen.HTML()), frameSize{80, 24})
-	t.Logf("screenshot replayed from the live stream: %s", png)
+	name := "tinycode-pty-welcome-80x24"
+	if err := runStage(func() error {
+		return capturePNG(browser.Timeout(shotTimeout), shotDir(t), name,
+			htmlDocument(screen.HTML()), frameSize{80, 24})
+	}); err != nil {
+		t.Fatalf("screenshot replayed from the live stream: %v", err)
+	}
+	t.Logf("wrote %s/%s.png", shotDir(t), name)
 
 	smoke.quit(t)
 }
