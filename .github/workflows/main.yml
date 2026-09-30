@@ -108,9 +108,15 @@ jobs:
       # against a loopback page and asserts the proxy was used.
       - name: Set up Chrome
         uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
 
       - name: Browser smoke test
         run: make test-browser
+        env:
+          # Explicit beats guessed: the runner image also ships a
+          # /usr/bin/chromium-browser shim whose --version hangs and which cannot
+          # start without a sandbox, and discovery probes and prefers this path.
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
 
   tui-visual:
     name: TUI visual (screenshots + PTY)
