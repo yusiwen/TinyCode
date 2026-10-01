@@ -93,15 +93,17 @@ func Edit() Tool {
 				return "", fmt.Errorf("at least one edit is required")
 			}
 
-			if lsp.IsAvailable() {
-				lsp.SnapshotBaseline(safePath)
-			}
-
 			data, err := readSandboxed(safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
 			content := string(data)
+
+			// The baseline is the same verified pre-edit content this pass is
+			// about to edit, so the LSP layer never re-opens the path (issue #7 S2).
+			if lsp.IsAvailable() {
+				lsp.SnapshotBaseline(safePath, content)
+			}
 
 			applied := 0
 			totalChanges := 0
@@ -157,7 +159,7 @@ func Edit() Tool {
 			result := fmt.Sprintf("Applied %d edit(s) to %s (%d line(s) changed)", applied, path, totalChanges)
 
 			if lsp.IsAvailable() {
-				if newDiags := lsp.GetNewDiagnostics(safePath); len(newDiags) > 0 {
+				if newDiags := lsp.GetNewDiagnostics(safePath, content); len(newDiags) > 0 {
 					result += lsp.FormatDiagnostics(path, newDiags)
 				}
 			}

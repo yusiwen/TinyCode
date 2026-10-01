@@ -147,17 +147,13 @@ func ApplyPatch() Tool {
 				path    string
 				applied string // "updated", "created", "deleted"
 				lines   int
+				content string // what was written, for the post-write diagnostics
 			}
 			var results []opResult
 
 			for _, op := range ops {
 				switch op.typ {
 				case opUpdate:
-					// LSP baseline before write
-					if lsp.IsAvailable() {
-						lsp.SnapshotBaseline(op.path)
-					}
-
 					// The read is not optional. Ignoring its error (issue #6) made
 					// every replacement below a no-op on the empty string and the
 					// write that follows truncated the file to zero bytes while the
@@ -172,6 +168,11 @@ func ApplyPatch() Tool {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
 					content := string(data)
+					// Baseline from the same verified pre-edit bytes (issue #7 S2):
+					// the LSP layer must not re-open the path after the check.
+					if lsp.IsAvailable() {
+						lsp.SnapshotBaseline(op.path, content)
+					}
 					lines := 0
 					for _, chunk := range op.chunks {
 						content = strings.Replace(content, chunk.oldLine, chunk.newLine, 1)
@@ -182,7 +183,7 @@ func ApplyPatch() Tool {
 						return fmt.Sprintf("Partial failure after updating %d file(s): %v",
 							len(results), err), nil
 					}
-					results = append(results, opResult{path: op.path, applied: "updated", lines: lines})
+					results = append(results, opResult{path: op.path, applied: "updated", lines: lines, content: content})
 
 				case opAdd:
 					if err := os.MkdirAll(filepath.Dir(op.path), 0755); err != nil {
@@ -219,7 +220,7 @@ func ApplyPatch() Tool {
 			if lsp.IsAvailable() {
 				for _, r := range results {
 					if r.applied == "updated" {
-						if diags := lsp.GetNewDiagnostics(r.path); len(diags) > 0 {
+						if diags := lsp.GetNewDiagnostics(r.path, r.content); len(diags) > 0 {
 							sb.WriteString(lsp.FormatDiagnostics(r.path, diags))
 						}
 					}

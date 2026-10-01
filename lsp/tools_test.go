@@ -137,14 +137,14 @@ func TestSnapshotBaselineDelta(t *testing.T) {
 		Message:  "pre-existing error",
 	}
 	m.addDiag(uri, []Diagnostic{oldDiag})
-	SnapshotBaseline(path)
+	SnapshotBaseline(path, sourceFor(t, path))
 
 	m.addDiag(uri, []Diagnostic{oldDiag, {
 		Severity: 1,
 		Range:    Range{Start: Position{Line: 7, Character: 2}},
 		Message:  "new error",
 	}})
-	got := GetNewDiagnostics(path)
+	got := GetNewDiagnostics(path, sourceFor(t, path))
 	if len(got) != 1 {
 		t.Fatalf("GetNewDiagnostics returned %d diagnostics, want 1: %#v", len(got), got)
 	}
@@ -154,7 +154,7 @@ func TestSnapshotBaselineDelta(t *testing.T) {
 
 	// Once the new error is fixed, nothing is reported as new.
 	m.addDiag(uri, []Diagnostic{oldDiag})
-	if extra := GetNewDiagnostics(path); len(extra) != 0 {
+	if extra := GetNewDiagnostics(path, sourceFor(t, path)); len(extra) != 0 {
 		t.Fatalf("GetNewDiagnostics after the fix = %#v, want none", extra)
 	}
 }
@@ -187,5 +187,36 @@ func TestInitRebuildsSessionOnRootChange(t *testing.T) {
 	}
 	if gotRoot != rootB {
 		t.Fatalf("projectRoot = %q, want %q", gotRoot, rootB)
+	}
+}
+
+// TestSyncFileSendsTheCallerContent pins the contract issue #7 S2 introduced:
+// the bytes the caller passes are what the language server sees, not what is on
+// disk. A regression that opened the path again would send the fixture text, and
+// the sandbox decision that covered the caller's read would no longer cover this
+// one.
+func TestSyncFileSendsTheCallerContent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.go")
+	if err := os.WriteFile(path, []byte("package main\n\nfunc onDisk() {}\n"), 0644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+
+	m, c := newMockLSP()
+	installMockClient(t, m, c, root)
+
+	uri := "file://" + canonicalPath(path)
+	// The mock answers the diagnostics request only after it has recorded the
+	// text, so waiting for them makes the assertion below deterministic instead of
+	// racing the reader goroutine.
+	m.addDiag(uri, nil)
+
+	const fromCaller = "package main\n\nfunc fromCaller() {}\n"
+	if _, err := SyncFile(path, fromCaller, true); err != nil {
+		t.Fatalf("SyncFile: %v", err)
+	}
+
+	if got := m.textFor(uri); got != fromCaller {
+		t.Errorf("server was told %q, want the caller's content %q", got, fromCaller)
 	}
 }

@@ -21,9 +21,22 @@ func setupDemoProject(t *testing.T) string {
 	return dir
 }
 
-// TestTouchFileNoDiag verifies that a fire-and-forget touch (no diagnostics)
+// sourceFor reads a file the test itself wrote and returns its content, which is
+// what production callers pass to SyncFile (they read through the sandbox; see
+// issue #7 S2). A test that reads its own fixture keeps the API honest: the lsp
+// package no longer opens files by path.
+func sourceFor(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
+}
+
+// TestSyncFileNoDiag verifies that a fire-and-forget sync (no diagnostics)
 // completes without error.
-func TestTouchFileNoDiag(t *testing.T) {
+func TestSyncFileNoDiag(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping LSP integration test in short mode")
 	}
@@ -33,21 +46,22 @@ func TestTouchFileNoDiag(t *testing.T) {
 	proj := setupDemoProject(t)
 
 	Init(proj)
-	// LSP starts lazily on first TouchFile call
+	// LSP starts lazily on the first SyncFile call
 
 	// Fire-and-forget touch (no diagnostics)
-	diags, err := TouchFile(filepath.Join(proj, "main.go"), false)
+	mainGo := filepath.Join(proj, "main.go")
+	diags, err := SyncFile(mainGo, sourceFor(t, mainGo), false)
 	if err != nil {
-		t.Fatalf("TouchFile (no diag) failed: %v", err)
+		t.Fatalf("SyncFile (no diag) failed: %v", err)
 	}
 	if diags != nil {
 		t.Logf("unexpected diagnostics returned: %v", diags)
 	}
 }
 
-// TestTouchFileWithDiag verifies that touching a file with diagnostics
+// TestSyncFileWithDiag verifies that touching a file with diagnostics
 // returns results from gopls.
-func TestTouchFileWithDiag(t *testing.T) {
+func TestSyncFileWithDiag(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping LSP integration test in short mode")
 	}
@@ -57,12 +71,13 @@ func TestTouchFileWithDiag(t *testing.T) {
 	proj := setupDemoProject(t)
 
 	Init(proj)
-	// LSP starts lazily on first TouchFile call
+	// LSP starts lazily on the first SyncFile call
 
 	// Touch with diagnostics — main.go is valid Go, should have no errors
-	diags, err := TouchFile(filepath.Join(proj, "main.go"), true)
+	mainGo := filepath.Join(proj, "main.go")
+	diags, err := SyncFile(mainGo, sourceFor(t, mainGo), true)
 	if err != nil {
-		t.Fatalf("TouchFile (with diag) failed: %v", err)
+		t.Fatalf("SyncFile (with diag) failed: %v", err)
 	}
 
 	t.Logf("Got %d diagnostics for main.go", len(diags))
@@ -75,9 +90,9 @@ func TestTouchFileWithDiag(t *testing.T) {
 	assertNoErrors(t, "main.go", diags)
 }
 
-// TestTouchFileWithErrors verifies that a file with deliberate errors
+// TestSyncFileWithErrors verifies that a file with deliberate errors
 // gets caught by LSP diagnostics.
-func TestTouchFileWithErrors(t *testing.T) {
+func TestSyncFileWithErrors(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping LSP integration test in short mode")
 	}
@@ -104,7 +119,7 @@ func helper() {
 	}
 
 	Init(proj)
-	// LSP starts lazily on first TouchFile call
+	// LSP starts lazily on the first SyncFile call
 
 	diags := waitForErrors(t, errFile, true)
 	t.Logf("Got %d diagnostics for broken.go:", len(diags))
@@ -121,10 +136,10 @@ func helper() {
 	}
 }
 
-// TestTouchFileAfterFixClearsErrors exercises the didChange path: after the file
+// TestSyncFileAfterFixClearsErrors exercises the didChange path: after the file
 // is repaired and touched again, the error must disappear. Without the change
 // notification the server kept analysing the text it first received.
-func TestTouchFileAfterFixClearsErrors(t *testing.T) {
+func TestSyncFileAfterFixClearsErrors(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping LSP integration test in short mode")
 	}
@@ -158,7 +173,7 @@ func assertNoErrors(t *testing.T, name string, diags []Diagnostic) {
 	}
 }
 
-// waitForErrors polls TouchFile until the file's diagnostics do (want=true) or do
+// waitForErrors polls SyncFile until the file's diagnostics do (want=true) or do
 // not (want=false) contain a severity-1 error, and returns them. The server
 // publishes asynchronously, so a single call is not enough.
 func waitForErrors(t *testing.T, path string, want bool) []Diagnostic {
@@ -166,9 +181,9 @@ func waitForErrors(t *testing.T, path string, want bool) []Diagnostic {
 	deadline := time.Now().Add(8 * time.Second)
 	var last []Diagnostic
 	for time.Now().Before(deadline) {
-		diags, err := TouchFile(path, true)
+		diags, err := SyncFile(path, sourceFor(t, path), true)
 		if err != nil {
-			t.Fatalf("TouchFile(%s): %v", path, err)
+			t.Fatalf("SyncFile(%s): %v", path, err)
 		}
 		last = diags
 		hasError := false

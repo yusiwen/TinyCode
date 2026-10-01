@@ -33,7 +33,7 @@ func TestDiagnosticsRegistry(t *testing.T) {
 	})
 
 	// Feed diagnostics for both files through the didOpen -> publishDiagnostics
-	// flow, which is what TouchFile/GetNewDiagnostics rely on.
+	// flow, which is what SyncFile/GetNewDiagnostics rely on.
 	if _, err := client.Diagnostics(uriA, "package a"); err != nil {
 		t.Fatalf("diagnostics a: %v", err)
 	}

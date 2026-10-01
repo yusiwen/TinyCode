@@ -105,9 +105,11 @@ func ReadFile() Tool {
 
 			tlog.Debug("fs.read", "done", "file", path, "lines", actualLines, "total", totalLines, "offset", startLine)
 
-			// LSP warmup (fire-and-forget, non-blocking)
+			// LSP warmup (fire-and-forget, non-blocking). The bytes come from the
+			// sandboxed read above, so nothing re-opens the path (issue #7 S2).
 			if lsp.IsAvailable() {
-				go lsp.TouchFile(path, false)
+				warmup := string(data)
+				go lsp.SyncFile(path, warmup, false)
 			}
 
 			return sb.String(), nil
@@ -152,8 +154,12 @@ func WriteFile() Tool {
 			}
 
 			if lsp.IsAvailable() {
-				// Snapshot baseline BEFORE write
-				lsp.SnapshotBaseline(safePath)
+				// Snapshot baseline BEFORE write, from the pre-write bytes read
+				// through the sandbox. A file that does not exist yet has no
+				// baseline, which is what a failed read means here.
+				if previous, readErr := readSandboxed(safePath); readErr == nil {
+					lsp.SnapshotBaseline(safePath, string(previous))
+				}
 			}
 
 			if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
@@ -169,7 +175,7 @@ func WriteFile() Tool {
 
 			// LSP diagnostics: only new errors introduced by this edit
 			if lsp.IsAvailable() {
-				if newDiags := lsp.GetNewDiagnostics(safePath); len(newDiags) > 0 {
+				if newDiags := lsp.GetNewDiagnostics(safePath, content); len(newDiags) > 0 {
 					result += lsp.FormatDiagnostics(path, newDiags)
 				}
 			}
