@@ -17,6 +17,7 @@ type mockLSP struct {
 	mu          sync.Mutex
 	diags       map[string][]Diagnostic
 	syncedText  map[string]string // uri -> text the last didOpen/didChange carried
+	initParams  json.RawMessage   // params of the last initialize request
 	nullResults bool
 	serverRead  *io.PipeReader
 	clientWrite *io.PipeWriter
@@ -41,6 +42,14 @@ func newMockLSP() (*mockLSP, *Conn) {
 	conn := NewConn(cw, cr)
 	go m.run()
 	return m, conn
+}
+
+// initializeParams returns the params of the last initialize request, which is
+// where a client declares what it can handle.
+func (m *mockLSP) initializeParams() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return string(m.initParams)
 }
 
 // textFor returns the text the server was last told for uri.
@@ -72,6 +81,9 @@ func (m *mockLSP) run() {
 		}
 		switch msg.Method {
 		case "initialize":
+			m.mu.Lock()
+			m.initParams = msg.Params
+			m.mu.Unlock()
 			m.write(json.RawMessage(fmt.Sprintf(
 				`{"jsonrpc":"2.0","id":%v,"result":{"capabilities":{}}}`, msg.ID)))
 		case "textDocument/didOpen":

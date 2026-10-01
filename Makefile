@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls lint staticcheck fmt fmt-check fuzz clean all
+.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls lint staticcheck fmt fmt-check fuzz clean all
 
 default: build
 
@@ -48,10 +48,23 @@ GOPLS_VERSION ?= v0.23.0
 install-gopls:
 	go install golang.org/x/tools/gopls@$(GOPLS_VERSION)
 
+# The second language server the gated tests exercise (issue #10). TypeScript 5 is
+# pinned on purpose: tsserver resolves `typescript` from the workspace, and
+# versions 6+ restructured the package (no lib/tsserver.js), which
+# typescript-language-server refuses with "Could not find a valid TypeScript
+# installation". The test links the installation that sits next to the server into
+# its fixture, which is where a global npm install puts it.
+TSLS_VERSION ?= latest
+install-tsls:
+	npm install -g typescript@5 typescript-language-server@$(TSLS_VERSION)
+
 # The LSP integration tests spawn a real language server, so gopls must be on
 # PATH (the Nix devShell provides it) and LSP_TEST must be set to un-skip them.
 test-lsp:
-	LSP_TEST=1 go test -count=1 ./lsp/...
+	# -v on purpose: which server was exercised, and which case skipped with which
+	# reason, is the point of this target — a silent skip is how the second server
+	# stayed unverified (issue #10).
+	LSP_TEST=1 go test -count=1 -v ./lsp/...
 
 # Real-browser smoke tests: renders a local JavaScript page through both browser
 # paths and asserts the filtering proxy was used (TestBrowserSmokeThroughProxy),

@@ -253,3 +253,32 @@ func TestFormatDiagnosticsMaxErrors(t *testing.T) {
 		t.Fatalf("expected substantial output, got %d chars: %s", len(result), result)
 	}
 }
+
+// waitForErrorsWithin is waitForErrors with an explicit deadline: a server that
+// starts slower than gopls (tsserver loads a project before it answers) needs more
+// than the eight seconds the Go cases use.
+func waitForErrorsWithin(t *testing.T, path string, want bool, budget time.Duration) []Diagnostic {
+	t.Helper()
+	deadline := time.Now().Add(budget)
+	var last []Diagnostic
+	for time.Now().Before(deadline) {
+		diags, err := SyncFile(path, sourceFor(t, path), true)
+		if err != nil {
+			t.Fatalf("SyncFile(%s): %v", path, err)
+		}
+		last = diags
+		hasError := false
+		for _, d := range diags {
+			if d.Severity == 1 {
+				hasError = true
+				break
+			}
+		}
+		if hasError == want {
+			return diags
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("expected an error for %s, never got one (last: %+v)", path, last)
+	return nil
+}
