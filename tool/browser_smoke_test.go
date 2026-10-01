@@ -162,11 +162,6 @@ func TestBrowserSmokeRefusesABlockedSubresource(t *testing.T) {
 	if os.Getenv("BROWSER_TEST") == "" {
 		t.Skip("skipping: set BROWSER_TEST=1 to run the real-browser smoke test")
 	}
-	browserPath := findBrowser()
-	if browserPath == "" {
-		t.Skip("no Chromium/Chrome installed (system or Playwright cache)")
-	}
-
 	previousSkip := skipSSRFCheck
 	previousConfig := browserSandboxConfig
 	t.Cleanup(func() {
@@ -175,12 +170,21 @@ func TestBrowserSmokeRefusesABlockedSubresource(t *testing.T) {
 	})
 
 	t.Run("exec", func(t *testing.T) {
+		// The path the production extractor takes for `--dump-dom`, headless-shell
+		// preference included (issue #43).
+		browserPath := findExecBrowser()
+		if browserPath == "" {
+			t.Skip("no Chromium/Chrome installed (system or Playwright cache)")
+		}
 		pageURL, internalHits := startSandboxProbe(t)
 		content, err := crawlViaExec(context.Background(), browserPath, pageURL)
 		assertBlockedSubresourceRefused(t, content, err, internalHits)
 	})
 
 	t.Run("rod", func(t *testing.T) {
+		if findBrowser() == "" {
+			t.Skip("no full Chromium/Chrome installed (the CDP path needs one)")
+		}
 		pageURL, internalHits := startSandboxProbe(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
@@ -199,17 +203,16 @@ func TestBrowserSmokeThroughProxy(t *testing.T) {
 	if os.Getenv("BROWSER_TEST") == "" {
 		t.Skip("skipping: set BROWSER_TEST=1 to run the real-browser smoke test")
 	}
-	browserPath := findBrowser()
-	if browserPath == "" {
-		t.Skip("no Chromium/Chrome installed (system or Playwright cache)")
-	}
-	t.Logf("using browser %s", browserPath)
-
 	previous := skipSSRFCheck
 	skipSSRFCheck = true // the page is served from loopback
 	t.Cleanup(func() { skipSSRFCheck = previous })
 
 	t.Run("exec", func(t *testing.T) {
+		browserPath := findExecBrowser()
+		if browserPath == "" {
+			t.Skip("no Chromium/Chrome installed (system or Playwright cache)")
+		}
+		t.Logf("using browser %s", browserPath)
 		probe := &browserProbe{}
 		srv := httptest.NewServer(probe.handler())
 		defer srv.Close()
@@ -227,6 +230,9 @@ func TestBrowserSmokeThroughProxy(t *testing.T) {
 	})
 
 	t.Run("rod", func(t *testing.T) {
+		if findBrowser() == "" {
+			t.Skip("no full Chromium/Chrome installed (the CDP path needs one)")
+		}
 		probe := &browserProbe{}
 		srv := httptest.NewServer(probe.handler())
 		defer srv.Close()
