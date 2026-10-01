@@ -9,7 +9,7 @@ back to its change and tests.
 
 ## Unreleased
 
-## v0.0.7 — 2026-09-17
+## v0.0.7 — 2026-10-01
 
 ### Language server integration
 
@@ -112,14 +112,85 @@ back to its change and tests.
   replaced one third of it. It also found that `normalizeAuthority` was not
   idempotent for authorities with an unmatched `]`, and that
   `agent.ToolAllowedFor` panicked on a nil config.
-- Coverage: agent 89.9%, tlog 91.7%, skill 91.8%, session 88.9%, netsafe 84.7%,
-  mcp 83.4%, root 81.0%, config 80.9%, tui 79.7%, tool 74.8%, lsp 74.5%
-  (610 test functions, 9 fuzz targets).
+- Coverage at the release: types 100%, skill 91.8%, tlog 91.7%, agent 90.2%,
+  browserproxy 90.1%, session 88.9%, mcp 84.0%, tui 81.6%, root 81.0%, config 80.9%,
+  tool 79.3%, netsafe 78.7%, lsp 74.2% (710 test functions, 10 fuzz targets, measured
+  with `GOPROXY=off go test -count=1 -cover ./...`). The README badge carries the test
+  count and `CODEBASE.md` lists every count together with the command that produces
+  it, badge included.
 
 ### Release and tooling
 
 - `release.yml` moved to Go 1.27: the `go.mod` directive now requires it, so the
   previous 1.24 pin would have failed the release pipeline.
+
+### Bounded work and deadlines (2026-10-01)
+
+- The Ollama provider no longer trusts a stalled endpoint: a request deadline plus an
+  idle watchdog that resets per streamed line, so a server that stops answering
+  mid-stream fails with a named error instead of hanging the run. (`fd45f67`, #1)
+- `tools/call` gets a default deadline when its caller supplied none, and a response
+  that arrives just as the stream closes is delivered rather than reported as
+  "reader stopped". (`d632a6a`, `617b5b2`, #2, #39)
+- A browser probe that ran out of its budget is no longer cached as permanently
+  unusable; the verdict expires after 30 s and is retried. (`a2adc87`, #26)
+
+### File and process safety
+
+- `apply_patch` checks the read its apply pass depends on, so a stale or unreadable
+  target fails the patch instead of truncating the file. (`bbd1b37`, #6)
+- `writeSandboxed` replaces files atomically: the bytes go into a temp file in the
+  target's own directory through the sandbox-aware open, one rename moves it over the
+  target, the existing mode is preserved and the temp is removed on every failure
+  path. An interrupted write can no longer leave an empty or half-written file.
+  (`e9a2935`, #36)
+- Where `openat2` cannot reach — a path allowed outside the root, macOS, kernels older
+  than 5.6 — the resolved path is walked one component at a time with `O_NOFOLLOW` and
+  re-resolved before the open, so a component swapped for a symlink is refused
+  (`ELOOP`, `errPathChanged`) instead of followed. (`dd5bd27`, #7 S1)
+- The language-server tools hand the server the bytes they actually read instead of
+  re-opening the path, closing the window between the sandbox check and the server's
+  own read. (`3fa7a1d`, #7 S2)
+- On Linux, bash commands run inside a cgroup: a descendant that double-forks and
+  escapes the process group is killed with the cgroup when the command times out, so
+  it cannot outlive the tool call. A portable test proves the escape still happens
+  without the cgroup, which is what keeps the Linux-only path justified. (`9294296`,
+  #9)
+
+### Browser sandbox
+
+- The headless browser disables QUIC, WebRTC's non-proxied UDP and background
+  networking, and refuses to start without the filtering proxy instead of falling back
+  to a flags-less launch. (`9b4462f`, #8)
+- The `--dump-dom` path prefers the Playwright headless shell: on macOS the full
+  desktop build produced no DOM at all (nothing in 120 s) while the shell from the
+  same revision answered in about a second. The rod path keeps the full browser and an
+  explicit `CHROME_PATH` still wins over both. (`a5f7bfc`, #43)
+
+### Coverage, tests and the second language server
+
+- The search fallbacks (`rg` → `grep` → Go walk), the HTTP MCP transport and the
+  filtering proxy are covered, and the proxy gained a fuzz target asserting that a
+  refused target never reaches the dialer. The search ladder now falls through to the
+  portable implementation when an installed tool fails, instead of failing the whole
+  search. (`f367f37`, #4)
+- A second language server is exercised end to end, which immediately found a real
+  bug: the client advertised no capabilities at all, and tsserver gates every
+  diagnostic on `textDocument.publishDiagnostics`, so every TypeScript file looked
+  clean while gopls pushes regardless. (`7a9e587`, #10)
+- The dead `no_ollama` build tag was removed; it broke `go build -tags no_ollama`.
+  (`54eeb1f`, #5)
+
+### Documentation and discipline
+
+- The TUI visual harness has a reference (`docs/tui-visual-harness.md`), the harness
+  and verification rules it produced are recorded in `AGENTS.md`/`CODEBASE.md`, and
+  the gated checks document how to run them locally. (`353872f`, `66348df`, `ebb5d60`,
+  #11)
+- The test-count badge is back inside the measurement discipline: the README badge
+  said 564 while `CODEBASE.md` said 667, both wrong. Every count now names the command
+  that produces it, the badge included. (`ebb5d60`, #32)
+
 
 ## Historical feature log
 
