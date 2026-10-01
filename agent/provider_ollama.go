@@ -1,5 +1,3 @@
-//go:build !no_ollama
-
 package agent
 
 import (

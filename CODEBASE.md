@@ -103,7 +103,6 @@
 
 ### `provider_ollama.go` — Ollama Provider
 
-- Build tag: `//go:build !no_ollama`
 - **`OllamaProvider`** struct (unexported: baseURL, model, http client)
 - **`NewOllamaProvider(baseURL, model string) *OllamaProvider`** — default baseURL: `http://localhost:11434`
 - `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning
