@@ -127,6 +127,16 @@ func playwrightChromiumPath() string {
 	return findPlaywrightBrowser(playwrightCacheDir(home, runtime.GOOS), runtime.GOOS)
 }
 
+// playwrightHeadlessShellPath is the `--dump-dom` counterpart of
+// playwrightChromiumPath.
+func playwrightHeadlessShellPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return findPlaywrightHeadlessShell(playwrightCacheDir(home, runtime.GOOS), runtime.GOOS)
+}
+
 // playwrightCacheDir is where Playwright unpacks the browsers it downloads.
 func playwrightCacheDir(home, goos string) string {
 	if goos == "darwin" {
@@ -135,8 +145,35 @@ func playwrightCacheDir(home, goos string) string {
 	return filepath.Join(home, ".cache", "ms-playwright")
 }
 
+// playwrightPreference orders the two packages Playwright installs: the full
+// browser and the stripped headless shell.
+type playwrightPreference int
+
+const (
+	// preferFullBrowser is for the rod path, which drives a real browser over CDP.
+	preferFullBrowser playwrightPreference = iota
+	// preferHeadlessShell is for the `--dump-dom` path: the shell is the build
+	// made for exactly that (issue #43).
+	preferHeadlessShell
+)
+
 // findPlaywrightBrowser looks for a usable browser in a Playwright cache
-// directory, newest revision first.
+// directory, newest revision first, preferring the full browser over the headless
+// shell.
+func findPlaywrightBrowser(cacheDir, goos string) string {
+	return findPlaywrightPackage(cacheDir, goos, preferFullBrowser)
+}
+
+// findPlaywrightHeadlessShell is the same search preferring the headless shell:
+// measured on macOS, the full "Google Chrome for Testing" build produced no DOM in
+// 120 s while chrome-headless-shell from the same revision dumped the page in about
+// a second (issue #43).
+func findPlaywrightHeadlessShell(cacheDir, goos string) string {
+	return findPlaywrightPackage(cacheDir, goos, preferHeadlessShell)
+}
+
+// findPlaywrightPackage returns the first usable browser in a Playwright cache
+// directory.
 //
 // Playwright has changed its layout more than once: the full browser now ships
 // as "Google Chrome for Testing.app" under chrome-mac-arm64/chrome-mac-x64 (it
@@ -144,7 +181,7 @@ func playwrightCacheDir(home, goos string) string {
 // chrome_headless_shell package. Only looking for the old path made every
 // current installation invisible, which silently fell back to rod downloading
 // its own browser.
-func findPlaywrightBrowser(cacheDir, goos string) string {
+func findPlaywrightPackage(cacheDir, goos string, pref playwrightPreference) string {
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		return ""
@@ -168,12 +205,15 @@ func findPlaywrightBrowser(cacheDir, goos string) string {
 			pkgs = append(pkgs, pkg{name: name, rev: playwrightRevision(name, "chromium_headless_shell-"), shell: true})
 		}
 	}
-	// Newest revision first, and the full browser before the headless shell: the
-	// shell is a stripped build, so it is only a fallback. The revision is parsed
-	// rather than compared as text, where "chromium-999" would outrank
-	// "chromium-1000".
+	// Newest revision first, and the package the caller prefers ahead of the other:
+	// the rod path wants the full browser, the `--dump-dom` path the shell. The
+	// revision is parsed rather than compared as text, where "chromium-999" would
+	// outrank "chromium-1000".
 	sort.Slice(pkgs, func(i, j int) bool {
 		if pkgs[i].shell != pkgs[j].shell {
+			if pref == preferHeadlessShell {
+				return pkgs[i].shell
+			}
 			return !pkgs[i].shell
 		}
 		if pkgs[i].rev != pkgs[j].rev {
@@ -369,6 +409,23 @@ func browserContainerFlags(l *launcher.Launcher) *launcher.Launcher {
 func findBrowser() string {
 	return firstUsableBrowser(
 		browserCandidates(os.Getenv, exec.LookPath, playwrightChromiumPath),
+		browserUsable,
+	)
+}
+
+// findExecBrowser returns the browser for the `--dump-dom` path, preferring the
+// Playwright headless shell over the full browser.
+//
+// A full desktop Chromium can refuse to dump at all — measured on macOS, the
+// Playwright "Google Chrome for Testing" build produced no DOM in 120 s while
+// chrome-headless-shell from the same revision answered in about a second (issue
+// #43) — and the shell exists precisely for this. CHROME_PATH/CHROME and the
+// system commands still win, so a workflow that pins its browser (CI's
+// setup-chrome) keeps it, and a machine whose only browser is a full build keeps
+// working as before.
+func findExecBrowser() string {
+	return firstUsableBrowser(
+		browserCandidates(os.Getenv, exec.LookPath, playwrightHeadlessShellPath),
 		browserUsable,
 	)
 }
@@ -751,8 +808,9 @@ func WebExtractBrowser() Tool {
 				mode = "auto"
 			}
 
-			// Try system/playwright Chromium first
-			if browserPath := findBrowser(); browserPath != "" {
+			// Try system/playwright Chromium first, with the headless-shell
+			// preference the `--dump-dom` path needs (issue #43).
+			if browserPath := findExecBrowser(); browserPath != "" {
 				content, err := crawlViaExec(ctx, browserPath, url)
 				if err == nil {
 					if mode == "full" {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -215,6 +216,132 @@ func TestBrowserCandidatesOrder(t *testing.T) {
 	)
 	if want := []string{"/usr/bin/chromium-browser"}; !slices.Equal(got, want) {
 		t.Errorf("candidates = %q, want %q (deduplicated)", got, want)
+	}
+}
+
+// TestFindBrowserPerPathDrivesTheWholeChain is the wiring gate for issue #43: it
+// runs the real discovery chain for both paths against a fake Playwright cache and
+// a PATH with nothing on it, so the package each path picks is decided by the
+// preference and the probe alone. A regression that pointed the `--dump-dom` path
+// at the full browser fails here without a browser being started.
+func TestFindBrowserPerPathDrivesTheWholeChain(t *testing.T) {
+	// The layout helpers must name a real binary for every GOOS they claim to
+	// support: an empty string made the fixture write a file where the cache
+	// directory belongs, and that only showed up on Linux (PR #52's first CI run).
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		fullRel, shellRel := fullBrowserRelPath(goos), shellRelPath(goos)
+		if fullRel == "" || shellRel == "" || fullRel == shellRel {
+			t.Fatalf("layout helpers for %s: full=%q shell=%q", goos, fullRel, shellRel)
+		}
+	}
+
+	home := t.TempDir()
+	cache := playwrightCacheDir(home, runtime.GOOS)
+	full := writeFixture(t, cache, fullBrowserRelPath(runtime.GOOS))
+	shell := writeFixture(t, cache, shellRelPath(runtime.GOOS))
+
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // no system command can win
+	t.Setenv("CHROME_PATH", "")
+	t.Setenv("CHROME", "")
+
+	if got := findBrowser(); got != full {
+		t.Errorf("findBrowser = %q, want the full browser %q", got, full)
+	}
+	if got := findExecBrowser(); got != shell {
+		t.Errorf("findExecBrowser = %q, want the headless shell %q", got, shell)
+	}
+
+	// Each path falls back to the other package when that is all the cache has,
+	// so a machine with one installation keeps working either way.
+	if err := os.RemoveAll(shell); err != nil {
+		t.Fatal(err)
+	}
+	if got := findExecBrowser(); got != full {
+		t.Errorf("findExecBrowser without a shell = %q, want the full browser", got)
+	}
+	if err := os.RemoveAll(full); err != nil {
+		t.Fatal(err)
+	}
+	if got := findBrowser(); got != "" {
+		t.Errorf("findBrowser with an empty cache = %q, want empty", got)
+	}
+}
+
+// fullBrowserRelPath and shellRelPath name the two packages' binaries for a GOOS,
+// so the test's fixture tree matches what the real cache looks like: every layout of
+// one package is returned by playwrightBrowserRelPaths, and the binary's own name is
+// what tells them apart.
+func fullBrowserRelPath(goos string) string {
+	for _, rel := range playwrightBrowserRelPaths("chromium-1243", goos) {
+		// The first layout of the full-browser package is the full browser; the
+		// shell layouts come last and are what the other helper selects.
+		if !strings.Contains(rel, "chrome-headless-shell") {
+			return rel
+		}
+	}
+	return ""
+}
+
+func shellRelPath(goos string) string {
+	for _, rel := range playwrightBrowserRelPaths("chromium_headless_shell-1243", goos) {
+		if strings.Contains(rel, "chrome-headless-shell") {
+			return rel
+		}
+	}
+	return ""
+}
+
+// TestPlaywrightPackagePreference pins the per-path choice of issue #43: the rod
+// path wants the full browser, and the `--dump-dom` path the headless shell, from
+// the same cache. A machine with both installed must use the shell for a dump --
+// on macOS the full build produced no DOM in 120 s while the shell answered in
+// about a second.
+func TestPlaywrightPackagePreference(t *testing.T) {
+	cache := t.TempDir()
+	full := writeFixture(t, cache, "chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
+	shell := writeFixture(t, cache, "chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell")
+
+	if got := findPlaywrightBrowser(cache, "darwin"); got != full {
+		t.Errorf("findPlaywrightBrowser = %q, want the full browser %q", got, full)
+	}
+	if got := findPlaywrightHeadlessShell(cache, "darwin"); got != shell {
+		t.Errorf("findPlaywrightHeadlessShell = %q, want the shell %q", got, shell)
+	}
+
+	// Each preference still falls back to the other package when that is all the
+	// cache has, so a machine with one installation keeps working either way.
+	onlyFull := t.TempDir()
+	fullOnly := writeFixture(t, onlyFull, "chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
+	if got := findPlaywrightHeadlessShell(onlyFull, "darwin"); got != fullOnly {
+		t.Errorf("findPlaywrightHeadlessShell without a shell = %q, want the full browser", got)
+	}
+	onlyShell := t.TempDir()
+	shellOnly := writeFixture(t, onlyShell, "chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell")
+	if got := findPlaywrightBrowser(onlyShell, "darwin"); got != shellOnly {
+		t.Errorf("findPlaywrightBrowser without a full browser = %q, want the shell", got)
+	}
+	_ = shell
+}
+
+// TestFindExecBrowserPrefersTheShellOverPathCommands pins the ordering of the whole
+// chain: an explicit override wins, then the Playwright shell, and a PATH command
+// only when the cache has nothing (issue #43). The probe is stubbed so no browser
+// has to exist.
+func TestFindExecBrowserPrefersTheShellOverPathCommands(t *testing.T) {
+	candidates := browserCandidates(
+		func(name string) string { return "" },
+		func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		func() string { return "/cache/chrome-headless-shell" },
+	)
+	if len(candidates) == 0 || candidates[len(candidates)-1] != "/cache/chrome-headless-shell" {
+		t.Fatalf("candidates = %q, want the Playwright shell last", candidates)
+	}
+	if got := firstUsableBrowser(candidates, func(path string) bool { return true }); got != "/usr/bin/chromium-browser" {
+		t.Errorf("first usable = %q, want the system command to win while it works", got)
+	}
+	if got := firstUsableBrowser(candidates, func(path string) bool { return path == "/cache/chrome-headless-shell" }); got != "/cache/chrome-headless-shell" {
+		t.Errorf("first usable = %q, want the shell when the system commands fail their probe", got)
 	}
 }
 

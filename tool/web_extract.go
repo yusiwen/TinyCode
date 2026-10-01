@@ -504,8 +504,10 @@ func tryBrowser(ctx context.Context, urlStr string) string {
 
 	// Find available browser through the shared discovery: it honours
 	// CHROME_PATH, probes each candidate and knows the Playwright cache, none of
-	// which a bare LookPath loop over browserCommands can do.
-	browserPath := findBrowser()
+	// which a bare LookPath loop over browserCommands can do. This is the
+	// `--dump-dom` path, so the Playwright headless shell is preferred over the
+	// full browser (issue #43).
+	browserPath := findExecBrowser()
 	if browserPath == "" {
 		return ""
 	}

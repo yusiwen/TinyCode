@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-707-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-710-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -99,7 +99,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **707 test functions + 10 fuzz targets** across all packages, counted with `grep -rn '^func Test' --include=*_test.go . | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l` (the command is part of the record, and so is the badge below: `CODEBASE.md` → Testing lists every count with its measurement)
+- **710 test functions + 10 fuzz targets** across all packages, counted with `grep -rn '^func Test' --include=*_test.go . | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l` (the command is part of the record, and so is the badge below: `CODEBASE.md` → Testing lists every count with its measurement)
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally
@@ -122,8 +122,10 @@ Two failures that are the environment, not the code:
 - **`--dump-dom` can hang with a full desktop Chromium** — measured on macOS with the
   Playwright "Google Chrome for Testing" build: `--dump-dom` produced nothing in 120 s,
   while `chrome-headless-shell` from the same revision dumped the page in about a second
-  (issue #43). For the `exec` half of the smoke test, point `CHROME_PATH` at
-  `chrome-headless-shell`; the `rod` half still needs the full browser.
+  (issue #43). The extractor's `--dump-dom` path therefore prefers the Playwright headless
+  shell and falls back to the full browser, while the `rod` path keeps preferring the full
+  browser; `CHROME_PATH`/`CHROME` still win over both, so a workflow that pins its browser
+  (CI's `setup-chrome`) is unaffected.
 
 ### Skill System
 - **SKILL.md-based discovery** — three-layer scan: embedded (skill/builtin/) → ~/.tinycode/skills/ → project .tinycode/skills/ (upward search). Later sources override earlier. (cbd6db3)

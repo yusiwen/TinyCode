@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 707 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 710 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -225,7 +225,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - **`apply_patch`**: V4A format (`*** Begin Patch / *** Update File: / *** Add File: / *** Delete File: / *** End Patch`), 3 phases: parse → validate → apply; every target path passes the shared sandbox gate before any I/O
 - **`web_search`**: DuckDuckGo Lite (zero config) + optional SearXNG fallback (`SetSearXNG(baseURL)`)
 - **`web_extract`**: 5-level fallback (HTTP → Cloudflare → Google Cache → Wayback → Chromium), SSRF protection via `internal/netsafe`, LLM summarization for >5000 chars (`SetSummarizer(fn)`)
-- **Browser detection** (`tool/web_browser.go`): `browserCandidates` orders them — `CHROME_PATH`/`CHROME` (what CI's `setup-chrome` exposes), then the system commands, then the Playwright cache — and `firstUsableBrowser` probes each with `--version` before returning it, memoized per path. The probe is what survives a broken installation: the runner's `/usr/bin/chromium-browser` shim never answers, so it is skipped instead of being handed to an extractor that then hangs for 35 s; without a usable candidate `findBrowser` returns "" and the rod path falls back to its own launcher. `findPlaywrightBrowser` accepts every layout Playwright has shipped (the current `Google Chrome for Testing.app` under `chrome-mac-arm64`/`chrome-mac-x64`, the older `chrome-mac/Chromium.app`, the linux/windows equivalents and `chrome_headless_shell`), newest revision first and the full browser before the shell. `tryBrowser` (the `--dump-dom` fallback in `web_extract.go`) uses the same discovery instead of a second LookPath loop. The single rod launcher passes `browserContainerFlags` (`--no-sandbox`), because a CI container denies Chromium a user namespace and it otherwise aborts in the zygote with "No usable sandbox!" before publishing a debug URL; there is no flags-less retry any more — a launch without the sandbox flags is refused instead of silently downgrading (issue #8, see the known-limit entry for the filtering proxy). `execBrowserArgs` (pure, unit-tested) builds the `--dump-dom` argument list: no `--single-process` (Chromium documents it as unsupported and it aborts while rendering on the runner), a throwaway `--user-data-dir` from `os.MkdirTemp` (extraction never touches the user's real profile, and it works where that profile is not writable), `--disable-breakpad`, and on Linux `--disable-dev-shm-usage`. When Chromium fails, the error carries the last three stderr lines (`lastLines`), because a core dump in CI leaves no other trace.
+- **Browser detection** (`tool/web_browser.go`): `browserCandidates` orders them — `CHROME_PATH`/`CHROME` (what CI's `setup-chrome` exposes), then the system commands, then the Playwright cache — and `firstUsableBrowser` probes each with `--version` before returning it, memoized per path. The probe is what survives a broken installation: the runner's `/usr/bin/chromium-browser` shim never answers, so it is skipped instead of being handed to an extractor that then hangs for 35 s; without a usable candidate `findBrowser` returns "" and the rod path falls back to its own launcher. `findPlaywrightBrowser` accepts every layout Playwright has shipped (the current `Google Chrome for Testing.app` under `chrome-mac-arm64`/`chrome-mac-x64`, the older `chrome-mac/Chromium.app`, the linux/windows equivalents and `chrome_headless_shell`), newest revision first and the full browser before the shell. `tryBrowser` (the `--dump-dom` fallback in `web_extract.go`) and the browser tool's automated path use `findExecBrowser` instead of a second LookPath loop: same chain, but the Playwright *headless shell* is preferred over the full browser, because a desktop build can refuse to dump at all (measured on macOS: no DOM in 120 s from "Google Chrome for Testing", about a second from `chrome-headless-shell` of the same revision — issue #43). The rod path keeps `findBrowser` (full browser first). An explicit `CHROME_PATH`/`CHROME` or a working system command still wins over both, so CI's `setup-chrome` browser is unaffected. The single rod launcher passes `browserContainerFlags` (`--no-sandbox`), because a CI container denies Chromium a user namespace and it otherwise aborts in the zygote with "No usable sandbox!" before publishing a debug URL; there is no flags-less retry any more — a launch without the sandbox flags is refused instead of silently downgrading (issue #8, see the known-limit entry for the filtering proxy). `execBrowserArgs` (pure, unit-tested) builds the `--dump-dom` argument list: no `--single-process` (Chromium documents it as unsupported and it aborts while rendering on the runner), a throwaway `--user-data-dir` from `os.MkdirTemp` (extraction never touches the user's real profile, and it works where that profile is not writable), `--disable-breakpad`, and on Linux `--disable-dev-shm-usage`. When Chromium fails, the error carries the last three stderr lines (`lastLines`), because a core dump in CI leaves no other trace.
 - **`task`**: Sub-agent delegation (explore/general), sync or background mode, 120s timeout; a timed-out or cancelled sync task cancels the sub-agent's context (the result channel is buffered so the goroutine always exits)
 - **`todo`**: CRUD with `TodoStore` (max 256 items, 4000 chars/item, one in_progress); every method takes an `RWMutex` and `Read` returns a copy
 - **`sandbox_allow`**: Interactive permission dialog (Allow once / Allow session / Always allow / Deny)
@@ -527,7 +527,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **707 test functions + 10 fuzz targets** across all packages (`go test ./... -count=1`); the README badge carries the test count and is part of the same measurement discipline
+- **710 test functions + 10 fuzz targets** across all packages (`go test ./... -count=1`); the README badge carries the test count and is part of the same measurement discipline
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -562,13 +562,13 @@ The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `
 Counts in this document are produced by these commands at the commit they describe; if one changes, change the command's output here in the same PR:
 
 ```bash
-grep -rn '^func Test' --include=*_test.go . | wc -l    # 707 test functions
+grep -rn '^func Test' --include=*_test.go . | wc -l    # 710 test functions
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 27 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
 ```
 
-The **README badge** (`badge/tests-707`) is part of the same set: it is a static shields.io
+The **README badge** (`badge/tests-710`) is part of the same set: it is a static shields.io
 badge with no code path keeping it honest, and it had drifted to 564 while this document said
 667 — both were wrong by the time anyone looked. Update it in the same PR as the count.
 
@@ -589,10 +589,10 @@ environment it needs:
 - **`lsp`**: `make install-gopls` and `make install-tsls` (TypeScript 5, optional — the TypeScript
   case skips with the reason without it), then `make test-lsp` (`LSP_TEST=1`). The target is
   verbose on purpose: which server was exercised, and which case skipped, is its point.
-- **`browser`**: `make test-browser` (`BROWSER_TEST=1`). On macOS the full Playwright Chrome for
-  Testing build hangs in `--dump-dom` (issue #43) while `chrome-headless-shell` from the same
-  revision dumps the page in about a second, so `CHROME_PATH` selects the binary per half:
-  `<headless shell>` for the `exec` half, the full browser for `rod`.
+- **`browser`**: `make test-browser` (`BROWSER_TEST=1`). The smoke tests resolve the binary per
+  path, exactly as the extractor does: the `--dump-dom` half uses `findExecBrowser` (Playwright
+  headless shell first — the full macOS Chrome for Testing build hangs in `--dump-dom`, issue
+  #43) and the `rod` half `findBrowser` (full browser first).
 - **`tui-visual`**: `make test-tui-visual` (`TUI_SHOT=1`), needs Chromium, `/dev/ptmx` and a fresh
   `bin/tinycode`; `TUI_SHOT_DIR` decides where the PNGs land (default `/tmp`).
 - **`cross`** / **`staticcheck`**: `GOOS=linux GOARCH=arm64 go build ./... && go vet ./...` and
