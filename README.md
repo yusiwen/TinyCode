@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-704-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-707-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -99,7 +99,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **704 test functions + 10 fuzz targets** across all packages, counted with `grep -rn '^func Test' --include=*_test.go . | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l` (the command is part of the record, and so is the badge below: `CODEBASE.md` → Testing lists every count with its measurement)
+- **707 test functions + 10 fuzz targets** across all packages, counted with `grep -rn '^func Test' --include=*_test.go . | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l` (the command is part of the record, and so is the badge below: `CODEBASE.md` → Testing lists every count with its measurement)
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally

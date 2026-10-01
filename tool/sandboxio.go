@@ -2,6 +2,7 @@ package tool
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,18 +29,86 @@ func readSandboxed(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-// writeSandboxed replaces a file's contents through the sandbox root, creating
-// it with perm when it does not exist yet.
+// writeTempContents writes the payload into the temp file a replacement write
+// created. It is a variable so a test can make the write fail and prove the
+// target keeps its bytes (issue #36).
+var writeTempContents = func(f *os.File, data []byte) error {
+	_, err := f.Write(data)
+	return err
+}
+
+// writeSandboxed replaces a file's contents through the sandbox root, creating it
+// with perm when it does not exist yet.
+//
+// The replacement is atomic: the bytes go into a temp file in the *target's own
+// directory* (so the rename stays on one filesystem) and are moved over the target
+// with one rename. Opening the target with O_TRUNC and writing into it — what this
+// used to do — destroyed the old content before the new bytes were durable, so an
+// interrupted write (a signal, a timeout, a full disk) left the file empty or half
+// written (issue #36). A reader now sees either the old file or the new one.
+//
+// The temp file is created through the same sandbox-aware open as the target, so
+// it cannot land outside the root, and it is removed on every failure path.
 func writeSandboxed(path string, data []byte, perm os.FileMode) error {
-	f, err := openSandboxed(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	dir, base := filepath.Split(path)
+	if base == "" || dir == "" {
+		return &os.PathError{Op: "write", Path: path, Err: errors.New("not a file path")}
+	}
+
+	// The target's own mode wins when it exists: a replacement must not silently
+	// widen or narrow the permissions the file already had (the plain
+	// O_TRUNC write this replaces kept them).
+	mode := perm
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+
+	tmp, file, err := createTempSandboxed(dir, base, mode)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()
+	// Every failure below must leave the directory as it was.
+	committed := false
+	defer func() {
+		if !committed {
+			file.Close()
+			_ = os.Remove(tmp)
+		}
+	}()
+
+	if err := writeTempContents(file, data); err != nil {
 		return err
 	}
-	return f.Close()
+	// Close before the rename: a failed close means the bytes may not have
+	// reached the file, and renaming that over the target would be the very data
+	// loss this function exists to prevent.
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+// createTempSandboxed creates a temp file next to the target through the
+// sandbox-aware open, trying a few names before giving up. It returns the path and
+// the open file.
+func createTempSandboxed(dir, base string, perm os.FileMode) (string, *os.File, error) {
+	var lastErr error
+	for attempt := 0; attempt < 8; attempt++ {
+		tmp := filepath.Join(dir, fmt.Sprintf(".%s.tinycode-%d-%d.tmp", base, os.Getpid(), attempt))
+		file, err := openSandboxed(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+		if err == nil {
+			return tmp, file, nil
+		}
+		lastErr = err
+		if !os.IsExist(err) {
+			return "", nil, err
+		}
+	}
+	return "", nil, lastErr
 }
 
 // openSandboxed opens a path for I/O so that the kernel decides containment at
