@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -256,5 +258,39 @@ func TestMCPReadResource(t *testing.T) {
 	}
 	if !strings.Contains(result.Contents[0].Text, "key") {
 		t.Errorf("expected content with 'key', got %q", result.Contents[0].Text)
+	}
+}
+
+// TestAwaitResponsePrefersADeliveredResponse pins the ordering rule of issue #39:
+// readLoop dispatches a frame before it marks the client closed, so a response
+// that is already in the channel must be returned even when the transport died in
+// the same instant. The iteration count is the point — a select over two ready
+// channels is random, so a single case would only flake while this fails about
+// half the time without the drain.
+func TestAwaitResponsePrefersADeliveredResponse(t *testing.T) {
+	client := NewClient(io.Discard, strings.NewReader(""), nil)
+	client.markClosed(errors.New("mcp reader stopped: read: EOF"))
+
+	frame := json.RawMessage(`{"jsonrpc":"2.0","id":7,"result":{"contents":[{"text":"kept"}]}}`)
+	const want = `{"contents":[{"text":"kept"}]}`
+	for i := 0; i < 1000; i++ {
+		ch := make(chan json.RawMessage, 1)
+		ch <- frame
+
+		raw, err := client.awaitResponse(context.Background(), "resources/read", ch)
+		if err != nil {
+			t.Fatalf("iteration %d: awaitResponse = %v, want the delivered response", i, err)
+		}
+		if string(raw) != want {
+			t.Fatalf("iteration %d: result = %s, want %s", i, raw, want)
+		}
+	}
+
+	// A request whose channel was closed instead of answered (the flood budget)
+	// must still fail rather than wait for a response that will never come.
+	empty := make(chan json.RawMessage)
+	close(empty)
+	if _, err := client.awaitResponse(context.Background(), "resources/read", empty); err == nil {
+		t.Error("awaitResponse returned success for a closed response channel")
 	}
 }
