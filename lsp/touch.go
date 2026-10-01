@@ -3,7 +3,6 @@ package lsp
 import (
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -35,7 +34,7 @@ func Init(root string) {
 		shutdownLocked()
 	}
 	projectRoot = root
-	// LSP server is started lazily on first TouchFile call
+	// LSP server is started lazily on the first SyncFile call
 	// Drop diagnostics recorded for a previous workspace.
 	resetDiagnostics()
 }
@@ -79,9 +78,6 @@ func IsAvailable() bool {
 	return lspAvailable && client != nil
 }
 
-// TouchFile opens a file in the LSP server.
-// If withDiagnostics is true, waits up to 5 seconds for diagnostics.
-// Returns diagnostics if any, or nil on timeout/failure.
 // canonicalPath returns the OS-resolved absolute form of path.
 //
 // Language servers canonicalize the workspace root themselves, so sending a
@@ -104,7 +100,16 @@ func canonicalPath(path string) string {
 	return abs
 }
 
-func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
+// SyncFile makes the language server's copy of filePath match content. The
+// caller passes the bytes it already has — the ones it read through the sandbox,
+// or the ones it just wrote — because this package must not open the path itself
+// after the sandbox decision was made for a different read (issue #7 S2): a
+// component swapped for a symlink in between would be followed by a plain
+// os.ReadFile and its content handed to the server.
+//
+// If withDiagnostics is true it waits up to 5 seconds for diagnostics and
+// returns them, or nil on timeout/failure.
+func SyncFile(filePath, content string, withDiagnostics bool) ([]Diagnostic, error) {
 	mu.Lock()
 	// Lazy start: spawn the language server on first use
 	if client == nil {
@@ -117,20 +122,11 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 
 	// Build the file URI from the canonical path so it matches the workspace
 	// root the server resolves to.
-	absPath := canonicalPath(filePath)
-	uri := "file://" + absPath
-
-	// Read the file once: the server must see the real text, otherwise it
-	// analyses an empty buffer and reports phantom errors (or none at all).
-	data, readErr := os.ReadFile(absPath)
-	if readErr != nil {
-		return nil, readErr
-	}
-	content := string(data)
+	uri := "file://" + canonicalPath(filePath)
 
 	if !withDiagnostics {
 		// Fire-and-forget: sync the document, no waiting
-		tlog.Debug("lsp.touch", "warmup", "file", absPath)
+		tlog.Debug("lsp.touch", "warmup", "file", filePath)
 		if err := client.SyncDocument(uri, content); err != nil {
 			log.Printf("LSP warmup: notify open: %v", err)
 		}
@@ -138,20 +134,21 @@ func TouchFile(filePath string, withDiagnostics bool) ([]Diagnostic, error) {
 	}
 
 	// With diagnostics: sync and wait
-	tlog.Debug("lsp.touch", "diagnostics", "file", absPath)
+	tlog.Debug("lsp.touch", "diagnostics", "file", filePath)
 	diags, err := client.Diagnostics(uri, content)
 	if err != nil {
 		log.Printf("LSP diagnostics: %v", err)
 		return nil, nil // silent failure
 	}
-	tlog.Debug("lsp.touch", "diag_result", "file", absPath, "count", len(diags))
+	tlog.Debug("lsp.touch", "diag_result", "file", filePath, "count", len(diags))
 	return diags, nil
 }
 
-// SnapshotBaseline captures the current diagnostics for a file before editing.
-// Call before write_file to establish a baseline for delta diagnostics.
-func SnapshotBaseline(path string) {
-	diags, err := TouchFile(path, true)
+// SnapshotBaseline captures the diagnostics of content for a file before editing.
+// The caller passes the pre-edit bytes it read through the sandbox; call before
+// write_file to establish a baseline for delta diagnostics.
+func SnapshotBaseline(path, content string) {
+	diags, err := SyncFile(path, content, true)
 	if err != nil {
 		tlog.Debug("lsp.baseline", "snapshot_error", "file", path, "error", err.Error())
 		return
@@ -168,8 +165,8 @@ func SnapshotBaseline(path string) {
 // GetNewDiagnostics compares current diagnostics against the baseline.
 // Returns only diagnostics not in the baseline snapshot.
 // Call after write_file to get only the errors introduced by the edit.
-func GetNewDiagnostics(path string) []Diagnostic {
-	current, err := TouchFile(path, true)
+func GetNewDiagnostics(path, content string) []Diagnostic {
+	current, err := SyncFile(path, content, true)
 	if err != nil || len(current) == 0 {
 		return nil
 	}

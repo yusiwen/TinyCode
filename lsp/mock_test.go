@@ -16,6 +16,7 @@ import (
 type mockLSP struct {
 	mu          sync.Mutex
 	diags       map[string][]Diagnostic
+	syncedText  map[string]string // uri -> text the last didOpen/didChange carried
 	nullResults bool
 	serverRead  *io.PipeReader
 	clientWrite *io.PipeWriter
@@ -30,6 +31,7 @@ func newMockLSP() (*mockLSP, *Conn) {
 
 	m := &mockLSP{
 		diags:       make(map[string][]Diagnostic),
+		syncedText:  make(map[string]string),
 		serverRead:  sr,
 		clientWrite: cw,
 		clientRead:  cr,
@@ -39,6 +41,13 @@ func newMockLSP() (*mockLSP, *Conn) {
 	conn := NewConn(cw, cr)
 	go m.run()
 	return m, conn
+}
+
+// textFor returns the text the server was last told for uri.
+func (m *mockLSP) textFor(uri string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.syncedText[uri]
 }
 
 func (m *mockLSP) addDiag(uri string, d []Diagnostic) {
@@ -117,13 +126,24 @@ func (m *mockLSP) writeResult(id any, result string) {
 func (m *mockLSP) pushDiags(params json.RawMessage) {
 	var p struct {
 		TD struct {
-			URI string `json:"uri"`
+			URI  string `json:"uri"`
+			Text string `json:"text"`
 		} `json:"textDocument"`
+		Changes []struct {
+			Text string `json:"text"`
+		} `json:"contentChanges"`
 	}
 	if json.Unmarshal(params, &p) != nil {
 		return
 	}
+	// Record what the server was told, so a test can assert the bytes came from
+	// the caller rather than from the file on disk (issue #7 S2).
+	text := p.TD.Text
+	if len(p.Changes) > 0 {
+		text = p.Changes[len(p.Changes)-1].Text
+	}
 	m.mu.Lock()
+	m.syncedText[p.TD.URI] = text
 	d, ok := m.diags[p.TD.URI]
 	m.mu.Unlock()
 	if !ok {

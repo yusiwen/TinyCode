@@ -129,11 +129,11 @@ func TestServerLanguageUnknownReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestTouchFileUnknownLanguageFailsFast verifies that touching a file with no
+// TestSyncFileUnknownLanguageFailsFast verifies that touching a file with no
 // configured server fails without spawning any process and without leaving LSP
 // marked available. This does not need a real language server, so it runs
 // unconditionally.
-func TestTouchFileUnknownLanguageFailsFast(t *testing.T) {
+func TestSyncFileUnknownLanguageFailsFast(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "notes.txt")
 	if err := os.WriteFile(file, []byte("hello\n"), 0644); err != nil {
@@ -150,8 +150,8 @@ func TestTouchFileUnknownLanguageFailsFast(t *testing.T) {
 		t.Fatalf("a server was already running before the touch")
 	}
 
-	if _, err := TouchFile(file, true); err == nil {
-		t.Fatalf("TouchFile(notes.txt) succeeded, want an error")
+	if _, err := SyncFile(file, sourceFor(t, file), true); err == nil {
+		t.Fatalf("SyncFile(notes.txt) succeeded, want an error")
 	}
 	if IsAvailable() {
 		t.Fatalf("LSP reported available after a failed start")
@@ -164,11 +164,11 @@ func TestTouchFileUnknownLanguageFailsFast(t *testing.T) {
 	}
 }
 
-// TestTouchFilePythonProjectUsesPythonServer asserts that a Python file in a
+// TestSyncFilePythonProjectUsesPythonServer asserts that a Python file in a
 // project without a Go module is never handed to gopls. When pyright is absent
 // the start must fail with a pyright-specific error; when it is installed the
 // diagnostics call must succeed. Either way no gopls process may be spawned.
-func TestTouchFilePythonProjectUsesPythonServer(t *testing.T) {
+func TestSyncFilePythonProjectUsesPythonServer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping LSP integration test in short mode")
 	}
@@ -185,16 +185,16 @@ func TestTouchFilePythonProjectUsesPythonServer(t *testing.T) {
 	Init(proj)
 	defer Init("")
 
-	_, err := TouchFile(py, true)
+	_, err := SyncFile(py, sourceFor(t, py), true)
 	_, lookErr := exec.LookPath("pyright")
 	if lookErr == nil {
 		if err != nil {
-			t.Fatalf("TouchFile(app.py) with pyright installed failed: %v", err)
+			t.Fatalf("SyncFile(app.py) with pyright installed failed: %v", err)
 		}
 		return
 	}
 	if err == nil {
-		t.Fatalf("TouchFile(app.py) succeeded without pyright on PATH")
+		t.Fatalf("SyncFile(app.py) succeeded without pyright on PATH")
 	}
 	if !strings.Contains(err.Error(), "pyright") {
 		t.Fatalf("error = %v, want it to name the pyright server", err)
