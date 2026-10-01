@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 667 test functions + 9 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 704 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -527,7 +527,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **667 test functions + 9 fuzz targets** across all packages (`go test ./... -count=1`)
+- **704 test functions + 10 fuzz targets** across all packages (`go test ./... -count=1`); the README badge carries the test count and is part of the same measurement discipline
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -562,13 +562,45 @@ The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `
 Counts in this document are produced by these commands at the commit they describe; if one changes, change the command's output here in the same PR:
 
 ```bash
-grep -rn '^func Test' --include=*_test.go . | wc -l    # 667 test functions
-grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 9 fuzz targets
+grep -rn '^func Test' --include=*_test.go . | wc -l    # 704 test functions
+grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 27 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
 ```
 
-They drifted by eight (654 documented, 662 actual) before this rule existed, which is why the command sits next to the number rather than in a reviewer's head.
+The **README badge** (`badge/tests-704`) is part of the same set: it is a static shields.io
+badge with no code path keeping it honest, and it had drifted to 564 while this document said
+667 — both were wrong by the time anyone looked. Update it in the same PR as the count.
+
+These drifted by eight (654 documented, 662 actual) before the rule existed, which is why the
+command sits next to the number rather than in a reviewer's head.
+
+### Running the CI jobs locally
+
+The gated jobs are reproducible off CI; each command below is the one the job runs, with the
+environment it needs:
+
+- **`ci`** (`make test`, `make test-race`, `make test-repeat`): everything runs everywhere except
+  the Linux-only cases — the `openat2` containment tests and the cgroup reaping — which need a
+  Linux host. `docker run --rm -v "$PWD":/w -w /w golang:1.27 go test ./tool/` is the short path
+  (a running daemon is required; the kernel inside needs ≥ 5.6 for `openat2`). These have been
+  green in every `ci` run recorded here; the container command itself was **not** run in this
+  session, since no daemon was up.
+- **`lsp`**: `make install-gopls` and `make install-tsls` (TypeScript 5, optional — the TypeScript
+  case skips with the reason without it), then `make test-lsp` (`LSP_TEST=1`). The target is
+  verbose on purpose: which server was exercised, and which case skipped, is its point.
+- **`browser`**: `make test-browser` (`BROWSER_TEST=1`). On macOS the full Playwright Chrome for
+  Testing build hangs in `--dump-dom` (issue #43) while `chrome-headless-shell` from the same
+  revision dumps the page in about a second, so `CHROME_PATH` selects the binary per half:
+  `<headless shell>` for the `exec` half, the full browser for `rod`.
+- **`tui-visual`**: `make test-tui-visual` (`TUI_SHOT=1`), needs Chromium, `/dev/ptmx` and a fresh
+  `bin/tinycode`; `TUI_SHOT_DIR` decides where the PNGs land (default `/tmp`).
+- **`cross`** / **`staticcheck`**: `GOOS=linux GOARCH=arm64 go build ./... && go vet ./...` and
+  `make staticcheck`. Both are fully local.
+
+A browser or PTY target that cannot start inside a restricted sandbox is expected to fail there —
+that is what the `browser` and `tui-visual` jobs are for, and why every such test skips with a
+reason instead of reporting a false pass.
 
 ## Build & Run
 

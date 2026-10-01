@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/github/last-commit/yusiwen/tinycode?style=flat-square"/>
   <img src="https://img.shields.io/github/actions/workflow/status/yusiwen/TinyCode/main.yml?style=flat-square&amp;label=build" alt="Build and Test"/>
   <img src="https://img.shields.io/github/repo-size/yusiwen/tinycode?style=flat-square"/>
-  <img src="https://img.shields.io/badge/tests-564-%23success?style=flat-square"/>
+  <img src="https://img.shields.io/badge/tests-704-%23success?style=flat-square"/>
 </p>
 
 ---
@@ -99,8 +99,31 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **667 test functions + 9 fuzz targets** across all packages, counted with `grep -rn '^func Test' --include=*_test.go . | wc -l` (the command is part of the record: `CODEBASE.md` → Testing lists every count's measurement)
+- **704 test functions + 10 fuzz targets** across all packages, counted with `grep -rn '^func Test' --include=*_test.go . | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l` (the command is part of the record, and so is the badge below: `CODEBASE.md` → Testing lists every count with its measurement)
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
+
+### Running the checks locally
+
+Every gated target skips itself without its environment variable, so a plain `make test`
+never launches a browser, a language server or a terminal device. Run them deliberately:
+
+| Check | Command | Needs |
+| --- | --- | --- |
+| Linux-only cases (the `openat2` containment tests, the cgroup reaping) | `docker run --rm -v "$PWD":/w -w /w golang:1.27 go test ./tool/` | a running Docker daemon; the kernel inside needs ≥ 5.6 for `openat2` |
+| Real language servers | `make install-gopls`, `make install-tsls` (TypeScript 5, optional), then `make test-lsp` (`LSP_TEST=1`) | a Go toolchain; npm for the TypeScript case, which skips with the reason without it |
+| Real browser smoke tests | `make test-browser` (`BROWSER_TEST=1`) | a Chromium/Chrome: a system install, `CHROME_PATH=…`, or `npx playwright install chromium` |
+| TUI frames and the PTY smoke test | `make test-tui-visual` (`TUI_SHOT=1`) | Chromium, `/dev/ptmx`, and a fresh `bin/tinycode` |
+
+Two failures that are the environment, not the code:
+
+- **Chromium may not start in a restricted sandbox** (the agent sandbox denies the user
+  namespace, the profile directory or `/dev/ptmx`). Run the browser and PTY targets on a
+  normal host, or leave them to the `browser` and `tui-visual` CI jobs.
+- **`--dump-dom` can hang with a full desktop Chromium** — measured on macOS with the
+  Playwright "Google Chrome for Testing" build: `--dump-dom` produced nothing in 120 s,
+  while `chrome-headless-shell` from the same revision dumped the page in about a second
+  (issue #43). For the `exec` half of the smoke test, point `CHROME_PATH` at
+  `chrome-headless-shell`; the `rod` half still needs the full browser.
 
 ### Skill System
 - **SKILL.md-based discovery** — three-layer scan: embedded (skill/builtin/) → ~/.tinycode/skills/ → project .tinycode/skills/ (upward search). Later sources override earlier. (cbd6db3)
