@@ -9,8 +9,13 @@ import (
 
 // errBeneathUnsupported reports that the kernel cannot enforce containment for
 // this open (no openat2, an old kernel, or a path that is not beneath the
-// root), so the caller falls back to a plain open.
+// root), so the caller falls back to the no-follow walk.
 var errBeneathUnsupported = errors.New("kernel path containment unavailable")
+
+// errPathChanged reports that the path no longer resolves to the form the sandbox
+// approved: a component was swapped for a symlink (or a symlink was retargeted)
+// between the check and the open. The open is refused rather than followed.
+var errPathChanged = errors.New("path changed after the sandbox check")
 
 // readSandboxed reads a file through the sandbox root, so containment is
 // enforced by the same open that produces the data.
@@ -46,9 +51,14 @@ func writeSandboxed(path string, data []byte, perm os.FileMode) error {
 // after the permission dialog was answered makes the open fail with EXDEV
 // instead of following it.
 //
-// A path the user explicitly allowed outside the root, and any platform without
-// that syscall, falls back to a plain open — the behaviour before this layer,
-// where the sandbox check is the only gate.
+// Everything openat2 cannot cover — a path the user explicitly allowed outside
+// the root, a platform without the syscall (macOS), a kernel older than 5.6 —
+// goes through openResolvedNoFollow, which walks the *resolved* path one
+// component at a time with O_NOFOLLOW, and it is only reached after the path is
+// confirmed to still resolve to itself (issue #7). Callers must therefore pass
+// the resolved form CheckPathAccess returns; a path that resolves differently now
+// is refused, because that difference is exactly the swap this layer exists to
+// catch.
 func openSandboxed(path string, flags int, perm os.FileMode) (*os.File, error) {
 	root := DefaultSandbox.ProjectRoot
 	if root == "" {
@@ -65,6 +75,20 @@ func openSandboxed(path string, flags int, perm os.FileMode) (*os.File, error) {
 		if !errors.Is(err, errBeneathUnsupported) {
 			return nil, err
 		}
+	}
+
+	// The kernel cannot express containment here, so the walk takes over — but
+	// only for the path as the sandbox saw it. Re-resolving must be a no-op: if it
+	// is not, a component is pointing somewhere else now than it did when
+	// CheckPath approved it, and opening the new target would be following the
+	// swap.
+	if cleaned := filepath.Clean(absoluteNoClean(path)); realPath != cleaned {
+		return nil, &os.PathError{Op: "open", Path: path, Err: errPathChanged}
+	}
+	if file, err := openResolvedNoFollow(realPath, flags, perm); err == nil {
+		return file, nil
+	} else if !errors.Is(err, errBeneathUnsupported) {
+		return nil, err
 	}
 	return os.OpenFile(path, flags, perm)
 }

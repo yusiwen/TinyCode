@@ -16,6 +16,13 @@ import (
 // available (Linux < 5.6), so the check is not retried on every call.
 var openat2Unsupported atomic.Bool
 
+// openDirFlags opens one directory for traversal during the no-follow walk.
+//
+// O_PATH is the Linux answer: it makes the directory openable for traversal even
+// where the caller may not read it, which is exactly what a path walk needs and
+// what O_RDONLY would demand. See openResolvedNoFollow.
+const openDirFlags = unix.O_PATH | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
+
 // kernelEscapeCheck asks the kernel whether path really resolves inside root,
 // using openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS).
 //
