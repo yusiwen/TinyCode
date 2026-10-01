@@ -305,6 +305,8 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
   - `NewClient(stdin, stdout, stderr) *Client`
   - Protocol: JSON-RPC 2.0, Content-Length framing, version `2025-03-26`
   - One request/response exchange at a time (`mu` held across write+read); responses are matched by id, id-less notifications and mismatches are skipped up to `maxSkippedMessages`
+  - Bounded (issue #2): `defaultRequestTimeout` (5 min) is applied in `send` when the caller's context has no deadline of its own — the handshake's 60 s bound covers `initialize`/`tools/list` only, and every later `tools/call` inherits the agent's deadline-free run context. A caller-supplied deadline is never replaced, `0` disables the bound, and the failure names it (`no response within 5m0s`) instead of a bare `context canceled`
+  - A response dispatched in the same instant the transport died is still delivered (issue #39); `destroy`/`chargeUnmatched` closing the channel means no response will come
   - Framing: `strconv.Atoi` on a case-insensitive `Content-Length`, negative/oversized (>8 MiB) rejected, 8 KiB header-line cap
   - `Close()` is idempotent and unblocks a blocked exchange; `SetKillFunc` lets the transport owner reap the process
 - Types: `Tool`, `ToolResult`, `ToolResultContent`, `Resource`, `ResourceResult`, `ResourceContent`, `ServerInfo`

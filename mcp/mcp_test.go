@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 // mockServer runs a minimal MCP server over pipes and returns a connected client.
@@ -60,13 +61,23 @@ func startMockServer(t *testing.T) (*Client, context.CancelFunc) {
 
 func readMockMsg(t *testing.T, r io.Reader) string {
 	t.Helper()
+	msg, err := readMockFrame(r)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	return msg
+}
+
+// readMockFrame is readMockMsg without the t.Fatalf, for a goroutine that may
+// still be reading when the test finishes: it returns the error instead.
+func readMockFrame(r io.Reader) (string, error) {
 	var contentLength int
 	buf := make([]byte, 0, 4096)
 	tmp := make([]byte, 1)
 	for {
 		n, err := r.Read(tmp)
 		if err != nil {
-			t.Fatalf("read: %v", err)
+			return "", err
 		}
 		if n == 0 {
 			continue
@@ -86,8 +97,49 @@ func readMockMsg(t *testing.T, r io.Reader) string {
 		}
 	}
 	body := make([]byte, contentLength)
-	io.ReadFull(r, body)
-	return string(body)
+	if _, err := io.ReadFull(r, body); err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// startFrameServer connects a Client to one goroutine that reads request frames
+// and answers each with the string reply returns ("" answers nothing). It is the
+// scaffolding for a server that goes silent on a chosen method, and it uses only
+// error-returning reads and writes so a goroutine still running when the test
+// ends cannot fail the test from off-goroutine.
+func startFrameServer(t *testing.T, reply func(req string) string) *Client {
+	t.Helper()
+
+	clientStdinR, clientStdinW := io.Pipe()
+	serverStdoutR, serverStdoutW := io.Pipe()
+	stopped := make(chan struct{})
+
+	go func() {
+		defer close(stopped)
+		for {
+			req, err := readMockFrame(clientStdinR)
+			if err != nil {
+				return
+			}
+			out := reply(req)
+			if out == "" {
+				continue
+			}
+			frame := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(out), out)
+			if _, err := serverStdoutW.Write([]byte(frame)); err != nil {
+				return
+			}
+		}
+	}()
+
+	client := NewClient(clientStdinW, serverStdoutR, nil)
+	t.Cleanup(func() {
+		clientStdinW.Close()
+		serverStdoutW.Close()
+		<-stopped
+	})
+	return client
 }
 
 func writeMockMsg(t *testing.T, w io.Writer, jsonStr string) {
@@ -258,6 +310,88 @@ func TestMCPReadResource(t *testing.T) {
 	}
 	if !strings.Contains(result.Contents[0].Text, "key") {
 		t.Errorf("expected content with 'key', got %q", result.Contents[0].Text)
+	}
+}
+
+// TestMCPSendBoundsAnUnboundedRequest covers issue #2: the handshake is bounded at
+// its call site, but every request after it inherits the agent's run context, which
+// carries no deadline - a server that accepts tools/call and never answers used to
+// block the agent step with no error surfaced. The client must stay usable, so the
+// test asks for tools/list afterwards and expects an answer.
+func TestMCPSendBoundsAnUnboundedRequest(t *testing.T) {
+	previous := defaultRequestTimeout
+	defaultRequestTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { defaultRequestTimeout = previous })
+
+	client := startFrameServer(t, func(req string) string {
+		switch {
+		case strings.Contains(req, `"method":"initialize"`):
+			return `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"silent","version":"1"}}}`
+		case strings.Contains(req, `"method":"tools/list"`):
+			return `{"jsonrpc":"2.0","id":3,"result":{"tools":[]}}`
+		}
+		return "" // tools/call: accepted, never answered
+	})
+
+	if _, err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	start := time.Now()
+	_, err := client.CallTool(context.Background(), "echo", map[string]any{"text": "hi"})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("CallTool against a server that never answers returned success")
+	}
+	if !strings.Contains(err.Error(), "no response within") {
+		t.Errorf("error = %v, want it to name the default bound", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("CallTool took %s to report the bound", elapsed)
+	}
+
+	// The request was abandoned, not the transport.
+	if _, err := client.ListTools(context.Background()); err != nil {
+		t.Errorf("the client stopped working after the bound fired: %v", err)
+	}
+}
+
+// TestMCPSendKeepsTheCallersDeadline pins the other half of the rule in send: a
+// caller that supplied a deadline gets that one, not the default.
+func TestMCPSendKeepsTheCallersDeadline(t *testing.T) {
+	previous := defaultRequestTimeout
+	defaultRequestTimeout = time.Hour
+	t.Cleanup(func() { defaultRequestTimeout = previous })
+
+	client := startFrameServer(t, func(req string) string {
+		if strings.Contains(req, `"method":"initialize"`) {
+			return `{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"silent","version":"1"}}}`
+		}
+		return ""
+	})
+	if _, err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := client.CallTool(ctx, "echo", nil)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("CallTool with an expiring context returned success")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %v, want the caller's deadline", err)
+	}
+	if strings.Contains(err.Error(), "no response within") {
+		t.Errorf("the default bound replaced the caller's deadline: %v", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("CallTool took %s, want the caller's 100 ms deadline to win", elapsed)
 	}
 }
 
