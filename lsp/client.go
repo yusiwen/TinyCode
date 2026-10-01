@@ -102,7 +102,16 @@ func (c *Client) Initialize(rootURI string) error {
 		"workspaceFolders": []map[string]any{
 			{"uri": rootURI, "name": "workspace"},
 		},
-		"capabilities": map[string]any{},
+		// The client capabilities are not decoration: typescript-language-server
+		// gates publishDiagnostics on `textDocument.publishDiagnostics` and pushes
+		// nothing at all when it is absent, which made every non-Go file look
+		// clean. gopls pushes regardless, which is why the empty map went
+		// unnoticed until a second server was exercised (issue #10).
+		"capabilities": map[string]any{
+			"textDocument": map[string]any{
+				"publishDiagnostics": map[string]any{"relatedInformation": true, "versionSupport": true},
+			},
+		},
 	}
 
 	_, err := c.conn.Send("initialize", params)

@@ -43,7 +43,7 @@ jobs:
         run: make test-repeat
 
   lsp:
-    name: LSP integration (gopls)
+    name: LSP integration (gopls + typescript)
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
@@ -60,6 +60,14 @@ jobs:
         run: |
           make install-gopls
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # The second server the gated tests exercise. A registry hiccup must not fail
+      # the job — and must not add an annotation — so a failed install is reported
+      # and the TypeScript case skips with that reason.
+      - name: Install typescript-language-server (optional)
+        run: |
+          make install-tsls || echo "typescript-language-server not installed; its gated test will skip"
+          command -v typescript-language-server || true
 
       - name: Run LSP integration tests
         run: make test-lsp
