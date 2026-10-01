@@ -145,7 +145,7 @@ func TestOllamaStream_Text(t *testing.T) {
 	}
 
 	provider := &OllamaProvider{model: "test-model"}
-	result, err := provider.ollamaStream(context.Background(), io.NopCloser(strings.NewReader(input)), cb)
+	result, err := provider.ollamaStream(context.Background(), io.NopCloser(strings.NewReader(input)), cb, nil)
 	if err != nil {
 		t.Fatalf("ollamaStream error: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestOllamaStream_Thinking(t *testing.T) {
 	}
 
 	provider := &OllamaProvider{model: "test-model"}
-	result, err := provider.ollamaStream(context.Background(), io.NopCloser(strings.NewReader(input)), cb)
+	result, err := provider.ollamaStream(context.Background(), io.NopCloser(strings.NewReader(input)), cb, nil)
 	if err != nil {
 		t.Fatalf("ollamaStream error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestOllamaStream_Empty(t *testing.T) {
 		"{\"message\":{\"content\":\"\"}}\n" +
 		"{\"done\":true,\"done_reason\":\"length\"}\n"
 	provider := &OllamaProvider{model: "test-model"}
-	result, err := provider.ollamaStream(context.Background(), io.NopCloser(strings.NewReader(input)), nil)
+	result, err := provider.ollamaStream(context.Background(), io.NopCloser(strings.NewReader(input)), nil, nil)
 	if err != nil {
 		t.Fatalf("ollamaStream error: %v", err)
 	}
