@@ -7,14 +7,55 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
+
+// Bounds on one Ollama request.
+//
+// Ollama is usually a local process, but "local" is not "bounded": an endpoint
+// that accepts the connection and never answers — a container that lost its GPU,
+// a proxy in front of a dead port — used to block the agent step until the user
+// cancelled, because the run context carries no deadline of its own (both entry
+// points create it with context.WithCancel: tui/update.go and main.go). Every
+// other network client in the project is bounded: the OpenAI-compatible provider
+// 120 s, web_search 15 s, the memory client 15 s, the MCP HTTP transport 30 s.
+//
+// The two bounds measure different things. A batch answer has no intermediate
+// progress to watch, so the whole request is bounded. A streaming answer may
+// legitimately run for minutes while tokens keep arriving, so only the silence
+// between tokens is bounded — a total limit would kill a long generation that is
+// working fine. Both are variables so the tests can shrink them.
+var (
+	// ollamaRequestTimeout bounds one non-streaming request, body included.
+	ollamaRequestTimeout = 10 * time.Minute
+	// ollamaIdleTimeout bounds the wait for the next line of a streaming
+	// response; every line the scanner delivers resets it.
+	ollamaIdleTimeout = 2 * time.Minute
+)
+
+// errOllamaSilent is the cancel cause of a streaming request that produced no
+// data for ollamaIdleTimeout, so the failure names the bound instead of the
+// opaque transport error a cancelled context produces.
+var errOllamaSilent = errors.New("endpoint went silent")
+
+// ollamaRequestError prefers the bound that fired over the transport error it
+// produced: a cancelled request surfaces as "context canceled" or a closed
+// connection, neither of which says why. A cancellation by the caller (Ctrl+C)
+// keeps the transport error, since no bound of ours is to blame.
+func ollamaRequestError(ctx context.Context, err error) error {
+	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+		return cause
+	}
+	return err
+}
 
 type OllamaProvider struct {
 	baseURL string
@@ -131,6 +172,25 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		return nil, fmt.Errorf("ollama marshal: %w", err)
 	}
 
+	// Bound the request (issue #1). The cancel cause carries the bound that
+	// fired into the error message; a streaming request starts its clock at the
+	// request, so an endpoint that never sends even the response headers fails
+	// on the same idle bound as one that stalls mid-answer.
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	var watchdog *time.Timer
+	if req.StreamCallbacks != nil {
+		watchdog = time.AfterFunc(ollamaIdleTimeout, func() {
+			cancel(fmt.Errorf("%w for %s", errOllamaSilent, ollamaIdleTimeout))
+		})
+	} else {
+		watchdog = time.AfterFunc(ollamaRequestTimeout, func() {
+			cancel(fmt.Errorf("no answer within %s: %w", ollamaRequestTimeout, context.DeadlineExceeded))
+		})
+	}
+	defer watchdog.Stop()
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/chat", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("ollama request: %w", err)
@@ -139,7 +199,7 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 
 	httpResp, err := p.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("ollama api: %w", err)
+		return nil, fmt.Errorf("ollama api: %w", ollamaRequestError(ctx, err))
 	}
 	defer httpResp.Body.Close()
 
@@ -149,7 +209,7 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	}
 
 	if req.StreamCallbacks != nil {
-		return p.ollamaStream(ctx, httpResp.Body, req.StreamCallbacks)
+		return p.ollamaStream(ctx, httpResp.Body, req.StreamCallbacks, watchdog)
 	}
 
 	return p.ollamaBatch(httpResp.Body)
@@ -194,7 +254,13 @@ func (p *OllamaProvider) ollamaBatch(body io.ReadCloser) (*types.ChatResponse, e
 // ollamaStream parses a streaming Ollama response with real-time callbacks.
 // Each line is JSON: {"message":{"role":"assistant","content":"token"}}
 // Final line: {"done":true}
-func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
+//
+// watchdog is the caller's idle bound for this stream (nil for none, as the
+// parser-level tests use): it is reset after every line, so it fires only when the
+// endpoint stops talking. A stream that ends without its final line is reported as
+// an error rather than as the partial text it managed to send — otherwise a stall
+// is indistinguishable from a finished answer (issue #1).
+func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, cb *types.StreamCallbacks, watchdog *time.Timer) (*types.ChatResponse, error) {
 	defer body.Close()
 
 	result := &types.ChatResponse{}
@@ -206,6 +272,9 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 
 	for scanner.Scan() {
+		if watchdog != nil {
+			watchdog.Reset(ollamaIdleTimeout)
+		}
 		line := scanner.Text()
 		if line == "" {
 			continue
@@ -252,6 +321,7 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 
 	if err := scanner.Err(); err != nil {
 		tlog.Warn("ollama.stream", "scan_error", "error", err.Error())
+		return nil, fmt.Errorf("ollama stream: %w", ollamaRequestError(ctx, err))
 	}
 
 	result.Content = content.String()
