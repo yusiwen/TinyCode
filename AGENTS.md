@@ -78,7 +78,8 @@ test that drives an external process — browser, PTY, subprocess:
   clean, fast and attributed.
 - **A golden frame is the assertion; a PNG supports it.** Assert a visual
   artifact's dimensions against the geometry it claims to show — the full-page
-  capture in #25 widened to the longest line instead.
+  capture in #25 widened to the longest line instead, and the fix was to clip the
+  page with the renderer's own truncation (`ansi.Truncate`), not to widen the page.
 
 The full reference (layers, implementation, commands, troubleshooting) is
 [docs/tui-visual-harness.md](docs/tui-visual-harness.md).

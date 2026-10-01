@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"html"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -168,11 +170,33 @@ func (st ansiState) styleAttr() string {
 	return strings.Join(parts, ";")
 }
 
+// clipFrameToWidth cuts every row of a frame to the terminal's column count,
+// which is what a real terminal receives: bubbletea's standard renderer applies
+// `ansi.Truncate(line, r.width, "")` to each line before writing it, so a status
+// bar wider than the window is cut there and never reaches the screen
+// (standard_renderer.go, v1.3.10 — the same ansi package is used here on purpose).
+// A scenario builds a model directly and calls View(), which skips that step, so a
+// 112-column compression status line used to be rendered in full on a 40-column
+// image (issue #25).
+func clipFrameToWidth(frame string, width int) string {
+	if width <= 0 {
+		return frame
+	}
+	rows := strings.Split(frame, "\n")
+	for i, row := range rows {
+		rows[i] = ansi.Truncate(row, width, "")
+	}
+	return strings.Join(rows, "\n")
+}
+
 // frameToHTML converts one rendered frame into a self-contained HTML page. The
 // frame is a flat string of rows (the TUI never uses cursor addressing inside
 // View()), so SGR state only needs to survive across rows, and every other
-// escape sequence can be dropped.
-func frameToHTML(frame string) string {
+// escape sequence can be dropped. width is the terminal width the frame claims:
+// the page must show what the terminal would show, not what View() returned.
+func frameToHTML(frame string, width int) string {
+	frame = clipFrameToWidth(frame, width)
+
 	var body strings.Builder
 	st := ansiState{}
 	flush := func(text string) {
@@ -258,6 +282,40 @@ font:14px/1.6 "SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace}
 </style><pre>` + body + "</pre>"
 }
 
+// TestFrameToHTMLClipsToWidth pins the clip the screenshot page applies, in a test
+// that needs no browser: every row is cut at the terminal's column count the way
+// the renderer cuts it, the styling survives the cut, a wide character that would
+// straddle the edge is dropped instead of half-drawn, and a frame that already
+// fits comes through untouched - so the clip cannot rewrite a scenario whose
+// golden is asserted byte for byte.
+func TestFrameToHTMLClipsToWidth(t *testing.T) {
+	styled := "\x1b[31mabcdefghij\x1b[0m"
+	clipped := clipFrameToWidth(styled, 4)
+	if got := stripANSIView(clipped); got != "abcd" {
+		t.Errorf("clipped row = %q, want the first 4 columns", got)
+	}
+	if !strings.Contains(clipped, "\x1b[31m") || !strings.Contains(clipped, "\x1b[0m") {
+		t.Errorf("clipped row lost its styling: %q", clipped)
+	}
+
+	if got := clipFrameToWidth("ab中", 3); got != "ab" {
+		t.Errorf("clip of a wide rune at the edge = %q, want %q", got, "ab")
+	}
+
+	// Rows are clipped independently and the row count does not change.
+	if got := clipFrameToWidth("12345\nabc\n", 3); got != "123\nabc\n" {
+		t.Errorf("multi-row clip = %q, want %q", got, "123\nabc\n")
+	}
+
+	fitting := "abc\ndef\n"
+	if got := clipFrameToWidth(fitting, 80); got != fitting {
+		t.Errorf("clip of a fitting frame = %q, want it unchanged", got)
+	}
+	if !strings.Contains(frameToHTML(styled, 4), "abcd") {
+		t.Error("frameToHTML did not apply the width")
+	}
+}
+
 // --- Screenshots ----------------------------------------------------------
 
 // shotScenario is one frame rendered to a PNG.
@@ -277,12 +335,53 @@ var shotScenarios = []shotScenario{
 	{"narrow", frameSize{40, 12}, frameMarkdown},
 	{"longoutput", frameSize{120, 40}, frameLongOutput},
 	// How the in-flight compression status is styled and laid out. The golden
-	// pins its text; the PNGs show the styling. Neither is a faithful narrow
-	// terminal yet: the capture is full-page, so a status bar wider than the
-	// geometry is rendered in full instead of truncated at the column count
-	// (issue #25).
+	// pins its text; the PNGs show the styling and where the 112-column status
+	// line is truncated - at 40 columns and at 80 (issue #25).
 	{"compressing", frameSize{80, 24}, frameCompressing},
 	{"compressing-narrow", frameSize{40, 12}, frameCompressing},
+}
+
+// widestRow returns the widest line of a frame in terminal columns, with the SGR
+// sequences removed.
+func widestRow(frame string) int {
+	widest := 0
+	for _, row := range strings.Split(stripANSIView(frame), "\n") {
+		if w := ansi.StringWidth(row); w > widest {
+			widest = w
+		}
+	}
+	return widest
+}
+
+// TestShotScenariosFitTheirGeometry asserts what the PNG width only witnesses, and
+// without a browser: every scenario's page carries at most its column count per
+// row, and the scenarios whose frames are deliberately wider than their geometry
+// are actually cut. Without the clip a 112-column compression status line stayed
+// 112 columns wide and widened the capture to 1912 px at any geometry (issue #25);
+// this test runs in the `ci` job, so that regression fails there instead of only in
+// the browser-gated `tui-visual` job.
+func TestShotScenariosFitTheirGeometry(t *testing.T) {
+	overlong := 0
+	for _, sc := range shotScenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			var frame string
+			withTrueColor(t, func() { frame = sc.build(sc.size.W, sc.size.H).View() })
+
+			clipped := clipFrameToWidth(frame, sc.size.W)
+			if got := widestRow(clipped); got > sc.size.W {
+				t.Errorf("widest clipped row = %d columns, want at most %d", got, sc.size.W)
+			}
+			if again := clipFrameToWidth(clipped, sc.size.W); again != clipped {
+				t.Error("the clip is not idempotent")
+			}
+			if widestRow(frame) > sc.size.W {
+				overlong++
+			}
+		})
+	}
+	if overlong == 0 {
+		t.Error("no scenario is wider than its geometry any more, so the clip is untested")
+	}
 }
 
 // TestFrameScreenshots renders each scenario and writes a PNG next to the
@@ -321,7 +420,7 @@ func TestFrameScreenshots(t *testing.T) {
 			// run expired under a slow runner and took the job down (see
 			// connectBrowser).
 			err := runStage(func() error {
-				return capturePNG(browser.Timeout(shotTimeout), dir, name, frameToHTML(frame), sc.size)
+				return capturePNG(browser.Timeout(shotTimeout), dir, name, frameToHTML(frame, sc.size.W), sc.size)
 			})
 			if err != nil {
 				t.Fatalf("screenshot %s: %v", sc.name, err)
@@ -408,6 +507,16 @@ func TestCleanupLauncherDoesNotWaitForever(t *testing.T) {
 	}
 }
 
+// pngSize reads a PNG's dimensions from its IHDR chunk, which follows the 8-byte
+// signature, so the width and height sit at a fixed offset and no pixel decoding
+// is needed.
+func pngSize(data []byte) (w, h int, err error) {
+	if len(data) < 24 || !bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")) {
+		return 0, 0, fmt.Errorf("not a PNG (%d bytes)", len(data))
+	}
+	return int(binary.BigEndian.Uint32(data[16:20])), int(binary.BigEndian.Uint32(data[20:24])), nil
+}
+
 // capturePNG writes an HTML document and its screenshot, and returns the PNG
 // path. It returns errors instead of panicking: a panic raised inside a subtest
 // goroutine skips the deferred browser close and the test result is reported by
@@ -456,6 +565,20 @@ func capturePNG(browser *rod.Browser, dir, name, document string, size frameSize
 	}
 	if !bytes.HasPrefix(shot, []byte("\x89PNG\r\n\x1a\n")) {
 		return fmt.Errorf("%s is not a PNG", pngPath)
+	}
+
+	// The capture is full-page, so its width comes from the page and not from the
+	// viewport: it has to be the geometry's nominal width (W*9 CSS px at 2x) up to
+	// that plus the page's fixed 12 px of horizontal padding on each side. A frame
+	// wider than the geometry used to widen the page to its longest line instead -
+	// 1912 px for both a 40- and an 80-column scenario (issue #25), which this
+	// bound rejects.
+	w, _, err := pngSize(shot)
+	if err != nil {
+		return fmt.Errorf("%s: %w", pngPath, err)
+	}
+	if min, max := size.W*9*2, (size.W*9+24)*2; w < min || w > max {
+		return fmt.Errorf("%s is %d px wide, want %d..%d for %d columns", pngPath, w, min, max, size.W)
 	}
 	return nil
 }
