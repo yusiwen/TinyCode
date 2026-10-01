@@ -144,7 +144,8 @@ FUZZ_TARGETS = \
 	./tui:FuzzParseMarkdown \
 	./mcp:FuzzReadMessageBounds \
 	./internal/netsafe:FuzzIsBlockedIP \
-	./internal/netsafe:FuzzNormalizeAuthority
+	./internal/netsafe:FuzzNormalizeAuthority \
+	./internal/browserproxy:FuzzProxyHandlesArbitraryTargets
 
 fuzz:
 	@for target in $(FUZZ_TARGETS); do \
