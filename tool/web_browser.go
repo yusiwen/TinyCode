@@ -194,33 +194,70 @@ var browserEnvOverrides = []string{"CHROME_PATH", "CHROME"}
 // distro package whose launcher cannot reach its daemon (the snap shim on GitHub
 // runners) does not fail fast at all - it hangs, which is how the browser smoke
 // test spent 35 s inside the extractor before being killed - so the bound is what
-// keeps that failure to one timeout per process (the answer is memoized).
+// keeps that failure to one timeout per discovery burst (see
+// browserProbeRetryAfter).
 var browserProbeTimeout = 5 * time.Second
+
+// browserProbeRetryAfter is how long a probe that ran out of budget is believed.
+// A timeout is not a verdict about the binary - it says only that the machine did
+// not answer in time - so it may not stand for the life of the process: one
+// loaded moment would otherwise reject a working browser for every extraction
+// that follows (issue #26). A cooldown holds both ends: a burst of extractions
+// still pays one timeout instead of one per call, and a browser that was merely
+// slow to start is discovered again half a minute later.
+var browserProbeRetryAfter = 30 * time.Second
+
+// browserProbeVerdict is a memoized probe answer. probedAt is the zero time for a
+// verdict that stands for the life of the process - the binary answered, or it is
+// missing, not executable, or exits non-zero - and is set for one taken when the
+// budget expired, which is probed again once browserProbeRetryAfter has passed.
+type browserProbeVerdict struct {
+	usable   bool
+	probedAt time.Time
+}
 
 var (
 	browserProbeMu    sync.Mutex
-	browserProbeCache = map[string]bool{}
+	browserProbeCache = map[string]browserProbeVerdict{}
 )
 
 // browserUsable reports whether the binary answers `--version` within
 // browserProbeTimeout. The answer is memoized because discovery runs on every
-// extraction and cannot change while the process lives.
+// extraction and the layout cannot change while the process lives - except for a
+// timed-out probe, which expires.
 func browserUsable(path string) bool {
 	browserProbeMu.Lock()
-	if ok, hit := browserProbeCache[path]; hit {
+	if v, hit := browserProbeCache[path]; hit &&
+		(v.probedAt.IsZero() || time.Since(v.probedAt) < browserProbeRetryAfter) {
 		browserProbeMu.Unlock()
-		return ok
+		return v.usable
 	}
 	browserProbeMu.Unlock()
 
+	usable, timedOut := probeBrowserVersion(path)
+
+	verdict := browserProbeVerdict{usable: usable}
+	if timedOut {
+		verdict.probedAt = time.Now()
+	}
+	browserProbeMu.Lock()
+	browserProbeCache[path] = verdict
+	browserProbeMu.Unlock()
+	return usable
+}
+
+// probeBrowserVersion runs `<path> --version` under browserProbeTimeout. The
+// second result marks a probe that the budget ended rather than one that got an
+// answer: CommandContext kills the process at the deadline, so a binary that was
+// slow to start on a loaded machine looks exactly like the shim that never
+// answers, and only the caller's retry policy can tell them apart.
+func probeBrowserVersion(path string) (usable, timedOut bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), browserProbeTimeout)
 	defer cancel()
-	ok := exec.CommandContext(ctx, path, "--version").Run() == nil
-
-	browserProbeMu.Lock()
-	browserProbeCache[path] = ok
-	browserProbeMu.Unlock()
-	return ok
+	if err := exec.CommandContext(ctx, path, "--version").Run(); err == nil {
+		return true, false
+	}
+	return false, errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
 
 // browserCandidates returns the paths to try, in preference order: an explicit

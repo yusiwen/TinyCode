@@ -148,6 +148,29 @@ func writeScript(t *testing.T, path, body string) string {
 	return path
 }
 
+// linkProbeBinary points path at a native binary that exits 0 whatever arguments
+// it is given, so probing the fixture costs one exec. A shell script costs ~350 ms
+// to start on a loaded macOS box, and that fixture cost - not the production code
+// - is what made the hanging-shim test timing-sensitive: the "working" browser had
+// to exec inside a budget the hanging shim had just finished spending.
+func linkProbeBinary(t *testing.T, path string) string {
+	t.Helper()
+	for _, target := range []string{"/usr/bin/true", "/bin/true"} {
+		if _, err := os.Stat(target); err != nil {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("mkdir for %s: %v", path, err)
+		}
+		if err := os.Symlink(target, path); err != nil {
+			t.Fatalf("symlink %s -> %s: %v", path, target, err)
+		}
+		return path
+	}
+	t.Skip("no /usr/bin/true or /bin/true to link a native probe fixture to")
+	return ""
+}
+
 // TestBrowserCandidatesOrder pins the preference order: an explicit override,
 // then the system commands in their declared order, then the Playwright cache,
 // with duplicates dropped.
@@ -217,16 +240,15 @@ func TestFirstUsableBrowserSkipsBrokenCandidate(t *testing.T) {
 // once the timeout fires rather than blocking the caller.
 func TestBrowserUsableProbesVersion(t *testing.T) {
 	previousTimeout := browserProbeTimeout
-	// The fixtures are shell scripts, which cost ~350 ms to exec on a loaded
-	// macOS box, so the probe budget has to clear that comfortably while still
-	// expiring for the script that never answers.
+	// The usable fixture is a native binary, so its probe costs one exec and the
+	// budget only has to expire for the fixture that never answers.
 	browserProbeTimeout = 2 * time.Second
 	t.Cleanup(func() { browserProbeTimeout = previousTimeout })
 
 	dir := t.TempDir()
-	ok := writeScript(t, filepath.Join(dir, "ok"), "#!/bin/sh\necho 'Google Chrome 999'\n")
+	ok := linkProbeBinary(t, filepath.Join(dir, "ok"))
 	bad := writeScript(t, filepath.Join(dir, "bad"), "#!/bin/sh\nexit 1\n")
-	hang := writeScript(t, filepath.Join(dir, "hang"), "#!/bin/sh\nsleep 30\n")
+	hang := writeScript(t, filepath.Join(dir, "hang"), "#!/bin/sh\nexec /bin/sleep 30\n")
 
 	if !browserUsable(ok) {
 		t.Errorf("browserUsable(%s) = false, want true", ok)
@@ -243,12 +265,53 @@ func TestBrowserUsableProbesVersion(t *testing.T) {
 	}
 
 	// The answer is memoized, so removing the binary does not change it: this is
-	// what keeps discovery from re-probing on every extraction.
+	// what keeps discovery from re-probing on every extraction. (A timed-out
+	// verdict expires instead of standing for the process - see
+	// TestBrowserUsableRetriesAfterTimedOutProbe.)
 	if err := os.Remove(ok); err != nil {
 		t.Fatal(err)
 	}
 	if !browserUsable(ok) {
 		t.Errorf("browserUsable(%s) after removal = false, want the cached true", ok)
+	}
+}
+
+// TestBrowserUsableRetriesAfterTimedOutProbe covers the other half of issue #26:
+// a probe that ran out of budget must not stand for the life of the process. The
+// verdict used to be memoized like an answer, so one loaded moment rejected a
+// working browser for every extraction that followed.
+func TestBrowserUsableRetriesAfterTimedOutProbe(t *testing.T) {
+	previousTimeout, previousRetry := browserProbeTimeout, browserProbeRetryAfter
+	browserProbeTimeout = 1500 * time.Millisecond
+	// A cooldown long enough that no assertion below depends on wall-clock
+	// timing; the second half sets it to zero to reach the expiry immediately.
+	browserProbeRetryAfter = time.Hour
+	t.Cleanup(func() {
+		browserProbeTimeout, browserProbeRetryAfter = previousTimeout, previousRetry
+	})
+
+	path := writeScript(t, filepath.Join(t.TempDir(), "chrome"), "#!/bin/sh\nexec /bin/sleep 30\n")
+	if browserUsable(path) {
+		t.Fatalf("browserUsable(%s) = true, want a candidate that never answers rejected", path)
+	}
+
+	// The candidate is replaced by one that answers immediately. A fresh probe
+	// would accept it now, so a false here proves the timed-out verdict is still
+	// in force inside its cooldown - which is what a burst of extractions relies
+	// on to pay one timeout instead of one per call.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	linkProbeBinary(t, path)
+	if browserUsable(path) {
+		t.Errorf("browserUsable(%s) inside the retry cooldown = true, want the timed-out verdict", path)
+	}
+
+	// Past the cooldown the path is probed again and accepted, so a browser that
+	// was slow to start on a loaded machine is not disabled for good.
+	browserProbeRetryAfter = 0
+	if !browserUsable(path) {
+		t.Errorf("browserUsable(%s) past the retry cooldown = false, want a fresh probe to accept it", path)
 	}
 }
 
@@ -259,16 +322,17 @@ func TestBrowserUsableProbesVersion(t *testing.T) {
 func TestFindBrowserSkipsHangingShim(t *testing.T) {
 	previousTimeout := browserProbeTimeout
 	// One candidate must clear the timeout (the shim hangs) and the next must fit
-	// inside it. The working fixture is a shell script, which costs ~350 ms to
-	// exec here, so the budget is roomy enough for that and still short.
+	// inside it. The working fixture is a native binary, so its probe costs one
+	// exec and the budget has orders of magnitude of headroom rather than the
+	// ~350 ms a shell script used to need here.
 	browserProbeTimeout = 1500 * time.Millisecond
 	t.Cleanup(func() { browserProbeTimeout = previousTimeout })
 
 	dir := t.TempDir()
 	// /bin/sleep by absolute path: PATH is rewritten to the fixture directory
 	// below, so a bare `sleep` would fail instantly instead of hanging.
-	shim := writeScript(t, filepath.Join(dir, "chromium-browser"), "#!/bin/sh\n/bin/sleep 30\n")
-	working := writeScript(t, filepath.Join(dir, "chrome"), "#!/bin/sh\necho 'Google Chrome 999'\n")
+	shim := writeScript(t, filepath.Join(dir, "chromium-browser"), "#!/bin/sh\nexec /bin/sleep 30\n")
+	working := linkProbeBinary(t, filepath.Join(dir, "chrome"))
 
 	t.Setenv("PATH", dir)
 	t.Setenv("CHROME_PATH", "")
