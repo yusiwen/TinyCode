@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -483,12 +484,40 @@ func (c *Client) Info() *ServerInfo {
 	return &info
 }
 
+// defaultRequestTimeout bounds one request whose caller supplied no deadline of
+// its own.
+//
+// The handshake at the call site has its own 60 s bound, but every request after
+// it inherits the agent's run context, which carries no deadline (both entry
+// points create it with context.WithCancel), and nothing else bounds the wait: a
+// stdio server that accepts tools/call and never answers blocked the agent step
+// until the user cancelled, with no error surfaced (issue #2). A caller that
+// supplies a deadline keeps it — only an unbounded context gets this one. Zero
+// disables the bound, and the value is a variable so the tests can shrink it.
+var defaultRequestTimeout = 5 * time.Minute
+
+// boundUnboundedRequest returns ctx with defaultRequestTimeout applied when the
+// caller supplied no deadline, plus the cancel func that releases the timer.
+func boundUnboundedRequest(ctx context.Context) (context.Context, context.CancelFunc) {
+	if defaultRequestTimeout <= 0 {
+		return ctx, func() {}
+	}
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithTimeoutCause(ctx, defaultRequestTimeout,
+		fmt.Errorf("no response within %s: %w", defaultRequestTimeout, context.DeadlineExceeded))
+}
+
 // send performs one request/response exchange over the stdio transport.
 //
 // The request id is reserved and the response channel registered before the
 // frame is written, so a response can never race ahead of its waiter. Any
 // number of exchanges may be in flight concurrently: writes are serialized by
 // writeMu, while waiting is done on the request's own channel.
+//
+// A context without a deadline of its own is bounded by defaultRequestTimeout:
+// the wait must end in an error rather than in silence.
 //
 // If ctx is cancelled the request is unregistered and the context error is
 // returned; the transport is deliberately left intact so the client (and every
@@ -499,6 +528,9 @@ func (c *Client) send(ctx context.Context, method string, params any) (json.RawM
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("send %q: %w", method, err)
 	}
+
+	ctx, releaseBound := boundUnboundedRequest(ctx)
+	defer releaseBound()
 
 	id, respCh, err := c.reserve()
 	if err != nil {
@@ -545,6 +577,9 @@ func (c *Client) send(ctx context.Context, method string, params any) (json.RawM
 // earlier dispatch as already sent, and the response channel is buffered. Without
 // that check a select over two ready channels picks at random, which turned a
 // delivered answer into "mcp reader stopped" in about 1% of runs (issue #39).
+//
+// A cancellation is reported from context.Cause, so a request bounded by
+// defaultRequestTimeout names that bound instead of a bare "context canceled".
 func (c *Client) awaitResponse(ctx context.Context, method string, respCh <-chan json.RawMessage) (json.RawMessage, error) {
 	select {
 	case raw, ok := <-respCh:
@@ -552,7 +587,7 @@ func (c *Client) awaitResponse(ctx context.Context, method string, respCh <-chan
 	case <-ctx.Done():
 		// Cancel this call only. Unregistering (the deferred call) drops any
 		// late response, and the client remains open for later requests.
-		return nil, fmt.Errorf("read response for %q: %w", method, ctx.Err())
+		return nil, fmt.Errorf("read response for %q: %w", method, context.Cause(ctx))
 	case <-c.done:
 		select {
 		case raw, ok := <-respCh:
