@@ -328,16 +328,23 @@ func NewClient(timeout time.Duration, enforce bool, opts ...Option) *http.Client
 // every resolved address against the SSRF policy; the returned connection is
 // pinned to the address that passed. It is the raw-connection counterpart of
 // NewClient, for callers that need a tunnel rather than an HTTP round trip (the
-// browser proxy's CONNECT path).
+// browser proxy's CONNECT path), and it takes the same options as NewClient so a
+// scoped loopback exemption (AllowAuthority) applies to a tunnel as well.
 //
 // enforce=false disables the policy, which the tests use to reach a local
 // listener.
-func DialValidatedContext(ctx context.Context, network, addr string, enforce bool) (net.Conn, error) {
+func DialValidatedContext(ctx context.Context, network, addr string, enforce bool, opts ...Option) (net.Conn, error) {
 	dialer := &net.Dialer{
 		Timeout:   dialTimeout,
 		KeepAlive: dialKeepAlive,
 	}
-	return dialContext(dialer, enforce, &clientConfig{})(ctx, network, addr)
+	cfg := clientConfig{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+	return dialContext(dialer, enforce, &cfg)(ctx, network, addr)
 }
 
 // dialContext resolves the host once, validates every resolved IP, and dials

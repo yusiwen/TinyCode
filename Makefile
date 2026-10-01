@@ -53,12 +53,15 @@ install-gopls:
 test-lsp:
 	LSP_TEST=1 go test -count=1 ./lsp/...
 
-# Real-browser smoke test: renders a local JavaScript page through both browser
-# paths and asserts the filtering proxy was used. Needs a Chromium/Chrome
-# (system install or the Playwright cache); skipped without BROWSER_TEST=1 so an
-# ordinary `make test` never launches a browser.
+# Real-browser smoke tests: renders a local JavaScript page through both browser
+# paths and asserts the filtering proxy was used (TestBrowserSmokeThroughProxy),
+# then serves a page with a scoped loopback exemption and asserts a subresource on
+# a second, live loopback service is refused by the proxy
+# (TestBrowserSmokeRefusesABlockedSubresource). Needs a Chromium/Chrome (system
+# install or the Playwright cache); skipped without BROWSER_TEST=1 so an ordinary
+# `make test` never launches a browser.
 test-browser:
-	BROWSER_TEST=1 go test -count=1 -timeout 5m -run TestBrowserSmokeThroughProxy ./tool/
+	BROWSER_TEST=1 go test -count=1 -timeout 5m -run TestBrowserSmoke ./tool/
 
 # On-demand visual check for the TUI: renders the committed frame scenarios to
 # PNGs (Chromium), runs the built binary on a real 80x24 PTY and again on a PTY

@@ -51,6 +51,7 @@ type Proxy struct {
 	srv     *http.Server
 	client  *http.Client
 	enforce bool
+	opts    []netsafe.Option
 
 	closeOnce sync.Once
 	closeErr  error
@@ -59,7 +60,12 @@ type Proxy struct {
 // Start binds a proxy to an ephemeral loopback port and serves it in the
 // background. enforce applies the SSRF policy to every target; it is false only
 // in tests, which need to reach a local listener.
-func Start(enforce bool) (*Proxy, error) {
+//
+// opts are passed to both the forwarded-request client and the CONNECT dialer, so
+// a scoped exemption such as netsafe.AllowAuthority covers plain HTTP and tunnels
+// alike. The real-browser smoke test uses one to serve its page from loopback
+// while every other address stays refused.
+func Start(enforce bool, opts ...netsafe.Option) (*Proxy, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("listen: %w", err)
@@ -68,7 +74,8 @@ func Start(enforce bool) (*Proxy, error) {
 	p := &Proxy{
 		ln:      ln,
 		enforce: enforce,
-		client:  netsafe.NewClient(proxyTimeout, enforce),
+		opts:    opts,
+		client:  netsafe.NewClient(proxyTimeout, enforce, opts...),
 	}
 	// The proxy must hand redirects back to the browser untouched: the browser
 	// then asks the proxy for the next hop, which validates it like any other
@@ -123,7 +130,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // tunnel opens the validated upstream connection for a CONNECT request and then
 // copies bytes in both directions.
 func (p *Proxy) tunnel(w http.ResponseWriter, r *http.Request) {
-	upstream, err := netsafe.DialValidatedContext(r.Context(), "tcp", r.Host, p.enforce)
+	upstream, err := netsafe.DialValidatedContext(r.Context(), "tcp", r.Host, p.enforce, p.opts...)
 	if err != nil {
 		// A policy refusal is a decision; anything else is a broken upstream.
 		status := http.StatusBadGateway

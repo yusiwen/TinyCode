@@ -12,11 +12,13 @@ import (
 
 // TestBrowserProxyFlags pins the flags that route Chromium through the filtering
 // proxy: the proxy address, the loopback-bypass override (Chromium skips a proxy
-// for loopback by default) and QUIC off (HTTP/3 leaves over UDP).
+// for loopback by default) and the switches that close the channels which never
+// ask a proxy at all — QUIC/HTTP3 over UDP, WebRTC/STUN (issue #8) and Chromium's
+// own background traffic.
 func TestBrowserProxyFlags(t *testing.T) {
 	valued, bare := browserProxyFlags("http://127.0.0.1:12345")
-	if len(valued) != 2 {
-		t.Fatalf("valued flags = %v, want two entries", valued)
+	if len(valued) != 3 {
+		t.Fatalf("valued flags = %v, want three entries", valued)
 	}
 	if valued[0][0] != "proxy-server" || valued[0][1] != "http://127.0.0.1:12345" {
 		t.Errorf("proxy-server flag = %v", valued[0])
@@ -24,8 +26,11 @@ func TestBrowserProxyFlags(t *testing.T) {
 	if valued[1][0] != "proxy-bypass-list" || valued[1][1] != "<-loopback>" {
 		t.Errorf("loopback must not bypass the proxy: %v", valued[1])
 	}
-	if len(bare) != 1 || bare[0] != "disable-quic" {
-		t.Errorf("bare flags = %v, want disable-quic", bare)
+	if valued[2][0] != "force-webrtc-ip-handling-policy" || valued[2][1] != "disable_non_proxied_udp" {
+		t.Errorf("WebRTC must not send non-proxied UDP: %v", valued[2])
+	}
+	if want := []string{"disable-quic", "disable-background-networking"}; strings.Join(bare, " ") != strings.Join(want, " ") {
+		t.Errorf("bare flags = %v, want %v", bare, want)
 	}
 
 	args := appendBrowserProxyArgs([]string{"--headless"}, "http://127.0.0.1:1")
@@ -33,7 +38,9 @@ func TestBrowserProxyFlags(t *testing.T) {
 		"--headless",
 		"--proxy-server=http://127.0.0.1:1",
 		"--proxy-bypass-list=<-loopback>",
+		"--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
 		"--disable-quic",
+		"--disable-background-networking",
 	}
 	if strings.Join(args, " ") != strings.Join(want, " ") {
 		t.Fatalf("argv = %v, want %v", args, want)

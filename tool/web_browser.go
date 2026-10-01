@@ -20,6 +20,7 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/yusiwen/tinycode/internal/browserproxy"
+	"github.com/yusiwen/tinycode/internal/netsafe"
 	"github.com/yusiwen/tinycode/tlog"
 )
 
@@ -28,22 +29,70 @@ import (
 //
 // Chromium bypasses any proxy for loopback addresses by default, and the proxy
 // is precisely what stands between the browser and an internal service, so that
-// shortcut is disabled with the magic "<-loopback>" entry. QUIC/HTTP3 travels
-// over UDP and would leave without ever asking the proxy, so it is turned off
-// as well.
+// shortcut is disabled with the magic "<-loopback>" entry.
+//
+// The rest of the list closes channels that never ask a proxy at all (issue #8):
+//
+//   - QUIC/HTTP3 travels over UDP, so it would leave without ever asking the
+//     proxy; it is turned off.
+//   - WebRTC/STUN is the other one: an ICE candidate sends UDP straight to an
+//     address the page chose, which is a way to probe the internal network
+//     without touching HTTP. `disable_non_proxied_udp` makes WebRTC use only
+//     proxied transports (or none), so the filtering proxy stays the single
+//     exit.
+//   - Chromium's own background traffic (component updates, domain reliability,
+//     safe-browsing pings, sync) is not part of the page and has no business
+//     reaching the network during a crawl.
+//
+// Every one of these is inert where it does not apply: Chromium ignores a switch
+// it does not know, and this list is pinned by the argument tests rather than
+// exercised against a real peer connection.
 func browserProxyFlags(proxyURL string) (valued [][2]string, bare []string) {
 	return [][2]string{
 		{"proxy-server", proxyURL},
 		{"proxy-bypass-list", "<-loopback>"},
-	}, []string{"disable-quic"}
+		{"force-webrtc-ip-handling-policy", "disable_non_proxied_udp"},
+	}, []string{"disable-quic", "disable-background-networking"}
 }
 
-// startBrowserProxy starts the loopback filtering proxy unless the package-wide
-// SSRF hook is set. A failure is reported to the caller and is not fatal: the
-// callers keep their other protections (the pre-flight check, the top-level host
-// pin and the rod request interceptor) and log that the proxy is missing.
-func startBrowserProxy() *browserproxy.Proxy {
-	proxy, err := browserproxy.Start(!skipSSRFCheck)
+// errBrowserSandboxUnavailable is returned when the browser cannot run inside the
+// sandbox the tool promises to enforce. Both browser paths fail closed on it: the
+// filtering proxy resolves, validates and pins every hostname the browser
+// contacts, including the CONNECT tunnels the rod request interceptor cannot see
+// into, so a crawl without it would silently be a weaker path than the plain HTTP
+// fetch and not a browser fallback at all (issue #8).
+var errBrowserSandboxUnavailable = errors.New(
+	"browser sandbox unavailable: the filtering proxy did not start; " +
+		"refusing to crawl without it (see the web.browser log entry for the cause)")
+
+// browserSandboxConfig is how the browser paths start the filtering proxy. The
+// zero value is the production policy: enforce the SSRF rules unless the
+// package-wide test hook disables them wholesale, and grant no loopback
+// exemption. The real-browser smoke test replaces it to keep the rules enforced
+// while it serves its page from a loopback listener.
+var browserSandboxConfig struct {
+	// forceEnforce keeps the proxy's policy on even when skipSSRFCheck is set,
+	// which takes the pre-flight check and the request interceptor out of the way
+	// so the proxy's own refusal is what the test observes.
+	forceEnforce bool
+	// allowAuthority is the one host:port whose loopback addresses the proxy may
+	// reach while every other rule stays enforced (empty blocks loopback
+	// everywhere).
+	allowAuthority string
+}
+
+// startBrowserProxy starts the loopback filtering proxy. A failure is returned as
+// nil: the callers refuse the crawl instead of weakening the sandbox (issue #8).
+//
+// It is a variable so a test can prove that fail-closed policy without arranging a
+// listen failure; production always uses this implementation.
+var startBrowserProxy = func() *browserproxy.Proxy {
+	enforce := !skipSSRFCheck || browserSandboxConfig.forceEnforce
+	opts := []netsafe.Option{}
+	if browserSandboxConfig.allowAuthority != "" {
+		opts = append(opts, netsafe.AllowAuthority(browserSandboxConfig.allowAuthority))
+	}
+	proxy, err := browserproxy.Start(enforce, opts...)
 	if err != nil {
 		tlog.Warn("web.browser", "proxy_start_failed", "err", err.Error())
 		return nil
@@ -401,15 +450,14 @@ func crawlViaExec(ctx context.Context, browserPath, url string) (string, error) 
 	// top-level URL was checked: subresources, redirect hops and JavaScript
 	// fetches went straight from Chromium to the network. The proxy sees them
 	// all because Chromium asks it for every hostname, and it resolves,
-	// validates and pins each one in this process.
+	// validates and pins each one in this process. There is no fallback: this
+	// path without the proxy is not a sandboxed browser, so it does not run.
 	proxy := startBrowserProxy()
-	if proxy != nil {
-		defer proxy.Close()
+	if proxy == nil {
+		return "", errBrowserSandboxUnavailable
 	}
-	proxyURL := ""
-	if proxy != nil {
-		proxyURL = proxy.URL()
-	}
+	defer proxy.Close()
+	proxyURL := proxy.URL()
 
 	// A throwaway profile: without --user-data-dir Chromium reads and writes the
 	// user's real Chrome profile, which is invasive, fails where that profile is
@@ -552,17 +600,20 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 	}()
 
 	// Route the browser through the loopback filtering proxy: every hostname it
-	// contacts — redirect hops, subresources, XHR/fetch, frames — is resolved,
-	// validated and pinned by this process instead of by Chromium.
+	// contacts — redirect hops, subresources, XHR/fetch, frames, and the CONNECT
+	// tunnels the interceptor below cannot see into — is resolved, validated and
+	// pinned by this process instead of by Chromium. It is required, not best
+	// effort (issue #8): a browser outside the sandbox is not the fallback this
+	// path is for, so the crawl fails instead of downgrading silently.
 	proxy := startBrowserProxy()
-	if proxy != nil {
-		defer proxy.Close()
+	if proxy == nil {
+		return "", errBrowserSandboxUnavailable
 	}
+	defer proxy.Close()
 
 	// Build the launcher explicitly rather than letting rod create one, so the
-	// proxy flags reach Chromium in every case. On top of that the top-level host
-	// is pinned to the address this process validated, which covers the case
-	// where the proxy could not be started.
+	// proxy flags reach Chromium in every case; the top-level host is pinned to
+	// the address this process validated as well.
 	//
 	// Append takes a flag name and its values; rod renders --name=value as a
 	// single argv element. The rest (headless, random debugging port, the
@@ -579,43 +630,28 @@ func crawlViaRod(ctx context.Context, url string) (content string, err error) {
 	if rule := browserHostRule(url); rule != "" {
 		l = l.Append("host-resolver-rules", rule)
 	}
-	if proxy != nil {
-		valued, bare := browserProxyFlags(proxy.URL())
-		for _, kv := range valued {
-			l = l.Append(flags.Flag(kv[0]), kv[1])
-		}
-		for _, name := range bare {
-			l = l.Append(flags.Flag(name))
-		}
+	valued, bare := browserProxyFlags(proxy.URL())
+	for _, kv := range valued {
+		l = l.Append(flags.Flag(kv[0]), kv[1])
+	}
+	for _, name := range bare {
+		l = l.Append(flags.Flag(name))
 	}
 
-	var browser *rod.Browser
 	wsURL, launchErr := l.Launch()
 	if launchErr != nil {
-		// The proxy and pinning flags are best effort: retry without them rather
-		// than losing the browser fallback entirely. The retry keeps the flags
-		// that make Chromium start at all in a container - rod's bare launcher
-		// omits them and dies in the zygote with "No usable sandbox!", which is
-		// what this fallback used to do. The pre-flight check and the request
-		// interceptor installed below still apply.
+		// No retry without the sandbox flags. That retry was how a launcher
+		// failure turned into a browser with no proxy, no pinning and no
+		// non-proxied-channel hardening — a downgrade the caller could not see.
+		// The error is reported instead (issue #8).
 		l.Cleanup()
 		tlog.Warn("web.browser", "launch_flags_failed", "url", url, "err", launchErr.Error())
-
-		fallback := browserContainerFlags(launcher.New().Headless(true).Context(ctx))
-		if bin := findBrowser(); bin != "" {
-			fallback = fallback.Bin(bin)
-		}
-		fallbackURL, fallbackErr := fallback.Launch()
-		if fallbackErr != nil {
-			fallback.Cleanup()
-			return "", fmt.Errorf("launch browser: %w", fallbackErr)
-		}
-		defer fallback.Cleanup()
-		browser = rod.New().ControlURL(fallbackURL).Context(ctx)
-	} else {
-		defer l.Cleanup()
-		browser = rod.New().ControlURL(wsURL).Context(ctx)
+		return "", fmt.Errorf("%w: launching the browser with the sandbox flags failed: %v",
+			errBrowserSandboxUnavailable, launchErr)
 	}
+	defer l.Cleanup()
+	browser := rod.New().ControlURL(wsURL).Context(ctx)
+
 	if err := browser.Connect(); err != nil {
 		return "", fmt.Errorf("connect browser: %w", err)
 	}
