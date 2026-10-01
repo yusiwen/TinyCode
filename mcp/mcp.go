@@ -492,7 +492,9 @@ func (c *Client) Info() *ServerInfo {
 //
 // If ctx is cancelled the request is unregistered and the context error is
 // returned; the transport is deliberately left intact so the client (and every
-// other in-flight call) stays usable.
+// other in-flight call) stays usable. A response that was delivered in the same
+// instant the transport died is returned rather than reported as a failed read
+// (see awaitResponse).
 func (c *Client) send(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("send %q: %w", method, err)
@@ -530,28 +532,52 @@ func (c *Client) send(ctx context.Context, method string, params any) (json.RawM
 		return nil, fmt.Errorf("write request %q: %w", method, err)
 	}
 
+	return c.awaitResponse(ctx, method, respCh)
+}
+
+// awaitResponse waits for the response to one request and turns it into a result.
+//
+// The three cases are the response itself, the caller's cancellation and the
+// transport dying. On the dying-transport path the response channel is checked
+// once more before the close is reported: readLoop dispatches a frame and only
+// then, on the next read error, marks the client closed, and it closes c.done in
+// that same goroutine — so a waiter that observes done closed observes every
+// earlier dispatch as already sent, and the response channel is buffered. Without
+// that check a select over two ready channels picks at random, which turned a
+// delivered answer into "mcp reader stopped" in about 1% of runs (issue #39).
+func (c *Client) awaitResponse(ctx context.Context, method string, respCh <-chan json.RawMessage) (json.RawMessage, error) {
 	select {
 	case raw, ok := <-respCh:
-		if !ok {
-			// The reader closed the channel after failing the waiter, e.g. the
-			// peer flooded unrelated frames past the skip budget.
-			return nil, fmt.Errorf("read response for %q: %w", method, errNoMatchingResponse)
-		}
-		var rpcResp jsonrpcMessage
-		if err := json.Unmarshal(raw, &rpcResp); err != nil {
-			return nil, fmt.Errorf("parse response for %q: %w", method, err)
-		}
-		if rpcResp.Error != nil {
-			return nil, rpcResp.Error
-		}
-		return rpcResp.Result, nil
+		return decodeResponse(method, raw, ok)
 	case <-ctx.Done():
 		// Cancel this call only. Unregistering (the deferred call) drops any
 		// late response, and the client remains open for later requests.
 		return nil, fmt.Errorf("read response for %q: %w", method, ctx.Err())
 	case <-c.done:
+		select {
+		case raw, ok := <-respCh:
+			return decodeResponse(method, raw, ok)
+		default:
+		}
 		return nil, fmt.Errorf("read response for %q: %w", method, c.closeReason())
 	}
+}
+
+// decodeResponse maps one raw frame from a request's response channel to a
+// result. A closed channel means no response will arrive: either the reader
+// stopped or chargeUnmatched spent the request's flood budget.
+func decodeResponse(method string, raw json.RawMessage, ok bool) (json.RawMessage, error) {
+	if !ok {
+		return nil, fmt.Errorf("read response for %q: %w", method, errNoMatchingResponse)
+	}
+	var rpcResp jsonrpcMessage
+	if err := json.Unmarshal(raw, &rpcResp); err != nil {
+		return nil, fmt.Errorf("parse response for %q: %w", method, err)
+	}
+	if rpcResp.Error != nil {
+		return nil, rpcResp.Error
+	}
+	return rpcResp.Result, nil
 }
 
 // closeReason returns why the client was closed: the recorded cause when the
