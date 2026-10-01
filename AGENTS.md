@@ -80,6 +80,9 @@ test that drives an external process — browser, PTY, subprocess:
   artifact's dimensions against the geometry it claims to show — the full-page
   capture in #25 widened to the longest line instead.
 
+The full reference (layers, implementation, commands, troubleshooting) is
+[docs/tui-visual-harness.md](docs/tui-visual-harness.md).
+
 ## CI Notes
 
 `main.yml` jobs: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run),

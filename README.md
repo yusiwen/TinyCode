@@ -46,7 +46,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Spinner**: `⣾ ⣽ ⣻ ⢿ ⡿ ⣟` braille spinner in status bar during streaming. Tick pipeline kept alive even during idle. Spinner continues across intermediate steps. (42b8794, 9a0f55b, afc14e1)
 - **Auto-scroll**: viewport follows streaming output, pauses when user scrolls up
 - **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration, transient status messages
-- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 27 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), a headless `tea.Program` driver that types, resizes and quits, and `make test-tui-visual` (`TUI_SHOT=1`), which renders the frames to PNGs through Chromium, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live terminal stream into a screen buffer that is screenshotted too. The tests pin the renderer to a TrueColor profile, because a non-TTY stdout otherwise strips every style from the frame.
+- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 27 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), a headless `tea.Program` driver that types, resizes and quits, and `make test-tui-visual` (`TUI_SHOT=1`), which renders the frames to PNGs through Chromium, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live terminal stream into a screen buffer that is screenshotted too. The tests pin the renderer to a TrueColor profile, because a non-TTY stdout otherwise strips every style from the frame. Implementation, commands and known limits: **[docs/tui-visual-harness.md](docs/tui-visual-harness.md)**.
 
 ### Agent Loop
 - ReAct loop with tool calling support (24 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, sandbox_allow, load_skill, skill_manage)
@@ -252,6 +252,7 @@ viewport.SetContent() → terminal display
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
+docs/           Reference documents (TUI visual harness)
 internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
@@ -313,6 +314,10 @@ make test-tui-visual   # TUI screenshots + PTY smoke (TUI_SHOT=1); needs Chromiu
 
 The Makefile remains the canonical build/release path; the flake pins the
 toolchain so it behaves identically everywhere.
+
+The TUI visual layers (golden frames, PNG screenshots, the PTY smoke tests and
+the live-stream replay) have their own reference:
+[docs/tui-visual-harness.md](docs/tui-visual-harness.md).
 
 ---
 

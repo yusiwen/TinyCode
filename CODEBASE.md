@@ -9,6 +9,7 @@
 | `main.go` | Cobra CLI entry, wires all packages together |
 | `agent/` | ReAct loop, LLM providers, context compression, agent registry, permissions |
 | `config/` | JSON config loading (defaults → user global → project local → env/CLI) |
+| `docs/` | Reference documents — `tui-visual-harness.md` covers the visual test tooling |
 | `internal/netsafe/` | Shared SSRF policy: blocked-IP table, resolve-once + pinned-IP HTTP client, redirect re-validation, validated raw dialing (`DialValidatedContext`), optional loopback allowance |
 | `internal/browserproxy/` | Loopback filtering HTTP proxy for Chromium: validates and pins every hostname the browser contacts (CONNECT tunnels and plain HTTP) |
 | `lsp/` | LSP client (JSON-RPC over stdio), 4 tool wrappers, diagnostics |
@@ -439,6 +440,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - Character-level selection via `grid.Fill()` with SelectionStyle
 
 ### Frame verification (test files)
+Design reference and usage: [docs/tui-visual-harness.md](docs/tui-visual-harness.md); the entries below are the map-level summary.
 - `frame_golden_test.go` — makes a frame visible. `withTrueColor` pins the lipgloss profile to TrueColor and empties `styleCache` for the duration of a render (without it a non-TTY stdout renders pure ASCII and every style vanishes); `normalizeFrame` strips CSI **and** OSC escapes, trims trailing blanks per line and drops trailing blank lines; `assertGolden` compares against `testdata/golden/` and rewrites only under `-update`; `frameDiff` reports the first differing line, one context line and the first differing column. The scenario builders (`frameModel`, `frameWelcome`, `frameMarkdown`, `frameStreaming`, `frameTodo`, `frameDialog`, `framePalette`, `frameDiagnostics`, `frameCompressing`, `frameLongOutput`) leave `sessionStart` at the zero time, so the status bar's session clock renders a constant (saturated) duration instead of the wall clock.
 - `tui/testdata/golden/frames/*.txt` — 27 plain-text frames (9 scenarios at 80x24 and 120x40, plus 100x30 or 200x50 where a wider layout adds something and 40x12 for the narrow end). Adding a tier is one line in `frameScenarios`. A golden pins the model's `View()` output, which at the narrow end can be taller than the terminal (the palette at 40x12 is) or wider than it (the status bar at 40 columns): the renderer truncates and scrolls to the real geometry, so the *visible* result is what the live-stream screenshot in `pty_screen_test.go` shows. `tui/testdata/golden/ansi/markdown_80x24.ansi` — one raw ANSI frame, so colour, bold, underline and OSC 8 links stay diffable. Tests: `TestGoldenFrames`, `TestGoldenFrameANSI` (every frame must still carry SGR) and `TestFrameScenariosRenderTwice`. Regenerate with `go test ./tui -run Golden -update`.
 - `program_driver_test.go` — runs the real `tea.Program` over `tea.WithInput(io.Pipe)` and `tea.WithOutput(lockedBuffer)`: `TestProgramDriverPaintsAndQuits`, `TestProgramDriverResizeStorm`, `TestProgramDriverCommandQuits`. Race-safe by construction: `Send` blocks until the event loop receives, messages are processed in order, and model fields are read only after `Run()` returns.
@@ -542,7 +544,7 @@ User Input (textarea / CLI arg)
 
 ### Harness rules (tests that drive an external process)
 
-The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `tui/pty_screen_test.go` or any new gated harness; `AGENTS.md` carries the short form, this is the design record they were derived from (the 5-minute `tui-visual` hang on `master`, run `36731349829`):
+The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `tui/pty_screen_test.go` or any new gated harness; `AGENTS.md` carries the short form, this is the design record they were derived from (the 5-minute `tui-visual` hang on `master`, run `36731349829`). The full reference, including the recipes these rules apply to, is [docs/tui-visual-harness.md](docs/tui-visual-harness.md):
 
 - **One budget per stage, named in the failure.** `runStage` runs a stage in its own goroutine with `shotTimeout` and returns an error the caller labels (`screenshot todo: …`). Without it a wedged CDP (Chrome DevTools Protocol) call reports nothing until `go test -timeout` kills the package, and the goroutine dump is the only evidence. `TestRunStageReportsTimeout` pins this and needs no browser, so it also runs in the `ci` job.
 - **No panicking helpers inside a stage.** `capturePNG` uses rod's error-returning API (`Page`/`SetViewport`/`Navigate`/`WaitLoad`/`Screenshot`), never `Must*`: a panic in a subtest goroutine skips the deferred `browser.Close()`, and the deferred `t.Cleanup` that follows then blocks.
