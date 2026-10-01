@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/yusiwen/tinycode/tlog"
@@ -223,10 +224,41 @@ func Bash() Tool {
 			// Run the shell in its own process group and kill the whole group
 			// on timeout, so background children do not survive the call.
 			configureProcessGroup(cmd)
+
+			// On Linux the command also runs inside its own cgroup v2 group: a
+			// descendant that double-forks re-parents to init and leaves the
+			// process group, but it cannot leave the group it inherited, so
+			// cgroup.kill (or killing every pid in cgroup.procs) still reaches it
+			// (issue #9). No delegation → the portable kill below, as before.
+			cg, cgErr := newBashCgroup()
+			if cgErr != nil {
+				tlog.Debug("shell.bash", "cgroup_unavailable", "err", cgErr.Error())
+			}
+			if cg != nil {
+				defer func() { _ = cg.remove() }()
+			}
+
+			// Which mechanism actually killed a timed-out command, for the report
+			// line appended below.
+			var killedBy atomic.Value
+
 			cmd.Cancel = func() error {
 				if cmd.Process == nil {
 					return nil
 				}
+				// Both, not either: the cgroup reaches the double-forked
+				// survivor, and the group/tree walk is the portable path that
+				// still works if the pid was not moved into the group yet (the
+				// timeout can fire between Start and add).
+				mechanism := "process group + tree walk"
+				if cg != nil {
+					if err := cg.kill(); err != nil {
+						tlog.Warn("shell.bash", "cgroup_kill_failed", "dir", cg.dir, "err", err.Error())
+					} else {
+						mechanism = "cgroup v2 + process group"
+					}
+				}
+				killedBy.Store(mechanism)
 				return killProcessGroup(cmd.Process.Pid)
 			}
 			// Give the I/O copiers a short grace period after the kill so a
@@ -243,7 +275,20 @@ func Bash() Tool {
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 
-			err := cmd.Run()
+			var err error
+			if startErr := cmd.Start(); startErr != nil {
+				err = startErr
+			} else {
+				if cg != nil {
+					// The window between Start and this call is the only moment a
+					// process can escape the group: a child forked before the move
+					// stays where it was.
+					if addErr := cg.add(cmd.Process.Pid); addErr != nil {
+						tlog.Warn("shell.bash", "cgroup_add_failed", "dir", cg.dir, "err", addErr.Error())
+					}
+				}
+				err = cmd.Wait()
+			}
 
 			var sb strings.Builder
 			if stdout.Len() > 0 {
@@ -262,6 +307,13 @@ func Bash() Tool {
 
 			if err != nil {
 				sb.WriteString(fmt.Sprintf("ERROR: %v\n", err))
+				if cmdCtx.Err() != nil {
+					// A timeout is the one case where the kill mechanism is worth
+					// reporting: "process group + tree walk" means a double-forked
+					// descendant may have survived it.
+					mechanism, _ := killedBy.Load().(string)
+					sb.WriteString(killNote(timeout, mechanism) + "\n")
+				}
 			}
 
 			result := strings.TrimSpace(sb.String())
