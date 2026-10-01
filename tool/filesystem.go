@@ -233,15 +233,42 @@ func SearchFiles() Tool {
 
 			glob, _ := args["file_glob"].(string)
 
-			// Priority ladder: rg → grep → Go native
+			// Priority ladder: rg → grep → Go native. A tool that is installed but
+			// fails (a broken shim, a missing flag, a permission problem) falls
+			// through to the next rung instead of failing the search: the portable
+			// implementation is always available and is what the caller wants when
+			// the fast one cannot run (issue #4). A cancelled context stops the
+			// ladder rather than retrying every rung against a dead context.
+			type searcher struct {
+				name string
+				run  func() (string, error)
+			}
+			var ladder []searcher
+			if isAvailable("rg") {
+				ladder = append(ladder, searcher{"rg", func() (string, error) {
+					return searchWithRG(ctx, pattern, searchPath, glob)
+				}})
+			}
+			if isAvailable("grep") {
+				ladder = append(ladder, searcher{"grep", func() (string, error) {
+					return searchWithGrep(ctx, pattern, searchPath, glob)
+				}})
+			}
+			ladder = append(ladder, searcher{"go-native", func() (string, error) {
+				return searchGoNative(ctx, pattern, searchPath, glob)
+			}})
+
 			var searchResult string
 			var searchErr error
-			if isAvailable("rg") {
-				searchResult, searchErr = searchWithRG(ctx, pattern, searchPath, glob)
-			} else if isAvailable("grep") {
-				searchResult, searchErr = searchWithGrep(ctx, pattern, searchPath, glob)
-			} else {
-				searchResult, searchErr = searchGoNative(ctx, pattern, searchPath, glob)
+			for i, s := range ladder {
+				searchResult, searchErr = s.run()
+				if searchErr == nil {
+					break
+				}
+				if i == len(ladder)-1 || ctx.Err() != nil {
+					return searchResult, searchErr
+				}
+				tlog.Warn("fs.search", "fallback", "tool", s.name, "error", searchErr.Error())
 			}
 			if searchErr != nil {
 				return searchResult, searchErr

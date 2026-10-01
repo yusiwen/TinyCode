@@ -15,6 +15,7 @@
 package browserproxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -53,6 +54,11 @@ type Proxy struct {
 	enforce bool
 	opts    []netsafe.Option
 
+	// dial opens the validated upstream connection for a CONNECT tunnel. It is a
+	// field so a test can observe the policy decision without opening a socket
+	// (the fuzz target does exactly that); Start sets the real one.
+	dial func(ctx context.Context, network, addr string, enforce bool, opts ...netsafe.Option) (net.Conn, error)
+
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -76,6 +82,7 @@ func Start(enforce bool, opts ...netsafe.Option) (*Proxy, error) {
 		enforce: enforce,
 		opts:    opts,
 		client:  netsafe.NewClient(proxyTimeout, enforce, opts...),
+		dial:    netsafe.DialValidatedContext,
 	}
 	// The proxy must hand redirects back to the browser untouched: the browser
 	// then asks the proxy for the next hop, which validates it like any other
@@ -127,10 +134,21 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.forward(w, r)
 }
 
+// dialUpstream opens the validated upstream connection for a CONNECT tunnel,
+// through p.dial when one is set (a test can watch the decision there) and through
+// the shared SSRF dialer otherwise.
+func (p *Proxy) dialUpstream(ctx context.Context, addr string) (net.Conn, error) {
+	dial := p.dial
+	if dial == nil {
+		dial = netsafe.DialValidatedContext
+	}
+	return dial(ctx, "tcp", addr, p.enforce, p.opts...)
+}
+
 // tunnel opens the validated upstream connection for a CONNECT request and then
 // copies bytes in both directions.
 func (p *Proxy) tunnel(w http.ResponseWriter, r *http.Request) {
-	upstream, err := netsafe.DialValidatedContext(r.Context(), "tcp", r.Host, p.enforce, p.opts...)
+	upstream, err := p.dialUpstream(r.Context(), r.Host)
 	if err != nil {
 		// A policy refusal is a decision; anything else is a broken upstream.
 		status := http.StatusBadGateway
