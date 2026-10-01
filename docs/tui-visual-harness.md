@@ -26,7 +26,7 @@ Four independent layers, from cheapest to most faithful:
 | Layer | Question it answers | It cannot show |
 | --- | --- | --- |
 | Golden frames | Did the layout change? (wrapping, alignment, overflow, status bar) | Colours (stripped), and anything the real renderer does with them |
-| PNG screenshots | What does the frame *look* like? | Live values (counts, clock), and the terminal's own truncation (#25) |
+| PNG screenshots | What does the frame *look* like? | Live values (counts, clock) |
 | PTY smoke | Does the real binary start, paint, carry colour and quit? | Any specific layout beyond the startup frame |
 | Stream replay | Does the running renderer's byte stream produce the frame on a real terminal? | Everything after the startup frame (no byte golden of a live screen) |
 
@@ -254,8 +254,10 @@ differently on another machine.
    a column alignment);
 3. navigates `file://`, waits for load, captures a full-page screenshot;
 4. writes `name.png`;
-5. rejects a PNG under 10 000 bytes ("the page probably rendered empty") and one
-   without the PNG magic bytes.
+5. rejects a PNG under 10 000 bytes ("the page probably rendered empty"), one
+   without the PNG magic bytes, and one whose width is outside
+   `W*9 .. W*9+24` CSS px — the geometry plus the page's fixed 12 px of
+   horizontal padding.
 
 It uses rod's error-returning API (`Page`, `SetViewport`, `Navigate`, `WaitLoad`,
 `Screenshot`) and never `Must*`: a panic inside a subtest goroutine skips the
@@ -284,12 +286,24 @@ Eight scenarios: `welcome`, `markdown`, `todo`, `dialog` at 80x24; `narrow`
 (markdown at 40x12); `longoutput` at 120x40; `compressing` at 80x24 and
 `compressing-narrow` at 40x12.
 
-The capture is full-page, so a frame wider than the geometry is rendered in full
-instead of being truncated at its column count — the reason the narrow PNGs do
-not yet look exactly like a 40-column terminal (#25). Measured widths show it:
-1440 px for a plain 80x24 scenario, 2160 px for 120x40, 1188 px for markdown at
-40x12, and 1912 px for *both* compression scenarios, whose status bar is the
-widest line in either geometry.
+The page is the frame **after the terminal's own truncation**: `frameToHTML`
+runs every row through `clipFrameToWidth`, which calls the same
+`ansi.Truncate(line, width, "")` that bubbletea's standard renderer applies to
+each line before writing it (`standard_renderer.go`, v1.3.10). A scenario builds
+a model and calls `View()` directly, which skips that step, so the harness has to
+apply it — the in-flight compression status line is 113 columns wide and is cut
+at the geometry instead of widening the image (issue #25, fixed).
+
+Measured after that fix: 1440 px for every 80x24 scenario, 2160 px for 120x40,
+720 px for `compressing-narrow`, 732 px for `narrow` (the extra 12 px is a
+fallback-font glyph whose bitmap is wider than the cell it counts as — the bound
+in `capturePNG` allows the page's 24 px of horizontal padding for exactly this
+reason). Below the geometry the tests do not rely on pixels:
+`TestShotScenariosFitTheirGeometry` (ungated) asserts that no page row is wider
+than its column count, which is what the width only witnesses.
+
+Vertically the capture stays full-page: `dialog` at 80x24 is 28 rows and its PNG
+is 1294 px tall, so no row is ever dropped.
 
 ---
 
@@ -534,10 +548,11 @@ The rules behind the code, each with the incident it came from:
    CI hang locally; 1 ms proved the failure is clean and attributed.
 6. **A golden frame is the assertion; a PNG supports it.** A screenshot is
    evidence only when its dimensions are pinned to the geometry it claims to
-   show: the full-page capture widens to the longest line instead (measured: the
-   compression scenario is 1912 px wide at both 80x24 and 40x12, because its
-   status bar is longer than either geometry — issue #25), so a scenario's golden
-   and PNG come from one builder and the artifact's size must be asserted.
+   show: a full-page capture of an unclipped frame widens to its longest line
+   (the compression scenario used to be 1912 px wide at *both* 80x24 and 40x12,
+   because its status bar is 113 columns long — issue #25), so a scenario's golden
+   and PNG come from one builder, the page is clipped with the renderer's own
+   truncation, and the artifact's size is asserted.
 
 The short form of these rules lives in the repo's `AGENTS.md`; this document is
 the longer design record.
@@ -546,16 +561,28 @@ the longer design record.
 
 ## 12. Known limits and open issues
 
-- **Full-page capture (#25).** PNGs are full-page, so a frame wider than the
-  geometry is not truncated at its column count, and the image is not a faithful
-  narrow terminal. Only the replayed PTY stream shows the narrow *screen*.
+- **Full-page capture (#25, fixed).** PNGs are still full-page vertically —
+  `dialog` at 80x24 is 28 rows and keeps all of them — but every row
+  is now clipped at the geometry with the renderer's own `ansi.Truncate`, so the
+  page is no longer widened by a status bar longer than the terminal. The width
+  can still differ by a few pixels from `W*9` when a row uses a fallback-font
+  glyph, which is why the assertion is a bound and the column count itself is
+  asserted in `TestShotScenariosFitTheirGeometry` instead of on pixels.
+- **Renderer truncation is not CellGrid clipping.** The message area is clipped by
+  `CellGrid` (wide-rune aware, at `m.width`); the status bar is built by
+  `fmt.Sprintf` with no bound and is only cut by bubbletea's standard renderer
+  just before it writes the line. A frame captured from `View()` therefore
+  contains columns no terminal ever received, which is exactly what
+  `clipFrameToWidth` reproduces.
 - **No live-screen byte golden.** A live frame carries counts, the provider name
   and the session clock, so only the build- and clock-independent rows are
   compared and the rest is asserted structurally (styling present, status bar
   present).
-- **Browser discovery is load-sensitive (#26).** The 5 s `--version` probe can
-  time out on a loaded machine, and a timed-out probe is memoized as unusable for
-  the rest of the process.
+- **Browser discovery is load-sensitive (#26, fixed).** The `--version` probe is
+  bounded by `browserProbeTimeout`, and a probe that the budget ends is remembered
+  only for `browserProbeRetryAfter` (30 s) instead of for the process lifetime, so
+  one loaded moment no longer disables the browser for every later extraction. The
+  fixture that made the test flaky is a native binary now, not a shell script.
 - **`screenBuffer` is not a full terminal.** It reproduces cell content and
   styling; it ignores scroll regions, alternate screens, tabs beyond 8 columns
   and every mode change. That is deliberate — a renderer change that needs more
