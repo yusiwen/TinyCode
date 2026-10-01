@@ -471,6 +471,7 @@ identical after restoring. An assertion that cannot fail is not evidence.
 | `NO_COLOR`, `TERM`, `COLORTERM`, `CLICOLOR*`, `FORCE_COLOR` | inherited | Removed and re-pinned for the PTY child by `terminalEnv` |
 | `shotTimeout` (Go variable, not env) | 20 s | Budget for one stage, the connect, one PTY poll and the cleanup wait |
 | `browserProbeTimeout` (Go variable) | 5 s | `--version` probe budget during browser discovery |
+| `browserProbeRetryAfter` (Go variable) | 30 s | How long a probe that *ran out of budget* is believed; a positive or definitive negative verdict is kept for the process lifetime |
 
 `-update` is a test flag, not an environment variable:
 `go test ./tui -run Golden -update`.
