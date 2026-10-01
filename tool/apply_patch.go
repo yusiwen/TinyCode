@@ -158,7 +158,19 @@ func ApplyPatch() Tool {
 						lsp.SnapshotBaseline(op.path)
 					}
 
-					data, _ := readSandboxed(op.path)
+					// The read is not optional. Ignoring its error (issue #6) made
+					// every replacement below a no-op on the empty string and the
+					// write that follows truncated the file to zero bytes while the
+					// summary still reported the file as updated. The validation pass
+					// read the same file a moment earlier, so anything that breaks
+					// this read - the file deleted or replaced by a directory in
+					// between, permissions changed, a sandbox refusal, a symlink
+					// swapped for an escaping one - is a failed operation: report it
+					// and write nothing.
+					data, err := readSandboxed(op.path)
+					if err != nil {
+						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
+					}
 					content := string(data)
 					lines := 0
 					for _, chunk := range op.chunks {

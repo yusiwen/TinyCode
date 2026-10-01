@@ -321,3 +321,43 @@ func TestApplyPatchMultiChunkContext(t *testing.T) {
 		t.Errorf("expected both changes in file, got:\n%s", string(data))
 	}
 }
+
+// TestApplyPatchUpdateAfterDeleteKeepsTarget reproduces the data loss in issue #6
+// without a test seam: the delete in the same patch removes the file the update
+// validated a moment earlier, so the apply-time read fails. That read used to
+// ignore its error, which made the replacements no-ops on the empty string and the
+// write that followed recreated the file as zero bytes while the summary still
+// listed it as updated.
+func TestApplyPatchUpdateAfterDeleteKeepsTarget(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "victim.go")
+	if err := os.WriteFile(path, []byte("package main\nfunc keep() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	patch := `*** Begin Patch
+*** Delete File: ` + path + `
+*** Update File: ` + path + `
+@@ rename @@
+-func keep() {}
++func gone() {}
+*** End Patch`
+
+	tool := ApplyPatch()
+	result, err := tool.Execute(context.Background(), map[string]any{
+		"patch_text": patch,
+	})
+	if err != nil {
+		t.Fatalf("apply_patch error: %v", err)
+	}
+	if !strings.Contains(result, "Partial failure") {
+		t.Errorf("result = %q, want a partial failure for the update whose read failed", result)
+	}
+	if strings.Contains(result, "U ") {
+		t.Errorf("result reports a successful update: %q", result)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		data, _ := os.ReadFile(path)
+		t.Errorf("the deleted file came back with %d bytes: %q", len(data), string(data))
+	}
+}
