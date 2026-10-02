@@ -57,32 +57,31 @@ the Playwright cache under `$HOME`. If `HOME` is redirected (as above), set
 
 ## Test Harness Rules
 
-Learned from building the TUI visual harness (issues #16–#28); they apply to every
-test that drives an external process — browser, PTY, subprocess:
+TUI verification runs through **[tuiprobe](tuiprobe/README.md)** — a nested module in
+this repository, pinned in `go.mod` and released as `tuiprobe/v0.1.0`. It owns the
+mechanism: the terminal emulator, golden files with `-update` and diffing, the PNG
+renderer (pure Go by default, Chromium optional), the PTY session with named and
+bounded stages, and the browser discovery. `tui/` keeps the fixtures and the
+judgments: which screens matter, at which geometries, and what they should look like.
 
-- **Bound and name every stage.** A stage that can block runs under its own budget
-  and the failure names it (`runStage` in `tui/frame_shot_test.go`), so a wedged
-  call is reported instead of hanging until `go test -timeout`.
-- **Return errors, never panic, inside a stage.** A panic in a subtest goroutine
-  skips the deferred cleanup: rod's `Must*` helpers did that and left
-  `launcher.Cleanup` waiting on `<-l.exit` forever — a 5-minute package timeout
-  with the real error buried.
-- **Cleanup kills before it waits**, and bounds the wait.
-- **A deadline belongs to one operation, not to a client.** `rod`'s `Timeout`
-  installs a single expiring context that every derived session inherits;
-  installed at connect it covered all eight screenshots and expired mid-run on a
-  slow runner. Take a fresh budget per stage. The Ollama provider (#1) is the
-  same shape in the other direction: it bounds nothing at all.
-- **Make timing knobs injectable** (package variable or env override). Shrinking
-  `shotTimeout` to 1 s reproduced the CI hang locally; 1 ms proved the failure is
-  clean, fast and attributed.
-- **A golden frame is the assertion; a PNG supports it.** Assert a visual
-  artifact's dimensions against the geometry it claims to show — the full-page
-  capture in #25 widened to the longest line instead, and the fix was to clip the
-  page with the renderer's own truncation (`ansi.Truncate`), not to widen the page.
+- `tui/scenarios_test.go` — one scenario table and the ten builders. Adding a screen is
+  an entry here plus an intended layout change.
+- `tui/verification_test.go` — the assertions, each a few lines: `golden.Assert` for
+  frames (byte for byte, `-update` aware), `golden.Assert` for the ANSI frame,
+  `golden.Deterministic` for stability, `golden.Clip`/`FitsWidth` for geometry,
+  `tuiprobe/render/font` for images, `tuiprobe/session` for the real binary on a PTY.
+- `tui/testhelpers_test.go` — the few helpers that belong to other tests (a stream
+  waiter, `frameDiff` as a wrapper over `golden.Diff`, the TrueColor profile pin).
 
-The full reference (layers, implementation, commands, troubleshooting) is
-[docs/tui-visual-harness.md](docs/tui-visual-harness.md).
+The rules those helpers used to encode are now the tool's design, and they still
+apply to every test that drives an external process: bound and name every stage
+(`session.Stage`), return errors instead of panicking inside one, kill before waiting
+and bound the wait, take a fresh deadline per operation, make timing knobs injectable,
+and assert a visual artifact's dimensions against the geometry it claims.
+
+The tool's own reference is [tuiprobe/README.md](tuiprobe/README.md) and
+[docs/parity.md](tuiprobe/docs/parity.md) (what replaced what, capability by
+capability); this repository's side is [docs/tui-verification.md](docs/tui-verification.md).
 
 ## CI Notes
 

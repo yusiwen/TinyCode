@@ -9,6 +9,20 @@ back to its change and tests.
 
 ## Unreleased
 
+### TUI verification moved to `tuiprobe`
+
+The TUI visual harness's mechanism — terminal emulator, PTY scaffolding, golden
+helpers, SGR→CSS renderer and Chromium plumbing, about 1,400 lines — now lives in the
+nested `tuiprobe` module, released as `tuiprobe/v0.1.0` and pinned in `go.mod`.
+`tui/` keeps the fixtures and the judgments: one scenario table (ten builders) plus
+assertions that are a few lines each, in `tui/scenarios_test.go` and
+`tui/verification_test.go`.
+
+Proven before deleting: the 27 committed text goldens and the ANSI golden are
+reproduced **byte for byte** through the same builders, and both suites ran green in the
+same CI job. See [docs/tui-verification.md](docs/tui-verification.md) and
+[tuiprobe/docs/parity.md](tuiprobe/docs/parity.md).
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration

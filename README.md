@@ -46,7 +46,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Spinner**: `⣾ ⣽ ⣻ ⢿ ⡿ ⣟` braille spinner in status bar during streaming. Tick pipeline kept alive even during idle. Spinner continues across intermediate steps. (42b8794, 9a0f55b, afc14e1)
 - **Auto-scroll**: viewport follows streaming output, pauses when user scrolls up
 - **Status bar**: mode icon, model name, provider, token/tool/msg counts, session duration, transient status messages
-- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 27 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), a headless `tea.Program` driver that types, resizes and quits, and `make test-tui-visual` (`TUI_SHOT=1`), which renders the frames to PNGs through Chromium, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live terminal stream into a screen buffer that is screenshotted too. The tests pin the renderer to a TrueColor profile, because a non-TTY stdout otherwise strips every style from the frame. Implementation, commands and known limits: **[docs/tui-visual-harness.md](docs/tui-visual-harness.md)**.
+- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 27 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), and `make test-tui-visual` (`TUI_SHOT=1`), which renders the scenarios to PNGs, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live stream into a screen buffer that is rendered too. The mechanism is the nested **[tuiprobe](tuiprobe/README.md)** module (pinned in `go.mod`, released as `tuiprobe/v0.1.0`); the fixtures and the judgments stay here. Reference: **[docs/tui-verification.md](docs/tui-verification.md)**.
 
 ### Agent Loop
 - ReAct loop with tool calling support (24 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, sandbox_allow, load_skill, skill_manage)
@@ -112,7 +112,7 @@ never launches a browser, a language server or a terminal device. Run them delib
 | Linux-only cases (the `openat2` containment tests, the cgroup reaping) | `docker run --rm -v "$PWD":/w -w /w golang:1.27 go test ./tool/` | a running Docker daemon; the kernel inside needs ≥ 5.6 for `openat2` |
 | Real language servers | `make install-gopls`, `make install-tsls` (TypeScript 5, optional), then `make test-lsp` (`LSP_TEST=1`) | a Go toolchain; npm for the TypeScript case, which skips with the reason without it |
 | Real browser smoke tests | `make test-browser` (`BROWSER_TEST=1`) | a Chromium/Chrome: a system install, `CHROME_PATH=…`, or `npx playwright install chromium` |
-| TUI frames and the PTY smoke test | `make test-tui-visual` (`TUI_SHOT=1`) | Chromium, `/dev/ptmx`, and a fresh `bin/tinycode` |
+| TUI frames and the PTY smoke test | `make test-tui-visual` (`TUI_SHOT=1`) | `/dev/ptmx` and a fresh `bin/tinycode` (Chromium only for the browser renderer) |
 
 Two failures that are the environment, not the code:
 
@@ -334,7 +334,7 @@ The dev shell provides the Go toolchain, `gopls` (LSP), `gofumpt`
 make build      # static binary at ./bin/tinycode (CGO_ENABLED=0)
 make test
 make lint
-make test-tui-visual   # TUI screenshots + PTY smoke (TUI_SHOT=1); needs Chromium
+make test-tui-visual   # TUI screenshots + PTY smoke (TUI_SHOT=1)
 ```
 
 The Makefile remains the canonical build/release path; the flake pins the
@@ -342,7 +342,7 @@ toolchain so it behaves identically everywhere.
 
 The TUI visual layers (golden frames, PNG screenshots, the PTY smoke tests and
 the live-stream replay) have their own reference:
-[docs/tui-visual-harness.md](docs/tui-visual-harness.md).
+[docs/tui-verification.md](docs/tui-verification.md).
 
 ---
 
