@@ -51,8 +51,10 @@ jobs:
           done
           ls -l ../dist
 
+      # v3 declares `using: node24`; v2 targeted Node 20 and made every release run
+      # carry a deprecation annotation (issue #54).
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*.tar.gz
           tag_name: ${{ github.ref_name }}
