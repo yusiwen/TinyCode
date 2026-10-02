@@ -74,7 +74,14 @@ and named (`session.Stage`), and a wait that overruns reports
 **Acceptance**: the same scenario produces a PNG whose measured width is pinned to
 its column count — verified by a mutation that narrows the page and fails the check.
 
-## M2b — Chromium and browser discovery
+**M2b acceptance** (measured): `shot --renderer chromium --scale 2` on a live 44x8
+session produced a 792x288 PNG (44x9x2 by 8x18x2) through the discovered browser, and
+the discovery path is hermetic in tests — an injected `--version` responder, fixture
+Playwright caches and an empty app-path list, so the machine's own browser cannot leak
+into an assertion. The gated real-browser test skips with its reason when
+`TUIPROBE_BROWSER_TEST` is unset or no browser is found.
+
+## M2b — Chromium and browser discovery ✅
 
 
 ## M3 — adapters, parity, adoption

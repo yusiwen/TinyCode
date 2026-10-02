@@ -45,8 +45,9 @@ tuiprobe run --dir . --update welcome.scenario   # write the goldens once
 tuiprobe run --dir . welcome.scenario            # then compare them
 
 # Or take a picture of it — no browser involved.
-tuiprobe shot --name app --out app.png --scale 2     # 2x pixels
+tuiprobe shot --name app --out app.png --scale 2                  # 2x pixels
 tuiprobe shot --name app --out app.html --format html
+tuiprobe shot --name app --out app.png --renderer chromium          # through a browser
 
 # Or replay a captured stream offline.
 tuiprobe replay --stream capture.bin --size 80x24 --format ansi
@@ -78,7 +79,7 @@ Early, and being built in the open in
 | Scenario files (`tuiprobe run`), golden diff with `--update`, geometry assertions, gated skip-with-reason | **done** — `internal/scenario`, see [docs/scenario.md](docs/scenario.md) |
 | Named, bounded stages (`session.Stage`) and kill-before-wait cleanup | **done** — `session`, `pty` |
 | Screenshots: pure-Go font rasterizer (`shot --name app --out app.png`), PNG size asserted against the geometry | **done** — `render/font`, `internal/shot` |
-| Chromium renderer + browser discovery/probe | next (M2b) |
+| Chromium renderer + browser discovery/probe | **done** — `render/chromium` (`--renderer chromium`) |
 | Bubble Tea in-process adapter | next |
 
 [`docs/roadmap.md`](docs/roadmap.md) has the milestones and their acceptance
@@ -110,6 +111,16 @@ The default renderer draws the cell grid with Go Mono (embedded in
 arithmetic is exact: an image is `columns × cell width` by `rows × cell height`, and
 `shot` refuses to write one that is not — an image whose size is not a function of
 the geometry is not evidence of that geometry.
+
+`--renderer chromium` drives a real browser instead (`--browser` picks one,
+otherwise `CHROME_PATH`, `CHROME`, a system Chromium/Chrome/Edge or the Playwright
+cache is probed with `--version`; the headless shell is preferred because it is the
+build that can take a screenshot, and a probe verdict expires so a browser installed
+later is found). It costs a browser launch — about 2.8 s here — and buys system fonts
+and exact CSS. Its screenshot size cannot be predicted to the pixel, so it is asserted
+against the range the geometry allows (`cols*9 .. cols*9+24` px) rather than an exact
+number. The layout is absolute per cell, because a browser only behaves like a
+terminal grid when every cell is told where it is.
 
 The trade-off is glyph coverage: Go Mono has no box-drawing, braille or icon
 glyphs, and a rune the face lacks is drawn as a visible placeholder rather than
