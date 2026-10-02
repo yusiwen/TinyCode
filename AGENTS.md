@@ -83,6 +83,45 @@ The tool's own reference is [tuiprobe/README.md](tuiprobe/README.md) and
 [docs/parity.md](tuiprobe/docs/parity.md) (what replaced what, capability by
 capability); this repository's side is [docs/tui-verification.md](docs/tui-verification.md).
 
+### Adding a TUI scenario
+
+Three routes, in the order to try them.
+
+**1. A frame in the suite — the default.** Add a builder in `tui/scenarios_test.go`
+and one entry to `frameScenarios`: `sizes` for the goldens, and a `shotSpec` if the
+screen also deserves an image.
+
+```bash
+go test ./tui -run Golden -update                 # commit the new expectation
+make build && TUI_SHOT=1 go test ./tui -count=1   # images land in TUI_SHOT_DIR
+```
+
+Read the regenerated PNG before committing. The golden proves the text did not
+change; the image is the only thing that shows it is *right* — looking at one is how
+the overlapping-glyph bug in the Chromium renderer was found ("TinyCode TUI" drawn as
+"TnCd U").
+
+**2. A black-box scenario — interaction, or the real binary.** When the property is
+about `main.go` wiring, flags, an interactive sequence or a live stream rather than a
+single frame, write a scenario file under `tui/testdata/scenarios/*.scenario` and run
+it with the pinned tool:
+
+```bash
+go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@v0.1.0 run \
+  --gate TUI_SHOT tui/testdata/scenarios/mine.scenario
+```
+
+Steps are `open`, `send`, `wait`, `stable`, `sleep`, `golden`, `diff`, `fit`,
+`screenshot`, `close`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
+is the reference. The runner is a CLI feature (its package is internal), so a scenario
+is wired through the Makefile or a CI step, never through a Go test.
+
+**3. A tool change.** If the missing capability is generic — another step, a renderer,
+a better diff — extend `tuiprobe/` instead of growing a helper here, cut a
+`tuiprobe/v*` release, then bump the pin in `go.mod`. The module boundary is what keeps
+this repository free of harness code: a new local emulator, PTY wrapper or golden
+helper is the signal to take this route.
+
 ## CI Notes
 
 `main.yml` jobs: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run),

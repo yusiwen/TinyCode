@@ -445,7 +445,9 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 
 ### Frame verification (test files)
 Design reference and usage: [docs/tui-verification.md](docs/tui-verification.md); the
-mechanism lives in the nested `tuiprobe` module, pinned in `go.mod`.
+mechanism lives in the nested `tuiprobe` module, pinned in `go.mod`. The recipe for
+adding a scenario — frame, black-box scenario file, or tool release — is in
+[AGENTS.md](AGENTS.md).
 - `scenarios_test.go` — the ten frame builders and **one** scenario table (`name`,
   golden sizes, shot specs, builder) that drives frames, the ANSI frame, determinism,
   geometry, images and the live-stream rendering. The builders leave `sessionStart` at

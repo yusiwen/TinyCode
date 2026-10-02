@@ -32,16 +32,56 @@ go test ./tui -run Golden -update       # after an intended layout change
 directory). `make test-tui-visual` runs verbosely on purpose: which gated check ran and
 which skipped, with the reason, is the point of that job.
 
-## Adding a screen
+## Adding a scenario
 
-One entry in the scenario table in `tui/scenarios_test.go`:
+Three routes, in the order to try them. `AGENTS.md` carries the short version.
+
+### 1. A frame in the suite (default)
+
+Add a builder to `tui/scenarios_test.go` and one entry to the scenario table:
 
 ```go
 {"myscreen", []golden.Size{{W: 80, H: 24}}, []shotSpec{{"myscreen", golden.Size{W: 80, H: 24}}}, frameMyScreen},
 ```
 
-plus the builder that produces the model, then `go test ./tui -run Golden -update` to
-commit the new frame and read the regenerated PNG to check it looks right.
+`sizes` lists the geometries whose *text* is committed; `shots` lists the images worth
+looking at. Then:
+
+```bash
+go test ./tui -run Golden -update                 # writes the golden(s)
+make build && TUI_SHOT=1 go test ./tui -count=1   # images land in TUI_SHOT_DIR
+```
+
+The image is not optional reading: the golden proves the text did not change, the
+picture is the only thing that shows it is right. An intended layout change and the
+regenerated PNG belong in the same commit.
+
+### 2. A black-box scenario (interaction, or the real binary)
+
+For a property about `main.go` wiring, flags, an interactive sequence or a live stream
+rather than one frame, add a scenario file under `tui/testdata/scenarios/` and run it
+with the pinned tool:
+
+```bash
+go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@v0.1.0 run \
+  --gate TUI_SHOT tui/testdata/scenarios/mine.scenario
+go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@v0.1.0 run \
+  --dir tui/testdata/scenarios --update tui/testdata/scenarios/mine.scenario
+```
+
+The steps are `open`, `send`, `wait`, `stable`, `sleep`, `golden`, `diff`, `fit`,
+`screenshot`, `close`, `expect-exit`, and a failure names the line and the step; see
+[tuiprobe/docs/scenario.md](../tuiprobe/docs/scenario.md). The runner lives in
+`tuiprobe/internal/scenario`, so it is reachable as a command, not as a library —
+wire it through the Makefile or a CI step rather than a Go test. `--gate TUI_SHOT`
+makes it a no-op that prints why it skipped.
+
+### 3. A tool change
+
+If the capability that is missing is generic, it belongs in `tuiprobe/`: another step,
+a renderer, a better diff. Add it there, cut a `tuiprobe/v*` release, then bump the pin
+in `go.mod`. A new local emulator, PTY wrapper or golden helper in this repository is
+the signal that this route was the right one.
 
 ## What this project still owns, and why
 
