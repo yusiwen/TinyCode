@@ -54,3 +54,32 @@ func TestSizeFormatsAsGeometry(t *testing.T) {
 		t.Errorf("Size.String() = %q, want 80x24", got)
 	}
 }
+
+// TestFitsPinsTheArtifactToItsGeometry covers the harness rule that an artifact's
+// dimensions are part of the assertion: a line wider than the terminal, or more
+// lines than the terminal has, is a failure.
+func TestFitsPinsTheArtifactToItsGeometry(t *testing.T) {
+	if err := Fits(10, 2, "1234567890\nabc\n"); err != nil {
+		t.Errorf("a fitting artifact was rejected: %v", err)
+	}
+	// Display width, not bytes: three wide runes are six cells.
+	if err := Fits(4, 1, "日本語\n"); err == nil {
+		t.Error("six cells of wide runes must not fit a four-cell width")
+	}
+	if err := Fits(6, 1, "日本語\n"); err != nil {
+		t.Errorf("six cells of wide runes must fit six: %v", err)
+	}
+	if err := Fits(5, 1, "123456\n"); err == nil {
+		t.Error("a line wider than the geometry must be rejected")
+	}
+	if err := Fits(10, 2, "a\nb\nc\n"); err == nil {
+		t.Error("more lines than the geometry allows must be rejected")
+	}
+	if err := Fits(0, 24, "x\n"); err == nil {
+		t.Error("a non-terminal geometry must be rejected")
+	}
+	// Blank rows below the content are not content.
+	if err := Fits(3, 1, "abc\n\n\n"); err != nil {
+		t.Errorf("trailing blank rows must not count against the geometry: %v", err)
+	}
+}

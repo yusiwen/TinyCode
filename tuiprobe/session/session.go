@@ -208,7 +208,7 @@ func (s *Session) WaitText(pattern string, timeout time.Duration) error {
 			return fmt.Errorf("session: wait for text %q: the program exited first; screen:\n%s", pattern, s.Text())
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("session: wait for text %q: timed out after %s; screen:\n%s", pattern, timeout, s.Text())
+			return fmt.Errorf("session: wait for text %q: %w after %s; screen:\n%s", pattern, ErrStageTimeout, timeout, s.Text())
 		}
 		time.Sleep(PollInterval)
 	}
@@ -230,7 +230,7 @@ func (s *Session) WaitStable(quiet, timeout time.Duration) error {
 			return fmt.Errorf("session: wait for a stable screen: the program exited first; screen:\n%s", s.Text())
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("session: wait for a stable screen: still changing after %s; screen:\n%s", timeout, s.Text())
+			return fmt.Errorf("session: wait for a stable screen: %w, still changing after %s; screen:\n%s", ErrStageTimeout, timeout, s.Text())
 		}
 		time.Sleep(PollInterval)
 	}

@@ -48,16 +48,21 @@ auto-starts on the first and answers the rest; `close --json` reports the progra
 exit code (6 in the run); the program's pid is gone afterwards (`kill -0` fails); and
 a daemon started with `--ttl 2s` exits by itself and removes its socket.
 
-## M1 — assertions
+## M1 — assertions ✅
 
 - `wait --text <re>` and `wait --stable <dur>` (bounded, with the stage named in
   the failure), `ansi`, `trace` (raw byte log), `diff --against <golden>`.
 - `run scenario.yaml` with steps, `--update`, and a non-zero exit on any assertion.
 - Golden comparison and geometry assertions over the scenario's artifacts.
 
-**Acceptance**: a scenario file asserts one TUI at two geometries; breaking the
-layout fails the run with a first-difference diff and the stage name; `--update`
-rewrites the goldens.
+**Acceptance** (measured): a scenario file drives a program through a real
+`open`/`wait`/`golden`/`send`/`close`/`expect-exit` run — at two geometries — and a
+changed screen fails with the line number and a first-difference diff
+(`first differing line 1 (column 5): want "hell0", got "hello"`); `--update`
+rewrites the goldens; `--gate VAR` with `VAR` unset prints
+`skipped: VAR is not set` and exits 0 without opening anything. Stages are bounded
+and named (`session.Stage`), and a wait that overruns reports
+`stage wait-for-banner exceeded its 80ms budget`.
 
 ## M2 — images
 

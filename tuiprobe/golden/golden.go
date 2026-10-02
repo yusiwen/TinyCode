@@ -107,26 +107,42 @@ func Diff(want, got string) string {
 // that committed it, not to this package.
 func Assert(t testing.TB, dir, name, got string) {
 	t.Helper()
-	path := filepath.Join(dir, name)
-
 	if Update() {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("create golden dir: %v", err)
-		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatalf("write golden %s: %v", path, err)
+		if err := Write(dir, name, got); err != nil {
+			t.Fatalf("%v", err)
 		}
 		return
 	}
+	if err := Compare(dir, name, got); err != nil {
+		t.Errorf("%v", err)
+	}
+}
 
+// Compare checks got against dir/name and returns the difference as an error, so
+// a caller that is not a test — the scenario runner — can report it the way it
+// reports every other step failure.
+func Compare(dir, name, got string) error {
+	path := filepath.Join(dir, name)
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read golden %s: %v\nregenerate it with: go test ./... -update", path, err)
+		return fmt.Errorf("read golden %s: %w\nregenerate it with --update", path, err)
 	}
 	if string(want) == got {
-		return
+		return nil
 	}
-	t.Errorf("artifact does not match %s\n%s", path, Diff(string(want), got))
+	return fmt.Errorf("artifact does not match %s\n%s", path, Diff(string(want), got))
+}
+
+// Write stores an artifact as the new golden, creating the directory.
+func Write(dir, name, got string) error {
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create golden dir: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+		return fmt.Errorf("write golden %s: %w", path, err)
+	}
+	return nil
 }
 
 // Size is one terminal geometry an artifact is captured at.

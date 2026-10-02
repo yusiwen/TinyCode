@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -373,7 +372,7 @@ func (s *Server) wait(req Request, sess *session.Session) Response {
 	if err != nil {
 		resp := failure(err)
 		resp.Stage = "wait"
-		if strings.Contains(err.Error(), "timed out") || strings.Contains(err.Error(), "still changing") {
+		if errors.Is(err, session.ErrStageTimeout) {
 			resp.Code = CodeTimeout
 		}
 		return resp
