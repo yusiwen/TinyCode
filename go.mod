@@ -15,7 +15,7 @@ require (
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/spf13/cobra v1.9.1
 	github.com/yuin/goldmark v1.8.2
-	github.com/yusiwen/TinyCode/tuiprobe v0.0.0
+	github.com/yusiwen/TinyCode/tuiprobe v0.1.0
 	golang.org/x/net v0.27.0
 	golang.org/x/sys v0.48.0
 )
@@ -47,8 +47,3 @@ require (
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
-
-// The TUI parity tests use tuiprobe directly. It is developed in this repository
-// as a nested module, so the root depends on the checkout rather than a release
-// while the two evolve together; a released version replaces this line.
-replace github.com/yusiwen/TinyCode/tuiprobe => ./tuiprobe
