@@ -74,6 +74,41 @@ repository no matter how far the extraction goes:
 - the Bubble Tea `Model` construction;
 - the CI jobs, the gated environment variables and the Makefile target.
 
+## The parity run (2026-10-02, commit `f13c4c2` + the run below)
+
+`tui/tuiprobe_parity_test.go` renders TinyCode's own scenarios with TinyCode's own
+builders and asserts them through `tuiprobe`. Measured, in one `TUI_SHOT=1 go test
+./tui -count=1` run alongside the harness:
+
+| Comparison | Result |
+| --- | --- |
+| The 27 committed text goldens | **reproduced byte for byte** |
+| The 1 committed ANSI golden (`ansi/markdown_80x24.ansi`) | **identical**, escapes included |
+| Render determinism, twice | identical for all 27 renderings |
+| Geometry and clipping | 7 of 27 renderings are wider than their terminal before clipping (the status bar), exactly as the harness's own test requires; the clipped frame fits and the clip is idempotent |
+| PNG artifact set | 8 scenario images + 1 from the live stream, each sized exactly `columns × cell width` by `rows × cell height` |
+| The real binary on a PTY | starts, paints SGR styling, quits on the documented double Ctrl+C |
+| A PTY with no size | the tool upgrades it, so the program never sees 0x0 |
+| The harness's own gated tests, same run | `TestFrameScreenshots`, `TestBinarySmokeUnderPTY`, `TestBinarySmokeWithoutTerminalSize`, `TestBinaryScreenshotFromStream` — all pass |
+
+The run found three things the tool was missing, all now fixed and covered:
+
+1. **`golden.Clip` / `golden.FitsWidth`.** A frame may legitimately be *wider* and
+   *taller* than its terminal — TinyCode draws its status bar outside the cell grid,
+   so an 80-column frame carries a 113-column status line, and the harness clips
+   before screenshotting (issue #25). `Fits` alone was too strict; the parity test
+   now mirrors the harness exactly (clip, then width-only, then the overlong counter
+   that keeps the clip tested).
+2. **Removing an environment variable.** This agent's shell has `NO_COLOR=1` and
+   `TERM=dumb`; the harness's smoke test builds a hermetic terminal environment and
+   the tool could only *add* variables, so the program painted plain text and the SGR
+   assertion failed. `Options.Env` now accepts a bare `KEY` to remove it, and
+   `pty.TerminalEnv(home)` provides the same hermetic environment the harness uses.
+3. **Caller overrides must win, with no duplicates.** The child's environment was
+   built by appending, and Go passes duplicates through while a program reads the
+   first — so a caller pinning `TERM` could be ignored. Overrides are applied in
+   place now.
+
 ## Replacement criteria (all of them, before deleting anything)
 
 1. `tuiprobe` covers rows 1–20 above, each with a test in its own suite.
@@ -89,3 +124,8 @@ repository no matter how far the extraction goes:
    verifies the artifact users get.
 6. Only then: delete the harness files, point CI at the tool, and record the new
    workflow in `AGENTS.md` and `CODEBASE.md`.
+
+**Status**: criteria 1–4 are met by the run above (both harnesses green together, the
+goldens byte-identical, the artifact sets equal, the gating unchanged). Criterion 5 —
+pinning a *released* `tuiprobe` version instead of the local `replace` — is what
+remains before anything is deleted.

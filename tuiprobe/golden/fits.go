@@ -19,8 +19,13 @@ func Fits(cols, rows int, artifact string) error {
 	if cols <= 0 || rows <= 0 {
 		return fmt.Errorf("golden: geometry %dx%d is not a usable terminal size", cols, rows)
 	}
-	lines := strings.Split(strings.TrimRight(artifact, "\n"), "\n")
-	if strings.TrimSpace(artifact) == "" {
+	// Escape sequences take no cells: a width measured on the raw stream counts
+	// every byte of an SGR sequence as a character, which is how an 80-column frame
+	// first reported itself as 101 cells wide.
+	plain := oscSequence.ReplaceAllString(artifact, "")
+	plain = csiSequence.ReplaceAllString(plain, "")
+	lines := strings.Split(strings.TrimRight(plain, "\n"), "\n")
+	if strings.TrimSpace(plain) == "" {
 		lines = nil
 	}
 	if len(lines) > rows {
