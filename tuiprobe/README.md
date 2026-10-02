@@ -80,13 +80,22 @@ Early, and being built in the open in
 | Named, bounded stages (`session.Stage`) and kill-before-wait cleanup | **done** — `session`, `pty` |
 | Screenshots: pure-Go font rasterizer (`shot --name app --out app.png`), PNG size asserted against the geometry | **done** — `render/font`, `internal/shot` |
 | Chromium renderer + browser discovery/probe | **done** — `render/chromium` (`--renderer chromium`) |
-| Bubble Tea in-process adapter | next |
+| Bubble Tea in-process adapter (`adapter/bubbletea`) | **done** |
 
 [`docs/roadmap.md`](docs/roadmap.md) has the milestones and their acceptance
 criteria; [`docs/parity.md`](docs/parity.md) tracks the capability-by-capability
 parity with TinyCode's own TUI harness, which is the tool's first real consumer.
 
 ## Library
+
+```go
+import tea "github.com/yusiwen/TinyCode/tuiprobe/adapter/bubbletea"
+
+prog, _ := tea.Start(myModel, tea.Options{Cols: 80, Rows: 24})
+_ = prog.Send(tea.KeyMsg{Type: tea.KeyUp})
+_ = prog.WaitText("count=1", 5*time.Second)
+prog.Text()   // what a user would see: the output goes through the emulator
+```
 
 ```go
 import "github.com/yusiwen/TinyCode/tuiprobe/screen"

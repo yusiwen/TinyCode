@@ -84,7 +84,7 @@ into an assertion. The gated real-browser test skips with its reason when
 ## M2b — Chromium and browser discovery ✅
 
 
-## M3 — adapters, parity, adoption
+## M3 — adapters, parity, adoption ✅ (tool side)
 
 - `adapter/bubbletea`: drive a `tea.Program` in-process (the harness's four
   `TestProgramDriver*` cases).
@@ -94,3 +94,12 @@ into an assertion. The gated real-browser test skips with its reason when
 
 **Acceptance**: TinyCode's TUI verification runs through `tuiprobe` alone, and a new
 TUI feature is verified by adding a scenario rather than by writing harness code.
+
+**Tool-side acceptance** (measured): `adapter/bubbletea` drives a model in-process —
+it paints, it answers keys and messages, it survives a resize storm, and a 0x0 window
+is upgraded to 80x24 — with the output interpreted by the same emulator the PTY path
+uses (`Text()` means the same thing on both). `golden.Deterministic` fails a renderer
+that answers differently the second time, `golden.AssertFrame` pins a frame to its
+geometry and its file. With those, **all 20 parity rows are moved**. What remains is
+not a capability but a proof: running `tuiprobe` against TinyCode itself, side by side
+with the harness it is meant to replace.

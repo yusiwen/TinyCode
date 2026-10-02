@@ -17,9 +17,9 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | --: | --- | --- | --- | --- |
 | 1 | Golden text frames (`TestGoldenFrames`) | in-process render | `golden` + app-side scenario | **moved** (engine); scenario stays in the app |
 | 2 | Golden ANSI frames (`TestGoldenFrameANSI`) | in-process render | `golden` | **moved** (engine) |
-| 3 | Render determinism, twice (`TestFrameScenariosRenderTwice`) | in-process render | `golden`/library helper | pending |
+| 3 | Render determinism, twice (`TestFrameScenariosRenderTwice`) | in-process render | `golden.Deterministic` | **moved** — renders twice and fails with the diff |
 | 4 | ANSI→HTML clipping (`TestFrameToHTMLClipsToWidth`) | pure function | `screen` (HTML) | **moved** (screen HTML) |
-| 5 | Frames fit their geometry (`TestShotScenariosFitTheirGeometry`) | pure function | `golden.Fits` + the `fit` step | **partly moved**: the step asserts the session's geometry and that the screen fits it; the in-process *frame* check arrives with the adapter (M3) |
+| 5 | Frames fit their geometry (`TestShotScenariosFitTheirGeometry`) | pure function | `golden.Fits` + `golden.AssertFrame` + the `fit` step | **moved** — the CLI step asserts the live session, `AssertFrame` the in-process frame |
 | 6 | PNG per scenario + pixel-size bound (`TestFrameScreenshots`) | browser | `render/font` + `render/chromium` + `internal/shot` | **moved** — the PNG and the size assertion are there; the renderer is a pure-Go font rasterizer instead of Chromium, so no browser is needed for the default path |
 | 7 | Stage timeout names the stage (`TestRunStageReportsTimeout`) | library | `session.Stage` | **moved** — `StageError` carries the name, the budget and whether it was a timeout, and `ErrStageTimeout` makes it machine-checkable |
 | 8 | Cleanup kills before waiting (`TestCleanupLauncherDoesNotWaitForever`) | library | `pty.Close` + `session.Close` | **moved** — the process group is signalled first, then reaped under `CloseGrace` |
@@ -34,7 +34,7 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | 17 | Erase display (`TestBufferEraseDisplay`) | emulator | `screen` | **moved** |
 | 18 | Replay fidelity, frame → screen (`TestScreenBufferReplaysViewFrame`) | emulator | `screen` | **moved** (literal frames; the app's own case stays) |
 | 19 | Screenshot from the live stream (`TestBinaryScreenshotFromStream`) | PTY + emulator + image | `pty` + `screen` + `internal/shot` | **moved** — `shot --name app --out app.png` renders the *live* screen: the daemon's ANSI is replayed through the emulator and drawn, which is the same evidence path the harness had |
-| 20 | In-process program driver (`TestProgramDriver*`, 4 tests) | Bubble Tea | `adapter/bubbletea` | pending |
+| 20 | In-process program driver (`TestProgramDriver*`, 4 tests) | Bubble Tea | `adapter/bubbletea` | **moved** — paints and quits, commands and keys, a resize storm, and a window that reports no size |
 
 Tool-side additions that the harness does not have but the CLI needs: `screen.Render()`
 (ANSI output, round-trip tested), the `tuiprobe replay` command, and a real PTY session

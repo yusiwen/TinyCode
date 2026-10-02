@@ -83,3 +83,46 @@ func TestFitsPinsTheArtifactToItsGeometry(t *testing.T) {
 		t.Errorf("trailing blank rows must not count against the geometry: %v", err)
 	}
 }
+
+// TestDeterministicCatchesAFlakyRenderer is the gate for the harness rule that a
+// golden must not depend on the run: a renderer that changes between two calls fails
+// before anyone commits a baseline that passes half the time.
+func TestDeterministicCatchesAFlakyRenderer(t *testing.T) {
+	calls := 0
+	err := Deterministic(10, 2, func(int, int) string {
+		calls++
+		if calls == 2 {
+			return "second\n"
+		}
+		return "first\n"
+	})
+	if err == nil {
+		t.Fatal("a renderer that answers differently the second time must fail")
+	}
+	if !strings.Contains(err.Error(), "different frames") {
+		t.Errorf("error = %v, want it to say the frames differ", err)
+	}
+
+	if err := Deterministic(10, 2, func(int, int) string { return "stable\n" }); err != nil {
+		t.Errorf("a stable renderer must pass: %v", err)
+	}
+}
+
+// TestAssertFramePinsGeometryAndGolden covers the in-process pair: the frame must fit
+// the geometry it claims and match the committed artifact.
+func TestAssertFramePinsGeometryAndGolden(t *testing.T) {
+	dir := t.TempDir()
+	frame := "hello\r\nworld\r\n"
+	if err := Write(dir, "frame.txt", Normalize(frame)); err != nil {
+		t.Fatal(err)
+	}
+
+	// A fitting frame that matches passes; AssertFrame composes Fits and Assert, so
+	// the mismatching and oversized cases are covered by their own tests above.
+	AssertFrame(t, dir, "frame.txt", 20, 4, frame)
+
+	frame2 := AssertDeterministic(t, 20, 4, func(int, int) string { return frame })
+	if frame2 != frame {
+		t.Errorf("AssertDeterministic returned %q, want the frame", frame2)
+	}
+}
