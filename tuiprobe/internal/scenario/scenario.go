@@ -386,7 +386,7 @@ func (r *runner) stepFit(s Step) error {
 // size follows from the geometry.
 func (r *runner) stepScreenshot(s Step) error {
 	values, _, rest, err := parseStep(s, stepFlags{
-		values: map[string]bool{"--scale": true, "--font": true, "--format": true},
+		values: map[string]bool{"--scale": true, "--font": true, "--format": true, "--renderer": true, "--browser": true},
 	})
 	if err != nil {
 		return err
@@ -411,6 +411,7 @@ func (r *runner) stepScreenshot(s Step) error {
 	}
 	artifact, err := shot.Render(resp.ANSI, resp.Cols, resp.Rows, shot.Options{
 		Format: values["--format"], Scale: scale, FontPath: values["--font"],
+		Renderer: values["--renderer"], Browser: values["--browser"],
 	})
 	if err != nil {
 		return err
@@ -421,7 +422,7 @@ func (r *runner) stepScreenshot(s Step) error {
 	// Read the file back: the assertion is about the artifact, not about what the
 	// renderer believed it wrote.
 	if artifact.Format == shot.FormatPNG {
-		if err := shot.VerifyPNG(path, resp.Cols, resp.Rows, shot.Options{Scale: scale}); err != nil {
+		if err := shot.VerifyPNG(path, resp.Cols, resp.Rows, shot.Options{Scale: scale, Renderer: artifact.Renderer}); err != nil {
 			return err
 		}
 	}

@@ -146,13 +146,15 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 
 // runShot captures the screen as a PNG (default) or as HTML.
 func runShot(args []string, stdout, stderr io.Writer) int {
-	var out, format, fontPath string
+	var out, format, fontPath, renderer, browser string
 	var scale int
 	cmd, err := newSessionCommand("shot", args, stdout, stderr, func(fs *flag.FlagSet) {
 		fs.StringVar(&out, "out", "", "file to write (the artifact's extension is the caller's business)")
 		fs.StringVar(&format, "format", shot.FormatPNG, "png or html")
 		fs.IntVar(&scale, "scale", 1, "enlarge the rendered text this many times")
 		fs.StringVar(&fontPath, "font", "", "TTF/OTF to render with instead of the embedded face")
+		fs.StringVar(&renderer, "renderer", shot.RendererFont, "font (no browser) or chromium (a real browser)")
+		fs.StringVar(&browser, "browser", "", "browser to use for --renderer chromium; empty discovers one")
 	})
 	if err != nil {
 		return daemon.CodeFailure
@@ -166,7 +168,7 @@ func runShot(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	artifact, err := shot.Render(resp.ANSI, resp.Cols, resp.Rows, shot.Options{
-		Format: format, Scale: scale, FontPath: fontPath,
+		Format: format, Scale: scale, FontPath: fontPath, Renderer: renderer, Browser: browser,
 	})
 	if err != nil {
 		return fail(stderr, "shot", "%v", err)
@@ -178,11 +180,12 @@ func runShot(args []string, stdout, stderr io.Writer) int {
 	if cmd.asJSON {
 		printJSON(stdout, map[string]any{
 			"ok": true, "file": out, "format": artifact.Format,
-			"width": artifact.Width, "height": artifact.Height,
+			"renderer": artifact.Renderer,
+			"width":    artifact.Width, "height": artifact.Height,
 			"cols": resp.Cols, "rows": resp.Rows,
 		})
 		return daemon.CodeOK
 	}
-	fmt.Fprintf(stdout, "%s %dx%d -> %s\n", artifact.Format, artifact.Width, artifact.Height, out)
+	fmt.Fprintf(stdout, "%s %s %dx%d -> %s\n", artifact.Format, artifact.Renderer, artifact.Width, artifact.Height, out)
 	return daemon.CodeOK
 }

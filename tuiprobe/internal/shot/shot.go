@@ -13,6 +13,7 @@ import (
 	_ "image/png" // register the decoder for DecodeConfig
 	"os"
 
+	"github.com/yusiwen/TinyCode/tuiprobe/render/chromium"
 	"github.com/yusiwen/TinyCode/tuiprobe/render/font"
 	"github.com/yusiwen/TinyCode/tuiprobe/screen"
 )
@@ -23,6 +24,15 @@ const (
 	FormatHTML = "html"
 )
 
+// Renderers a PNG can come from.
+const (
+	// RendererFont is the pure-Go font rasterizer: no browser, exact arithmetic.
+	RendererFont = "font"
+	// RendererChromium asks a real browser for a screenshot: system fonts and exact
+	// CSS, at the cost of a browser run.
+	RendererChromium = "chromium"
+)
+
 // Options configure one capture.
 type Options struct {
 	// Format is FormatPNG (the default) or FormatHTML.
@@ -31,12 +41,17 @@ type Options struct {
 	Scale int
 	// FontPath is a TTF/OTF to render with instead of the embedded face.
 	FontPath string
+	// Renderer is RendererFont (the default) or RendererChromium.
+	Renderer string
+	// Browser is an explicit browser path for RendererChromium; empty discovers one.
+	Browser string
 }
 
 // Artifact is a rendered screen.
 type Artifact struct {
 	Data          []byte
 	Format        string
+	Renderer      string
 	Width, Height int // pixels for PNG; cells for HTML
 }
 
@@ -66,6 +81,17 @@ func Render(ansi string, cols, rows int, opts Options) (Artifact, error) {
 			Height: rows,
 		}, nil
 	case FormatPNG:
+		if opts.Renderer == RendererChromium {
+			renderer, err := chromium.New(chromium.Options{Browser: opts.Browser, Scale: opts.Scale})
+			if err != nil {
+				return Artifact{}, err
+			}
+			data, width, height, err := renderer.PNG(terminal, cols, rows)
+			if err != nil {
+				return Artifact{}, err
+			}
+			return Artifact{Data: data, Format: FormatPNG, Renderer: RendererChromium, Width: width, Height: height}, nil
+		}
 		var fontData []byte
 		if opts.FontPath != "" {
 			data, err := os.ReadFile(opts.FontPath)
@@ -93,7 +119,7 @@ func Render(ansi string, cols, rows int, opts Options) (Artifact, error) {
 		if want := rows * cellH; height != want {
 			return Artifact{}, fmt.Errorf("shot: image is %d pixels tall, want %d (%d rows × %d)", height, want, rows, cellH)
 		}
-		return Artifact{Data: data, Format: FormatPNG, Width: width, Height: height}, nil
+		return Artifact{Data: data, Format: FormatPNG, Renderer: RendererFont, Width: width, Height: height}, nil
 	default:
 		return Artifact{}, fmt.Errorf("shot: unknown format %q (want png or html)", format)
 	}
@@ -109,6 +135,14 @@ func Write(path string, a Artifact) error {
 
 // decodePNGSize reads the real size of PNG bytes, without trusting what the
 // renderer reported: the assertion has to be about the artifact on disk.
+func pngPoint(path string) (image.Point, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return image.Point{}, err
+	}
+	return decodePNGSize(data)
+}
+
 func decodePNGSize(data []byte) (image.Point, error) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
@@ -119,6 +153,17 @@ func decodePNGSize(data []byte) (image.Point, error) {
 
 // VerifyPNG checks that a PNG file on disk has the size the geometry implies.
 func VerifyPNG(path string, cols, rows int, opts Options) error {
+	if opts.Renderer == RendererChromium {
+		minW, maxW, minH, maxH := chromium.Bounds(cols, rows, opts.Scale)
+		size, err := pngPoint(path)
+		if err != nil {
+			return err
+		}
+		if size.X < minW || size.X > maxW || size.Y < minH || size.Y > maxH {
+			return fmt.Errorf("shot: %s is %dx%d, outside the %dx%d..%dx%d a %dx%d screen allows", path, size.X, size.Y, minW, minH, maxW, maxH, cols, rows)
+		}
+		return nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
