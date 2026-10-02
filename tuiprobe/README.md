@@ -42,7 +42,9 @@ Early, and being built in the open in
 | Terminal emulator (cells, SGR, cursor addressing, scroll, wide runes) | **done** — `screen` |
 | Replay a captured stream to text / ANSI / HTML | **done** — `tuiprobe replay` |
 | Golden files with `-update`, normalization and first-difference diffing | **done** — `golden` |
-| PTY session driver + persistent sessions (`open`, `send`, `wait`, `text`, `close`) | next |
+| PTY driver (spawn, size, resize, bounded reap) | **done** — `pty` |
+| Session engine (send keys, screen text/ANSI/HTML, `WaitText`, `WaitStable`, trace) | **done** — `session` |
+| Persistent sessions a CLI invocation can share (`open`, `send`, `wait`, `text`, `close`) | next |
 | Scenario runner, geometry assertions, event waits | next |
 | Screenshots (pure-Go font rasterizer, optional Chromium renderer) | next |
 | Bubble Tea in-process adapter | next |
