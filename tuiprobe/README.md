@@ -144,6 +144,12 @@ dropped. Point `--font /path/to/JetBrainsMono.ttf` (or any monospace TTF) at a f
 with the glyphs your UI uses. `Pictures` of a TUI full of box drawing want that;
 a text-heavy screen does not need it.
 
+## Releases
+
+`tuiprobe/v*` tags are its releases (`tuiprobe/v0.1.0` is the first); the workflow
+cross-compiles linux/amd64, linux/arm64 and darwin/arm64 and attaches them, with the
+version injected into the binary. See [CHANGELOG.md](CHANGELOG.md).
+
 ## Design rules
 
 These are inherited from the harness this tool was extracted from, where each one
