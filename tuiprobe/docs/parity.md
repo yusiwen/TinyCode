@@ -125,7 +125,30 @@ The run found three things the tool was missing, all now fixed and covered:
 6. Only then: delete the harness files, point CI at the tool, and record the new
    workflow in `AGENTS.md` and `CODEBASE.md`.
 
-**Status**: criteria 1–4 are met by the run above (both harnesses green together, the
-goldens byte-identical, the artifact sets equal, the gating unchanged). Criterion 5 —
-pinning a *released* `tuiprobe` version instead of the local `replace` — is what
-remains before anything is deleted.
+**Status**: **all six criteria are met** (2026-10-02).
+
+1–4 by the parity run above: both harnesses green together, the 27 text goldens and the
+1 ANSI golden byte-identical, the artifact sets equal, the gating unchanged.
+5 by `tuiprobe/v0.1.0`: a signed annotated tag, published by
+`release-tuiprobe.yml` with three platform archives whose binaries report the tag's
+version (`tuiprobe v0.1.0 (darwin/arm64)`), and the root module now **requires
+`github.com/yusiwen/TinyCode/tuiprobe v0.1.0`** — the local `replace` is gone, so the
+parity tests verify exactly the artifact anyone else would `go get`.
+6 is the deletion change itself, which is a decision rather than a measurement: see
+below.
+
+## What deleting the harness would mean
+
+The tool covers all 20 capability rows, so what remains in the repository is the part
+that is *TinyCode's*, not harness machinery:
+
+| Stays | Goes |
+| --- | --- |
+| The scenario fixtures: 10 `frame*` builders, 28 committed goldens, the UI-specific assertions | `screenBuffer` (578 lines, moved to `tuiprobe/screen`) |
+| The CI jobs, the gated variables, the Makefile target | the ANSI→HTML/PNG and browser plumbing (moved) |
+| The repository's own note about how TUI verification works | the golden/diff/normalize helpers (moved) |
+| — | the PTY scaffolding and its stage/cleanup helpers (moved) |
+| — | `docs/tui-visual-harness.md` (its rules now live in the tool's docs) |
+
+Roughly 2,000 lines today; about 500–600 would remain, and the parity file added here
+is the bridge that proves the replacement while both exist.
