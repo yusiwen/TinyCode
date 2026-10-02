@@ -10,8 +10,8 @@ import (
 )
 
 type Style struct {
-	bold, dim, italic, underline bool
-	fg, bg                       string
+	Bold, Dim, Italic, Underline bool
+	FG, BG                       string
 }
 
 // ansiPalette maps the 16 base colours to CSS.
@@ -49,21 +49,21 @@ func applySGR(params []int, st Style) Style {
 		case c == 0:
 			st = Style{}
 		case c == 1:
-			st.bold = true
+			st.Bold = true
 		case c == 2:
-			st.dim = true
+			st.Dim = true
 		case c == 3:
-			st.italic = true
+			st.Italic = true
 		case c == 4:
-			st.underline = true
+			st.Underline = true
 		case c >= 30 && c <= 37:
-			st.fg = ansiPalette[c-30]
+			st.FG = ansiPalette[c-30]
 		case c >= 90 && c <= 97:
-			st.fg = ansiPalette[c-90+8]
+			st.FG = ansiPalette[c-90+8]
 		case c >= 40 && c <= 47:
-			st.bg = ansiPalette[c-40]
+			st.BG = ansiPalette[c-40]
 		case c >= 100 && c <= 107:
-			st.bg = ansiPalette[c-100+8]
+			st.BG = ansiPalette[c-100+8]
 		case (c == 38 || c == 48) && i+1 < len(params):
 			var colour string
 			switch {
@@ -78,9 +78,9 @@ func applySGR(params []int, st Style) Style {
 				continue
 			}
 			if c == 38 {
-				st.fg = colour
+				st.FG = colour
 			} else {
-				st.bg = colour
+				st.BG = colour
 			}
 		}
 	}
@@ -90,23 +90,23 @@ func applySGR(params []int, st Style) Style {
 // styleAttr renders the state as an inline CSS declaration, or "" when plain.
 func (st Style) styleAttr() string {
 	var parts []string
-	if st.bold {
+	if st.Bold {
 		parts = append(parts, "font-weight:700")
 	}
-	if st.dim {
+	if st.Dim {
 		parts = append(parts, "opacity:.7")
 	}
-	if st.italic {
+	if st.Italic {
 		parts = append(parts, "font-style:italic")
 	}
-	if st.underline {
+	if st.Underline {
 		parts = append(parts, "text-decoration:underline")
 	}
-	if st.fg != "" {
-		parts = append(parts, "color:"+st.fg)
+	if st.FG != "" {
+		parts = append(parts, "color:"+st.FG)
 	}
-	if st.bg != "" {
-		parts = append(parts, "background:"+st.bg)
+	if st.BG != "" {
+		parts = append(parts, "background:"+st.BG)
 	}
 	return strings.Join(parts, ";")
 }

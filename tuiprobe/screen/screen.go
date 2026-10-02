@@ -44,9 +44,9 @@ type Buffer struct {
 
 // Cell is one character cell of the terminal.
 type Cell struct {
-	r    rune
-	st   Style
-	cont bool // trailing half of a double-width rune
+	r     rune
+	Style Style
+	cont  bool // trailing half of a double-width rune
 }
 
 func New(width, height int) *Buffer {
@@ -93,9 +93,9 @@ func (s *Buffer) put(r rune) {
 	if w < 1 {
 		w = 1
 	}
-	s.cells[s.idx(s.row, s.col)] = Cell{r: r, st: s.style}
+	s.cells[s.idx(s.row, s.col)] = Cell{r: r, Style: s.style}
 	if w == 2 && s.col+1 < s.width {
-		s.cells[s.idx(s.row, s.col+1)] = Cell{cont: true, st: s.style}
+		s.cells[s.idx(s.row, s.col+1)] = Cell{cont: true, Style: s.style}
 	}
 	if s.col+w >= s.width {
 		s.col = s.width - 1
@@ -301,14 +301,14 @@ func (s *Buffer) HTML() string {
 				continue
 			}
 			run := make([]rune, 0, 8)
-			style := cell.st
+			style := cell.Style
 			for col < end {
 				next := s.cells[s.idx(row, col)]
 				if next.cont {
 					col++
 					continue
 				}
-				if next.st != style {
+				if next.Style != style {
 					break
 				}
 				if next.r == 0 {
@@ -353,3 +353,23 @@ func parseInts(raw string) []int {
 }
 
 // --- Replay fidelity ------------------------------------------------------
+
+// Bounds is the terminal geometry the buffer was created with.
+func (b *Buffer) Bounds() (cols, rows int) { return b.width, b.height }
+
+// CellAt returns the rune and style at a position, and whether the cell holds a
+// character at all. A blank cell reports rune 0 so a renderer can tell "space"
+// from "nothing was ever drawn here".
+//
+// The trailing half of a wide rune reports ok=false: a renderer draws the rune
+// once, at its leading cell.
+func (b *Buffer) CellAt(col, row int) (r rune, style Style, ok bool) {
+	if col < 0 || row < 0 || col >= b.width || row >= b.height {
+		return 0, Style{}, false
+	}
+	cell := b.cells[b.idx(row, col)]
+	if cell.cont {
+		return 0, cell.Style, false
+	}
+	return cell.r, cell.Style, cell.r != 0
+}

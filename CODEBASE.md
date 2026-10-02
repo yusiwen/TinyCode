@@ -619,6 +619,11 @@ there would ship silently. `gofmt -l .` from the root does cover it. CI therefor
 runs `make test-tuiprobe` / `make test-tuiprobe-race` in the `ci` job, the nested
 build and vet in the `cross` matrix, and `make lint-tuiprobe` in the `staticcheck`
 job; `.github/workflows/release-tuiprobe.yml` publishes it from `tuiprobe/v*` tags.
+A new dependency in the nested module must be tidied **with the checksum database
+reachable** (`go mod tidy` in `tuiprobe/`) and the result cross-built for the CI
+platforms: on 2026-10-02 a `go get` with `GOSUMDB=off` produced a `go.sum` that was
+complete on darwin/arm64 and missing the entries linux/amd64 needs for
+`golang.org/x/image/vector`, which broke three jobs at once.
 See `tuiprobe/docs/parity.md` for what it covers and `tuiprobe/docs/roadmap.md` for
 what is still missing.
 

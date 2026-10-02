@@ -32,6 +32,7 @@ import (
 
 	"github.com/yusiwen/TinyCode/tuiprobe/golden"
 	"github.com/yusiwen/TinyCode/tuiprobe/internal/daemon"
+	"github.com/yusiwen/TinyCode/tuiprobe/internal/shot"
 )
 
 // DefaultTimeout bounds a step that does not give its own.
@@ -217,6 +218,8 @@ func (r *runner) step(s Step) error {
 		return r.stepGolden(s)
 	case "fit":
 		return r.stepFit(s)
+	case "screenshot", "shot":
+		return r.stepScreenshot(s)
 	case "close":
 		return r.stepClose(s, false)
 	case "expect-exit":
@@ -377,6 +380,53 @@ func (r *runner) stepFit(s Step) error {
 		cols, rows = claimCols, claimRows
 	}
 	return golden.Fits(cols, rows, resp.Text)
+}
+
+// stepScreenshot renders the current screen to a file, asserting that the image's
+// size follows from the geometry.
+func (r *runner) stepScreenshot(s Step) error {
+	values, _, rest, err := parseStep(s, stepFlags{
+		values: map[string]bool{"--scale": true, "--font": true, "--format": true},
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || strings.HasPrefix(rest[0], "--") {
+		return fmt.Errorf("%s needs one file: %s <file>", s.Verb, s.Verb)
+	}
+	path := rest[0]
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(r.opts.Dir, path)
+	}
+
+	resp, err := r.call(daemon.Request{Cmd: "ansi"})
+	if err != nil {
+		return err
+	}
+	scale := 1
+	if raw := values["--scale"]; raw != "" {
+		if scale, err = strconv.Atoi(raw); err != nil || scale < 1 {
+			return fmt.Errorf("--scale %q must be a positive integer", raw)
+		}
+	}
+	artifact, err := shot.Render(resp.ANSI, resp.Cols, resp.Rows, shot.Options{
+		Format: values["--format"], Scale: scale, FontPath: values["--font"],
+	})
+	if err != nil {
+		return err
+	}
+	if err := shot.Write(path, artifact); err != nil {
+		return err
+	}
+	// Read the file back: the assertion is about the artifact, not about what the
+	// renderer believed it wrote.
+	if artifact.Format == shot.FormatPNG {
+		if err := shot.VerifyPNG(path, resp.Cols, resp.Rows, shot.Options{Scale: scale}); err != nil {
+			return err
+		}
+	}
+	r.logf("wrote %s %dx%d", path, artifact.Width, artifact.Height)
+	return nil
 }
 
 func (r *runner) stepClose(s Step, expect bool) error {

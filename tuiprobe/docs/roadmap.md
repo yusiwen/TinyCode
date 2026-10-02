@@ -64,7 +64,7 @@ rewrites the goldens; `--gate VAR` with `VAR` unset prints
 and named (`session.Stage`), and a wait that overruns reports
 `stage wait-for-banner exceeded its 80ms budget`.
 
-## M2 — images
+## M2a — a PNG without a browser ✅
 
 - `render/png`: pure-Go font rasterizer, one cell at a time, no browser.
 - `render/chromium`: optional, `rod`-based, for exact CSS/emoji fidelity.
@@ -73,6 +73,9 @@ and named (`session.Stage`), and a wait that overruns reports
 
 **Acceptance**: the same scenario produces a PNG whose measured width is pinned to
 its column count — verified by a mutation that narrows the page and fails the check.
+
+## M2b — Chromium and browser discovery
+
 
 ## M3 — adapters, parity, adoption
 

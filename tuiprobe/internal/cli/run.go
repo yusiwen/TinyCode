@@ -11,6 +11,7 @@ import (
 	"github.com/yusiwen/TinyCode/tuiprobe/golden"
 	"github.com/yusiwen/TinyCode/tuiprobe/internal/daemon"
 	"github.com/yusiwen/TinyCode/tuiprobe/internal/scenario"
+	"github.com/yusiwen/TinyCode/tuiprobe/internal/shot"
 	"github.com/yusiwen/TinyCode/tuiprobe/session"
 )
 
@@ -140,5 +141,48 @@ func runDiff(args []string, stdout, stderr io.Writer) int {
 		return daemon.CodeOK
 	}
 	fmt.Fprintf(stdout, "matches %s\n", against)
+	return daemon.CodeOK
+}
+
+// runShot captures the screen as a PNG (default) or as HTML.
+func runShot(args []string, stdout, stderr io.Writer) int {
+	var out, format, fontPath string
+	var scale int
+	cmd, err := newSessionCommand("shot", args, stdout, stderr, func(fs *flag.FlagSet) {
+		fs.StringVar(&out, "out", "", "file to write (the artifact's extension is the caller's business)")
+		fs.StringVar(&format, "format", shot.FormatPNG, "png or html")
+		fs.IntVar(&scale, "scale", 1, "enlarge the rendered text this many times")
+		fs.StringVar(&fontPath, "font", "", "TTF/OTF to render with instead of the embedded face")
+	})
+	if err != nil {
+		return daemon.CodeFailure
+	}
+	if out == "" {
+		return fail(stderr, "shot", "give --out <file>")
+	}
+
+	resp, code := cmd.call(daemon.Request{Cmd: "ansi"})
+	if code != daemon.CodeOK {
+		return code
+	}
+	artifact, err := shot.Render(resp.ANSI, resp.Cols, resp.Rows, shot.Options{
+		Format: format, Scale: scale, FontPath: fontPath,
+	})
+	if err != nil {
+		return fail(stderr, "shot", "%v", err)
+	}
+	if err := shot.Write(out, artifact); err != nil {
+		return fail(stderr, "shot", "%v", err)
+	}
+
+	if cmd.asJSON {
+		printJSON(stdout, map[string]any{
+			"ok": true, "file": out, "format": artifact.Format,
+			"width": artifact.Width, "height": artifact.Height,
+			"cols": resp.Cols, "rows": resp.Rows,
+		})
+		return daemon.CodeOK
+	}
+	fmt.Fprintf(stdout, "%s %dx%d -> %s\n", artifact.Format, artifact.Width, artifact.Height, out)
 	return daemon.CodeOK
 }

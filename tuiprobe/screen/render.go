@@ -47,9 +47,9 @@ func (s *Buffer) Render() string {
 			if cell.cont {
 				continue
 			}
-			if cell.st != current {
-				b.WriteString(sgrFor(cell.st))
-				current, styled = cell.st, true
+			if cell.Style != current {
+				b.WriteString(sgrFor(cell.Style))
+				current, styled = cell.Style, true
 			}
 			if cell.r == 0 {
 				b.WriteByte(' ')
@@ -71,22 +71,22 @@ func (s *Buffer) Render() string {
 // explicit reset first so the sequence is independent of what came before.
 func sgrFor(st Style) string {
 	params := []string{"0"}
-	if st.bold {
+	if st.Bold {
 		params = append(params, "1")
 	}
-	if st.dim {
+	if st.Dim {
 		params = append(params, "2")
 	}
-	if st.italic {
+	if st.Italic {
 		params = append(params, "3")
 	}
-	if st.underline {
+	if st.Underline {
 		params = append(params, "4")
 	}
-	if code, ok := fgCode(st.fg); ok {
+	if code, ok := fgCode(st.FG); ok {
 		params = append(params, code)
 	}
-	if code, ok := bgCode(st.bg); ok {
+	if code, ok := bgCode(st.BG); ok {
 		params = append(params, code)
 	}
 	return "\x1b[" + strings.Join(params, ";") + "m"

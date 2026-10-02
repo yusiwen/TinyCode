@@ -51,6 +51,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runScenario(args[1:], stdout, stderr)
 	case "diff":
 		return runDiff(args[1:], stdout, stderr)
+	case "shot":
+		return runShot(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tuiprobe: unknown command %q\n\n", args[0])
 		usage(stderr)
@@ -73,6 +75,7 @@ Sessions (a program on a real terminal, kept alive between commands):
   resize --name app --size 100x30
   close --name app [--expect-exit n]
   diff --name app --against <file> [--ansi] [--update]
+  shot --name app --out app.png [--format png|html] [--scale 2] [--font path.ttf]
   sessions                         list live sessions
 
 Scripted:
