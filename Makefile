@@ -85,7 +85,10 @@ test-browser:
 # skipped without TUI_SHOT=1, so an ordinary `make test` needs neither. PNGs
 # land in TUI_SHOT_DIR (default /tmp) for a reviewer or an agent to open.
 test-tui-visual: build
-	TUI_SHOT=1 go test -count=1 -timeout 10m -run 'TestFrameScreenshots|TestBinary|TestParity' ./tui/
+	# -v on purpose, for the same reason make test-lsp has it: which gated check ran,
+	# which skipped and why, and whether the parity tests actually executed, is the
+	# point of this job. A silent skip is how a gate stops being a gate.
+	TUI_SHOT=1 go test -count=1 -v -timeout 10m -run 'TestFrameScreenshots|TestBinary|TestParity' ./tui/
 
 # Blocking lint: `go vet` failures fail the build.
 lint:
