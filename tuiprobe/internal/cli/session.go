@@ -49,8 +49,13 @@ func newSessionCommand(verb string, args []string, stdout, stderr io.Writer, reg
 	return cmd, nil
 }
 
-// call sends a request to the daemon and maps the answer onto an exit code.
+// call sends a request to the daemon and maps the answer onto an exit code. The
+// session name defaults to the command's --name, so a caller cannot forget it and
+// get a confusing "needs a session name" back.
 func (c *sessionCommand) call(req daemon.Request) (daemon.Response, int) {
+	if req.Name == "" {
+		req.Name = c.name
+	}
 	client := &daemon.Client{Socket: daemon.SocketFromEnvOrFlag(c.socket)}
 	resp, err := client.Call(req)
 	if err != nil {

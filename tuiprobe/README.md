@@ -30,6 +30,20 @@ tuiprobe wait --name app --stable 200ms   # let the repaint settle
 tuiprobe trace --name app --n 2000        # the raw stream, for diagnosis
 tuiprobe close --name app                 # exit code included
 
+# Or assert a whole interaction from a file, the way CI does.
+cat > welcome.scenario <<'SCENARIO'
+open --size 80x24 -- ./myapp
+wait --text "ready" --timeout 5s
+golden testdata/golden/welcome_80x24.txt
+send --text ":help" --key enter
+wait --text "Help"
+golden --ansi testdata/golden/help_80x24.ansi
+close
+expect-exit 0
+SCENARIO
+tuiprobe run --dir . --update welcome.scenario   # write the goldens once
+tuiprobe run --dir . welcome.scenario            # then compare them
+
 # Or replay a captured stream offline.
 tuiprobe replay --stream capture.bin --size 80x24 --format ansi
 ```
@@ -57,7 +71,8 @@ Early, and being built in the open in
 | PTY driver (spawn, size, resize, bounded reap) | **done** — `pty` |
 | Session engine (send keys, screen text/ANSI/HTML, `WaitText`, `WaitStable`, trace) | **done** — `session` |
 | Sessions a CLI invocation can share: daemon + unix socket, `open`/`send`/`wait`/`text`/`ansi`/`html`/`trace`/`resize`/`close`/`sessions`, `--json`, idle exit | **done** — `internal/daemon`, `tuiprobe <command>` |
-| Scenario runner, geometry assertions, event waits | next |
+| Scenario files (`tuiprobe run`), golden diff with `--update`, geometry assertions, gated skip-with-reason | **done** — `internal/scenario`, see [docs/scenario.md](docs/scenario.md) |
+| Named, bounded stages (`session.Stage`) and kill-before-wait cleanup | **done** — `session`, `pty` |
 | Screenshots (pure-Go font rasterizer, optional Chromium renderer) | next |
 | Bubble Tea in-process adapter | next |
 

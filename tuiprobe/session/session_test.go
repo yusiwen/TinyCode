@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -248,5 +249,56 @@ func TestKeyEncoding(t *testing.T) {
 	}
 	if got, err := Repeat("up", 2); err != nil || string(got) != "\x1b[A\x1b[A" {
 		t.Errorf("Repeat(up, 2) = (%q, %v)", got, err)
+	}
+}
+
+// TestStageNamesTheStepThatRanOut covers the rule "bound and name every stage":
+// a step that overruns its budget fails with the step's name, and the error is
+// recognisable as a timeout without parsing the text.
+func TestStageNamesTheStepThatRanOut(t *testing.T) {
+	started := time.Now()
+	err := Stage("wait-for-banner", 80*time.Millisecond, func() error {
+		time.Sleep(2 * time.Second) // ignores its budget on purpose
+		return nil
+	})
+	if err == nil {
+		t.Fatal("a stage that overran its budget must fail")
+	}
+	if !errors.Is(err, ErrStageTimeout) {
+		t.Errorf("error %v is not a stage timeout", err)
+	}
+	var stageErr *StageError
+	if !errors.As(err, &stageErr) || stageErr.Name != "wait-for-banner" || !stageErr.Timeout {
+		t.Fatalf("error = %#v, want a named timeout for wait-for-banner", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Errorf("the stage returned after %s, want it bounded by its 80ms budget", elapsed)
+	}
+
+	// A failing step keeps the stage name and the underlying error.
+	sentinel := errors.New("boom")
+	err = Stage("send-keys", time.Second, func() error { return sentinel })
+	if !errors.Is(err, sentinel) {
+		t.Errorf("error %v does not wrap the step's error", err)
+	}
+	if !strings.Contains(err.Error(), "send-keys") {
+		t.Errorf("error %q does not name the stage", err)
+	}
+	if _, ok := err.(*StageError); !ok {
+		t.Errorf("error %T is not a *StageError", err)
+	}
+}
+
+// TestStageTextUsesTheSessionBudget checks the two helpers a scenario step uses.
+func TestStageTextUsesTheSessionBudget(t *testing.T) {
+	s := startHelper(t)
+	if err := s.StageText("banner", "ready", 10*time.Second); err != nil {
+		t.Fatalf("StageText: %v", err)
+	}
+	if err := s.StageText("missing", "never appears", 150*time.Millisecond); !errors.Is(err, ErrStageTimeout) {
+		t.Errorf("waiting for absent text = %v, want a stage timeout", err)
+	}
+	if err := s.StageStable("settle", 50*time.Millisecond, 5*time.Second); err != nil {
+		t.Errorf("StageStable: %v", err)
 	}
 }

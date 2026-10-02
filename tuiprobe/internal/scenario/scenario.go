@@ -1,0 +1,524 @@
+// Package scenario runs a scripted terminal session: the reproducible form of
+// "open it, do this, look at that".
+//
+// A scenario is a text file, one step per line, so it can be reviewed in a diff,
+// written by hand and read by an agent:
+//
+//	# a welcome screen
+//	open --size 80x24 -- ./myapp
+//	wait --text "ready" --timeout 5s
+//	golden testdata/golden/welcome_80x24.txt
+//	fit --size 80x24
+//	send --text ":help" --key enter
+//	wait --text "Help"
+//	golden --ansi testdata/golden/help_80x24.ansi
+//	close
+//	expect-exit 0
+//
+// Every failure names the line it happened on and the step as written, which is
+// the difference between a red build and a diagnosis.
+package scenario
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/yusiwen/TinyCode/tuiprobe/golden"
+	"github.com/yusiwen/TinyCode/tuiprobe/internal/daemon"
+)
+
+// DefaultTimeout bounds a step that does not give its own.
+var DefaultTimeout = 10 * time.Second
+
+// Step is one line of a scenario.
+type Step struct {
+	Line int
+	Verb string
+	Args []string
+	Text string // the line as written, for error messages
+}
+
+// Options configure a run.
+type Options struct {
+	Socket string
+	// Dir is the working directory for golden paths and for the program.
+	Dir string
+	// Update rewrites goldens instead of comparing them.
+	Update bool
+	// Gate is an environment variable that must be set for the scenario to run;
+	// when it is unset the run is skipped with that reason instead of passing
+	// silently.
+	Gate string
+	// Name is the session name the scenario uses.
+	Name string
+	// Stdout receives the run's progress; nil discards it.
+	Stdout io.Writer
+}
+
+// Result is what a run produced.
+type Result struct {
+	Skipped bool
+	Reason  string
+	Steps   int
+}
+
+// Parse reads a scenario.
+func Parse(r io.Reader) ([]Step, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	var steps []Step
+	for n := 1; scanner.Scan(); n++ {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields, err := splitFields(line)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", n, err)
+		}
+		steps = append(steps, Step{Line: n, Verb: fields[0], Args: fields[1:], Text: line})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(steps) == 0 {
+		return nil, errors.New("scenario: no steps")
+	}
+	return steps, nil
+}
+
+// splitFields splits a line into fields, honouring double and single quotes.
+//
+// Quoting matters because a step's argument is often a whole command line: without
+// it, `open -- /bin/sh -c 'echo ready; read l'` reaches the shell as a syntax
+// error, and the scenario fails with a screen nobody expects.
+func splitFields(line string) ([]string, error) {
+	var fields []string
+	var current strings.Builder
+	var quote byte
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+				continue
+			}
+			current.WriteByte(c)
+		case c == '"' || c == '\'':
+			quote = c
+		case c == ' ' || c == '\t':
+			if current.Len() > 0 {
+				fields = append(fields, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteByte(c)
+		}
+	}
+	if quote != 0 {
+		return nil, errors.New("unbalanced quote")
+	}
+	if current.Len() > 0 {
+		fields = append(fields, current.String())
+	}
+	if len(fields) == 0 {
+		return nil, errors.New("empty step")
+	}
+	return fields, nil
+}
+
+// Run executes a scenario against a daemon.
+func Run(steps []Step, opts Options) (Result, error) {
+	if opts.Name == "" {
+		opts.Name = "scenario"
+	}
+	if opts.Gate != "" && os.Getenv(opts.Gate) == "" {
+		return Result{Skipped: true, Reason: opts.Gate + " is not set"}, nil
+	}
+
+	logf := func(format string, args ...any) {
+		if opts.Stdout != nil {
+			fmt.Fprintf(opts.Stdout, format+"\n", args...)
+		}
+	}
+
+	client := &daemon.Client{Socket: daemon.SocketFromEnvOrFlag(opts.Socket)}
+	runner := &runner{opts: opts, client: client, logf: logf}
+	defer runner.cleanup()
+
+	for _, step := range steps {
+		if err := runner.step(step); err != nil {
+			return Result{Steps: runner.count}, fmt.Errorf("line %d: %s: %w", step.Line, step.Text, err)
+		}
+		runner.count++
+	}
+	return Result{Steps: runner.count}, nil
+}
+
+type runner struct {
+	opts   Options
+	client *daemon.Client
+	logf   func(string, ...any)
+	count  int
+
+	opened   bool
+	exitCode int
+	hasExit  bool
+}
+
+func (r *runner) call(req daemon.Request) (daemon.Response, error) {
+	if req.Name == "" {
+		req.Name = r.opts.Name
+	}
+	resp, err := r.client.Call(req)
+	if err != nil {
+		return resp, err
+	}
+	if !resp.OK {
+		return resp, errors.New(resp.Error)
+	}
+	return resp, nil
+}
+
+// cleanup closes the session if the scenario did not, so a failing scenario does
+// not leave a program behind.
+func (r *runner) cleanup() {
+	if r.opened {
+		_, _ = r.call(daemon.Request{Cmd: "close"})
+	}
+}
+
+func (r *runner) step(s Step) error {
+	switch s.Verb {
+	case "open":
+		return r.stepOpen(s)
+	case "send":
+		return r.stepSend(s)
+	case "wait":
+		return r.stepWait(s)
+	case "stable":
+		return r.stepStable(s)
+	case "sleep":
+		d, err := firstDuration(s.Args, "sleep")
+		if err != nil {
+			return err
+		}
+		time.Sleep(d)
+		return nil
+	case "golden", "diff":
+		return r.stepGolden(s)
+	case "fit":
+		return r.stepFit(s)
+	case "close":
+		return r.stepClose(s, false)
+	case "expect-exit":
+		return r.stepClose(s, true)
+	default:
+		return fmt.Errorf("unknown step %q", s.Verb)
+	}
+}
+
+func (r *runner) stepOpen(s Step) error {
+	values, lists, rest, err := parseStep(s, stepFlags{
+		values: map[string]bool{"--size": true, "--dir": true},
+		lists:  map[string]bool{"--env": true},
+	})
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 {
+		return errors.New("open needs a command: open -- ./myapp")
+	}
+	cols, rows := 80, 24
+	if size := values["--size"]; size != "" {
+		if cols, rows, err = parseSize(size); err != nil {
+			return err
+		}
+	}
+	dir := values["--dir"]
+	if dir == "" {
+		dir = r.opts.Dir
+	}
+	resp, err := r.call(daemon.Request{
+		Cmd: "open", Args: rest, Dir: dir, Env: lists["--env"],
+		Cols: cols, Rows: rows,
+	})
+	if err != nil {
+		return err
+	}
+	r.opened = true
+	r.logf("opened %s pid=%d %dx%d", resp.Name, resp.Pid, resp.Cols, resp.Rows)
+	return nil
+}
+
+func (r *runner) stepSend(s Step) error {
+	values, lists, _, err := parseStep(s, stepFlags{
+		values: map[string]bool{"--text": true},
+		lists:  map[string]bool{"--key": true},
+	})
+	if err != nil {
+		return err
+	}
+	text := values["--text"]
+	keys := lists["--key"]
+	if text == "" && len(keys) == 0 {
+		return errors.New("send needs --text, --key, or both")
+	}
+	_, err = r.call(daemon.Request{Cmd: "send", Text: text, Keys: keys})
+	return err
+}
+
+func (r *runner) stepWait(s Step) error {
+	pattern := flagValue(s, "--text")
+	if pattern == "" {
+		return errors.New("wait needs --text <regexp>")
+	}
+	timeout, err := durationFlag(s, "--timeout", DefaultTimeout)
+	if err != nil {
+		return err
+	}
+	if _, err := r.call(daemon.Request{Cmd: "wait", Pattern: pattern, Timeout: timeout.String()}); err != nil {
+		return err
+	}
+	r.logf("saw %s", pattern)
+	return nil
+}
+
+func (r *runner) stepStable(s Step) error {
+	quiet, err := firstDuration(s.Args, "stable")
+	if err != nil {
+		return err
+	}
+	timeout, err := durationFlag(s, "--timeout", DefaultTimeout)
+	if err != nil {
+		return err
+	}
+	_, err = r.call(daemon.Request{Cmd: "wait", Stable: quiet.String(), Timeout: timeout.String()})
+	return err
+}
+
+func (r *runner) stepGolden(s Step) error {
+	values, _, rest, err := parseStep(s, stepFlags{
+		values: map[string]bool{"--against": true},
+		bools:  map[string]bool{"--ansi": true},
+	})
+	if err != nil {
+		return err
+	}
+	path := values["--against"]
+	if path == "" {
+		if len(rest) != 1 || strings.HasPrefix(rest[0], "--") {
+			return fmt.Errorf("%s needs one file: %s <file>", s.Verb, s.Verb)
+		}
+		path = rest[0]
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(r.opts.Dir, path)
+	}
+
+	ansi := hasFlag(s, "--ansi")
+	verb, artifact := "text", ""
+	resp, err := r.call(daemon.Request{Cmd: verb})
+	if err != nil {
+		return err
+	}
+	artifact = resp.Text
+	if ansi {
+		if resp, err = r.call(daemon.Request{Cmd: "ansi"}); err != nil {
+			return err
+		}
+		artifact = resp.ANSI
+	} else {
+		artifact = golden.Normalize(artifact)
+	}
+
+	if r.opts.Update {
+		if err := golden.Write(filepath.Dir(path), filepath.Base(path), artifact); err != nil {
+			return err
+		}
+		r.logf("updated %s", path)
+		return nil
+	}
+	if err := golden.Compare(filepath.Dir(path), filepath.Base(path), artifact); err != nil {
+		return err
+	}
+	r.logf("matches %s", path)
+	return nil
+}
+
+// stepFit asserts the geometry a screen claims: the session must actually be that
+// size, and the screen must fit inside it.
+//
+// The second half is nearly free — the emulator wraps at its own width — but the
+// first half is not: it is what catches a scenario whose committed goldens were
+// captured at a different terminal than the one it now runs with.
+func (r *runner) stepFit(s Step) error {
+	resp, err := r.call(daemon.Request{Cmd: "text"})
+	if err != nil {
+		return err
+	}
+	cols, rows := resp.Cols, resp.Rows
+	if size := flagValue(s, "--size"); size != "" {
+		claimCols, claimRows, err := parseSize(size)
+		if err != nil {
+			return err
+		}
+		if claimCols != resp.Cols || claimRows != resp.Rows {
+			return fmt.Errorf("the session is %dx%d, but the scenario claims %dx%d", resp.Cols, resp.Rows, claimCols, claimRows)
+		}
+		cols, rows = claimCols, claimRows
+	}
+	return golden.Fits(cols, rows, resp.Text)
+}
+
+func (r *runner) stepClose(s Step, expect bool) error {
+	want := 0
+	if expect {
+		if len(s.Args) == 0 {
+			return errors.New("expect-exit needs a number")
+		}
+		parsed, err := strconv.Atoi(s.Args[0])
+		if err != nil {
+			return fmt.Errorf("expect-exit needs a number, got %q", s.Args[0])
+		}
+		want = parsed
+	}
+	if r.opened {
+		resp, err := r.call(daemon.Request{Cmd: "close"})
+		if err != nil {
+			return err
+		}
+		r.opened, r.exitCode, r.hasExit = false, resp.ExitCode, true
+		r.logf("closed %s (exit %d)", resp.Name, resp.ExitCode)
+	}
+	if !expect {
+		return nil
+	}
+	if !r.hasExit {
+		return errors.New("expect-exit needs a close first")
+	}
+	if r.exitCode != want {
+		return fmt.Errorf("program exited with %d, expected %d", r.exitCode, want)
+	}
+	return nil
+}
+
+// stepFlags declares which flags a step accepts.
+type stepFlags struct {
+	values map[string]bool // one value: --size 80x24 or --size=80x24
+	lists  map[string]bool // repeatable: --key enter --key ctrl+c
+	bools  map[string]bool // valueless: --ansi
+}
+
+// parseStep walks a step's arguments, returning the flag values, the repeatable
+// values and everything that is not a flag. A scenario is a script, not a
+// language, so this stays tiny on purpose.
+func parseStep(s Step, spec stepFlags) (map[string]string, map[string][]string, []string, error) {
+	values := map[string]string{}
+	lists := map[string][]string{}
+	var rest []string
+
+	for i := 0; i < len(s.Args); i++ {
+		arg := s.Args[i]
+		if arg == "--" {
+			// Everything after the separator belongs to the program, even if it
+			// looks like one of our flags.
+			rest = append(rest, s.Args[i+1:]...)
+			return values, lists, rest, nil
+		}
+		name, inline, hasInline := strings.Cut(arg, "=")
+		switch {
+		case spec.bools[name]:
+			continue
+		case spec.values[name] || spec.lists[name]:
+			value := inline
+			if !hasInline {
+				if i+1 >= len(s.Args) {
+					return nil, nil, nil, fmt.Errorf("%s needs a value", name)
+				}
+				i++
+				value = s.Args[i]
+			}
+			if spec.values[name] {
+				values[name] = value
+			} else {
+				lists[name] = append(lists[name], value)
+			}
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return values, lists, rest, nil
+}
+
+// flagValue reads --flag <value> or --flag=<value> from a step.
+func flagValue(s Step, flag string) string {
+	for i, a := range s.Args {
+		if a == flag && i+1 < len(s.Args) {
+			return s.Args[i+1]
+		}
+		if strings.HasPrefix(a, flag+"=") {
+			return strings.SplitN(a, "=", 2)[1]
+		}
+	}
+	return ""
+}
+
+func hasFlag(s Step, flag string) bool {
+	for _, a := range s.Args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// durationFlag reads a --flag duration with a default.
+func durationFlag(s Step, flag string, fallback time.Duration) (time.Duration, error) {
+	raw := flagValue(s, flag)
+	if raw == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", flag, err)
+	}
+	return d, nil
+}
+
+// firstDuration finds a bare duration argument, used by sleep and stable.
+func firstDuration(args []string, verb string) (time.Duration, error) {
+	for _, a := range args {
+		if strings.HasPrefix(a, "--") {
+			continue
+		}
+		if d, err := time.ParseDuration(a); err == nil {
+			return d, nil
+		}
+	}
+	return 0, fmt.Errorf("%s needs a duration, for example 200ms", verb)
+}
+
+func parseSize(s string) (int, int, error) {
+	parts := strings.SplitN(strings.ToLower(s), "x", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("size %q is not WxH", s)
+	}
+	cols, err := strconv.Atoi(parts[0])
+	if err != nil || cols <= 0 {
+		return 0, 0, fmt.Errorf("size %q has a bad width", s)
+	}
+	rows, err := strconv.Atoi(parts[1])
+	if err != nil || rows <= 0 {
+		return 0, 0, fmt.Errorf("size %q has a bad height", s)
+	}
+	return cols, rows, nil
+}

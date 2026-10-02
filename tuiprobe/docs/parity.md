@@ -19,10 +19,10 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | 2 | Golden ANSI frames (`TestGoldenFrameANSI`) | in-process render | `golden` | **moved** (engine) |
 | 3 | Render determinism, twice (`TestFrameScenariosRenderTwice`) | in-process render | `golden`/library helper | pending |
 | 4 | ANSI→HTML clipping (`TestFrameToHTMLClipsToWidth`) | pure function | `screen` (HTML) | **moved** (screen HTML) |
-| 5 | Frames fit their geometry (`TestShotScenariosFitTheirGeometry`) | pure function | library assertion | pending |
+| 5 | Frames fit their geometry (`TestShotScenariosFitTheirGeometry`) | pure function | `golden.Fits` + the `fit` step | **partly moved**: the step asserts the session's geometry and that the screen fits it; the in-process *frame* check arrives with the adapter (M3) |
 | 6 | PNG per scenario + pixel-size bound (`TestFrameScreenshots`) | browser | `render/png`, `render/chromium` | pending |
-| 7 | Stage timeout names the stage (`TestRunStageReportsTimeout`) | library | `stage` | pending |
-| 8 | Cleanup kills before waiting (`TestCleanupLauncherDoesNotWaitForever`) | library | `stage` | pending |
+| 7 | Stage timeout names the stage (`TestRunStageReportsTimeout`) | library | `session.Stage` | **moved** — `StageError` carries the name, the budget and whether it was a timeout, and `ErrStageTimeout` makes it machine-checkable |
+| 8 | Cleanup kills before waiting (`TestCleanupLauncherDoesNotWaitForever`) | library | `pty.Close` + `session.Close` | **moved** — the process group is signalled first, then reaped under `CloseGrace` |
 | 9 | Real binary on a PTY, styling + double Ctrl+C (`TestBinarySmokeUnderPTY`) | PTY | `pty` + `session` | **engine moved** (`pty`, `session`); the CLI-level check lands with M1 |
 | 10 | Size-less PTY must not panic (`TestBinarySmokeWithoutTerminalSize`) | PTY | `pty` (always sets a size) | **moved** — `TestSessionAlwaysGivesTheProgramASize` (zero and negative sizes become 80x24) |
 | 11 | Cursor-up repaint (`TestBufferCursorUpRepaints`) | emulator | `screen` | **moved** |
@@ -40,6 +40,10 @@ Tool-side additions that the harness does not have but the CLI needs: `screen.Re
 (ANSI output, round-trip tested), the `tuiprobe replay` command, and a real PTY session
 engine (`pty` + `session`: bounded stages, kill-before-wait cleanup, screen mirroring,
 key encoding, `WaitText`/`WaitStable`, a bounded raw-stream trace).
+
+The gated contract moved too: `tuiprobe run --gate VAR` skips with the reason and
+exits 0 when `VAR` is unset, and opens nothing — a check that cannot run must say
+so rather than look like evidence.
 
 The CLI adds a capability the harness never had — **sessions that outlive one
 process** (a daemon on a unix socket: `open`, `send`, `wait`, `text`, `ansi`, `html`,

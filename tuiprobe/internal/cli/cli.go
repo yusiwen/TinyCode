@@ -47,6 +47,10 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runSessions(args[1:], stdout, stderr)
 	case "daemon":
 		return runDaemon(args[1:], stdout, stderr)
+	case "run":
+		return runScenario(args[1:], stdout, stderr)
+	case "diff":
+		return runDiff(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "tuiprobe: unknown command %q\n\n", args[0])
 		usage(stderr)
@@ -68,7 +72,12 @@ Sessions (a program on a real terminal, kept alive between commands):
   trace --name app [--n 4096]      print the tail of the raw stream
   resize --name app --size 100x30
   close --name app [--expect-exit n]
+  diff --name app --against <file> [--ansi] [--update]
   sessions                         list live sessions
+
+Scripted:
+  run [--update] [--gate VAR] [--dir DIR] <scenario>   steps: open, send, wait,
+      stable, sleep, golden, diff, fit, close, expect-exit
 
 Offline:
   replay --stream <file|-> --size 80x24 [--format text|ansi|html]
