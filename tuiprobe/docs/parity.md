@@ -23,8 +23,8 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | 6 | PNG per scenario + pixel-size bound (`TestFrameScreenshots`) | browser | `render/png`, `render/chromium` | pending |
 | 7 | Stage timeout names the stage (`TestRunStageReportsTimeout`) | library | `stage` | pending |
 | 8 | Cleanup kills before waiting (`TestCleanupLauncherDoesNotWaitForever`) | library | `stage` | pending |
-| 9 | Real binary on a PTY, styling + double Ctrl+C (`TestBinarySmokeUnderPTY`) | PTY | `pty` + `session` | pending |
-| 10 | Size-less PTY must not panic (`TestBinarySmokeWithoutTerminalSize`) | PTY | `pty` (always sets a size) | pending |
+| 9 | Real binary on a PTY, styling + double Ctrl+C (`TestBinarySmokeUnderPTY`) | PTY | `pty` + `session` | **engine moved** (`pty`, `session`); the CLI-level check lands with M1 |
+| 10 | Size-less PTY must not panic (`TestBinarySmokeWithoutTerminalSize`) | PTY | `pty` (always sets a size) | **moved** — `TestSessionAlwaysGivesTheProgramASize` (zero and negative sizes become 80x24) |
 | 11 | Cursor-up repaint (`TestBufferCursorUpRepaints`) | emulator | `screen` | **moved** |
 | 12 | Stale text erased (`TestBufferErasesStaleText`) | emulator | `screen` | **moved** |
 | 13 | Scroll (`TestBufferScrolls`) | emulator | `screen` | **moved** |
@@ -37,7 +37,15 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | 20 | In-process program driver (`TestProgramDriver*`, 4 tests) | Bubble Tea | `adapter/bubbletea` | pending |
 
 Tool-side additions that the harness does not have but the CLI needs: `screen.Render()`
-(ANSI output, round-trip tested) and the `tuiprobe replay` command.
+(ANSI output, round-trip tested), the `tuiprobe replay` command, and a real PTY session
+engine (`pty` + `session`: bounded stages, kill-before-wait cleanup, screen mirroring,
+key encoding, `WaitText`/`WaitStable`, a bounded raw-stream trace).
+
+One behaviour worth knowing when driving a program: a terminal is line-buffered until
+the program puts it into raw mode, so a single keystroke only reaches a full-screen TUI
+(a real one calls `tcsetattr` at startup). `Send("x")` to a line-oriented program needs
+`Send("x", "enter")`; the tool deliberately does not force raw mode, because that would
+stop it mirroring what a user's terminal actually does.
 
 ## What never moves
 
