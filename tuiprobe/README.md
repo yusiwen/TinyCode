@@ -19,11 +19,23 @@ described.
 ```bash
 go install github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@latest
 
-# Turn a captured terminal stream into the screen it produced.
-tuiprobe replay --stream capture.bin --size 80x24                 # plain text
-tuiprobe replay --stream capture.bin --size 80x24 --format ansi   # with colours
-tuiprobe replay --stream capture.bin --size 80x24 --format html   # for a browser
+# Drive a program on a real terminal, one command at a time. The first command
+# starts a small daemon so the session survives between invocations; it exits on
+# its own once idle.
+tuiprobe open --name app --size 100x30 -- ./myapp
+tuiprobe wait --name app --text 'ready' --timeout 5s
+tuiprobe text --name app                  # the screen as text
+tuiprobe send --name app --text '/' --key ctrl+p --key enter
+tuiprobe wait --name app --stable 200ms   # let the repaint settle
+tuiprobe trace --name app --n 2000        # the raw stream, for diagnosis
+tuiprobe close --name app                 # exit code included
+
+# Or replay a captured stream offline.
+tuiprobe replay --stream capture.bin --size 80x24 --format ansi
 ```
+
+Every session command takes `--json`, and the socket comes from `--socket` or
+`$TUIPROBE_SOCKET`.
 
 Capture a stream from any TUI:
 
@@ -44,7 +56,7 @@ Early, and being built in the open in
 | Golden files with `-update`, normalization and first-difference diffing | **done** — `golden` |
 | PTY driver (spawn, size, resize, bounded reap) | **done** — `pty` |
 | Session engine (send keys, screen text/ANSI/HTML, `WaitText`, `WaitStable`, trace) | **done** — `session` |
-| Persistent sessions a CLI invocation can share (`open`, `send`, `wait`, `text`, `close`) | next |
+| Sessions a CLI invocation can share: daemon + unix socket, `open`/`send`/`wait`/`text`/`ansi`/`html`/`trace`/`resize`/`close`/`sessions`, `--json`, idle exit | **done** — `internal/daemon`, `tuiprobe <command>` |
 | Scenario runner, geometry assertions, event waits | next |
 | Screenshots (pure-Go font rasterizer, optional Chromium renderer) | next |
 | Bubble Tea in-process adapter | next |
