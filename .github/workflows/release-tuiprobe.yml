@@ -35,12 +35,19 @@ jobs:
           version="${GITHUB_REF_NAME#tuiprobe/}"
           mkdir -p dist
           cd tuiprobe
+          # The variables are assigned first on purpose. `GOOS=x GOARCH=y cmd` sets
+          # them for that command only, while the shell expands the *arguments* of
+          # the same command before the assignment applies — so the first release
+          # produced a single asset called tuiprobe--.tar.gz, three builds
+          # overwriting one name.
           for target in linux/amd64 linux/arm64 darwin/arm64; do
-            GOOS="${target%/*}" GOARCH="${target#*/}" \
-              go build -trimpath -o "../dist/tuiprobe-${GOOS}-${GOARCH}" \
+            os="${target%/*}"
+            arch="${target#*/}"
+            GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -o "../dist/tuiprobe-$os-$arch" \
               -ldflags "-X github.com/yusiwen/TinyCode/tuiprobe/internal/cli.Version=${version}" \
               ./cmd/tuiprobe
-            tar -C ../dist -czf "../dist/tuiprobe-${GOOS}-${GOARCH}.tar.gz" "tuiprobe-${GOOS}-${GOARCH}"
+            tar -C ../dist -czf "../dist/tuiprobe-$os-$arch.tar.gz" "tuiprobe-$os-$arch"
           done
           ls -l ../dist
 
