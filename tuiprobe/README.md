@@ -28,7 +28,8 @@ tuiprobe text --name app                  # the screen as text
 tuiprobe send --name app --text '/' --key ctrl+p --key enter
 tuiprobe wait --name app --stable 200ms   # let the repaint settle
 tuiprobe trace --name app --n 2000        # the raw stream, for diagnosis
-tuiprobe close --name app                 # exit code included
+tuiprobe close --name app                 # end it now; the exit code is included
+tuiprobe wait-exit --name app             # let it end on its own, then read its code
 
 # Or assert a whole interaction from a file, the way CI does.
 cat > welcome.scenario <<'SCENARIO'
