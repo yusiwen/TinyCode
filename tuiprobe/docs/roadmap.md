@@ -95,6 +95,12 @@ into an assertion. The gated real-browser test skips with its reason when
 **Acceptance**: TinyCode's TUI verification runs through `tuiprobe` alone, and a new
 TUI feature is verified by adding a scenario rather than by writing harness code.
 
+**Parity run** (measured, 2026-10-02): the 27 committed text goldens and the 1 ANSI
+golden are reproduced **byte for byte** through TinyCode's own builders, 8 scenario
+PNGs plus one from the live stream have exactly the geometry they claim, and the real
+binary passes the same PTY smoke through the tool — in the same test run as the
+harness, which passes alongside. See `docs/parity.md`.
+
 **Tool-side acceptance** (measured): `adapter/bubbletea` drives a model in-process —
 it paints, it answers keys and messages, it survives a resize storm, and a 0x0 window
 is upgraded to 80x24 — with the output interpreted by the same emulator the PTY path

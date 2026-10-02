@@ -65,6 +65,12 @@ script -q -c ./myapp /dev/null > capture.bin   # util-linux
 
 ## Status
 
+**Parity with TinyCode's harness is measured, not asserted**: the 27 committed text
+goldens and the 1 ANSI golden are reproduced **byte for byte** through the same
+builders, and both suites pass in the same test run. See
+[docs/parity.md](docs/parity.md) for the comparison and the three things the run
+found missing.
+
 Early, and being built in the open in
 [`yusiwen/TinyCode/tuiprobe`](https://github.com/yusiwen/TinyCode/tree/master/tuiprobe).
 

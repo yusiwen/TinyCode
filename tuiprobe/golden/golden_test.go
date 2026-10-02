@@ -78,6 +78,14 @@ func TestFitsPinsTheArtifactToItsGeometry(t *testing.T) {
 	if err := Fits(0, 24, "x\n"); err == nil {
 		t.Error("a non-terminal geometry must be rejected")
 	}
+	// Escape sequences take no cells: the width is measured on the text.
+	if err := Fits(6, 1, "\x1b[1;31mred\x1b[0m\n"); err != nil {
+		t.Errorf("an ANSI frame of three visible cells must fit six: %v", err)
+	}
+	if err := Fits(2, 1, "\x1b[1;31mred\x1b[0m\n"); err == nil {
+		t.Error("the escapes must not hide a frame that is too wide")
+	}
+
 	// Blank rows below the content are not content.
 	if err := Fits(3, 1, "abc\n\n\n"); err != nil {
 		t.Errorf("trailing blank rows must not count against the geometry: %v", err)
@@ -124,5 +132,51 @@ func TestAssertFramePinsGeometryAndGolden(t *testing.T) {
 	frame2 := AssertDeterministic(t, 20, 4, func(int, int) string { return frame })
 	if frame2 != frame {
 		t.Errorf("AssertDeterministic returned %q, want the frame", frame2)
+	}
+}
+
+// TestClipBringsAFrameInsideItsGeometry covers the rule the parity run against the
+// harness surfaced: a frame may be wider than the terminal (a status bar drawn
+// outside the cell grid), and clipping to the width is what makes a screenshot or a
+// golden belong to its geometry. The clip must also be idempotent.
+func TestClipBringsAFrameInsideItsGeometry(t *testing.T) {
+	frame := "short\r\n" + strings.Repeat("x", 50) + "\r\n"
+
+	if err := Fits(10, 3, frame); err == nil {
+		t.Fatal("the test frame should not fit ten columns")
+	}
+	clipped := Clip(10, frame)
+	if err := Fits(10, 3, clipped); err != nil {
+		t.Errorf("a clipped frame must fit: %v", err)
+	}
+	if again := Clip(10, clipped); again != clipped {
+		t.Errorf("clipping is not idempotent:\nfirst:  %q\nsecond: %q", clipped, again)
+	}
+	if err := FitsClipped(10, 3, frame); err != nil {
+		t.Errorf("FitsClipped: %v", err)
+	}
+
+	// Styling that survives the cut: the visible text is truncated, the escapes are
+	// not left open.
+	styled := "\x1b[1;31m" + strings.Repeat("y", 20) + "\x1b[0m"
+	got := Clip(5, styled)
+	if plain := Normalize(got); strings.TrimRight(plain, "\n") != "yyyyy" {
+		t.Errorf("clipped styled text = %q, want five y's", plain)
+	}
+}
+
+// TestFitsWidthIgnoresHeight covers the distinction the parity run exposed: a frame
+// may be taller than the terminal (the terminal clips or scrolls it), so the harness
+// asserts width only for frames, while an emulated screen is exact in both.
+func TestFitsWidthIgnoresHeight(t *testing.T) {
+	tall := strings.Repeat("ok\n", 30)
+	if err := FitsWidth(10, tall); err != nil {
+		t.Errorf("a tall frame must pass a width check: %v", err)
+	}
+	if err := Fits(10, 3, tall); err == nil {
+		t.Error("Fits must still notice that the frame is taller than the geometry")
+	}
+	if err := FitsWidth(1, "ab\n"); err == nil {
+		t.Error("a row wider than the width must fail")
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -100,32 +101,92 @@ func Start(opts Options) (*Session, error) {
 	return s, nil
 }
 
-// environment is the child's environment: the caller's, with the terminal
-// variables a TUI reads made explicit.
+// environment is the child's environment.
+//
+// Order and duplicates matter here: a caller that passes TERM=xterm-256color must
+// win over the value this process happens to have (an agent's TERM=dumb, say), and
+// the child must see one entry per key. Go passes duplicates through and a program
+// reading the environment gets the first, so the caller's values are applied as
+// overrides rather than appended.
 func environment(extra []string, size Size) []string {
-	env := os.Environ()
+	var env []string
 	set := func(key, value string) {
 		prefix := key + "="
 		for i, kv := range env {
-			if len(kv) >= len(prefix) && kv[:len(prefix)] == prefix {
+			if strings.HasPrefix(kv, prefix) {
 				env[i] = prefix + value
 				return
 			}
 		}
 		env = append(env, prefix+value)
 	}
-	// TERM and COLORTERM decide which escape sequences and colours the program
-	// dares to emit; an unset TERM makes many renderers fall back to plain text.
+
+	for _, kv := range os.Environ() {
+		if key, value, ok := strings.Cut(kv, "="); ok {
+			set(key, value)
+		}
+	}
+	for _, kv := range extra {
+		if key, value, ok := strings.Cut(kv, "="); ok {
+			set(key, value)
+			continue
+		}
+		// A bare KEY removes the variable: this process's environment is inherited
+		// by the child, and an agent's shell often carries NO_COLOR=1, which makes a
+		// TUI paint no colour at all. Saying so has to be possible.
+		env = removeKey(env, kv)
+	}
+
+	// The terminal variables a TUI reads, filled in only where nothing set them:
+	// TERM and COLORTERM decide which escape sequences and colours it dares to
+	// emit, and LINES/COLUMNS are read by the applications that do not ask the tty.
 	if os.Getenv("TERM") == "" {
 		set("TERM", "xterm-256color")
 	}
 	if os.Getenv("COLORTERM") == "" {
 		set("COLORTERM", "truecolor")
 	}
-	// LINES/COLUMNS are read by the applications that do not query the tty.
 	set("LINES", fmt.Sprint(size.Rows))
 	set("COLUMNS", fmt.Sprint(size.Cols))
-	return append(env, extra...)
+	return env
+}
+
+// removeKey drops every entry for one variable.
+func removeKey(env []string, key string) []string {
+	prefix := key + "="
+	out := env[:0]
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, prefix) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// TerminalEnv is the environment a terminal application expects, for a caller that
+// wants a hermetic run: the variables that decide colour and geometry are pinned and
+// the ones that suppress colour are removed.
+//
+// It exists because inheriting an agent's environment makes a TUI paint in the
+// agent's colours rather than a user's — NO_COLOR=1 turns every style off, and
+// TERM=dumb is common in a non-interactive shell. The harness had the same helper
+// for the same reason.
+func TerminalEnv(home string) []string {
+	pinned := map[string]bool{
+		"HOME": true, "TERM": true, "COLORTERM": true, "NO_COLOR": true,
+		"CLICOLOR": true, "CLICOLOR_FORCE": true, "FORCE_COLOR": true,
+	}
+	// The list is an *override* list — it is applied on top of the process
+	// environment — so the variables that suppress colour are named bare, which
+	// removes them rather than leaving the caller's value in place.
+	env := []string{"NO_COLOR", "CLICOLOR", "FORCE_COLOR"}
+	for _, kv := range os.Environ() {
+		if key, _, ok := strings.Cut(kv, "="); ok && pinned[key] {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, "HOME="+home, "TERM=xterm-256color", "COLORTERM=truecolor", "CLICOLOR_FORCE=1")
 }
 
 // Pid is the child's process id (and, because the PTY makes it a session leader,
