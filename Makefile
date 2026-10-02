@@ -13,7 +13,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls lint staticcheck fmt fmt-check fuzz clean all
+.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls test-tuiprobe test-tuiprobe-race lint-tuiprobe build-tuiprobe lint staticcheck fmt fmt-check fuzz clean all
 
 default: build
 
@@ -97,6 +97,24 @@ STATICCHECK_VERSION ?= v0.8.1
 
 staticcheck:
 	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
+
+# tuiprobe is a nested module: the root's ./... does NOT see it (measured: go
+# list/build/vet ./... all skip it silently), so it needs its own targets and its
+# own CI steps. gofmt -l . from the root does cover it.
+TUIPROBE_DIR = tuiprobe
+
+test-tuiprobe:
+	cd $(TUIPROBE_DIR) && go vet ./... && go test ./... -count=1
+
+test-tuiprobe-race:
+	cd $(TUIPROBE_DIR) && go test ./... -count=1 -race
+
+lint-tuiprobe:
+	cd $(TUIPROBE_DIR) && go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
+
+build-tuiprobe:
+	@mkdir -p $(BINDIR)
+	cd $(TUIPROBE_DIR) && go build -o ../$(BINDIR)/tuiprobe ./cmd/tuiprobe
 
 # Format the tracked Go sources in place.
 fmt:

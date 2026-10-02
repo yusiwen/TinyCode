@@ -42,6 +42,13 @@ jobs:
       - name: Test repeated in one process
         run: make test-repeat
 
+      # tuiprobe is a nested module: the root's ./... silently skips it, so it is
+      # tested here explicitly. Formatting is already covered by make fmt-check.
+      - name: Test the tuiprobe module
+        run: |
+          make test-tuiprobe
+          make test-tuiprobe-race
+
   lsp:
     name: LSP integration (gopls + typescript)
     runs-on: ubuntu-latest
@@ -98,6 +105,14 @@ jobs:
 
       - name: Vet
         run: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go vet ./...
+
+      # The nested module is invisible to the root's ./... , including here: a
+      # platform-gated break in tuiprobe must fail this job, not wait for a tag.
+      - name: Build and vet the tuiprobe module
+        run: |
+          cd tuiprobe
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build ./...
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go vet ./...
 
   browser:
     name: Browser smoke (real Chromium)
@@ -165,4 +180,6 @@ jobs:
       # change. Bump the pin together with the Makefile's
       # STATICCHECK_VERSION when a newer release is wanted.
       - name: Run staticcheck
-        run: make staticcheck
+        run: |
+          make staticcheck
+          make lint-tuiprobe

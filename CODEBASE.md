@@ -602,6 +602,26 @@ A browser or PTY target that cannot start inside a restricted sandbox is expecte
 that is what the `browser` and `tui-visual` jobs are for, and why every such test skips with a
 reason instead of reporting a false pass.
 
+## Modules
+
+The repository carries **two Go modules**:
+
+- the root module `github.com/yusiwen/TinyCode` — the agent, TUI, tools and their tests;
+- `tuiprobe/` — `github.com/yusiwen/TinyCode/tuiprobe`, a language-agnostic CLI plus
+  importable library that turns what a TUI really draws into artifacts a person, a
+  test or an agent can read (screen text/ANSI/HTML, golden files, later screenshots
+  and PTY-driven sessions). It exists so the TUI verification harness can be used by
+  other projects instead of being re-written per project.
+
+**A nested module is invisible to the root's `./...`** — measured: `go list ./...`,
+`go build ./...` and `go vet ./...` from the root all skip it and exit 0, so a break
+there would ship silently. `gofmt -l .` from the root does cover it. CI therefore
+runs `make test-tuiprobe` / `make test-tuiprobe-race` in the `ci` job, the nested
+build and vet in the `cross` matrix, and `make lint-tuiprobe` in the `staticcheck`
+job; `.github/workflows/release-tuiprobe.yml` publishes it from `tuiprobe/v*` tags.
+See `tuiprobe/docs/parity.md` for what it covers and `tuiprobe/docs/roadmap.md` for
+what is still missing.
+
 ## Build & Run
 
 ```bash

@@ -1,0 +1,53 @@
+name: Release tuiprobe
+
+# The nested module is versioned by its own prefixed tags (`tuiprobe/v0.1.0`),
+# which is how a module in a subdirectory is tagged and what a consumer asks for
+# as `v0.1.0` (go install github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@v0.1.0).
+on:
+  push:
+    tags: ["tuiprobe/v*"]
+
+jobs:
+  release:
+    name: Release tuiprobe
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      - name: Test
+        run: make test-tuiprobe
+
+      # The build runs inside the nested module: the root module cannot build a
+      # package that belongs to another module.
+      - name: Cross-compile
+        run: |
+          set -e
+          version="${GITHUB_REF_NAME#tuiprobe/}"
+          mkdir -p dist
+          cd tuiprobe
+          for target in linux/amd64 linux/arm64 darwin/arm64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" \
+              go build -trimpath -o "../dist/tuiprobe-${GOOS}-${GOARCH}" \
+              -ldflags "-X github.com/yusiwen/TinyCode/tuiprobe/internal/cli.Version=${version}" \
+              ./cmd/tuiprobe
+            tar -C ../dist -czf "../dist/tuiprobe-${GOOS}-${GOARCH}.tar.gz" "tuiprobe-${GOOS}-${GOARCH}"
+          done
+          ls -l ../dist
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
