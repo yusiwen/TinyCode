@@ -20,7 +20,7 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | 3 | Render determinism, twice (`TestFrameScenariosRenderTwice`) | in-process render | `golden`/library helper | pending |
 | 4 | ANSI→HTML clipping (`TestFrameToHTMLClipsToWidth`) | pure function | `screen` (HTML) | **moved** (screen HTML) |
 | 5 | Frames fit their geometry (`TestShotScenariosFitTheirGeometry`) | pure function | `golden.Fits` + the `fit` step | **partly moved**: the step asserts the session's geometry and that the screen fits it; the in-process *frame* check arrives with the adapter (M3) |
-| 6 | PNG per scenario + pixel-size bound (`TestFrameScreenshots`) | browser | `render/png`, `render/chromium` | pending |
+| 6 | PNG per scenario + pixel-size bound (`TestFrameScreenshots`) | browser | `render/font` + `internal/shot`; `render/chromium` in M2b | **moved** — the PNG and the size assertion are there; the renderer is a pure-Go font rasterizer instead of Chromium, so no browser is needed for the default path |
 | 7 | Stage timeout names the stage (`TestRunStageReportsTimeout`) | library | `session.Stage` | **moved** — `StageError` carries the name, the budget and whether it was a timeout, and `ErrStageTimeout` makes it machine-checkable |
 | 8 | Cleanup kills before waiting (`TestCleanupLauncherDoesNotWaitForever`) | library | `pty.Close` + `session.Close` | **moved** — the process group is signalled first, then reaped under `CloseGrace` |
 | 9 | Real binary on a PTY, styling + double Ctrl+C (`TestBinarySmokeUnderPTY`) | PTY | `pty` + `session` | **engine moved** (`pty`, `session`); the CLI-level check lands with M1 |
@@ -33,7 +33,7 @@ Source of truth for the "now" column (measured 2026-10-01, commit `200228e`):
 | 16 | Queries and modes ignored (`TestBufferIgnoresQueriesAndModes`) | emulator | `screen` | **moved** |
 | 17 | Erase display (`TestBufferEraseDisplay`) | emulator | `screen` | **moved** |
 | 18 | Replay fidelity, frame → screen (`TestScreenBufferReplaysViewFrame`) | emulator | `screen` | **moved** (literal frames; the app's own case stays) |
-| 19 | Screenshot from the live stream (`TestBinaryScreenshotFromStream`) | PTY + emulator + image | `pty` + `screen` + `render` | pending |
+| 19 | Screenshot from the live stream (`TestBinaryScreenshotFromStream`) | PTY + emulator + image | `pty` + `screen` + `internal/shot` | **moved** — `shot --name app --out app.png` renders the *live* screen: the daemon's ANSI is replayed through the emulator and drawn, which is the same evidence path the harness had |
 | 20 | In-process program driver (`TestProgramDriver*`, 4 tests) | Bubble Tea | `adapter/bubbletea` | pending |
 
 Tool-side additions that the harness does not have but the CLI needs: `screen.Render()`

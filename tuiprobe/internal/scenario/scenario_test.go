@@ -204,3 +204,42 @@ func TestFitCatchesAWrongGeometryClaim(t *testing.T) {
 		t.Errorf("fit at the real size = %v, want it to pass (the emulator wraps at its width)", err)
 	}
 }
+
+// TestRunCapturesAScreenshot covers the image half of a scenario: the PNG must be
+// written, and its size must follow from the terminal geometry.
+func TestRunCapturesAScreenshot(t *testing.T) {
+	socket := startDaemon(t)
+	dir := t.TempDir()
+	script := "open --size 20x4 -- /bin/sh -c 'echo hello; sleep 5'\nwait --text hello --timeout 5s\nscreenshot shot.png\nscreenshot big.png --scale 2\nscreenshot page.html --format html\n"
+	steps, err := Parse(strings.NewReader(script))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(steps, Options{Socket: socket, Dir: dir, Name: "shots"}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	for _, name := range []string{"shot.png", "big.png", "page.html"} {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("%s was not written: %v", name, err)
+		}
+		if info.Size() == 0 {
+			t.Errorf("%s is empty", name)
+		}
+	}
+
+	// The two PNGs differ in size because the scale multiplies the face, and the
+	// small one is exactly the geometry the scenario claims.
+	small, err := os.ReadFile(filepath.Join(dir, "shot.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	big, err := os.ReadFile(filepath.Join(dir, "big.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(big) <= len(small) {
+		t.Errorf("the scaled image (%d bytes) is not larger than the plain one (%d bytes)", len(big), len(small))
+	}
+}

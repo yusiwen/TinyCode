@@ -167,11 +167,11 @@ func TestStyleSGRKeepsTheBasePalette(t *testing.T) {
 	if got, want := sgrFor(plain), "\x1b[0m"; got != want {
 		t.Errorf("plain style = %q, want %q", got, want)
 	}
-	bright := Style{fg: ansiPalette[9]}
+	bright := Style{FG: ansiPalette[9]}
 	if got, want := sgrFor(bright), "\x1b[0;91m"; got != want {
 		t.Errorf("bright red = %q, want %q", got, want)
 	}
-	cube := Style{fg: xterm256ToCSS(208)}
+	cube := Style{FG: xterm256ToCSS(208)}
 	if got, want := sgrFor(cube), "\x1b[0;38;5;208m"; got != want {
 		t.Errorf("256-colour = %q, want %q", got, want)
 	}

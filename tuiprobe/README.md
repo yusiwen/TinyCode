@@ -44,6 +44,10 @@ SCENARIO
 tuiprobe run --dir . --update welcome.scenario   # write the goldens once
 tuiprobe run --dir . welcome.scenario            # then compare them
 
+# Or take a picture of it — no browser involved.
+tuiprobe shot --name app --out app.png --scale 2     # 2x pixels
+tuiprobe shot --name app --out app.html --format html
+
 # Or replay a captured stream offline.
 tuiprobe replay --stream capture.bin --size 80x24 --format ansi
 ```
@@ -73,7 +77,8 @@ Early, and being built in the open in
 | Sessions a CLI invocation can share: daemon + unix socket, `open`/`send`/`wait`/`text`/`ansi`/`html`/`trace`/`resize`/`close`/`sessions`, `--json`, idle exit | **done** — `internal/daemon`, `tuiprobe <command>` |
 | Scenario files (`tuiprobe run`), golden diff with `--update`, geometry assertions, gated skip-with-reason | **done** — `internal/scenario`, see [docs/scenario.md](docs/scenario.md) |
 | Named, bounded stages (`session.Stage`) and kill-before-wait cleanup | **done** — `session`, `pty` |
-| Screenshots (pure-Go font rasterizer, optional Chromium renderer) | next |
+| Screenshots: pure-Go font rasterizer (`shot --name app --out app.png`), PNG size asserted against the geometry | **done** — `render/font`, `internal/shot` |
+| Chromium renderer + browser discovery/probe | next (M2b) |
 | Bubble Tea in-process adapter | next |
 
 [`docs/roadmap.md`](docs/roadmap.md) has the milestones and their acceptance
@@ -97,6 +102,20 @@ import "github.com/yusiwen/TinyCode/tuiprobe/golden"
 
 golden.Assert(t, "testdata/golden/frames", "welcome_80x24.txt", artifact)  // -update aware
 ```
+
+## Rendering notes
+
+The default renderer draws the cell grid with Go Mono (embedded in
+`golang.org/x/image`), so PNGs need no browser, no font file and no network. Its
+arithmetic is exact: an image is `columns × cell width` by `rows × cell height`, and
+`shot` refuses to write one that is not — an image whose size is not a function of
+the geometry is not evidence of that geometry.
+
+The trade-off is glyph coverage: Go Mono has no box-drawing, braille or icon
+glyphs, and a rune the face lacks is drawn as a visible placeholder rather than
+dropped. Point `--font /path/to/JetBrainsMono.ttf` (or any monospace TTF) at a font
+with the glyphs your UI uses. `Pictures` of a TUI full of box drawing want that;
+a text-heavy screen does not need it.
 
 ## Design rules
 
