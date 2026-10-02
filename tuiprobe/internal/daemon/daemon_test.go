@@ -82,12 +82,15 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("sessions = %+v, want one session named app", sessions)
 	}
 
-	closed := call(t, c, Request{Cmd: "close", Name: "app"})
-	if !closed.Exited || !closed.HasExited || closed.ExitCode != 5 {
-		t.Errorf("close = %+v, want exited with code 5", closed)
+	// "It stopped printing" and "it exited" are different moments: ask for the exit,
+	// then read the code. Asking too early used to kill the program and report -1 —
+	// a flake that only showed on a loaded CI runner.
+	exited := call(t, c, Request{Cmd: "wait-exit", Name: "app", Timeout: "10s"})
+	if !exited.Exited || !exited.HasExited || exited.ExitCode != 5 {
+		t.Errorf("wait-exit = %+v, want the program's own code 5", exited)
 	}
 	if after := call(t, c, Request{Cmd: "sessions"}); after.SessionCnt != 0 {
-		t.Errorf("session count after close = %d, want 0", after.SessionCnt)
+		t.Errorf("session count after wait-exit = %d, want 0", after.SessionCnt)
 	}
 }
 

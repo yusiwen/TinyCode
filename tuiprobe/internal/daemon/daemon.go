@@ -279,6 +279,8 @@ func (s *Server) dispatch(req Request) Response {
 		return s.resize(req, sess)
 	case "close":
 		return s.close(req, sess)
+	case "wait-exit":
+		return s.waitExit(req, sess)
 	default:
 		return Response{OK: false, Code: CodeFailure, Error: fmt.Sprintf("daemon: unknown command %q", req.Cmd)}
 	}
@@ -386,6 +388,41 @@ func (s *Server) resize(req Request, sess *session.Session) Response {
 	}
 	size := sess.Size()
 	return Response{OK: true, Name: req.Name, Cols: size.Cols, Rows: size.Rows}
+}
+
+// waitExit waits for the program to end on its own and reports its own exit code.
+//
+// It exists because "it has finished printing" and "it has exited" are different
+// moments: a caller that asks for the exit code too early gets the code of a process
+// this tool then has to kill — a CI-only flake in the daemon test is what made the
+// distinction concrete.
+func (s *Server) waitExit(req Request, sess *session.Session) Response {
+	timeout := 10 * time.Second
+	if req.Timeout != "" {
+		parsed, err := time.ParseDuration(req.Timeout)
+		if err != nil {
+			return Response{OK: false, Code: CodeFailure, Error: fmt.Sprintf("daemon: bad timeout %q: %v", req.Timeout, err)}
+		}
+		timeout = parsed
+	}
+
+	done := make(chan struct{})
+	var code int
+	go func() {
+		code, _ = sess.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		return Response{OK: false, Code: CodeTimeout, Stage: "wait-exit",
+			Error: fmt.Sprintf("daemon: %s did not exit within %s", req.Name, timeout)}
+	}
+
+	s.mu.Lock()
+	delete(s.sessions, req.Name)
+	s.mu.Unlock()
+	return Response{OK: true, Name: req.Name, Exited: true, HasExited: true, ExitCode: code}
 }
 
 func (s *Server) close(req Request, sess *session.Session) Response {

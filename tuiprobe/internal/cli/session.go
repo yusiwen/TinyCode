@@ -277,6 +277,28 @@ func runClose(args []string, stdout, stderr io.Writer) int {
 	return daemon.CodeOK
 }
 
+// runWaitExit waits for a program to end on its own and reports its code, which is
+// the deterministic version of "close and look at the result".
+func runWaitExit(args []string, stdout, stderr io.Writer) int {
+	var timeout time.Duration
+	cmd, err := newSessionCommand("wait-exit", args, stdout, stderr, func(fs *flag.FlagSet) {
+		fs.DurationVar(&timeout, "timeout", 10*time.Second, "give up after this long")
+	})
+	if err != nil {
+		return daemon.CodeFailure
+	}
+	resp, code := cmd.call(daemon.Request{Cmd: "wait-exit", Timeout: timeout.String()})
+	if code != daemon.CodeOK {
+		return code
+	}
+	if cmd.asJSON {
+		printJSON(stdout, resp)
+	} else {
+		fmt.Fprintf(stdout, "%s exited with %d\n", resp.Name, resp.ExitCode)
+	}
+	return daemon.CodeOK
+}
+
 // runSessions lists the live sessions.
 func runSessions(args []string, stdout, stderr io.Writer) int {
 	cmd, err := newSessionCommand("sessions", args, stdout, stderr, nil)

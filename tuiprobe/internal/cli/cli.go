@@ -43,6 +43,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runResize(args[1:], stdout, stderr)
 	case "close":
 		return runClose(args[1:], stdout, stderr)
+	case "wait-exit":
+		return runWaitExit(args[1:], stdout, stderr)
 	case "sessions":
 		return runSessions(args[1:], stdout, stderr)
 	case "daemon":
@@ -74,6 +76,7 @@ Sessions (a program on a real terminal, kept alive between commands):
   trace --name app [--n 4096]      print the tail of the raw stream
   resize --name app --size 100x30
   close --name app [--expect-exit n]
+  wait-exit --name app [--timeout 10s]   wait for the program to end on its own
   diff --name app --against <file> [--ansi] [--update]
   shot --name app --out app.png [--format png|html] [--scale 2] [--font path.ttf]
   sessions                         list live sessions
