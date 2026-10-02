@@ -1,147 +1,23 @@
 package tui
 
+// The project's half of TUI verification: the scenarios, and the content they show.
+//
+// Everything generic — the terminal emulator, golden files, the PNG renderer, the PTY
+// session, the browser renderer — lives in the tuiprobe module (pinned in go.mod), so
+// this file is fixtures and judgments only: which screens matter, at which geometries,
+// built from the project's own model. See docs/tui-verification.md.
+
 import (
-	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
-	"testing"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+
+	"github.com/yusiwen/TinyCode/tuiprobe/golden"
 	"github.com/yusiwen/tinycode/tool"
 )
-
-// updateGolden rewrites the golden frames under tui/testdata/golden instead of
-// comparing against them: `go test ./tui -run Golden -update`.
-var updateGolden = flag.Bool("update", false, "rewrite golden frame files under testdata/golden")
-
-// goldenDir holds the committed frames, relative to the tui package directory.
-const goldenDir = "testdata/golden"
-
-// resetStyleCache drops the memoized CellStyle -> lipgloss.Style conversions.
-// A cached style carries the renderer state it was built with, so the cache has
-// to be emptied whenever the renderer's color profile changes.
-func resetStyleCache() {
-	styleMu.Lock()
-	styleCache = map[CellStyle]lipgloss.Style{}
-	styleMu.Unlock()
-}
-
-// withTrueColor runs fn with the renderer pinned to the TrueColor profile so
-// the frame carries real SGR sequences. Without it lipgloss sees a non-TTY
-// stdout, falls back to the Ascii profile, and every style silently vanishes
-// from the frame - which is exactly the state the old tests were blind to.
-func withTrueColor(t *testing.T, fn func()) {
-	t.Helper()
-	previous := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.TrueColor)
-	resetStyleCache()
-	defer func() {
-		lipgloss.SetColorProfile(previous)
-		resetStyleCache()
-	}()
-	fn()
-}
-
-// oscSequence matches an OSC escape (ESC ] ... BEL, or ESC ] ... ESC \), which
-// is how the banner carries its hyperlink target. stripANSIView only removes
-// CSI sequences, so the plain-text form needs this pass on top of it.
-var oscSequence = regexp.MustCompile("\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)")
-
-// normalizeFrame reduces a frame to its reviewable text form: escape sequences
-// stripped, carriage returns removed, trailing blanks trimmed per line and the
-// trailing blank lines dropped. Two frames that differ only in fixed-width
-// padding therefore compare equal.
-func normalizeFrame(frame string) string {
-	plain := strings.ReplaceAll(stripANSIView(oscSequence.ReplaceAllString(frame, "")), "\r\n", "\n")
-	lines := strings.Split(plain, "\n")
-	for i := range lines {
-		lines[i] = strings.TrimRight(lines[i], " \t")
-	}
-	for len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// frameDiff reports the first line that differs, with one line of context and
-// the first differing column, so a failure reads like a review comment instead
-// of a wall of text.
-func frameDiff(want, got string) string {
-	wantLines := strings.Split(want, "\n")
-	gotLines := strings.Split(got, "\n")
-	limit := len(wantLines)
-	if len(gotLines) > limit {
-		limit = len(gotLines)
-	}
-	for i := 0; i < limit; i++ {
-		var w, g string
-		if i < len(wantLines) {
-			w = wantLines[i]
-		}
-		if i < len(gotLines) {
-			g = gotLines[i]
-		}
-		if w == g {
-			continue
-		}
-		col := 0
-		for col < len(w) && col < len(g) && w[col] == g[col] {
-			col++
-		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "first differing line %d (column %d):\n", i+1, col+1)
-		if i > 0 {
-			fmt.Fprintf(&b, "  context: %q\n", wantLines[i-1])
-		}
-		fmt.Fprintf(&b, "  want: %q\n", w)
-		fmt.Fprintf(&b, "  got:  %q\n", g)
-		return b.String()
-	}
-	return "frames differ only in trailing blank lines\n"
-}
-
-// assertGolden compares got against testdata/golden/name, writing the file when
-// -update is set. A missing file is a failure, not an implicit write: a test
-// run must never silently create the baseline it compares against.
-func assertGolden(t *testing.T, name, got string) {
-	t.Helper()
-	path := filepath.Join(goldenDir, name)
-
-	if *updateGolden {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("create golden dir: %v", err)
-		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatalf("write golden %s: %v", path, err)
-		}
-		return
-	}
-
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read golden %s: %v\nregenerate the frames with: go test ./tui -run Golden -update", path, err)
-	}
-	if string(want) == got {
-		return
-	}
-	t.Errorf("frame does not match %s\n%s\ngolden: %s", path, frameDiff(string(want), got), path)
-}
-
-// --- Scenario builders ---------------------------------------------------
-
-// frameSize is one terminal geometry a scenario is captured at.
-type frameSize struct {
-	W, H int
-}
-
-func (s frameSize) String() string { return fmt.Sprintf("%dx%d", s.W, s.H) }
 
 // frameModel builds a ready, sized model without any dependency on the real
 // constructor, the way the other layout tests do. sessionStart is left at the
@@ -343,78 +219,50 @@ func frameLongOutput(w, h int) *TuiModel {
 // 200x50 is reserved for the two that exercise wrapping and overflow, 100x30 for
 // a wide-but-not-extreme layout, and 40x12 for the narrow end where the banner
 // art is dropped and tables must still line up.
+
+// frameScenarios is the single table the suite drives: goldens, the ANSI golden,
+// determinism, geometry, PNGs and the stream screenshot all read it.
+//
+// golden.Sizes lists the geometries whose *text* is committed (27 files today);
+// shots lists the images worth looking at, which is a smaller set at geometries the
+// goldens may not cover (the narrow end of a table, a 112-column status line).
+// Adding a screen is one entry here plus an intended layout change.
 var frameScenarios = []struct {
 	name  string
-	sizes []frameSize
+	sizes []golden.Size
+	shots []shotSpec
 	build func(w, h int) *TuiModel
 }{
-	{"welcome", []frameSize{{80, 24}, {120, 40}, {100, 30}}, frameWelcome},
-	{"markdown", []frameSize{{80, 24}, {120, 40}, {200, 50}, {100, 30}, {40, 12}}, frameMarkdown},
-	{"streaming", []frameSize{{80, 24}, {120, 40}}, frameStreaming},
-	{"todo", []frameSize{{80, 24}, {120, 40}, {40, 12}}, frameTodo},
-	{"dialog", []frameSize{{80, 24}, {120, 40}, {40, 12}}, frameDialog},
-	{"palette", []frameSize{{80, 24}, {120, 40}, {40, 12}}, framePalette},
-	{"diagnostics", []frameSize{{80, 24}, {120, 40}}, frameDiagnostics},
-	{"compressing", []frameSize{{80, 24}, {40, 12}}, frameCompressing},
-	{"longoutput", []frameSize{{80, 24}, {120, 40}, {200, 50}, {100, 30}}, frameLongOutput},
+	{"welcome", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 100, H: 30}},
+		[]shotSpec{{"welcome", golden.Size{W: 80, H: 24}}}, frameWelcome},
+	{"markdown", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 200, H: 50}, {W: 100, H: 30}, {W: 40, H: 12}},
+		[]shotSpec{
+			{"markdown", golden.Size{W: 80, H: 24}},
+			// The narrow end is worth an image as well as a golden: at 40 columns the
+			// banner art is dropped and every table has to be re-laid out.
+			{"narrow", golden.Size{W: 40, H: 12}},
+		}, frameMarkdown},
+	{"streaming", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}}, nil, frameStreaming},
+	{"todo", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}},
+		[]shotSpec{{"todo", golden.Size{W: 80, H: 24}}}, frameTodo},
+	{"dialog", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}},
+		[]shotSpec{{"dialog", golden.Size{W: 80, H: 24}}}, frameDialog},
+	{"palette", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}}, nil, framePalette},
+	{"diagnostics", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}}, nil, frameDiagnostics},
+	{"compressing", []golden.Size{{W: 80, H: 24}, {W: 40, H: 12}},
+		[]shotSpec{
+			// The golden pins the compressing status line's text; the images show its
+			// styling and where the 112-column line is truncated, at 80 and at 40
+			// columns (issue #25).
+			{"compressing", golden.Size{W: 80, H: 24}},
+			{"compressing-narrow", golden.Size{W: 40, H: 12}},
+		}, frameCompressing},
+	{"longoutput", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 200, H: 50}, {W: 100, H: 30}},
+		[]shotSpec{{"longoutput", golden.Size{W: 120, H: 40}}}, frameLongOutput},
 }
 
-// TestGoldenFrames pins the plain-text form of every scenario at every
-// geometry. This is the regression net for layout: wrapping, indentation,
-// column alignment, overflow and the status bar all show up as a text diff.
-func TestGoldenFrames(t *testing.T) {
-	for _, sc := range frameScenarios {
-		for _, size := range sc.sizes {
-			name := fmt.Sprintf("%s_%s", sc.name, size)
-			t.Run(name, func(t *testing.T) {
-				var plain, ansi string
-				withTrueColor(t, func() {
-					m := sc.build(size.W, size.H)
-					ansi = m.View()
-					plain = normalizeFrame(ansi)
-				})
-
-				// A frame without a single escape sequence means the colour
-				// profile was lost, not that the frame is "plain": guard the
-				// mechanism so a silent regression cannot pass.
-				if !strings.Contains(ansi, "\x1b[") {
-					t.Fatalf("frame %s carries no SGR sequences: the color profile was not pinned", name)
-				}
-				assertGolden(t, filepath.Join("frames", name+".txt"), plain)
-			})
-		}
-	}
-}
-
-// TestGoldenFrameANSI keeps one full ANSI frame under version control, so the
-// exact escape sequences (colour, bold, underline, OSC 8 links) are diffable
-// and not only their stripped text.
-func TestGoldenFrameANSI(t *testing.T) {
-	var ansi string
-	withTrueColor(t, func() {
-		m := frameMarkdown(80, 24)
-		ansi = m.View()
-	})
-	assertGolden(t, filepath.Join("ansi", "markdown_80x24.ansi"), ansi)
-}
-
-// TestFrameScenariosRenderTwice proves the incremental render path is stable:
-// a second View() on the same model must return the identical frame. A diff
-// here means the grid's dirty tracking leaks state between frames.
-func TestFrameScenariosRenderTwice(t *testing.T) {
-	for _, sc := range frameScenarios {
-		for _, size := range sc.sizes {
-			name := fmt.Sprintf("%s_%s", sc.name, size)
-			t.Run(name, func(t *testing.T) {
-				withTrueColor(t, func() {
-					m := sc.build(size.W, size.H)
-					first := m.View()
-					second := m.View()
-					if first != second {
-						t.Errorf("second render differs from the first\n%s", frameDiff(first, second))
-					}
-				})
-			})
-		}
-	}
+// shotSpec names one image: the scenario name it is filed under and the geometry.
+type shotSpec struct {
+	name string
+	size golden.Size
 }
