@@ -178,6 +178,9 @@ func (s *Session) Trace(n int) string {
 	return string(s.trace.Tail(n))
 }
 
+// Pid is the program's process id.
+func (s *Session) Pid() int { return s.program.Pid() }
+
 // Exited reports whether the program has exited.
 func (s *Session) Exited() bool { return s.program.Exited() }
 

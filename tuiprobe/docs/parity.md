@@ -41,6 +41,12 @@ Tool-side additions that the harness does not have but the CLI needs: `screen.Re
 engine (`pty` + `session`: bounded stages, kill-before-wait cleanup, screen mirroring,
 key encoding, `WaitText`/`WaitStable`, a bounded raw-stream trace).
 
+The CLI adds a capability the harness never had — **sessions that outlive one
+process** (a daemon on a unix socket: `open`, `send`, `wait`, `text`, `ansi`, `html`,
+`trace`, `resize`, `close`, `sessions`, every one of them `--json`, with an
+exit-code contract of 0/2/3/4). The harness drove everything inside one test process;
+this is what lets an agent look at a screen, press a key and look again.
+
 One behaviour worth knowing when driving a program: a terminal is line-buffered until
 the program puts it into raw mode, so a single keystroke only reaches a full-screen TUI
 (a real one calls `tcsetattr` at startup). `Send("x")` to a line-oriented program needs

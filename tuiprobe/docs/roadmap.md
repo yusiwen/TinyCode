@@ -33,7 +33,7 @@ wired into the `ci` job and observed green there.
 **Acceptance**: `go test ./session ./pty -race` green — including the size floor,
 the bounded close, the key-byte assertions and the wait timeouts that name the step.
 
-## M0c — sessions a CLI can share
+## M0c — sessions a CLI can share ✅
 
 - `pty`: spawn any command on a PTY with a size and an environment, resize it, read
   the stream, and reap it (kill before wait, bounded).
@@ -42,9 +42,11 @@ the bounded close, the key-byte assertions and the wait timeouts that name the s
   idle exit; `sessions` to list.
 - `--json` on every command: size, cursor, alt-screen, exit code, artifact paths.
 
-**Acceptance**: drive a TUI binary through five separate CLI invocations, get the
-text screen and the exit code, and leave no orphan process behind (checked with a
-process-table assertion, not a `ps` sample).
+**Acceptance** (measured): `open` → `wait` → `text` → `send` → `wait` → `sessions` →
+`close` → `sessions` as **eight separate processes** against one program; the daemon
+auto-starts on the first and answers the rest; `close --json` reports the program's
+exit code (6 in the run); the program's pid is gone afterwards (`kill -0` fails); and
+a daemon started with `--ttl 2s` exits by itself and removes its socket.
 
 ## M1 — assertions
 
