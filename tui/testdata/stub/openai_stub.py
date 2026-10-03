@@ -13,6 +13,12 @@ FINAL = "stub-final-ok"         # keep in sync with tool-call.scenario
 # The first request in tool mode asks for one bash call; every later request answers with
 # FINAL, so the agent loop terminates after one tool round instead of calling the tool
 # forever (which is what a stub returning the same call every time does).
+WRITE_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_w","type":"function",'
+    '"function":{"name":"write_file","arguments":"{\\"path\\":\\"/tmp/stub-outside-write.txt\\",\\"content\\":\\"stub\\"}"}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+)
 TOOL_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_stub","type":"function",'
     '"function":{"name":"bash","arguments":"{\\"command\\":\\"echo stub-tool-marker\\"}"}}]}}]}\n\n'
@@ -21,7 +27,9 @@ TOOL_CALL = (
 )
 
 
-TOOL_MODE = len(sys.argv) > 2 and sys.argv[2] == "tool"
+# "tool" asks for a bash call, "write" for a write_file outside the workspace (which is
+# what makes the TUI ask for approval in build mode — see permission-allow.scenario).
+MODE = sys.argv[2] if len(sys.argv) > 2 else ""
 _calls = {"n": 0}
 
 
@@ -32,8 +40,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
         del body  # ignored on purpose
         _calls["n"] += 1
-        if TOOL_MODE and _calls["n"] == 1:
-            payload = TOOL_CALL.encode()
+        if MODE in ("tool", "write") and _calls["n"] == 1:
+            payload = (TOOL_CALL if MODE == "tool" else WRITE_CALL).encode()
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")
             self.send_header("content-length", str(len(payload)))
@@ -42,7 +50,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
 
         chunks = []
-        for part in (FINAL if TOOL_MODE else ANSWER,):
+        for part in (FINAL if MODE else ANSWER,):
             chunks.append(('data: {"choices":[{"delta":{"content":"%s"}}]}\n\n' % part).encode())
         chunks.append(b"data: [DONE]\n\n")
         payload = b"".join(chunks)

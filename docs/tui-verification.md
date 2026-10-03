@@ -134,6 +134,14 @@ mode the stub answers identically every time and the agent loops until the step 
 that is what the first capture of this path showed, steps 6 through 19 all
 "calling tools: bash".
 
+Two scenarios cover the approval dialog, which only appears in **build** mode — plan mode
+does not ask about writes at all (measured: the same write in plan mode just loops
+`calling tools`). `permission-allow` answers `1` (Allow once) and `permission-deny`
+answers `4`; both assert the dialog's own wording (`🔒 Write to /tmp/stub-outside-write.txt?`,
+`Allow once`) and end on the model's final text, because the stub makes one write call and
+then answers. What neither asserts is the file itself — that is the tool's job, not the
+terminal's, and the difference between the two runs is outside the screen.
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
