@@ -2,7 +2,7 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
-## v0.1.1 — unreleased
+## v0.1.1 — 2026-10-03
 
 - **`wait-exit` step**: waits, bounded, for the program to end on its own and remembers
   its own exit code. The first scenario file written against TinyCode found the gap:

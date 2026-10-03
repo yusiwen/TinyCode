@@ -9,4 +9,8 @@ open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256colo
 wait --text TinyCode --timeout 30s
 fit --size 80x24
 send --key ctrl+c --key ctrl+c
+# "It stopped printing" and "it exited" are different moments: wait for the program to
+# leave on its own, then check the code it left with. Checking too early used to kill
+# it and report -1 — the gap the first version of this file found in the tool.
+wait-exit 15s
 expect-exit 0

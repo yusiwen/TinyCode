@@ -90,6 +90,17 @@ test-tui-visual: build
 	# how a gate stops being a gate.
 	TUI_SHOT=1 go test -count=1 -v -timeout 10m -run 'TestFrameScreenshots|TestBinary' ./tui/
 
+# The scenario files drive the real binary through tuiprobe, whose scenario runner is
+# an internal package — so the command line is the only way to run them, and the
+# version is whatever go.mod pins (no @version here on purpose: one place to bump).
+# TUI_SHOT gates them exactly as it gates the Go tests.
+test-tui-scenarios: build
+	mkdir -p /tmp/tinyscen-home
+	@for f in tui/testdata/scenarios/*.scenario; do \
+		echo "== $$f"; \
+		TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TUI_SHOT --dir . "$$f" || exit 1; \
+	done
+
 # Blocking lint: `go vet` failures fail the build.
 lint:
 	go vet ./...

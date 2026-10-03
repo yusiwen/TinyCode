@@ -164,6 +164,11 @@ jobs:
       - name: TUI visual checks
         run: make test-tui-visual
 
+      # The scenario files are the black-box half (AGENTS.md, "Adding a TUI
+      # scenario"): the same real binary, driven by the pinned tool's CLI.
+      - name: TUI scenario files
+        run: make test-tui-scenarios
+
   staticcheck:
     name: staticcheck
     runs-on: ubuntu-latest

@@ -45,8 +45,8 @@ Every gated target skips itself without its env var, so a plain `make test` neve
 launches a browser or needs a terminal device. Run them deliberately:
 
 ```bash
-make test-tui-visual   # TUI_SHOT=1: needs a Chromium and a real PTY (/dev/ptmx,
-                       # so outside a sandbox that denies it), plus bin/tinycode fresh
+make test-tui-visual     # TUI_SHOT=1: a real PTY (/dev/ptmx) and a fresh bin/tinycode
+make test-tui-scenarios  # TUI_SHOT=1: same, for the scenario files (black-box)
 make test-browser      # BROWSER_TEST=1: needs a Chromium
 make test-lsp          # LSP_TEST=1: needs gopls on PATH
 ```
@@ -58,7 +58,7 @@ the Playwright cache under `$HOME`. If `HOME` is redirected (as above), set
 ## Test Harness Rules
 
 TUI verification runs through **[tuiprobe](tuiprobe/README.md)** — a nested module in
-this repository, pinned in `go.mod` and released as `tuiprobe/v0.1.0`. It owns the
+this repository, pinned in `go.mod` (the pin is the only place its version appears). It owns the
 mechanism: the terminal emulator, golden files with `-update` and diffing, the PNG
 renderer (pure Go by default, Chromium optional), the PTY session with named and
 bounded stages, and the browser discovery. `tui/` keeps the fixtures and the
@@ -107,14 +107,19 @@ single frame, write a scenario file under `tui/testdata/scenarios/*.scenario` an
 it with the pinned tool:
 
 ```bash
-go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@v0.1.0 run \
-  --gate TUI_SHOT tui/testdata/scenarios/mine.scenario
+make test-tui-scenarios                       # every file in tui/testdata/scenarios/
+go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run \
+  --gate TUI_SHOT --dir . tui/testdata/scenarios/startup.scenario
 ```
 
+The `go run` line takes the version from `go.mod` (no `@version`): one place to bump.
+
 Steps are `open`, `send`, `wait`, `stable`, `sleep`, `golden`, `diff`, `fit`,
-`screenshot`, `close`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
-is the reference. The runner is a CLI feature (its package is internal), so a scenario
-is wired through the Makefile or a CI step, never through a Go test.
+`screenshot`, `close`, `wait-exit`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
+is the reference. The runner is a CLI feature (its package is internal), so scenario
+files run through `make test-tui-scenarios` — which is also the CI step in the
+`tui-visual` job — and never through a Go test. `wait-exit` before `expect-exit` when
+the program leaves on its own: checking its code too early kills it and reports `-1`.
 
 **3. A tool change.** If the missing capability is generic — another step, a renderer,
 a better diff — extend `tuiprobe/` instead of growing a helper here, cut a
