@@ -19,6 +19,7 @@ package tui
 //	go test ./tui -run Golden -update
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -417,4 +418,14 @@ func newestSource(t *testing.T, root string) (time.Time, string) {
 // traceTail is the recent output of a session, for a failure message.
 func traceTail(sess *session.Session) string {
 	return tail(sess.Trace(0), 800)
+}
+
+// TestGoldenUpdateFlagIsRegistered pins the documented workflow. A flag that is not
+// registered at parse time makes `go test ./tui -run Golden -update` fail before a
+// single test runs, which is indistinguishable from "nothing needed updating" when the
+// output is not read — and that is exactly how it presented (issue #85).
+func TestGoldenUpdateFlagIsRegistered(t *testing.T) {
+	if flag.Lookup("update") == nil {
+		t.Fatal(`the -update flag is not registered: "go test ./tui -run Golden -update" cannot work`)
+	}
 }

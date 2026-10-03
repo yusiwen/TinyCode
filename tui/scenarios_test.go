@@ -220,6 +220,16 @@ func frameLongOutput(w, h int) *TuiModel {
 // a wide-but-not-extreme layout, and 40x12 for the narrow end where the banner
 // art is dropped and tables must still line up.
 
+// init registers the tool's -update flag. The documented re-baseline command is
+// `go test ./tui -run Golden -update`, and the flag has to exist by the time the test
+// binary parses its arguments — which is why this is an init and not a helper called
+// from a test. Without it that command died with "flag provided but not defined:
+// -update" before running anything, wrote nothing, and read as "the golden did not
+// change" (issue #85).
+func init() {
+	golden.RegisterFlag("rewrite the golden frames instead of comparing them")
+}
+
 // frameScenarios is the single table the suite drives: goldens, the ANSI golden,
 // determinism, geometry, PNGs and the stream screenshot all read it.
 //
