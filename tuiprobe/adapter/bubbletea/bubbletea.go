@@ -181,6 +181,11 @@ func (p *Program) WaitText(pattern string, timeout time.Duration) error {
 			return nil
 		}
 		if p.finished() {
+			// The same rule as the PTY session: the writer may still be flushing when
+			// Run returns, and a model that painted the answer has satisfied the wait.
+			if re.MatchString(p.Text()) {
+				return nil
+			}
 			return fmt.Errorf("bubbletea: wait for text %q: the program exited first; screen:\n%s", pattern, p.Text())
 		}
 		if !time.Now().Before(deadline) {
