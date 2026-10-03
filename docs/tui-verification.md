@@ -80,10 +80,21 @@ step; see [tuiprobe/docs/scenario.md](../tuiprobe/docs/scenario.md). The runner 
 the files with `make test-tui-scenarios`, which is what the `tui-visual` job does.
 `--gate TUI_SHOT` makes each file a no-op that prints why it skipped.
 
-`tui/testdata/scenarios/startup.scenario` is the first one: the real binary at 80x24,
-the startup frame, the geometry asserted, the documented double Ctrl+C, and the exit
-code — read from the program's own exit (`wait-exit`) rather than from having to kill
-it.
+Three files today:
+
+- `startup.scenario` — the real binary at 80x24, the startup frame, `fit --size 80x24`,
+  the documented double Ctrl+C, and the exit code read from the program's own exit
+  (`wait-exit`) rather than from having to kill it;
+- `narrow.scenario` — the same at 40x12, where the banner is dropped and the status bar
+  is wider than the terminal, plus a screenshot;
+- `palette.scenario` — `/` opens the command palette, typing filters it, Esc closes it,
+  and the double Ctrl+C leaves (Esc first: Ctrl+C with the palette open closes the
+  palette instead of quitting).
+
+A fourth, `live-answer.scenario`, makes a **real provider call** through this machine's
+`~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
+When it fails, read the error before blaming the key — `dial tcp` or
+`TLS handshake timeout` is the network, `401` is the key.
 
 ### 3. A tool change
 

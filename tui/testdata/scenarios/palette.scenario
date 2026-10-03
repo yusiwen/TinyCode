@@ -1,0 +1,16 @@
+# The command palette: "/" on an empty prompt opens it, typing filters it, Esc closes
+# it, and the documented double Ctrl+C still leaves. Esc first is not decoration —
+# Ctrl+C while the palette is open closes the palette instead of quitting, which is
+# exactly the kind of thing a scenario records once and nobody has to rediscover.
+open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text TinyCode --timeout 30s
+send --text /
+wait --text Commands: --timeout 10s
+send --text theme
+wait --text theme --timeout 10s
+screenshot /tmp/tinyscen-shots/palette-80x24.png --scale 2
+send --key esc
+stable 200ms --timeout 10s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

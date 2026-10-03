@@ -1,0 +1,17 @@
+# A real provider call, on purpose — the one file here that costs money and needs a
+# key. Gated by TINYCODE_LIVE so nothing runs it by accident and CI never does.
+#
+# It inherits this machine's HOME, so ~/.tinycode/.env is read like any other run, and
+# it keeps its session directory out of your real session list. Run it with
+# `make test-tui-live`; the request is one short prompt and a one-word answer.
+#
+# When it fails, read the error before assuming a key problem:
+#   `dial tcp …: i/o timeout` or `TLS handshake timeout`  → the network to the provider
+#   `401`/`authentication`                                → the key
+# Both have been seen here: the key answered a real request, and hours later the same
+# request timed out twice on the network. That is why this file is gated and never runs
+# in CI — a check that depends on someone else's reachability must not gate a merge.
+open --dir . --size 100x30 --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode "Reply with exactly: ping-ok" --session-dir=/tmp/tinyscen-live/sessions --log-level=error
+wait --text ping-ok --timeout 120s
+wait-exit 60s
+expect-exit 0
