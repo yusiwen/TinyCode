@@ -1,0 +1,14 @@
+# The input box itself: typing, a Ctrl+J newline, and more typing. The two lines must
+# both be on screen, which proves the multi-line input is real and not a single row
+# that silently drops the rest — the kind of thing only a terminal shows.
+open --dir . --size 120x40 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text first-line
+send --key ctrl+j
+send --text second-line
+wait --text "first-line" --timeout 10s
+wait --text "second-line" --timeout 10s
+screenshot /tmp/tinyscen-shots/input-editing-120x40.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
