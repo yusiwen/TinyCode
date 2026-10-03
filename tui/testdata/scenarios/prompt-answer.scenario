@@ -1,0 +1,12 @@
+# The whole request path with a model in it, and nothing outside this machine: a stub
+# OpenAI-compatible endpoint (tui/testdata/stub/openai_stub.py) is started by the same
+# shell that runs the program, so it dies with the session and needs no Makefile
+# lifecycle. The answer is fixed, so this is deterministic — no network, no key, no cost.
+#
+# The assertion is the marker the stub sends back: it proves the provider was reached,
+# the SSE stream was parsed and the incremental render put the text on screen.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'python3 tui/testdata/stub/openai_stub.py 18480 & sleep 1; ./bin/tinycode "say the marker" --api-key=stub --base-url=http://127.0.0.1:18480/v1 --model=stub --session-dir=/tmp/tinyscen-home/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "stub-answer-ok" --timeout 30s
+screenshot /tmp/tinyscen-shots/prompt-answer-120x30.png --scale 2
+wait-exit 15s
+expect-exit 0

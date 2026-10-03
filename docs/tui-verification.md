@@ -119,6 +119,13 @@ binary with `--resume=TUI-20260101-000000`, against a committed session file und
 Its assertion is a marker string the fixture carries, so the resume path is checked
 against known content instead of whatever earlier runs left behind.
 
+`prompt-answer` covers the request path without leaving the machine:
+`tui/testdata/stub/openai_stub.py` is a minimal OpenAI-compatible endpoint that answers
+with one fixed streaming reply, started by the same shell that runs the program (`open --
+/bin/sh -c '…stub… & …; kill %1'`), so it dies with the session and needs no lifecycle of
+its own. The assertion is the stub's marker: provider reached, SSE parsed, text rendered
+— deterministic, no network, no key, no cost.
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
