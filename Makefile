@@ -1,6 +1,11 @@
 NAME=tinycode
 BINDIR=bin
-VERSION=$(shell git --no-pager describe --tags 2>/dev/null || echo "dev")
+# The application's own tags only. Since the nested tuiprobe module ships in this
+# repository, its tags (tuiprobe/v*) are often nearer to HEAD than an application tag,
+# and an unfiltered `git describe` reported the tool's version as the product's
+# (issue #81). The fallback is the short commit, which is more useful than "dev" and
+# cannot be mistaken for a release.
+VERSION=$(shell git --no-pager describe --tags --match 'v[0-9]*' 2>/dev/null || git --no-pager rev-parse --short HEAD 2>/dev/null || echo "dev")
 COMMIT_SHA=$(shell git --no-pager rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILDTIME=$(shell date -u)
 GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "main.Version=$(VERSION)" \
