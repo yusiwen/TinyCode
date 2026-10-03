@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 
@@ -287,8 +288,7 @@ func (g *CellGrid) Render() string {
 				col += c.Width
 			}
 			// Render styled segment
-			ls := styleToLipgloss(style)
-			rendered := ls.Render(text.String())
+			rendered := renderStyled(style, text.String())
 			if style.Link != "" {
 				rendered = hyperlink(style.Link, rendered)
 			}
@@ -303,6 +303,37 @@ func (g *CellGrid) Render() string {
 
 // styleToLipgloss converts CellStyle to a lipgloss.Style for rendering.
 // Results are cached, so repeated calls for the same style are fast.
+// sgrSequence matches one SGR sequence so its parameters can be rewritten.
+var sgrSequence = regexp.MustCompile("\x1b\\[([0-9;]*)m")
+
+// renderStyled renders text in a cell style.
+//
+// Everything goes through lipgloss unchanged — the committed ANSI golden stores its
+// bytes — except for hyperlinked text, where lipgloss v1.1.0 emits the underline
+// parameter twice (`\x1b[4;4m`, and `\x1b[4;38;2;0;255;255;4m` for the banner link).
+// A terminal ignores the repeat, but it doubles the bytes of every character of the
+// link, and one escape per character is what made the welcome screen's Source row
+// unreadable in a capture (issue #80). Hyperlinks get one well-formed sequence instead.
+func renderStyled(s CellStyle, text string) string {
+	out := styleToLipgloss(s).Render(text)
+	if s.Link == "" {
+		return out
+	}
+	return sgrSequence.ReplaceAllStringFunc(out, func(seq string) string {
+		params := strings.Split(seq[2:len(seq)-1], ";")
+		seen := make(map[string]bool, len(params))
+		kept := params[:0]
+		for _, p := range params {
+			if p == "" || seen[p] {
+				continue
+			}
+			seen[p] = true
+			kept = append(kept, p)
+		}
+		return "\x1b[" + strings.Join(kept, ";") + "m"
+	})
+}
+
 func styleToLipgloss(s CellStyle) lipgloss.Style {
 	styleMu.RLock()
 	if cached, ok := styleCache[s]; ok {
