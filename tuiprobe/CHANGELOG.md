@@ -2,6 +2,15 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
+## v0.1.1 — unreleased
+
+- **`wait-exit` step**: waits, bounded, for the program to end on its own and remembers
+  its own exit code. The first scenario file written against TinyCode found the gap:
+  `expect-exit` right after a `send` closed — and therefore killed — a program that was
+  leaving by itself, reporting `-1` for something that exits `0`. The CLI verb and the
+  daemon command already existed; the scenario vocabulary now matches them.
+- Documented in `docs/scenario.md` with the step table.
+
 ## v0.1.0 — 2026-10-02
 
 First release: everything TinyCode's TUI harness could do, in a form any project can
