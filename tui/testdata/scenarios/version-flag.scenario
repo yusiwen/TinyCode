@@ -1,0 +1,9 @@
+# The non-interactive path, which no PTY test covered before: the binary is asked for
+# its version and must answer and exit 0. The assertion is deliberately the shape
+# ("tinycode version" and a commit) rather than the number — see the version defect
+# filed against the ldflags, which made this print the *tool's* version.
+open --dir . --size 100x10 --env TERM=xterm-256color --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --version
+wait --text "tinycode version" --timeout 20s
+wait --text "commit" --timeout 10s
+wait-exit 15s
+expect-exit 0

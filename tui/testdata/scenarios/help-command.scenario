@@ -1,0 +1,13 @@
+# The slash-command path, without a model in sight: "/help" runs a local command and
+# prints the command list. It proves the input row, the command dispatch and the
+# scrollback all work on a real terminal — the things a frame golden cannot show.
+open --dir . --size 120x40 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text /help
+send --key enter
+wait --text "Available commands and shortcuts:" --timeout 10s
+wait --text "/exit, /quit" --timeout 10s
+screenshot /tmp/tinyscen-shots/help-120x40.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
