@@ -91,7 +91,14 @@ Three files today:
   and the double Ctrl+C leaves (Esc first: Ctrl+C with the palette open closes the
   palette instead of quitting).
 
-A fourth, `live-answer.scenario`, makes a **real provider call** through this machine's
+Three more cover the paths a frame golden cannot: `help-command` (`/help` prints the
+command list — input row, dispatch and scrollback on a real terminal), `mode-switch`
+(`/build` moves the status bar to `⚡ build`; the welcome banner also contains the word
+"build", so the assertion is the mode indicator), and `version-flag`
+(`bin/tinycode --version` answers and exits 0, the only non-interactive path in the
+suite).
+
+A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
 `TLS handshake timeout` is the network, `401` is the key.
