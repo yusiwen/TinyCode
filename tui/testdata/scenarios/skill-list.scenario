@@ -1,0 +1,15 @@
+# "/skill" lists the discovered skills and says how to load one. The "[builtin]" marker
+# is escaped: as a regex it is a character class, which would match almost any screen
+# and make this assertion meaningless.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text /skill
+send --key enter
+wait --text "Use /skill <name> to load" --timeout 10s
+wait --text "\[builtin\]" --timeout 10s
+screenshot /tmp/tinyscen-shots/skill-list-120x30.png --scale 2
+send --key esc
+stable 200ms --timeout 10s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

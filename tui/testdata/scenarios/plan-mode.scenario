@@ -1,0 +1,15 @@
+# The other half of mode-switch: /build then /plan, asserting the status bar's indicator
+# each time. Starting from the default (plan) and switching back is what proves the
+# command does something rather than the label being a constant.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text /build
+send --key enter
+wait --text "⚡ build" --timeout 10s
+send --text /plan
+send --key enter
+wait --text "⚡ plan" --timeout 10s
+screenshot /tmp/tinyscen-shots/plan-mode-120x30.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
