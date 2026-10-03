@@ -1,0 +1,20 @@
+# "/session" lists the sessions in the store. The assertion is the *fixture's* id, which
+# `make test-tui-scenarios` seeds into the throwaway HOME, so this checks a known row
+# rather than "some session exists" — the difference between a real assertion and one
+# that passes on any screen containing the word TUI.
+#
+# /fork is deliberately not covered here: its capture looked identical to this list, so
+# whether it opens its own picker or reuses this one is unresolved, and a scenario
+# written on a guess would pass for the wrong reason.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text /session
+send --key enter
+wait --text "TUI-20260101-000000" --timeout 10s
+wait --text "msgs" --timeout 10s
+screenshot /tmp/tinyscen-shots/session-list-120x30.png --scale 2
+send --key esc
+stable 200ms --timeout 10s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
