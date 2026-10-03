@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -241,5 +242,39 @@ func TestRunCapturesAScreenshot(t *testing.T) {
 	}
 	if len(big) <= len(small) {
 		t.Errorf("the scaled image (%d bytes) is not larger than the plain one (%d bytes)", len(big), len(small))
+	}
+}
+
+// TestScenarioWaitsForTheProgramToExit is the gap the first scenario file found:
+// `expect-exit` immediately after a `send` used to close — and therefore kill — a
+// program that was leaving on its own, so a program that exits 7 was reported as -1.
+// The step waits for the natural exit; `expect-exit` then only checks the code.
+func TestScenarioWaitsForTheProgramToExit(t *testing.T) {
+	script := `open -- /bin/sh -c 'echo ready; read line; exit 7'
+wait --text ready
+send --text bye --key enter
+wait-exit 10s
+expect-exit 7
+`
+	steps, err := Parse(strings.NewReader(script))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	res, err := Run(steps, Options{Socket: startDaemon(t), Stdout: io.Discard})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.Steps != 5 {
+		t.Errorf("ran %d steps, want 5", res.Steps)
+	}
+
+	// A wait-exit on a session that is already gone must fail loudly rather than
+	// report a second exit code.
+	again, err := Parse(strings.NewReader(script + "wait-exit 1s\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(again, Options{Socket: startDaemon(t), Stdout: io.Discard}); err == nil {
+		t.Error("waiting on a session that is gone must fail, not pass silently")
 	}
 }

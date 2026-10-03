@@ -34,6 +34,7 @@ first differing line 3 (column 12):
 | `golden --ansi <file>` | compare the ANSI screen, escapes and all |
 | `diff <file>` | the same as `golden`; both names are accepted |
 | `fit --size WxH` | assert the session really is that size and the screen fits it |
+| `wait-exit [duration]` | wait for the program to end **on its own** and remember its code (default 10s) — use this before `expect-exit` when the program leaves by itself |
 | `close` | end the session and remember its exit code |
 | `expect-exit N` | fail unless the program exited with `N` (closes first if needed) |
 | `# comment` | ignored |

@@ -220,6 +220,8 @@ func (r *runner) step(s Step) error {
 		return r.stepFit(s)
 	case "screenshot", "shot":
 		return r.stepScreenshot(s)
+	case "wait-exit":
+		return r.stepWaitExit(s)
 	case "close":
 		return r.stepClose(s, false)
 	case "expect-exit":
@@ -427,6 +429,34 @@ func (r *runner) stepScreenshot(s Step) error {
 		}
 	}
 	r.logf("wrote %s %dx%d", path, artifact.Width, artifact.Height)
+	return nil
+}
+
+// stepWaitExit waits for the program to end on its own and remembers its code.
+//
+// "It stopped printing" and "it exited" are different moments: `expect-exit` right
+// after a `send` closes — and therefore kills — a program that was about to leave by
+// itself, which reports -1 for something that exits 0. The first scenario file written
+// against this repository hit exactly that, so the vocabulary gained the step the CLI
+// and the daemon already had.
+func (r *runner) stepWaitExit(s Step) error {
+	if !r.opened {
+		return errors.New("wait-exit needs an open first")
+	}
+	timeout := DefaultTimeout
+	if len(s.Args) > 0 {
+		parsed, err := time.ParseDuration(s.Args[0])
+		if err != nil {
+			return fmt.Errorf("wait-exit takes a duration, got %q", s.Args[0])
+		}
+		timeout = parsed
+	}
+	resp, err := r.call(daemon.Request{Cmd: "wait-exit", Timeout: timeout.String()})
+	if err != nil {
+		return err
+	}
+	r.opened, r.exitCode, r.hasExit = false, resp.ExitCode, true
+	r.logf("exited %s (exit %d)", resp.Name, resp.ExitCode)
 	return nil
 }
 
