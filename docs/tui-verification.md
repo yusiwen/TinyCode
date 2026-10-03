@@ -126,6 +126,14 @@ with one fixed streaming reply, started by the same shell that runs the program 
 its own. The assertion is the stub's marker: provider reached, SSE parsed, text rendered
 — deterministic, no network, no key, no cost.
 
+`tool-call` covers the tool loop with the same stub in "tool" mode: the first request
+returns one bash tool call and every later request a final answer, so the loop terminates
+after one round. Both halves are asserted — `calling tools: bash` (the call reached the
+tool loop) and the final answer being rendered after the result came back. Without the
+mode the stub answers identically every time and the agent loops until the step budget;
+that is what the first capture of this path showed, steps 6 through 19 all
+"calling tools: bash".
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
