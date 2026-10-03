@@ -1,0 +1,12 @@
+# The simplest end-to-end check, as a file: the real binary starts on a real
+# terminal, paints its startup screen at the geometry it was given, and leaves on
+# the documented double Ctrl+C. Same ground as TestBinarySmokeUnderPTY, but driven
+# by the tool instead of by Go, so it can be run by hand and read by a person.
+#
+# The provider is deliberately unreachable: this scenario is about the terminal, not
+# about a model. Nothing here needs an API key, and nothing reaches the network.
+open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text TinyCode --timeout 30s
+fit --size 80x24
+send --key ctrl+c --key ctrl+c
+expect-exit 0

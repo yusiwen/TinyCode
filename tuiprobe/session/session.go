@@ -205,10 +205,33 @@ func (s *Session) WaitText(pattern string, timeout time.Duration) error {
 			return nil
 		}
 		if s.Exited() {
+			// A program that printed the answer and left *has* satisfied the wait, and
+			// the reader may still be applying its last bytes when the process ends —
+			// the exit flag and the final screen are not ordered. Look once more,
+			// briefly, before reporting failure: a CI run of the CLI tests found
+			// "got:hello" on the screen and this error at the same time.
+			if s.awaitFinal(re, 500*time.Millisecond) {
+				return nil
+			}
 			return fmt.Errorf("session: wait for text %q: the program exited first; screen:\n%s", pattern, s.Text())
 		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf("session: wait for text %q: %w after %s; screen:\n%s", pattern, ErrStageTimeout, timeout, s.Text())
+		}
+		time.Sleep(PollInterval)
+	}
+}
+
+// awaitFinal looks for the pattern in the final output of a program that has already
+// exited, giving the reader a bounded moment to finish applying the last bytes.
+func (s *Session) awaitFinal(re *regexp.Regexp, budget time.Duration) bool {
+	deadline := time.Now().Add(budget)
+	for {
+		if re.MatchString(s.Text()) {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
 		}
 		time.Sleep(PollInterval)
 	}
@@ -227,7 +250,8 @@ func (s *Session) WaitStable(quiet, timeout time.Duration) error {
 			return nil
 		}
 		if s.Exited() {
-			return fmt.Errorf("session: wait for a stable screen: the program exited first; screen:\n%s", s.Text())
+			// Nothing can change any more, so the screen is stable by definition.
+			return nil
 		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf("session: wait for a stable screen: %w, still changing after %s; screen:\n%s", ErrStageTimeout, timeout, s.Text())

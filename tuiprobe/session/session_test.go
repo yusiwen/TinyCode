@@ -302,3 +302,30 @@ func TestStageTextUsesTheSessionBudget(t *testing.T) {
 		t.Errorf("StageStable: %v", err)
 	}
 }
+
+// TestWaitTextSucceedsForAProgramThatHasAlreadyExited: a program that prints its
+// answer and leaves has satisfied the wait. The exit flag and the final screen are not
+// ordered — the reader may still be applying the last bytes — so the wait re-checks
+// briefly instead of failing. A CI run of the CLI tests found "got:hello" on screen
+// together with "the program exited first".
+func TestWaitTextSucceedsForAProgramThatHasAlreadyExited(t *testing.T) {
+	s, err := Start(Options{Args: []string{"/bin/sh", "-c", `printf 'printed\n'`}, Size: pty.Size{Cols: 40, Rows: 4}})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+	if err := s.WaitText("printed", 5*time.Second); err != nil {
+		t.Errorf("a program that printed and exited must satisfy the wait: %v", err)
+	}
+
+	// A stable wait after the exit is satisfied by definition: nothing can change.
+	s2, err := Start(Options{Args: []string{"/bin/sh", "-c", `printf 'gone\n'`}, Size: pty.Size{Cols: 40, Rows: 4}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	time.Sleep(50 * time.Millisecond)
+	if err := s2.WaitStable(200*time.Millisecond, 5*time.Second); err != nil {
+		t.Errorf("a stable screen after the exit must pass: %v", err)
+	}
+}
