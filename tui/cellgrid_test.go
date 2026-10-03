@@ -250,3 +250,22 @@ func TestWordWrapKeepsIndent(t *testing.T) {
 		t.Errorf("whitespace-only line changed: %+v", got)
 	}
 }
+
+// TestDedupeSGRNormalizesRepeatsWithoutTouchingColours pins the rule and the mistake
+// that produced it: a naive "drop repeated numbers" pass turned grey
+// (38;2;136;136;136) into a different colour, which is what failed the committed ANSI
+// golden while doing #80 and #86.
+func TestDedupeSGRNormalizesRepeatsWithoutTouchingColours(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"\x1b[4;4m", "\x1b[4m"},                               // repeated attribute
+		{"\x1b[4;38;2;0;255;255;4m", "\x1b[4;38;2;0;255;255m"}, // the banner link's sequence
+		{"\x1b[38;2;136;136;136m", "\x1b[38;2;136;136;136m"},   // grey: equal channels are not a repeat
+		{"\x1b[38;5;255m", "\x1b[38;5;255m"},                   // 256-colour index preserved
+		{"\x1b[48;2;10;10;10m", "\x1b[48;2;10;10;10m"},         // background colour preserved
+		{"\x1b[1;1;4m", "\x1b[1;4m"},                           // two different repeats
+	} {
+		if got := dedupeSGR(tc.in); got != tc.want {
+			t.Errorf("dedupeSGR(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
