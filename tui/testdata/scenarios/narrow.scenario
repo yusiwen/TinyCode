@@ -1,0 +1,16 @@
+# The narrow end of the layout: 40x12 is where the banner art is dropped and the
+# tables re-flow, and where the status bar (119+ columns) is wider than the terminal.
+# The session asserts the geometry it was given, and the image is what proves the
+# layout survived it.
+#
+# The assertion is the welcome screen's own text, not the product name: at 40 columns
+# the "Source github.com/…" line is an OSC 8 hyperlink that is truncated mid-row, so
+# "TinyCode" appears split. (The emulator also renders part of that row's SGR sequence
+# as text — filed as a tool defect, not worked around here.)
+open --dir . --size 40x12 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 30s
+fit --size 40x12
+screenshot /tmp/tinyscen-shots/narrow-40x12.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

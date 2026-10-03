@@ -95,11 +95,19 @@ test-tui-visual: build
 # version is whatever go.mod pins (no @version here on purpose: one place to bump).
 # TUI_SHOT gates them exactly as it gates the Go tests.
 test-tui-scenarios: build
-	mkdir -p /tmp/tinyscen-home
+	mkdir -p /tmp/tinyscen-home /tmp/tinyscen-shots
 	@for f in tui/testdata/scenarios/*.scenario; do \
+		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; esac; \
 		echo "== $$f"; \
 		TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TUI_SHOT --dir . "$$f" || exit 1; \
 	done
+
+# The one target here that spends money: a real provider call, deliberately gated
+# (TINYCODE_LIVE) and never run by CI. It needs a key the usual way — DEEPSEEK_API_KEY
+# in the environment, or ~/.tinycode/.env, which the binary reads at startup.
+test-tui-live: build
+	mkdir -p /tmp/tinyscen-live
+	@TINYCODE_LIVE=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TINYCODE_LIVE --dir . tui/testdata/scenarios/live-answer.scenario
 
 # Blocking lint: `go vet` failures fail the build.
 lint:

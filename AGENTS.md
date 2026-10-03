@@ -113,6 +113,9 @@ go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run \
 ```
 
 The `go run` line takes the version from `go.mod` (no `@version`): one place to bump.
+There are three files today: `startup` (80x24, geometry, exit code), `narrow` (40x12)
+and `palette` (`/` opens the command palette, typing filters it, Esc closes it — note
+that Ctrl+C while the palette is open *closes the palette*, so Esc comes first).
 
 Steps are `open`, `send`, `wait`, `stable`, `sleep`, `golden`, `diff`, `fit`,
 `screenshot`, `close`, `wait-exit`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
@@ -120,6 +123,12 @@ is the reference. The runner is a CLI feature (its package is internal), so scen
 files run through `make test-tui-scenarios` — which is also the CI step in the
 `tui-visual` job — and never through a Go test. `wait-exit` before `expect-exit` when
 the program leaves on its own: checking its code too early kills it and reports `-1`.
+
+A fourth file, `live-answer`, is the one that spends money: it makes a real provider
+call through this machine's `~/.tinycode/.env`. Run it deliberately with
+`make test-tui-live` (gated by `TINYCODE_LIVE`; CI never runs it), and read the error
+before blaming the key — `dial tcp`/`TLS handshake timeout` is the network, `401` is
+the key.
 
 **3. A tool change.** If the missing capability is generic — another step, a renderer,
 a better diff — extend `tuiprobe/` instead of growing a helper here, cut a
