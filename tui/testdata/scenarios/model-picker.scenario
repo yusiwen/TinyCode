@@ -1,0 +1,17 @@
+# "/model" opens the provider picker: the list, the current entry and its hint line.
+# The patterns are escaped because the assertion contains regex metacharacters —
+# parentheses in "deepseek (openai/scenario)" — and an unescaped group would match far
+# too much.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text /model
+send --key enter
+wait --text "Select provider:" --timeout 10s
+wait --text "deepseek \(openai/scenario\)" --timeout 10s
+wait --text "navigate · Enter select · Esc cancel" --timeout 10s
+screenshot /tmp/tinyscen-shots/model-picker-120x30.png --scale 2
+send --key esc
+stable 200ms --timeout 10s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

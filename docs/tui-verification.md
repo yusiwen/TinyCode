@@ -106,6 +106,13 @@ single-row input that silently drops the rest fails here), and `list-sessions`
 assertion is a session id rather than the "Available sessions:" header, because the
 list can be longer than the terminal and the header is its first line).
 
+Three more finish the argument-less command family: `model-picker` (`/model` lists the
+providers with a hint line), `skill-list` (`/skill` lists the discovered skills), and
+`plan-mode` (`/build` then `/plan`, asserting the status-bar indicator each way).
+Their patterns are escaped where the expected text contains regex metacharacters —
+`[builtin]` as a bare pattern is a character class that would match any screen, which is
+the kind of assertion that passes for the wrong reason.
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
