@@ -2,7 +2,7 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
-## v0.1.2 — unreleased
+## v0.1.2 — 2026-10-03
 
 - **`screen`: an escape sequence split across `Write` calls is no longer torn in half**
   (issue #75). Terminal output arrives in arbitrary chunks and a boundary can fall
