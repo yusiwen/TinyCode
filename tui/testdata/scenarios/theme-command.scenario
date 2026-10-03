@@ -1,0 +1,14 @@
+# A slash command that answers locally, with an argument-less form: "/theme" lists the
+# themes. The assertion is the sentence the command prints, so a change to the list or
+# to the wording fails here rather than in someone's terminal.
+open --dir . --size 120x40 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+send --text /theme
+send --key enter
+wait --text "Available themes: default, nord" --timeout 10s
+screenshot /tmp/tinyscen-shots/theme-120x40.png --scale 2
+send --key esc
+stable 200ms --timeout 10s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

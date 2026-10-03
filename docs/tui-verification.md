@@ -98,6 +98,14 @@ command list — input row, dispatch and scrollback on a real terminal), `mode-s
 (`bin/tinycode --version` answers and exits 0, the only non-interactive path in the
 suite).
 
+Three more add the command surface and the input box: `theme-command` (`/theme` prints
+"Available themes: default, nord" — a local command with an argument-less form),
+`input-editing` (type, Ctrl+J, type again: both lines must be on screen, so a
+single-row input that silently drops the rest fails here), and `list-sessions`
+(`--list-sessions` answers and exits 0 against a throwaway session directory; the
+assertion is a session id rather than the "Available sessions:" header, because the
+list can be longer than the terminal and the header is its first line).
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
