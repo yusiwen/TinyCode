@@ -1,0 +1,24 @@
+# The approval dialog, which only appears in **build** mode: plan mode does not ask about
+# writes at all (measured — the same write in plan mode just loops "calling tools"). The
+# dialog's wording, options and key shortcuts were captured from a real run:
+#
+#   🔒 Write to /tmp/stub-outside-write.txt?
+#   > [1] Allow once   [2] Allow session   [3] Always allow   [4] Deny
+#
+# The stub (asked for "write" mode) makes one write_file call outside the workspace and
+# then answers, so the scenario ends on the model's own final text either way.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'python3 tui/testdata/stub/openai_stub.py 18488 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18488/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Get started" --timeout 20s
+send --text /build
+send --key enter
+wait --text "⚡ build" --timeout 10s
+send --text "write a file outside the workspace"
+send --key enter
+wait --text "🔒 Write to /tmp/stub-outside-write.txt?" --timeout 20s
+wait --text "Allow once" --timeout 10s
+screenshot /tmp/tinyscen-shots/permission-deny-120x30.png --scale 2
+send --text 4
+wait --text "stub-final-ok" --timeout 30s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
