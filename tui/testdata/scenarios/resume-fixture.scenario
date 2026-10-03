@@ -1,0 +1,10 @@
+# The --resume path, against a committed fixture: the session file in
+# tui/testdata/fixtures/ is copied into the throwaway HOME by `make test-tui-scenarios`,
+# so this asserts known content instead of whatever earlier runs left behind. It is the
+# first scenario whose input is a file rather than a keystroke.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --resume=TUI-20260101-000000 --session-dir=/tmp/tinyscen-home/sessions --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --log-level=error
+wait --text "scenario-fixture-answer" --timeout 20s
+screenshot /tmp/tinyscen-shots/resume-fixture-120x30.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
