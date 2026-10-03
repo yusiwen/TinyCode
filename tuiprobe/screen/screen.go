@@ -40,6 +40,11 @@ type Buffer struct {
 	row, col      int
 	pendingWrap   bool
 	style         Style
+	// pending holds an escape sequence that was split across Write calls. Terminal
+	// output arrives in arbitrary chunks, and a chunk boundary can fall inside an
+	// SGR or an OSC sequence: without this, the leading half was dropped and the
+	// trailing half was drawn as text ("github.com/yusiw5;255;4men/Tin", issue #75).
+	pending []byte
 }
 
 // Cell is one character cell of the terminal.
@@ -150,17 +155,40 @@ func (s *Buffer) eraseDisplay(mode int) {
 	}
 }
 
+// maxPendingBounds how much of an unfinished escape sequence is kept. Anything longer
+// is a malformed stream, and keeping it forever would be a slow leak.
+const maxPending = 4096
+
+// stash keeps an unfinished escape sequence for the next Write, up to a bound.
+func (s *Buffer) stash(tail []byte) {
+	if len(tail) > maxPending {
+		return
+	}
+	s.pending = append(s.pending[:0], tail...)
+}
+
 // Write replays a chunk of terminal output.
 func (s *Buffer) Write(p []byte) (int, error) {
+	if len(s.pending) > 0 {
+		joined := make([]byte, 0, len(s.pending)+len(p))
+		joined = append(joined, s.pending...)
+		joined = append(joined, p...)
+		p = joined
+		s.pending = nil
+	}
 	for i := 0; i < len(p); {
 		switch {
-		case p[i] == 0x1b && i+1 < len(p) && p[i+1] == '[':
+		case p[i] == 0x1b && i+1 >= len(p):
+			s.stash(p[i:])
+			return len(p), nil
+		case p[i] == 0x1b && p[i+1] == '[':
 			j := i + 2
 			for j < len(p) && !(p[j] >= 0x40 && p[j] <= 0x7e) {
 				j++
 			}
 			if j >= len(p) {
-				return len(p), nil // truncated sequence: ignore the tail
+				s.stash(p[i:])
+				return len(p), nil
 			}
 			s.csi(string(p[i+2:j]), p[j])
 			i = j + 1
@@ -171,6 +199,7 @@ func (s *Buffer) Write(p []byte) (int, error) {
 			}
 			switch {
 			case j >= len(p):
+				s.stash(p[i:])
 				return len(p), nil
 			case p[j] == 0x07:
 				i = j + 1
@@ -356,6 +385,9 @@ func parseInts(raw string) []int {
 
 // Bounds is the terminal geometry the buffer was created with.
 func (b *Buffer) Bounds() (cols, rows int) { return b.width, b.height }
+
+// Cursor is the cursor position, zero-based: what a terminal reports for CSI 6n.
+func (b *Buffer) Cursor() (col, row int) { return b.col, b.row }
 
 // CellAt returns the rune and style at a position, and whether the cell holds a
 // character at all. A blank cell reports rune 0 so a renderer can tell "space"

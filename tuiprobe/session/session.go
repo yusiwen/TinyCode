@@ -7,8 +7,10 @@
 package session
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -33,19 +35,38 @@ type Options struct {
 	Size pty.Size
 	// TraceLimit bounds the retained raw stream; zero means DefaultTraceLimit.
 	TraceLimit int
+	// Background is the colour reported for OSC 11 ("what is your background?"), as
+	// #rrggbb; empty means DefaultBackground. A program uses it to choose a dark or
+	// light theme, so it should match what the renderers draw.
+	Background string
+	// NoQueryAnswers disables answering terminal queries (TUIPROBE_ANSWER_QUERIES=0
+	// does the same). A real terminal answers; this exists for the test that proves a
+	// program copes when one does not.
+	NoQueryAnswers bool
 }
+
+// DefaultBackground is what OSC 11 is answered with when Options.Background is empty.
+// It matches the renderers' default page colour.
+const DefaultBackground = "#1c1c1c"
+
+// queryWindow is how much of the previous chunk is kept when looking for a query that
+// straddles a read boundary.
+const queryWindow = 16
 
 // Session is a running program, its terminal and its screen.
 type Session struct {
 	program *pty.Session
 	size    pty.Size
 
-	mu         sync.Mutex
-	terminal   *screen.Buffer
-	trace      *ring
-	changedAt  time.Time
-	readErr    error
-	readClosed bool
+	mu             sync.Mutex
+	queryTail      []byte
+	background     string
+	noQueryAnswers bool
+	terminal       *screen.Buffer
+	trace          *ring
+	changedAt      time.Time
+	readErr        error
+	readClosed     bool
 }
 
 // Start launches the program and begins replaying its stream into a screen.
@@ -64,15 +85,72 @@ func Start(opts Options) (*Session, error) {
 		return nil, err
 	}
 
+	background := opts.Background
+	noAnswers := opts.NoQueryAnswers || os.Getenv("TUIPROBE_ANSWER_QUERIES") == "0"
 	s := &Session{
-		program:   program,
-		size:      size,
-		terminal:  screen.New(size.Cols, size.Rows),
-		trace:     newRing(limit),
-		changedAt: time.Now(),
+		program:        program,
+		size:           size,
+		background:     background,
+		noQueryAnswers: noAnswers,
+		terminal:       screen.New(size.Cols, size.Rows),
+		trace:          newRing(limit),
+		changedAt:      time.Now(),
 	}
 	go s.replay()
 	return s, nil
+}
+
+// queryReplies answers the terminal queries a program asks before it will paint.
+//
+// TinyCode writes OSC 11 ("what is your background?") and CSI 6n ("where is the
+// cursor?") at startup and then paints nothing until they time out — measured at
+// roughly five seconds, which is how a `sleep 3` capture saw an empty screen and a
+// `sleep 8` capture saw the welcome screen (issue #76). A real terminal answers both,
+// so an emulator that stays silent is not being faithful, it is being slow.
+//
+// Called with s.mu held.
+func (s *Session) queryReplies(chunk []byte) [][]byte {
+	if s.noQueryAnswers {
+		return nil
+	}
+	scan := chunk
+	if len(s.queryTail) > 0 {
+		scan = append(append([]byte(nil), s.queryTail...), chunk...)
+	}
+	// Only the tail is kept: a query is short and arrives in one write almost always,
+	// but a boundary can fall inside one.
+	keep := queryWindow
+	if len(chunk) < keep {
+		keep = len(chunk)
+	}
+	s.queryTail = append(s.queryTail[:0], chunk[len(chunk)-keep:]...)
+
+	var replies [][]byte
+	backgroundQuery := []byte("\x1b]11;?")
+	if at := bytes.Index(scan, backgroundQuery); at >= 0 && at+len(backgroundQuery) > len(scan)-len(chunk) {
+		colour := s.background
+		if colour == "" {
+			colour = DefaultBackground
+		}
+		replies = append(replies, []byte("\x1b]11;"+oscRGB(colour)+"\x1b\\"))
+	}
+	cursorQuery := []byte("\x1b[6n")
+	if at := bytes.Index(scan, cursorQuery); at >= 0 && at+len(cursorQuery) > len(scan)-len(chunk) {
+		col, row := s.terminal.Cursor()
+		replies = append(replies, []byte(fmt.Sprintf("\x1b[%d;%dR", row+1, col+1)))
+	}
+	return replies
+}
+
+// oscRGB turns #rrggbb into the rgb:rrrr/gggg/bbbb form OSC 11 expects.
+func oscRGB(hex string) string {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		hex = strings.TrimPrefix(DefaultBackground, "#")
+	}
+	// Four hex digits per channel: what a real terminal answers with, and what
+	// termenv and friends expect to parse.
+	return fmt.Sprintf("rgb:%s%s/%s%s/%s%s", hex[0:2], hex[0:2], hex[2:4], hex[2:4], hex[4:6], hex[4:6])
 }
 
 // replay feeds everything the program writes into the screen and the trace.
@@ -85,7 +163,13 @@ func (s *Session) replay() {
 			s.trace.Write(buf[:n])
 			_, _ = s.terminal.Write(buf[:n])
 			s.changedAt = time.Now()
+			reply := s.queryReplies(buf[:n])
 			s.mu.Unlock()
+			// The replies go back to the program's terminal, outside the lock: a
+			// program that is waiting for one is not reading anything else.
+			for _, r := range reply {
+				_, _ = s.program.Write(r)
+			}
 		}
 		if err != nil {
 			s.mu.Lock()

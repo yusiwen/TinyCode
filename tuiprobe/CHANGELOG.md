@@ -2,6 +2,23 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
+## v0.1.2 — unreleased
+
+- **`screen`: an escape sequence split across `Write` calls is no longer torn in half**
+  (issue #75). Terminal output arrives in arbitrary chunks and a boundary can fall
+  inside an SGR or OSC sequence; the leading half was dropped and the trailing half
+  drawn as text, so a live capture read `github.com/yusiw5;255;4men/Tin` while a
+  single-write replay of the same bytes was perfect. The unfinished tail is carried to
+  the next write, and the test splits the exact stream at every byte boundary.
+- **`session`: the queries a program asks before it will paint are answered**
+  (issue #76). TinyCode writes OSC 11 and CSI 6n at startup and then paints nothing
+  until they time out — about five seconds measured — because a real terminal answers
+  both. OSC 11 now gets the configured background (`Options.Background`, four hex
+  digits per channel, default `#1c1c1c`) and CSI 6n the session's own cursor;
+  `Options.NoQueryAnswers` (or `TUIPROBE_ANSWER_QUERIES=0`) turns it off so the
+  opposite — a program that must cope with a silent terminal — can still be tested.
+- `screen.Buffer.Cursor()` reports the cursor position, which is what CSI 6n needs.
+
 ## v0.1.1 — 2026-10-03
 
 - **`wait-exit` step**: waits, bounded, for the program to end on its own and remembers

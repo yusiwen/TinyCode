@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -327,5 +328,48 @@ func TestWaitTextSucceedsForAProgramThatHasAlreadyExited(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if err := s2.WaitStable(200*time.Millisecond, 5*time.Second); err != nil {
 		t.Errorf("a stable screen after the exit must pass: %v", err)
+	}
+}
+
+// TestTerminalQueriesAreAnswered is issue #76: TinyCode writes OSC 11 and CSI 6n at
+// startup and paints nothing until they time out (~5s measured), because a real
+// terminal answers both. The replies are asserted as the terminal echoes them, which
+// is what proves the session wrote them; the switch is asserted by its absence.
+func TestTerminalQueriesAreAnswered(t *testing.T) {
+	// The program asks both questions and then just sits there.
+	script := `printf '\033]11;?\033\\'; printf '\033[6n'; sleep 10`
+	s, err := Start(Options{
+		Args:       []string{"/bin/sh", "-c", script},
+		Size:       pty.Size{Cols: 40, Rows: 4},
+		Background: "#123456",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Close()
+
+	// OSC 11: four hex digits per channel, the colour the session was configured with.
+	if err := s.WaitText(`rgb:1212/3434/5656`, 10*time.Second); err != nil {
+		t.Fatalf("OSC 11 was not answered: %v\nscreen:\n%s", err, s.Text())
+	}
+	// CSI 6n: row;column, one-based, taken from the session's own cursor.
+	if !regexp.MustCompile(`\[1;[0-9]+R`).MatchString(s.Text()) {
+		t.Errorf("CSI 6n was not answered with a cursor position:\n%s", s.Text())
+	}
+
+	// The switch exists so the opposite can be proven: a program that must cope with
+	// a silent terminal gets one. Absence is the assertion, so it is a bounded wait
+	// that must time out.
+	silent, err := Start(Options{
+		Args:           []string{"/bin/sh", "-c", script},
+		Size:           pty.Size{Cols: 40, Rows: 4},
+		NoQueryAnswers: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	if err := silent.WaitText(`rgb:`, 2*time.Second); err == nil {
+		t.Errorf("with answers off the session still replied:\n%s", silent.Text())
 	}
 }

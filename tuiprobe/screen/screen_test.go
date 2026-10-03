@@ -176,3 +176,49 @@ func TestStyleSGRKeepsTheBasePalette(t *testing.T) {
 		t.Errorf("256-colour = %q, want %q", got, want)
 	}
 }
+
+// TestEscapeSplitAcrossWritesSurvives is issue #75. Terminal output arrives in
+// arbitrary chunks, and a chunk boundary can fall inside an escape sequence: the
+// leading half used to be dropped and the trailing half drawn as text, so a live
+// capture read "github.com/yusiw5;255;4men/Tin" while a single-write replay of the
+// same bytes was perfect.
+func TestEscapeSplitAcrossWritesSurvives(t *testing.T) {
+	// The shape TinyCode emits for one hyperlinked character: an OSC 8 opener, then
+	// per-character SGR.
+	stream := "\x1b]8;;https://github.com/yusiwen/TinyCode\x1b\\" +
+		"\x1b[4;38;2;0;255;255;4m" + "TinyCode" + "\x1b[0m"
+
+	reference := New(80, 3)
+	if _, err := reference.Write([]byte(stream)); err != nil {
+		t.Fatal(err)
+	}
+	want := reference.String()
+
+	for split := 0; split <= len(stream); split++ {
+		b := New(80, 3)
+		if _, err := b.Write([]byte(stream[:split])); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := b.Write([]byte(stream[split:])); err != nil {
+			t.Fatal(err)
+		}
+		if got := b.String(); got != want {
+			t.Fatalf("split at byte %d: got %q, want %q", split, got, want)
+		}
+	}
+}
+
+// TestLoneEscapeIsNotText: an ESC with nothing after it must not appear as a glyph,
+// and the next write must complete it rather than start over.
+func TestLoneEscapeIsNotText(t *testing.T) {
+	b := New(20, 2)
+	if _, err := b.Write([]byte("\x1b")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Write([]byte("[31mred")); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); !strings.Contains(got, "red") || strings.Contains(got, "[31m") {
+		t.Errorf("screen = %q, want the styled text without the escape", got)
+	}
+}
