@@ -315,23 +315,49 @@ var sgrSequence = regexp.MustCompile("\x1b\\[([0-9;]*)m")
 // link, and one escape per character is what made the welcome screen's Source row
 // unreadable in a capture (issue #80). Hyperlinks get one well-formed sequence instead.
 func renderStyled(s CellStyle, text string) string {
-	out := styleToLipgloss(s).Render(text)
-	if s.Link == "" {
-		return out
-	}
-	return sgrSequence.ReplaceAllStringFunc(out, func(seq string) string {
-		params := strings.Split(seq[2:len(seq)-1], ";")
-		seen := make(map[string]bool, len(params))
-		kept := params[:0]
-		for _, p := range params {
-			if p == "" || seen[p] {
+	return sgrSequence.ReplaceAllStringFunc(styleToLipgloss(s).Render(text), dedupeSGR)
+}
+
+// dedupeSGR rewrites one SGR sequence with its repeated attributes dropped.
+//
+// lipgloss v1.1.0 repeats the underline parameter — `\x1b[4;4m`, and
+// `\x1b[4;38;2;0;255;255;4m` with a colour — which a terminal ignores but which costs
+// bytes on every underlined run and made the welcome screen's Source link one escape
+// pair per character (issue #80).
+//
+// Colour specifications are copied whole, because their components may legitimately
+// repeat: `\x1b[38;2;136;136;136m` is grey, and a naive "drop repeated numbers" pass
+// turned it into `\x1b[38;2;136m` — a different colour, and what made the committed
+// ANSI golden fail with an eleven-line diff that looked unrelated. That mistake is why
+// the regression test below carries the grey case.
+func dedupeSGR(seq string) string {
+	params := strings.Split(seq[2:len(seq)-1], ";")
+	out := make([]string, 0, len(params))
+	seen := make(map[string]bool, len(params))
+	for i := 0; i < len(params); {
+		p := params[i]
+		// 38/48 introduce a colour: ";2;r;g;b" or ";5;n".
+		if (p == "38" || p == "48") && i+1 < len(params) {
+			width := 0
+			switch params[i+1] {
+			case "2":
+				width = 5
+			case "5":
+				width = 3
+			}
+			if width > 0 && i+width <= len(params) {
+				out = append(out, params[i:i+width]...)
+				i += width
 				continue
 			}
-			seen[p] = true
-			kept = append(kept, p)
 		}
-		return "\x1b[" + strings.Join(kept, ";") + "m"
-	})
+		if p != "" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+		i++
+	}
+	return "\x1b[" + strings.Join(out, ";") + "m"
 }
 
 func styleToLipgloss(s CellStyle) lipgloss.Style {
