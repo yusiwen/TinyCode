@@ -113,6 +113,12 @@ Their patterns are escaped where the expected text contains regex metacharacters
 `[builtin]` as a bare pattern is a character class that would match any screen, which is
 the kind of assertion that passes for the wrong reason.
 
+One scenario's input is a *file* rather than a keystroke: `resume-fixture` starts the
+binary with `--resume=TUI-20260101-000000`, against a committed session file under
+`tui/testdata/fixtures/` that `make test-tui-scenarios` copies into the throwaway HOME.
+Its assertion is a marker string the fixture carries, so the resume path is checked
+against known content instead of whatever earlier runs left behind.
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or

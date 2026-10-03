@@ -100,7 +100,10 @@ test-tui-visual: build
 # version is whatever go.mod pins (no @version here on purpose: one place to bump).
 # TUI_SHOT gates them exactly as it gates the Go tests.
 test-tui-scenarios: build
-	mkdir -p /tmp/tinyscen-home /tmp/tinyscen-shots
+	mkdir -p /tmp/tinyscen-home/sessions /tmp/tinyscen-shots
+	# Seed the committed session fixture so --resume asserts known content rather than
+	# whatever earlier runs happened to leave behind.
+	cp -n tui/testdata/fixtures/*.json /tmp/tinyscen-home/sessions/ 2>/dev/null || true
 	@for f in tui/testdata/scenarios/*.scenario; do \
 		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; esac; \
 		echo "== $$f"; \
