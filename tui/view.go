@@ -509,8 +509,7 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 func chunksToStrings(chunks []CellChunk) []string {
 	var lines []string
 	for _, c := range chunks {
-		ls := styleToLipgloss(c.Style)
-		lines = append(lines, ls.Render(c.Text))
+		lines = append(lines, renderStyled(c.Style, c.Text))
 	}
 	return lines
 }
