@@ -11,6 +11,9 @@
 # how long — that is invisible on this screen and belongs to the tool's own tests.
 open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-allow-always --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-allow-always && mkdir -p /tmp/tinyscen-home-allow-always/sessions && python3 tui/testdata/stub/openai_stub.py 18492 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
 wait --text "Get started" --timeout 20s
+# Type only once the input row exists: the welcome heading appears first, and keys sent
+# before the input is ready can be lost (issue #102).
+wait --text "Type your request" --timeout 20s
 send --text /build
 send --key enter
 wait --text "⚡ build" --timeout 10s

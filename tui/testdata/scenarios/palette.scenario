@@ -3,6 +3,9 @@
 # Ctrl+C while the palette is open closes the palette instead of quitting, which is
 # exactly the kind of thing a scenario records once and nobody has to rediscover.
 open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+# Type only once the input row exists: the welcome heading appears first, and keys sent
+# before the input is ready can be lost (issue #102).
+wait --text "Type your request" --timeout 20s
 wait --text TinyCode --timeout 30s
 send --text /
 wait --text Commands: --timeout 10s

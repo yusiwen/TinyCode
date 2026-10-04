@@ -174,6 +174,16 @@ a renderer, a better diff. Add it there, cut a `tuiprobe/v*` release, then bump 
 in `go.mod`. A new local emulator, PTY wrapper or golden helper in this repository is
 the signal that this route was the right one.
 
+## Typing waits for the input
+
+Every scenario that types waits for the input row (`wait --text "Type your request"`)
+before its first keystroke, and that wait sits **after** the `open` step. The welcome
+heading appears before the input is ready, and keys sent into that gap can be lost — one
+CI run lost a `/theme` that way, which is issue #102. The first attempt at this fix
+inserted the wait before `open` in the one scenario without a greeting line and failed with
+`daemon: no session named "default"`, which is the same "a step must come from the flow it
+belongs to" mistake, one level down.
+
 ## A rule this suite keeps re-learning
 
 A step or a string written into a scenario must come from the flow that scenario drives.
