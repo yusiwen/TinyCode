@@ -125,10 +125,23 @@ files run through `make test-tui-scenarios` — which is also the CI step in the
 the program leaves on its own: checking its code too early kills it and reports `-1`.
 
 A fifth file, `lsp-diagnostics`, is gated by `LSP_TEST=1` (like `make test-lsp`) because it
-needs gopls on PATH: `make test-tui-lsp` runs it, and CI's `lsp` job already has the server.
-It asserts `No LSP diagnostics.`, which is only reachable once a client exists — a file read
-starts one — so it also guards the fix for issue #111, where the warmup that exists to start
-the server refused to run until the server was started.
+needs gopls on PATH: `make test-tui-lsp` runs every `lsp-*.scenario`, and CI's `lsp` job
+already has the server. It asserts `No LSP diagnostics.`, which is only reachable once a
+client exists — a file read starts one — so it also guards the fix for issue #111, where the
+warmup that exists to start the server refused to run until the server was started.
+
+A sixth, `lsp-tools`, covers the same status line from the other direction: the stub asks for
+`lsp_symbols` (the name `lsp.ToolFactory` registers — a stub that invents one gets
+`unknown tool: …` back, which a log recording only result sizes cannot tell apart from an LSP
+error) and no file is read, so `No LSP diagnostics.` is only reachable if the tool call
+promoted the session's server. That is the regression guard for issue #114.
+
+A wipe in an `lsp-*` scenario must not be a bare `rm -rf`: gopls resolves the workspace
+through the redirected `HOME`, so it leaves a read-only Go module cache under `$HOME/go/pkg/mod`
+that `rm -rf` cannot remove. The command then fails, the `&&` chain stops before the stub
+starts, and the run dies on `connection refused` — a second run of the same scenario failed
+that way (issue #115). Drop the write permission first (`chmod -R u+w … 2>/dev/null`) and
+keep the wipe outside the `&&` chain.
 
 A fourth file, `live-answer`, is the one that spends money: it makes a real provider
 call through this machine's `~/.tinycode/.env`. Run it deliberately with

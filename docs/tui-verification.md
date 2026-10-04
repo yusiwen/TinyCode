@@ -191,13 +191,31 @@ deliberately **not** asserted: its text cannot be read without gopls, and writin
 assertion for a string nobody has seen is the mistake this suite keeps catching. That one
 belongs to a gated line that runs where gopls exists.
 
-`lsp-diagnostics` is the second gated scenario: it runs with `LSP_TEST=1` via
+`lsp-diagnostics` is one of the gated scenarios: it runs with `LSP_TEST=1` via
 `make test-tui-lsp` (CI's `lsp` job, which already provides gopls) and asserts the
 `/diagnostics` outcome `No LSP diagnostics.` — a string only reachable when a client exists.
 The server is started the way a user starts it, by reading a file, so the scenario is also
 the regression guard for issue #111: while that circle existed, the warmup never ran and the
 status line read "LSP not available". The listing outcome would need real diagnostics to be
 present and is not covered.
+
+`lsp-tools` reaches the same status line from the other side, and is the regression guard for
+issue #114. The stub asks for `lsp_symbols` — the name `lsp.ToolFactory` registers, because a
+stub that invents a tool name gets `unknown tool: …` back from the agent loop, and a log that
+records only the result's size cannot tell that apart from an LSP error — and nothing in the
+scenario reads or writes a file. `No LSP diagnostics.` is therefore reachable only if the
+tool call itself promoted the session's server. Before the fix the tool started a server of
+its own that the session never heard about, so the line read "LSP not available", and with no
+workspace configured at all the per-call server was rooted at the file and gopls answered
+`LSP error 0: no views` — the shipped default, since `main.go` registers the four LSP tools
+whether or not `lsp.enabled` is set.
+
+Both `lsp-*` scenarios wipe their throwaway `HOME` with `chmod -R u+w … 2>/dev/null; rm -rf …`
+rather than a bare `rm -rf`, and keep that wipe outside the `&&` chain that starts the stub.
+gopls resolves the workspace through that `HOME` and leaves a read-only Go module cache under
+`$HOME/go/pkg/mod`; `rm -rf` fails on it, the chain stops before the stub starts, and the
+second run of the same scenario dies on `connection refused` (issue #115). CI never saw it —
+its `/tmp` starts empty — which is why the reproduction is "run `make test-tui-lsp` twice".
 
 ## Typing waits for the input
 
