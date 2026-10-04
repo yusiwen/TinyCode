@@ -1,0 +1,21 @@
+# "/diagnostics" has three outcomes (tui/update.go:1263): a listing when there are
+# diagnostics, "LSP not available (set lsp.enabled=true in config.json)" when no server is
+# running, and "No LSP diagnostics." otherwise. This covers the second: it needs no language
+# server, so it runs everywhere, and the throwaway HOME has no lsp.enabled, so the outcome
+# is deterministic.
+#
+# NOT covered, deliberately: the listing itself. Its text cannot be read without gopls, and
+# this machine has none (command -v gopls → absent). Asserting a string nobody has seen is
+# the mistake this suite keeps catching, so the listing waits for a gated line that runs
+# where gopls exists — CI's lsp job — rather than for a guess here.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+wait --text "Type your request" --timeout 20s
+send --text /diagnostics
+send --key enter
+wait --text "LSP not available" --timeout 15s
+screenshot /tmp/tinyscen-shots/diagnostics-120x30.png --scale 2
+send --text /exit
+send --key enter
+wait-exit 15s
+expect-exit 0
