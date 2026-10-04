@@ -180,6 +180,11 @@ scenario ends on a command rather than a key chord. Its readiness wait is what m
 work at all — an earlier attempt typed the command before the input row accepted keys, lost
 it, and timed out, which is the flake in #102.
 
+`fork-command` covers `/fork`, which appends a system message rather than opening a picker
+— an earlier capture only looked like a picker because a `/session` list was still on screen.
+A fresh session has no branch, so it asserts the "No active session to fork" literal from
+`tui/update.go:1119` and then leaves with `/exit`.
+
 ## Typing waits for the input
 
 Every scenario that types waits for the input row (`wait --text "Type your request"`)
