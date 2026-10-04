@@ -107,7 +107,11 @@ func ReadFile() Tool {
 
 			// LSP warmup (fire-and-forget, non-blocking). The bytes come from the
 			// sandboxed read above, so nothing re-opens the path (issue #7 S2).
-			if lsp.IsAvailable() {
+			// Initialised, not IsAvailable: the point of a warmup is to start the
+			// server, and IsAvailable is only true once it already exists — gating on it
+			// meant no file operation could ever start one (issue #111). lazyStart itself
+			// refuses languages it has no server for.
+			if lsp.Initialised() {
 				warmup := string(data)
 				go lsp.SyncFile(path, warmup, false)
 			}
