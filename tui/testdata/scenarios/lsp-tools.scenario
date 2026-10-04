@@ -1,0 +1,34 @@
+# "/diagnostics" after a language server was started by an LSP *tool call*, with no file
+# read in front of it. Gated by LSP_TEST because it needs gopls on PATH, which CI's lsp job
+# provides and a plain `make test` does not.
+#
+# This is the regression guard for issue #114, and the two assertions are its two halves:
+#
+#   * "lsp_symbols" — the call reached the tool loop (the stub names the tool the way
+#     lsp.ToolFactory registers it, which is what makes this assertion about the LSP tool
+#     and not about a name the model invented).
+#   * "No LSP diagnostics." — only reachable once a client exists. Nothing else in this
+#     scenario reads or writes a file, so that client can only be the one the tool call
+#     promoted. Before the fix the tool started a server of its own that the session never
+#     heard about, and this line said "LSP not available (set lsp.enabled=true in
+#     config.json)" instead — wrong advice with LSP enabled and working.
+#
+# It complements lsp-diagnostics.scenario, which drives the file-read route.
+# The wipe drops the write permission the language server needs first: gopls resolves the
+# workspace through the redirected HOME, so a previous run leaves a read-only Go module cache
+# under $HOME/go/pkg/mod that `rm -rf` alone cannot remove — and then the `&&` chain stops
+# before the stub starts (issue #115).
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-lsp-tools --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'chmod -R u+w /tmp/tinyscen-home-lsp-tools 2>/dev/null; rm -rf /tmp/tinyscen-home-lsp-tools; mkdir -p /tmp/tinyscen-home-lsp-tools/.tinycode /tmp/tinyscen-home-lsp-tools/sessions && printf %s "{\"lsp\":{\"enabled\":true}}" > /tmp/tinyscen-home-lsp-tools/.tinycode/config.json && python3 tui/testdata/stub/openai_stub.py 18512 lsp & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18512/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-lsp-tools/sessions --log-level=debug; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Get started" --timeout 20s
+wait --text "Type your request" --timeout 20s
+send --text "list the symbols in main.go"
+send --key enter
+wait --text "lsp_symbols" --timeout 30s
+send --text /diagnostics
+send --key enter
+wait --text "No LSP diagnostics." --timeout 30s
+screenshot /tmp/tinyscen-shots/lsp-tools-120x30.png --scale 2
+send --text /exit
+send --key enter
+wait-exit 20s
+expect-exit 0

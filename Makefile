@@ -111,7 +111,7 @@ test-tui-scenarios: build
 	# whatever earlier runs happened to leave behind.
 	cp -n tui/testdata/fixtures/*.json /tmp/tinyscen-home/sessions/ 2>/dev/null || true
 	@for f in tui/testdata/scenarios/*.scenario; do \
-		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; *lsp-diagnostics*) echo "== $$f (skipped: run make test-tui-lsp)"; continue;; esac; \
+		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; *lsp-*) echo "== $$f (skipped: run make test-tui-lsp)"; continue;; esac; \
 		echo "== $$f"; \
 		TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TUI_SHOT --dir . "$$f" || exit 1; \
 	done
@@ -119,12 +119,15 @@ test-tui-scenarios: build
 # The one target here that spends money: a real provider call, deliberately gated
 # (TINYCODE_LIVE) and never run by CI. It needs a key the usual way — DEEPSEEK_API_KEY
 # in the environment, or ~/.tinycode/.env, which the binary reads at startup.
-# The LSP scenario, gated the same way make test-lsp is: it needs gopls on PATH, which CI's
+# The LSP scenarios, gated the same way make test-lsp is: they need gopls on PATH, which CI's
 # lsp job has and a plain `make test` does not. Nothing here spends money, so unlike
 # test-tui-live it is safe to run whenever gopls is available.
 test-tui-lsp: build
 	mkdir -p /tmp/tinyscen-shots
-	LSP_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate LSP_TEST --dir . tui/testdata/scenarios/lsp-diagnostics.scenario
+	@for f in tui/testdata/scenarios/lsp-*.scenario; do \
+		echo "== $$f"; \
+		LSP_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate LSP_TEST --dir . "$$f" || exit 1; \
+	done
 
 test-tui-live: build
 	mkdir -p /tmp/tinyscen-live
