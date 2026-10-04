@@ -13,6 +13,22 @@ FINAL = "stub-final-ok"         # keep in sync with tool-call.scenario
 # The first request in tool mode asks for one bash call; every later request answers with
 # FINAL, so the agent loop terminates after one tool round instead of calling the tool
 # forever (which is what a stub returning the same call every time does).
+# "multi" asks for two bash calls in one step; "fail" asks for one that fails. Both then
+# answer with FINAL, like every other tool mode.
+MULTI_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function",'
+    '"function":{"name":"bash","arguments":"{\\"command\\":\\"echo a\\"}"}},'
+    '{"index":1,"id":"call_b","type":"function",'
+    '"function":{"name":"bash","arguments":"{\\"command\\":\\"echo b\\"}"}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+)
+FAIL_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_f","type":"function",'
+    '"function":{"name":"bash","arguments":"{\\"command\\":\\"exit 3\\"}"}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+)
 WRITE_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_w","type":"function",'
     '"function":{"name":"write_file","arguments":"{\\"path\\":\\"/tmp/stub-outside-write.txt\\",\\"content\\":\\"stub\\"}"}}]}}]}\n\n'
@@ -40,8 +56,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
         del body  # ignored on purpose
         _calls["n"] += 1
-        if MODE in ("tool", "write") and _calls["n"] == 1:
-            payload = (TOOL_CALL if MODE == "tool" else WRITE_CALL).encode()
+        if MODE and _calls["n"] == 1:
+            payload = {
+                "tool": TOOL_CALL,
+                "write": WRITE_CALL,
+                "multi": MULTI_CALL,
+                "fail": FAIL_CALL,
+            }[MODE].encode()
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")
             self.send_header("content-length", str(len(payload)))
