@@ -1,0 +1,26 @@
+# The other two answers to the write-approval dialog: "Always allow" (key 3).
+#
+# Both persist something beyond this run — that is their whole point — so this scenario
+# gets its **own** HOME, wiped by its own shell before the program starts. Reusing the
+# shared /tmp/tinyscen-home would poison every scenario that runs after it, which is the
+# failure #96 was about; and a per-scenario home that is not wiped would fail on its
+# *second* run, because the rule would already be stored.
+#
+# What this pins: the option is selectable by its key, the tool then runs, and the loop
+# reaches the model's final text. What it does NOT pin: what exactly got stored, and for
+# how long — that is invisible on this screen and belongs to the tool's own tests.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-allow-always --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-allow-always && mkdir -p /tmp/tinyscen-home-allow-always/sessions && python3 tui/testdata/stub/openai_stub.py 18492 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Get started" --timeout 20s
+send --text /build
+send --key enter
+wait --text "⚡ build" --timeout 10s
+send --text "write a file outside the workspace"
+send --key enter
+wait --text "🔒 Write to /tmp/stub-outside-write.txt?" --timeout 20s
+wait --text "Allow once" --timeout 10s
+screenshot /tmp/tinyscen-shots/permission-allow-always-120x30.png --scale 2
+send --text 3
+wait --text "stub-final-ok" --timeout 30s
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

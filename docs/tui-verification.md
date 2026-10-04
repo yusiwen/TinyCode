@@ -142,6 +142,14 @@ answers `4`; both assert the dialog's own wording (`🔒 Write to /tmp/stub-outs
 then answers. What neither asserts is the file itself — that is the tool's job, not the
 terminal's, and the difference between the two runs is outside the screen.
 
+`permission-allow-session` and `permission-allow-always` answer the same dialog with `2`
+and `3`. Both persist something beyond the run — that is their point — so each gets its
+**own** HOME, which its own shell wipes before the program starts: reusing the shared home
+would poison every later scenario (the failure #96 was about), and a per-scenario home that
+is never wiped would fail on its *second* run because the rule would already be stored.
+They pin that the option is selectable and the loop still finishes; what exactly got stored
+is invisible on this screen and belongs to the tool's own tests.
+
 `plan-write-no-prompt` is that pair's negative: the same write stub in **plan** mode must
 finish on its own, with no key pressed. A screen cannot assert an absence any other way —
 under build mode the identical call raises the dialog and waits for a human, so reaching
