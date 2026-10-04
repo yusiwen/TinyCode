@@ -1,0 +1,21 @@
+# "/fork" appends a system message — it does not open a picker, which an earlier capture
+# only appeared to show because a /session picker was still on screen. The branch is
+# tui/update.go:1119 and the two literals it can produce are "No active session to fork.
+# Start a conversation first." and "Created branch: … (forked at message N from …)".
+#
+# A fresh session has no branch yet, so this asserts the first one. The screenshot is worth
+# keeping because it also shows the message rendered in the transcript rather than in a
+# panel — the distinction that cost three investigations to establish.
+#
+# It ends with /exit, which is the scenario added just before this one.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+wait --text "Type your request" --timeout 20s
+send --text /fork
+send --key enter
+wait --text "No active session to fork. Start a conversation first." --timeout 10s
+screenshot /tmp/tinyscen-shots/fork-120x30.png --scale 2
+send --text /exit
+send --key enter
+wait-exit 15s
+expect-exit 0
