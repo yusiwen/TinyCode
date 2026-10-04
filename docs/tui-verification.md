@@ -174,6 +174,17 @@ a renderer, a better diff. Add it there, cut a `tuiprobe/v*` release, then bump 
 in `go.mod`. A new local emulator, PTY wrapper or golden helper in this repository is
 the signal that this route was the right one.
 
+## A rule this suite keeps re-learning
+
+A step or a string written into a scenario must come from the flow that scenario drives.
+Four assertions here were wrong that way, each caught by the scenario failing rather than by
+review: `[builtin]` compiled as a regex character class and matched almost anything; grey
+`136;136;136` was treated as a repeated SGR parameter and became another colour;
+`calling tools: write_file` was borrowed from the retry-after-denial loop, which is not the
+flow a first write takes; and Ctrl+C was sent to a one-shot program that had already
+answered and left, which failed as `write /dev/ptmx: input/output error`. When an assertion
+does not fit, delete it and find the flow's own string — do not adjust it until it passes.
+
 ## What this project still owns, and why
 
 - **The builders** (`frameModel`, `frameWelcome`, …): they construct `*TuiModel` with

@@ -135,6 +135,8 @@ scenarios share that home, so a leftover from an earlier run changes the world a
 one sees (issue #96). A **manual** `tuiprobe run` does not wipe anything: if a scenario
 behaves differently by hand than in the suite, reset that directory first.
 
+A step or string in a scenario must come from the flow that scenario drives — four assertions in this suite were wrong that way (a regex character class, a repeated SGR parameter, a line borrowed from another loop, Ctrl+C sent to an exited one-shot run). When it does not fit, delete it; do not adjust it until it passes.
+
 **3. A tool change.** If the missing capability is generic — another step, a renderer,
 a better diff — extend `tuiprobe/` instead of growing a helper here, cut a
 `tuiprobe/v*` release, then bump the pin in `go.mod`. The module boundary is what keeps
