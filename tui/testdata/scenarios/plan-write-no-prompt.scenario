@@ -1,0 +1,20 @@
+# The other half of the permission pair: in **plan** mode the same write does not ask.
+#
+# "Does not ask" can only be asserted the way a screen can assert an absence: the program
+# finishes on its own. The stub makes one write_file call outside the workspace and then
+# answers; under build mode that same call raises the dialog and waits for a human
+# (permission-allow presses 1), so a run here that reaches the model's final text and
+# exits 0 without a key being pressed is the evidence that no dialog appeared. If one ever
+# does, this file stalls and times out.
+#
+# What it does NOT claim: whether plan mode denies the write or skips it silently. That
+# distinction is invisible on this screen — the tool's own tests own it.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'python3 tui/testdata/stub/openai_stub.py 18490 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18490/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Get started" --timeout 20s
+send --text "write a file outside the workspace"
+send --key enter
+wait --text "stub-final-ok" --timeout 40s
+screenshot /tmp/tinyscen-shots/plan-write-no-prompt-120x30.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0
