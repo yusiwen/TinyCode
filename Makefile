@@ -100,6 +100,12 @@ test-tui-visual: build
 # version is whatever go.mod pins (no @version here on purpose: one place to bump).
 # TUI_SHOT gates them exactly as it gates the Go tests.
 test-tui-scenarios: build
+	# A clean home per run. Scenarios share it, so a leftover from an earlier run — or
+	# from an earlier scenario in this one — changes the world a later one sees:
+	# theme-command passed standalone and in CI, yet failed after the permission pair had
+	# written into the same directory. CI was green only because its /tmp starts empty
+	# (issue #96). The fixture is seeded below, after the wipe.
+	rm -rf /tmp/tinyscen-home
 	mkdir -p /tmp/tinyscen-home/sessions /tmp/tinyscen-shots
 	# Seed the committed session fixture so --resume asserts known content rather than
 	# whatever earlier runs happened to leave behind.
