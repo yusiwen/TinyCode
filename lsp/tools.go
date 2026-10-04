@@ -83,18 +83,19 @@ func ToolFactory(tt ToolType) agent.Tool {
 			// never becomes the session's client, so a successful call used to
 			// leave /diagnostics reporting "LSP not available" — advice that is
 			// wrong when LSP is on — and cost a server start per call (issue
-			// #114).
+			// #114). A start that fails is not fatal here: the per-call route is a
+			// second attempt, and the only route for a session with no workspace,
+			// so its error is the one worth reporting.
 			if Initialised() {
-				if err := Ensure(absPath); err != nil {
-					return "", fmt.Errorf("start LSP: %w", err)
-				}
+				_ = Ensure(absPath)
 			}
 			if IsAvailable() {
 				return executeViaPersistent(ctx, tt, fileURI, line, character)
 			}
 
-			// No client and no workspace to start one from (LSP disabled, which
-			// is the default): serve this call with a server of its own.
+			// No client to answer with: either there is no workspace to start the
+			// session's server from (LSP disabled, which is the default), or that
+			// start did not succeed. Serve this call with a server of its own.
 			lang := DetectLanguage(rootDir)
 			if lang == "" {
 				// Fallback: infer from file extension
