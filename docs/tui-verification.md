@@ -191,6 +191,14 @@ deliberately **not** asserted: its text cannot be read without gopls, and writin
 assertion for a string nobody has seen is the mistake this suite keeps catching. That one
 belongs to a gated line that runs where gopls exists.
 
+`lsp-diagnostics` is the second gated scenario: it runs with `LSP_TEST=1` via
+`make test-tui-lsp` (CI's `lsp` job, which already provides gopls) and asserts the
+`/diagnostics` outcome `No LSP diagnostics.` — a string only reachable when a client exists.
+The server is started the way a user starts it, by reading a file, so the scenario is also
+the regression guard for issue #111: while that circle existed, the warmup never ran and the
+status line read "LSP not available". The listing outcome would need real diagnostics to be
+present and is not covered.
+
 ## Typing waits for the input
 
 Every scenario that types waits for the input row (`wait --text "Type your request"`)

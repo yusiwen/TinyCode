@@ -1,0 +1,26 @@
+# "/diagnostics" once a language server is actually running. Gated by LSP_TEST because it
+# needs gopls on PATH, which CI's lsp job provides and a plain `make test` does not.
+#
+# The server is started the way a user starts it: a file read. That path was dead until issue
+# #111 — IsAvailable() gated the warmup whose purpose is to start the server — so this
+# scenario is also the regression guard for that fix: if the circle returns, the warmup never
+# runs, IsAvailable() stays false, and the status line says "LSP not available" instead of the
+# literal asserted here.
+#
+# The assertion is "No LSP diagnostics." rather than a listing: this workspace has gopls with
+# nothing to report, and that string is only reachable when a client exists. The listing (the
+# third outcome) would need real diagnostics present.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-lsp --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-lsp && mkdir -p /tmp/tinyscen-home-lsp/.tinycode /tmp/tinyscen-home-lsp/sessions && printf %s "{\"lsp\":{\"enabled\":true}}" > /tmp/tinyscen-home-lsp/.tinycode/config.json && python3 tui/testdata/stub/openai_stub.py 18511 read & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18511/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-lsp/sessions --log-level=debug; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Get started" --timeout 20s
+wait --text "Type your request" --timeout 20s
+send --text "read main.go"
+send --key enter
+wait --text "read_file" --timeout 20s
+send --text /diagnostics
+send --key enter
+wait --text "No LSP diagnostics." --timeout 30s
+screenshot /tmp/tinyscen-shots/lsp-diagnostics-120x30.png --scale 2
+send --text /exit
+send --key enter
+wait-exit 20s
+expect-exit 0

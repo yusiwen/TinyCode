@@ -124,6 +124,12 @@ files run through `make test-tui-scenarios` — which is also the CI step in the
 `tui-visual` job — and never through a Go test. `wait-exit` before `expect-exit` when
 the program leaves on its own: checking its code too early kills it and reports `-1`.
 
+A fifth file, `lsp-diagnostics`, is gated by `LSP_TEST=1` (like `make test-lsp`) because it
+needs gopls on PATH: `make test-tui-lsp` runs it, and CI's `lsp` job already has the server.
+It asserts `No LSP diagnostics.`, which is only reachable once a client exists — a file read
+starts one — so it also guards the fix for issue #111, where the warmup that exists to start
+the server refused to run until the server was started.
+
 A fourth file, `live-answer`, is the one that spends money: it makes a real provider
 call through this machine's `~/.tinycode/.env`. Run it deliberately with
 `make test-tui-live` (gated by `TINYCODE_LIVE`; CI never runs it), and read the error
