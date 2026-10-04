@@ -6,6 +6,8 @@ key and no cost. Deliberately dumb: the request body is ignored, which is what m
 deterministic. Started by the scenario that needs it; see prompt-answer.scenario.
 """
 import http.server
+import json
+import os
 import sys
 
 ANSWER = "stub-answer-ok"       # keep in sync with prompt-answer.scenario
@@ -37,6 +39,16 @@ TODO_CALL = (
     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
     'data: [DONE]\n\n'
 )
+# "read" asks for read_file on a file in the working directory. It exists because reading a
+# file is what starts the language server: the warmup in tool/filesystem.go is the reachable
+# path after issue #111, and the LSP scenario needs the server up before /diagnostics can say
+# anything other than "not available".
+READ_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_r","type":"function",'
+    '"function":{"name":"read_file","arguments":%s}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+) % json.dumps(json.dumps({"path": os.path.join(os.getcwd(), "main.go")}))
 WRITE_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_w","type":"function",'
     '"function":{"name":"write_file","arguments":"{\\"path\\":\\"/tmp/stub-outside-write.txt\\",\\"content\\":\\"stub\\"}"}}]}}]}\n\n'
@@ -75,6 +87,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "multi": MULTI_CALL,
                 "fail": FAIL_CALL,
                 "todo": TODO_CALL,
+                "read": READ_CALL,
             }[MODE].encode()
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")

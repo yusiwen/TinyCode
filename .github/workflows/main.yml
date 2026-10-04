@@ -78,6 +78,10 @@ jobs:
 
       - name: Run LSP integration tests
         run: make test-lsp
+      # The same gopls this job already provides, now driving the TUI scenario that
+      # proves /diagnostics reaches a real server instead of reporting a config problem.
+      - name: TUI LSP scenario
+        run: make test-tui-lsp
 
   cross:
     name: Cross-compile + vet (${{ matrix.goos }}/${{ matrix.goarch }})
