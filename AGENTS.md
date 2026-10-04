@@ -130,6 +130,11 @@ call through this machine's `~/.tinycode/.env`. Run it deliberately with
 before blaming the key — `dial tcp`/`TLS handshake timeout` is the network, `401` is
 the key.
 
+`make test-tui-scenarios` wipes `/tmp/tinyscen-home` before it seeds the session fixture —
+scenarios share that home, so a leftover from an earlier run changes the world a later
+one sees (issue #96). A **manual** `tuiprobe run` does not wipe anything: if a scenario
+behaves differently by hand than in the suite, reset that directory first.
+
 **3. A tool change.** If the missing capability is generic — another step, a renderer,
 a better diff — extend `tuiprobe/` instead of growing a helper here, cut a
 `tuiprobe/v*` release, then bump the pin in `go.mod`. The module boundary is what keeps

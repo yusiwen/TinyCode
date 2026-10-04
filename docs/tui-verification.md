@@ -147,6 +147,11 @@ A further, `live-answer.scenario`, makes a **real provider call** through this m
 When it fails, read the error before blaming the key — `dial tcp` or
 `TLS handshake timeout` is the network, `401` is the key.
 
+`make test-tui-scenarios` wipes `/tmp/tinyscen-home` before it seeds the session fixture —
+scenarios share that home, so a leftover from an earlier run changes the world a later
+one sees (issue #96). A **manual** `tuiprobe run` does not wipe anything: if a scenario
+behaves differently by hand than in the suite, reset that directory first.
+
 ### 3. A tool change
 
 If the capability that is missing is generic, it belongs in `tuiprobe/`: another step,
