@@ -142,6 +142,13 @@ answers `4`; both assert the dialog's own wording (`🔒 Write to /tmp/stub-outs
 then answers. What neither asserts is the file itself — that is the tool's job, not the
 terminal's, and the difference between the two runs is outside the screen.
 
+`plan-write-no-prompt` is that pair's negative: the same write stub in **plan** mode must
+finish on its own, with no key pressed. A screen cannot assert an absence any other way —
+under build mode the identical call raises the dialog and waits for a human, so reaching
+the model's final text and exiting 0 here is the evidence that nothing asked. It does not
+claim whether plan mode denies the write or skips it silently; that distinction is
+invisible on this screen and belongs to the tool's own tests.
+
 A further, `live-answer.scenario`, makes a **real provider call** through this machine's
 `~/.tinycode/.env`: `make test-tui-live`, gated by `TINYCODE_LIVE`, never run by CI.
 When it fails, read the error before blaming the key — `dial tcp` or
