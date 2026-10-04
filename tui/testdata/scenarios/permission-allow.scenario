@@ -23,5 +23,9 @@ screenshot /tmp/tinyscen-shots/permission-allow-120x30.png --scale 2
 send --text 1
 wait --text "stub-final-ok" --timeout 30s
 send --key ctrl+c --key ctrl+c
-wait-exit 15s
+# 45s, not 15s: this flow waits for a second model round-trip (the tool result goes back
+# and the stub answers again) before the program leaves. That is real work, unlike the
+# local command whose 10s budget must not be widened — a CI runner under load failed the
+# 15s budget while the same scenario passed here (PR #109).
+wait-exit 45s
 expect-exit 0
