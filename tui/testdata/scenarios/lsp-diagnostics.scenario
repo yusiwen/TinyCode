@@ -10,7 +10,12 @@
 # The assertion is "No LSP diagnostics." rather than a listing: this workspace has gopls with
 # nothing to report, and that string is only reachable when a client exists. The listing (the
 # third outcome) would need real diagnostics present.
-open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-lsp --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-lsp && mkdir -p /tmp/tinyscen-home-lsp/.tinycode /tmp/tinyscen-home-lsp/sessions && printf %s "{\"lsp\":{\"enabled\":true}}" > /tmp/tinyscen-home-lsp/.tinycode/config.json && python3 tui/testdata/stub/openai_stub.py 18511 read & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18511/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-lsp/sessions --log-level=debug; status=$?; kill %1 2>/dev/null; exit $status'
+# The wipe drops the write permission the language server needs before removing it: gopls
+# resolves the workspace through the redirected HOME, so the previous run left a read-only
+# Go module cache under $HOME/go/pkg/mod and `rm -rf` alone could not empty the directory.
+# It then failed, the `&&` chain stopped, the stub never started, and the second run of this
+# scenario died on "connection refused" instead of on anything LSP-related (issue #115).
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-lsp --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'chmod -R u+w /tmp/tinyscen-home-lsp 2>/dev/null; rm -rf /tmp/tinyscen-home-lsp; mkdir -p /tmp/tinyscen-home-lsp/.tinycode /tmp/tinyscen-home-lsp/sessions && printf %s "{\"lsp\":{\"enabled\":true}}" > /tmp/tinyscen-home-lsp/.tinycode/config.json && python3 tui/testdata/stub/openai_stub.py 18511 read & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18511/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-lsp/sessions --log-level=debug; status=$?; kill %1 2>/dev/null; exit $status'
 wait --text "Get started" --timeout 20s
 wait --text "Type your request" --timeout 20s
 send --text "read main.go"
