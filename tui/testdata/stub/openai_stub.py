@@ -49,6 +49,17 @@ READ_CALL = (
     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
     'data: [DONE]\n\n'
 ) % json.dumps(json.dumps({"path": os.path.join(os.getcwd(), "main.go")}))
+# "lsp" asks for one lsp_symbols call on a file in the working directory — the LSP tool
+# route, with no file read in front of it. The name must be the one lsp.ToolFactory
+# registers (ToolDocumentSymbols = "lsp_symbols"); a stub that invents a name gets
+# "unknown tool: ..." back from the agent loop, which is indistinguishable in a log that
+# only records the result size.
+LSP_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_l","type":"function",'
+    '"function":{"name":"lsp_symbols","arguments":%s}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+) % json.dumps(json.dumps({"file_path": os.path.join(os.getcwd(), "main.go")}))
 WRITE_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_w","type":"function",'
     '"function":{"name":"write_file","arguments":"{\\"path\\":\\"/tmp/stub-outside-write.txt\\",\\"content\\":\\"stub\\"}"}}]}}]}\n\n'
@@ -88,6 +99,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "fail": FAIL_CALL,
                 "todo": TODO_CALL,
                 "read": READ_CALL,
+                "lsp": LSP_CALL,
             }[MODE].encode()
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")
