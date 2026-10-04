@@ -185,6 +185,12 @@ it, and timed out, which is the flake in #102.
 A fresh session has no branch, so it asserts the "No active session to fork" literal from
 `tui/update.go:1119` and then leaves with `/exit`.
 
+`diagnostics-command` covers `/diagnostics` when no language server is running — the
+outcome that needs no gopls, so it runs everywhere. The listing it can print instead is
+deliberately **not** asserted: its text cannot be read without gopls, and writing an
+assertion for a string nobody has seen is the mistake this suite keeps catching. That one
+belongs to a gated line that runs where gopls exists.
+
 ## Typing waits for the input
 
 Every scenario that types waits for the input row (`wait --text "Type your request"`)
