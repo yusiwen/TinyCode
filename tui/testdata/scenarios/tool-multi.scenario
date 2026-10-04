@@ -1,0 +1,13 @@
+# Two tool calls in one step: both must run and the loop must still finish.
+#
+# The assertions are the ones this flow really prints: the tool-call line and the model's
+# final answer. A string borrowed from another flow is how three assertions in this suite
+# were wrong before they were deleted — see the note in docs/tui-verification.md.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'python3 tui/testdata/stub/openai_stub.py 18493 multi & sleep 1; ./bin/tinycode "exercise the tool loop" --base-url=http://127.0.0.1:18493/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "calling tools: bash" --timeout 30s
+wait --text "stub-final-ok" --timeout 30s
+screenshot /tmp/tinyscen-shots/tool-multi-120x30.png --scale 2
+# One-shot mode: the program leaves on its own after answering, so there is no Ctrl+C to
+# send — doing so writes to a dead pty and fails the scenario (learned here).
+wait-exit 15s
+expect-exit 0
