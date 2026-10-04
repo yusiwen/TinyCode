@@ -1,9 +1,12 @@
 package lsp
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -218,5 +221,100 @@ func TestSyncFileSendsTheCallerContent(t *testing.T) {
 
 	if got := m.textFor(uri); got != fromCaller {
 		t.Errorf("server was told %q, want the caller's content %q", got, fromCaller)
+	}
+}
+
+// requireRealServer skips the integration tests that need a language server
+// binary, the same way lsp_test.go does.
+func requireRealServer(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping LSP integration test in short mode")
+	}
+	if os.Getenv("LSP_TEST") == "" {
+		t.Skip("skipping: set LSP_TEST=1 to run LSP integration tests")
+	}
+}
+
+// restoreSession snapshots the package-level session and restores it when the
+// test ends, stopping whatever the test started: these tests spawn a real server
+// as a child process.
+func restoreSession(t *testing.T) {
+	t.Helper()
+	mu.Lock()
+	prevClient, prevConn, prevCmd := client, conn, serverCmd
+	prevRoot, prevAvail := projectRoot, lspAvailable
+	mu.Unlock()
+	t.Cleanup(func() {
+		mu.Lock()
+		shutdownLocked()
+		client, conn, serverCmd = prevClient, prevConn, prevCmd
+		projectRoot, lspAvailable = prevRoot, prevAvail
+		mu.Unlock()
+	})
+}
+
+// TestToolCallPromotesTheSessionServer covers issue #114: with a workspace
+// configured, a cold LSP tool call must start the session's server and use it.
+// Before the fix it started a server of its own that the session never learned
+// about, so IsAvailable() stayed false — /diagnostics then reported "LSP not
+// available (set lsp.enabled=true in config.json)", which is wrong advice with
+// LSP on — and a second call paid another start.
+func TestToolCallPromotesTheSessionServer(t *testing.T) {
+	requireRealServer(t)
+	proj := setupDemoProject(t)
+	restoreSession(t)
+	Init(proj)
+
+	var serverLog bytes.Buffer
+	prevWriter := log.Writer()
+	log.SetOutput(&serverLog)
+	t.Cleanup(func() { log.SetOutput(prevWriter) })
+
+	tool := ToolFactory(ToolDocumentSymbols)
+	file := filepath.Join(proj, "main.go")
+	for call := 1; call <= 2; call++ {
+		got, err := tool.Execute(context.Background(), map[string]any{"file_path": file})
+		if err != nil {
+			t.Fatalf("call %d: %v", call, err)
+		}
+		if !strings.Contains(got, "main") {
+			t.Fatalf("call %d returned %q, want the symbols of main.go", call, got)
+		}
+	}
+
+	if !IsAvailable() {
+		t.Error("a tool call left the session without a client; /diagnostics would report LSP as unavailable")
+	}
+	if starts := strings.Count(serverLog.String(), "started for"); starts != 1 {
+		t.Errorf("server started %d times across two calls, want 1:\n%s", starts, serverLog.String())
+	}
+}
+
+// TestToolCallWithoutWorkspaceServesTheRequest covers the shipped default: LSP is
+// not enabled, so Init was never called and the tool has to start a server for
+// the call alone. That is the only route with no session to promote, and it
+// answered "LSP error 0: no views" until issue #114 rooted the per-call server at
+// the project directory instead of at the file.
+func TestToolCallWithoutWorkspaceServesTheRequest(t *testing.T) {
+	requireRealServer(t)
+	proj := setupDemoProject(t)
+	restoreSession(t)
+	mu.Lock()
+	client, conn, serverCmd = nil, nil, nil
+	projectRoot, lspAvailable = "", false
+	mu.Unlock()
+
+	got, err := ToolFactory(ToolDocumentSymbols).Execute(context.Background(), map[string]any{
+		"file_path": filepath.Join(proj, "main.go"),
+	})
+	if err != nil {
+		t.Fatalf("tool call: %v", err)
+	}
+	if !strings.Contains(got, "main") {
+		t.Errorf("result = %q, want the symbols of main.go", got)
+	}
+	if IsAvailable() {
+		t.Error("a per-call server must not become the session's client")
 	}
 }
