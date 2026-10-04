@@ -72,6 +72,17 @@ func shutdownLocked() {
 }
 
 // IsAvailable returns true if LSP is initialized and not broken.
+// Initialised reports whether Init has been given a project root, i.e. whether the
+// workspace for this session is known. It is the gate a caller should use when it wants to
+// *start* the server: IsAvailable is about a client that already exists, so gating a start on
+// it is a circle — every path that would start the server was gated on it being started, and
+// the feature was unreachable (issue #111).
+func Initialised() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return projectRoot != ""
+}
+
 func IsAvailable() bool {
 	mu.Lock()
 	defer mu.Unlock()
