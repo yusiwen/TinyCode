@@ -29,6 +29,14 @@ FAIL_CALL = (
     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
     'data: [DONE]\n\n'
 )
+# "todo" asks the agent to write one task-list entry — the store is in-memory, so this is
+# the only way a scenario can make the panel appear (see the todo scenario).
+TODO_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_t","type":"function",'
+    '"function":{"name":"todo","arguments":"{\\"todos\\":[{\\"content\\":\\"stub-todo-item\\",\\"status\\":\\"pending\\"}]}"}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+)
 WRITE_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_w","type":"function",'
     '"function":{"name":"write_file","arguments":"{\\"path\\":\\"/tmp/stub-outside-write.txt\\",\\"content\\":\\"stub\\"}"}}]}}]}\n\n'
@@ -62,6 +70,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "write": WRITE_CALL,
                 "multi": MULTI_CALL,
                 "fail": FAIL_CALL,
+                "todo": TODO_CALL,
             }[MODE].encode()
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")
