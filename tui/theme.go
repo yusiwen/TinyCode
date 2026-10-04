@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"sort"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Theme defines a complete color scheme for the TUI.
 type Theme struct {
@@ -170,6 +174,10 @@ func ThemeNames() []string {
 	for n := range themes {
 		names = append(names, n)
 	}
+	// Sorted: a map's order is random, and the "/theme" listing printed
+	// "nord, default" about half the time — non-deterministic for a user and
+	// untestable for a literal assertion (issue #108).
+	sort.Strings(names)
 	return names
 }
 
