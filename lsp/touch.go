@@ -89,6 +89,24 @@ func IsAvailable() bool {
 	return lspAvailable && client != nil
 }
 
+// Ensure starts the session's language server if none is running yet, with the same lazy
+// start SyncFile performs and under the same lock contract. It exists for a caller that
+// needs a client but has no document to sync: without it the LSP *tools* started a
+// throwaway server per call, which the session never learned about — /diagnostics kept
+// reporting a configuration problem that did not exist, and every call paid a fresh start
+// (issue #114).
+//
+// It is a no-op once a client exists. An error means the start failed (no server
+// configured for the language, or its binary is missing).
+func Ensure(filePath string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	if client != nil {
+		return nil
+	}
+	return lazyStart(filePath)
+}
+
 // canonicalPath returns the OS-resolved absolute form of path.
 //
 // Language servers canonicalize the workspace root themselves, so sending a

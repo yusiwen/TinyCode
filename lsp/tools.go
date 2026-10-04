@@ -78,11 +78,23 @@ func ToolFactory(tt ToolType) agent.Tool {
 			if tt != ToolDocumentSymbols && (!haveLine || !haveChar) {
 				return "", fmt.Errorf("%s requires integer 'line' and 'character' arguments (0-indexed)", tt)
 			}
+			// Use the session's server when a workspace is configured, starting it
+			// if this call is the first to need one. The per-call server below
+			// never becomes the session's client, so a successful call used to
+			// leave /diagnostics reporting "LSP not available" — advice that is
+			// wrong when LSP is on — and cost a server start per call (issue
+			// #114).
+			if Initialised() {
+				if err := Ensure(absPath); err != nil {
+					return "", fmt.Errorf("start LSP: %w", err)
+				}
+			}
 			if IsAvailable() {
 				return executeViaPersistent(ctx, tt, fileURI, line, character)
 			}
 
-			// Fallback: start per-call LSP server
+			// No client and no workspace to start one from (LSP disabled, which
+			// is the default): serve this call with a server of its own.
 			lang := DetectLanguage(rootDir)
 			if lang == "" {
 				// Fallback: infer from file extension
@@ -115,8 +127,11 @@ func ToolFactory(tt ToolType) agent.Tool {
 			}
 			defer srv.Close()
 
-			// Initialize
-			if err := srv.Client.Initialize(fileURI); err != nil {
+			// Root the server at the project *directory*. gopls answers
+			// "LSP error 0: no views" when initialize names a file as the
+			// workspace, which is what made every call on a session without a
+			// configured workspace fail (issue #114).
+			if err := srv.Client.Initialize("file://" + canonicalPath(rootDir)); err != nil {
 				return "", fmt.Errorf("initialize LSP: %w", err)
 			}
 
