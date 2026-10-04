@@ -174,6 +174,12 @@ a renderer, a better diff. Add it there, cut a `tuiprobe/v*` release, then bump 
 in `go.mod`. A new local emulator, PTY wrapper or golden helper in this repository is
 the signal that this route was the right one.
 
+`exit-command` covers the documented way out that is neither Ctrl+C nor closing the
+terminal: `/exit` is two lines of code (`persistSession()`, then `tea.Quit`) and the
+scenario ends on a command rather than a key chord. Its readiness wait is what makes it
+work at all — an earlier attempt typed the command before the input row accepted keys, lost
+it, and timed out, which is the flake in #102.
+
 ## Typing waits for the input
 
 Every scenario that types waits for the input row (`wait --text "Type your request"`)
