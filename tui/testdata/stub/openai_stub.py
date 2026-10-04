@@ -64,7 +64,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         )
         del body  # ignored on purpose
         _calls["n"] += 1
-        if MODE and _calls["n"] == 1:
+        # In TUI mode the first request is the session-title call and only the second is
+        # the prompt, so "todo" answers the first two with the tool call; every other mode
+        # is only ever driven one-shot, where the first request is the prompt.
+        first_tool_call = _calls["n"] <= (2 if MODE == "todo" else 1)
+        if MODE and first_tool_call:
             payload = {
                 "tool": TOOL_CALL,
                 "write": WRITE_CALL,
