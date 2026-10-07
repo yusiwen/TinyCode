@@ -14,6 +14,14 @@
 #     config.json)" instead — wrong advice with LSP enabled and working.
 #
 # It complements lsp-diagnostics.scenario, which drives the file-read route.
+#
+# The tool-call line renders *before* the tool runs, so it is not a signal that the input is
+# accepting submits again — the TUI refuses an Enter while a run is in flight (tui/update.go).
+# With only that wait in place, the "/diagnostics" keystrokes landed during the gopls start and
+# the Enter was dropped: run #298 timed out with the command still sitting in the input box,
+# while run #297 passed on the identical tree (issue #117). Waiting for the model's final answer
+# is what makes the submit land, and the stub answers with it once the tool result goes back.
+#
 # The wipe drops the write permission the language server needs first: gopls resolves the
 # workspace through the redirected HOME, so a previous run leaves a read-only Go module cache
 # under $HOME/go/pkg/mod that `rm -rf` alone cannot remove — and then the `&&` chain stops
@@ -24,6 +32,8 @@ wait --text "Type your request" --timeout 20s
 send --text "list the symbols in main.go"
 send --key enter
 wait --text "lsp_symbols" --timeout 30s
+wait --text "stub-final-ok" --timeout 60s
+stable 200ms --timeout 10s
 send --text /diagnostics
 send --key enter
 wait --text "No LSP diagnostics." --timeout 30s

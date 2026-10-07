@@ -10,6 +10,12 @@
 # The assertion is "No LSP diagnostics." rather than a listing: this workspace has gopls with
 # nothing to report, and that string is only reachable when a client exists. The listing (the
 # third outcome) would need real diagnostics present.
+#
+# The final answer is waited for before the "/diagnostics" submit: the tool-call line renders
+# before the tool runs, and the TUI refuses an Enter while a run is in flight, so a command sent
+# on that line alone is dropped and stays in the input box (issue #117 — measured by run #298,
+# which timed out on the identical tree run #297 passed).
+#
 # The wipe drops the write permission the language server needs before removing it: gopls
 # resolves the workspace through the redirected HOME, so the previous run left a read-only
 # Go module cache under $HOME/go/pkg/mod and `rm -rf` alone could not empty the directory.
@@ -21,6 +27,8 @@ wait --text "Type your request" --timeout 20s
 send --text "read main.go"
 send --key enter
 wait --text "read_file" --timeout 20s
+wait --text "stub-final-ok" --timeout 60s
+stable 200ms --timeout 10s
 send --text /diagnostics
 send --key enter
 wait --text "No LSP diagnostics." --timeout 30s
