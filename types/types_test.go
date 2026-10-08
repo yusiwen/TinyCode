@@ -91,18 +91,27 @@ func TestChatRequestAndResponse(t *testing.T) {
 	}
 }
 
-// TestPlanWriteRestrictionContext covers the context flag that plan mode uses to
-// block writes: it must default to unrestricted and be readable and
-// overwritable.
-func TestPlanWriteRestrictionContext(t *testing.T) {
-	if PlanWriteRestricted(context.Background()) {
-		t.Error("a plain context must not be write-restricted")
+// TestSandboxPolicyContext covers the value a run carries: a plain context has
+// none, a policy is readable, and attaching another replaces it rather than
+// leaving a flag sticky for everything that shares the context afterwards.
+func TestSandboxPolicyContext(t *testing.T) {
+	if _, ok := SandboxPolicyFrom(context.Background()); ok {
+		t.Error("a plain context must not carry a policy")
 	}
-	restricted := WithPlanWriteRestriction(context.Background(), true)
-	if !PlanWriteRestricted(restricted) {
-		t.Error("a restricted context must report the restriction")
+
+	readOnly := WithSandboxPolicy(context.Background(), SandboxPolicy{
+		Mode: SandboxReadOnly, ProjectRoot: "/work", Source: "test",
+	})
+	got, ok := SandboxPolicyFrom(readOnly)
+	if !ok || got.Mode != SandboxReadOnly || got.ProjectRoot != "/work" {
+		t.Fatalf("policy = %+v (ok=%v), want the read-only policy that was attached", got, ok)
 	}
-	if PlanWriteRestricted(WithPlanWriteRestriction(restricted, false)) {
-		t.Error("the flag must be replaceable, not sticky")
+
+	wider := WithSandboxPolicy(readOnly, SandboxPolicy{Mode: SandboxWorkspaceWrite})
+	if next, _ := SandboxPolicyFrom(wider); next.Mode != SandboxWorkspaceWrite {
+		t.Error("the policy must be replaceable, not sticky")
+	}
+	if original, _ := SandboxPolicyFrom(readOnly); original.Mode != SandboxReadOnly {
+		t.Error("replacing the policy on a derived context must not change the context it came from")
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/tlog"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // AccessDenied is returned when a file access violates the sandbox policy.
@@ -229,22 +230,45 @@ func (sc *SandboxConfig) WritableRoots() []string {
 //
 // Containment is decided on the OS-resolved forms of both the root and the
 // requested path, so neither a symlink nor a "link/.." sequence can escape.
-// The roots come from WritableRoots, which is also what command execution
-// consumes, so the two cannot hold different opinions about the writable set.
+// The roots come from the policy the run carries, which is also what command
+// execution consumes, so the two cannot hold different opinions about the
+// writable set.
 func (sc *SandboxConfig) CheckPath(absPath string) error {
+	return sc.checkPath(PolicyFromConfig(sc, types.SandboxWorkspaceWrite), absPath)
+}
+
+// checkPath enforces one path against one policy.
+//
+// The policy arrives as a value: a run's mode and roots were decided when it
+// started, and this call must not re-derive them from configuration that may
+// have moved since — nor from another run's.
+func (sc *SandboxConfig) checkPath(policy types.SandboxPolicy, absPath string) error {
 	// The capability check comes first, and before the "no project root" escape:
 	// a policy that demands a kernel boundary must refuse an unconfigured
 	// sandbox too, not fall through to the unconfined path.
 	if err := checkHardBoundary(); err != nil {
 		return err
 	}
-	if sc.ProjectRoot == "" {
+	// Full access applies no boundary at all; that is what the mode means, and
+	// it has to be requested explicitly to be here.
+	if policy.Mode == types.SandboxFullAccess {
 		return nil
 	}
+	// An empty project root means no fence at all — checked before resolving,
+	// because resolving "" would produce the working directory and quietly
+	// invent a boundary nobody configured.
+	if policy.ProjectRoot == "" {
+		return nil
+	}
+	// The policy's roots are produced canonical by PolicyFor, but they are
+	// resolved again here: a hand-built policy (a library caller, a test) must
+	// not silently deny everything because it spelled a path the way the user
+	// did rather than the way the kernel sees it. This is the resolution the
+	// check always did; freezing a policy did not remove the need for it.
+	realRoot := filepath.Clean(resolveRealPath(absoluteNoClean(policy.ProjectRoot)))
 
 	rawAbs := absoluteNoClean(absPath)
 	realAbs := filepath.Clean(resolveRealPath(rawAbs))
-	realRoot := sc.projectRootResolved()
 
 	// 1) Within project root. The OS-resolved forms are authoritative: a
 	// lexical check alone would accept a link (or a link plus "..") that
@@ -260,10 +284,10 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 		// wrong: RESOLVE_BENEATH rejects absolute symlinks wherever they
 		// point, so a symlink inside the root pointing back inside the root
 		// would be reported as an escape even though it resolves here.
-		if kernelEscapeCheck(sc.ProjectRoot, realAbs) {
+		if kernelEscapeCheck(policy.ProjectRoot, realAbs) {
 			return &AccessDenied{
 				Path:    rawAbs,
-				Message: fmt.Sprintf("Path %q escapes the project root %q.", rawAbs, sc.ProjectRoot),
+				Message: fmt.Sprintf("Path %q escapes the project root %q.", rawAbs, policy.ProjectRoot),
 			}
 		}
 		return nil
@@ -280,11 +304,12 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 	// 3) The remaining writable roots (auto-allowed paths: CWD, parent dir,
 	// etc.), compared on the resolved forms for the same reason. The project
 	// root was decided above, with its kernel probe.
-	for _, root := range sc.WritableRoots() {
-		if root == realRoot {
+	for _, root := range policy.Roots {
+		realRootEntry := filepath.Clean(resolveRealPath(absoluteNoClean(root)))
+		if realRootEntry == realRoot {
 			continue
 		}
-		if beneathRoot(root, realAbs) {
+		if beneathRoot(realRootEntry, realAbs) {
 			// Auto-cache so future checks are instant
 			sc.AllowAlways(rawAbs)
 			return nil
@@ -293,7 +318,7 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 
 	return &AccessDenied{
 		Path:    rawAbs,
-		Message: fmt.Sprintf("File %q is outside the project root %q.", rawAbs, sc.ProjectRoot),
+		Message: fmt.Sprintf("File %q is outside the project root %q.", rawAbs, policy.ProjectRoot),
 	}
 }
 
@@ -578,7 +603,10 @@ func (sc *SandboxConfig) ResolvePath(path string) string {
 // user-facing denial message when access is refused, and an error when the
 // request was cancelled or could not be evaluated. On success denied is empty.
 func CheckPathAccess(ctx context.Context, path string) (safePath, denied string, err error) {
-	if checkErr := DefaultSandbox.CheckPath(path); checkErr != nil {
+	// The run's frozen policy decides this call. Nothing here consults the live
+	// configuration for a mode or a root, so a concurrent run with a different
+	// policy cannot change what this one is allowed to touch.
+	if checkErr := DefaultSandbox.checkPath(runPolicy(ctx), path); checkErr != nil {
 		ad, ok := checkErr.(*AccessDenied)
 		if !ok {
 			return "", "", fmt.Errorf("path check: %w", checkErr)

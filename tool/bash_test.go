@@ -12,12 +12,12 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
-// TestBashPlanModeUsesContext verifies the plan-mode restriction travels on the
-// context rather than in package state.
+// TestBashPlanModeUsesContext verifies the mode travels on the run's policy
+// rather than in package state.
 func TestBashPlanModeUsesContext(t *testing.T) {
 	bash := Bash()
 
-	planCtx := types.WithPlanWriteRestriction(context.Background(), true)
+	planCtx := types.WithSandboxPolicy(context.Background(), types.SandboxPolicy{Mode: types.SandboxReadOnly})
 	out, err := bash.Execute(planCtx, map[string]any{"command": "mkdir /tmp/tinycode-planmode-should-not-exist"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -30,8 +30,8 @@ func TestBashPlanModeUsesContext(t *testing.T) {
 		t.Error("plan mode allowed a mkdir to run")
 	}
 
-	// Without the plan marker the same command is not plan-blocked.
-	buildCtx := types.WithPlanWriteRestriction(context.Background(), false)
+	// Under a workspace-write policy the same command is not plan-blocked.
+	buildCtx := types.WithSandboxPolicy(context.Background(), types.SandboxPolicy{Mode: types.SandboxWorkspaceWrite})
 	out, err = bash.Execute(buildCtx, map[string]any{"command": "echo build-ok"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

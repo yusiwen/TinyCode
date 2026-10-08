@@ -61,7 +61,7 @@ func TestBashInvocationConfinedMapsModeAndRoots(t *testing.T) {
 	defer func() { DefaultSandbox = saved }()
 
 	t.Run("plan mode", func(t *testing.T) {
-		ctx := types.WithPlanWriteRestriction(context.Background(), true)
+		ctx := types.WithSandboxPolicy(context.Background(), PolicyFor(types.SandboxReadOnly))
 		argv, err := bashInvocation(ctx, "echo hi")
 		if err != nil {
 			t.Fatal(err)

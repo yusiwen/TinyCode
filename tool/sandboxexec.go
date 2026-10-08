@@ -169,12 +169,20 @@ func bashInvocation(ctx context.Context, cmdStr string) ([]string, error) {
 		return nil, fmt.Errorf("locate the confinement launcher: %w", err)
 	}
 
-	mode := "workspace-write"
-	var roots []string
-	if types.PlanWriteRestricted(ctx) {
-		mode = "read-only"
-	} else {
-		roots = DefaultSandbox.WritableRoots()
+	// The run's policy decides the mode and the roots; this function does not
+	// derive either from configuration, so a concurrent run cannot change what
+	// this command is allowed to write.
+	policy := runPolicy(ctx)
+	switch policy.Mode {
+	case types.SandboxReadOnly:
+		// A read-only run grants no path: the boundary allows only the sinks a
+		// command needs, which the launcher adds for every mode.
+		return SandboxLauncherInvocation(self, "read-only", nil, bash), nil
+	case types.SandboxFullAccess:
+		// No boundary was requested for this run; the launcher is not used at
+		// all rather than being run with everything granted.
+		return bash, nil
+	default:
+		return SandboxLauncherInvocation(self, "workspace-write", policy.Roots, bash), nil
 	}
-	return SandboxLauncherInvocation(self, mode, roots, bash), nil
 }
