@@ -206,19 +206,29 @@ func Bash() Tool {
 
 			// Plan mode: block write operations. The run's policy says which mode
 			// this is; the guard does not infer it from configuration.
-			if runPolicy(ctx).Mode == types.SandboxReadOnly {
+			if policy := runPolicy(ctx); policy.Mode == types.SandboxReadOnly {
 				if err := checkPlanModeWrite(cmdStr); err != nil {
 					tlog.Warn("shell.bash", "plan_mode_blocked", "command", cmdStr, "reason", err.Error())
-					return fmt.Sprintf("\n[PLAN MODE BLOCKED] %s\n\nPlan mode does not allow file modifications. "+
-						"Only read-only commands (ls, find, grep, cat, echo without redirect, etc.) are permitted.\n"+
-						"Switch to build mode to execute this command.", err), nil
+					return types.Refusal{
+						Subject: fmt.Sprintf("command %q", cmdStr),
+						Reason:  "would modify files, which plan mode does not allow",
+						Mode:    policy.Mode,
+						Ask:     types.AskMode,
+						Detail:  []string{fmt.Sprintf("rule: %v", err)},
+					}.Message(), nil
 				}
 			}
 
 			// Layer 1: Command blocklist check
 			if err := DefaultSandbox.CheckCommand(cmdStr); err != nil {
 				tlog.Warn("shell.bash", "blocked", "command", cmdStr, "reason", err.Error())
-				return fmt.Sprintf("\n[SECURITY BLOCKED] %s\n\nThis command has been blocked by the security policy.\nTell the user this command was blocked and ask what to do instead.", err), nil
+				return types.Refusal{
+					Subject: fmt.Sprintf("command %q", cmdStr),
+					Reason:  "blocked by the configured command policy",
+					Mode:    runPolicy(ctx).Mode,
+					Ask:     types.AskPolicy,
+					Detail:  []string{fmt.Sprintf("rule: %v", err)},
+				}.Message(), nil
 			}
 
 			tlog.Info("shell.bash", "exec", "command", cmdStr)
@@ -318,12 +328,13 @@ func Bash() Tool {
 			if ConfineCommands() {
 				if code, ok := exitCodeOf(err); ok && SandboxLauncherFailed(code, stderr.String()) {
 					tlog.Warn("shell.bash", "sandbox_launcher_failed", "exit", code)
-					sb.WriteString("\n[SANDBOX] the command did not run: the file boundary could not be applied on this host.\n")
-					for _, line := range SandboxLauncherDiagnostics(stderr.String()) {
-						sb.WriteString("  " + line + "\n")
-					}
-					sb.WriteString("Do not retry: a kernel boundary is a capability of the machine, not a permission that can be granted.\n")
-					return strings.TrimSpace(sb.String()), nil
+					return types.Refusal{
+						Subject: fmt.Sprintf("command %q", cmdStr),
+						Reason:  "the file boundary could not be applied on this host, so the command did not run",
+						Mode:    runPolicy(ctx).Mode,
+						Ask:     types.AskCapability,
+						Detail:  SandboxLauncherDiagnostics(stderr.String()),
+					}.Message(), nil
 				}
 			}
 

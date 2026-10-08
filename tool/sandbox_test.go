@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusiwen/tinycode/types"
 )
 
 // ── Pattern D Tests ──
@@ -685,8 +687,13 @@ func TestNonInteractiveDenialReturnsImmediately(t *testing.T) {
 	if denied == "" {
 		t.Fatal("expected a refusal message")
 	}
-	if !strings.Contains(denied, "cannot ask for permission") {
-		t.Errorf("refusal should explain the non-interactive mode, got %q", denied)
+	// The refusal says which recovery is possible through the shared ask field,
+	// not through a prefix of its own: no answerer means "unavailable", with the
+	// advice to work inside the writable roots instead.
+	for _, want := range []string{types.RefusalMarker, "ask: " + types.AskUnavailable, "do not retry this path"} {
+		if !strings.Contains(denied, want) {
+			t.Errorf("refusal is missing %q, got %q", want, denied)
+		}
 	}
 
 	// The interactive path must still queue a request (existing behaviour).

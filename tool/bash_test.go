@@ -22,8 +22,12 @@ func TestBashPlanModeUsesContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out, "PLAN MODE BLOCKED") {
-		t.Errorf("expected PLAN MODE BLOCKED, got %q", out)
+	// The refusal names the mode it happened under and the recovery that works
+	// — switching mode — rather than a prefix of its own.
+	for _, want := range []string{types.RefusalMarker, "mode: " + string(types.SandboxReadOnly), "ask: " + types.AskMode, "/build"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("plan-mode refusal is missing %q, got %q", want, out)
+		}
 	}
 	if _, statErr := os.Stat("/tmp/tinycode-planmode-should-not-exist"); statErr == nil {
 		os.Remove("/tmp/tinycode-planmode-should-not-exist")
@@ -36,7 +40,7 @@ func TestBashPlanModeUsesContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.Contains(out, "PLAN MODE BLOCKED") {
+	if strings.Contains(out, types.RefusalMarker) {
 		t.Errorf("build mode was blocked: %q", out)
 	}
 }

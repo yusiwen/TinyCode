@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,30 +19,37 @@ import (
 type AccessDenied struct {
 	Path    string
 	Message string
+	// Mode is the run's mode when the path was refused. It is carried so the
+	// refusal can say which boundary the reader ran into, instead of leaving
+	// that to be inferred from the wording.
+	Mode types.SandboxMode
 }
 
 func (e *AccessDenied) Error() string {
 	return e.Message
 }
 
-// DenyHint returns a prompt message for display.
+// DenyHint is the refusal shown when a person can be asked to allow the path.
 func (e *AccessDenied) DenyHint() string {
-	return fmt.Sprintf(`[SECURITY] %s
-
-To allow access, tell me one of:
-  - "allow %s" — permit this one time
-  - "always %s" — permit for this entire session
-  - "deny %s" — block this access`, e.Message, e.Path, e.Path, e.Path)
+	return types.Refusal{
+		Subject: fmt.Sprintf("path %q", e.Path),
+		Reason:  e.Message,
+		Mode:    e.Mode,
+		Ask:     types.AskInteractive,
+		Detail:  []string{fmt.Sprintf("the narrowest answer that works is: allow %q once", e.Path)},
+	}.Message()
 }
 
 // NonInteractiveHint is the refusal returned when no dialog can be shown. It
-// tells the model to stop retrying and hand the decision back to the user.
+// keeps the "do not retry this path" meaning of the old wording, expressed
+// through the same marker and the same field as every other refusal.
 func (e *AccessDenied) NonInteractiveHint() string {
-	return fmt.Sprintf(`[SECURITY] %s
-
-This run cannot ask for permission. Do not retry this path. Either work inside
-the project root, or ask the user to change the sandbox configuration
-(project_root / allowed_paths) or run interactively.`, e.Message)
+	return types.Refusal{
+		Subject: fmt.Sprintf("path %q", e.Path),
+		Reason:  e.Message,
+		Mode:    e.Mode,
+		Ask:     types.AskUnavailable,
+	}.Message()
 }
 
 // ── Pattern D: Permission Caching & Auto-approve ──
@@ -288,6 +296,7 @@ func (sc *SandboxConfig) checkPath(policy types.SandboxPolicy, absPath string) e
 			return &AccessDenied{
 				Path:    rawAbs,
 				Message: fmt.Sprintf("Path %q escapes the project root %q.", rawAbs, policy.ProjectRoot),
+				Mode:    policy.Mode,
 			}
 		}
 		return nil
@@ -319,6 +328,7 @@ func (sc *SandboxConfig) checkPath(policy types.SandboxPolicy, absPath string) e
 	return &AccessDenied{
 		Path:    rawAbs,
 		Message: fmt.Sprintf("File %q is outside the project root %q.", rawAbs, policy.ProjectRoot),
+		Mode:    policy.Mode,
 	}
 }
 
@@ -607,6 +617,16 @@ func CheckPathAccess(ctx context.Context, path string) (safePath, denied string,
 	// configuration for a mode or a root, so a concurrent run with a different
 	// policy cannot change what this one is allowed to touch.
 	if checkErr := DefaultSandbox.checkPath(runPolicy(ctx), path); checkErr != nil {
+		// A host without the boundary the policy requires is a refusal, not an
+		// error: it goes through the same marker and says what cannot be done.
+		// An error would leave the model guessing whether a retry could help.
+		if errors.Is(checkErr, ErrHardBoundaryUnavailable) {
+			return "", types.Refusal{
+				Subject: fmt.Sprintf("path %q", path),
+				Reason:  checkErr.Error(),
+				Ask:     types.AskCapability,
+			}.Message(), nil
+		}
 		ad, ok := checkErr.(*AccessDenied)
 		if !ok {
 			return "", "", fmt.Errorf("path check: %w", checkErr)
