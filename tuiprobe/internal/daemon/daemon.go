@@ -87,7 +87,9 @@ type Response struct {
 	ExitCode  int  `json:"exitCode,omitempty"`
 	HasExited bool `json:"hasExited,omitempty"`
 	// SessionCnt has no omitempty: an empty daemon is a count of zero, not a
-	// missing field, and a caller should not have to guess which it is.
+	// missing field, and a caller should not have to guess which it is. Every
+	// response carries the live count — handle fills it after dispatch — because a
+	// zero in an `open` answer would deny the session it just started (issue #146).
 	SessionCnt int `json:"sessionCount"`
 
 	Sessions []SessionInfo `json:"sessions,omitempty"`
@@ -321,6 +323,12 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	resp := s.dispatch(req)
+	// Every answer carries the live count, not only `sessions`: the field has no
+	// omitempty precisely so a caller can read it everywhere, and a zero in an
+	// `open` response would say the opposite of what just happened (issue #146).
+	s.mu.Lock()
+	resp.SessionCnt = len(s.sessions)
+	s.mu.Unlock()
 	if err := enc.Encode(resp); err != nil {
 		s.log("daemon: write response: %v", err)
 	}
@@ -381,7 +389,8 @@ func (s *Server) dispatch(req Request) Response {
 func (s *Server) list() Response {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	resp := Response{OK: true, SessionCnt: len(s.sessions)}
+	// SessionCnt is filled for every response by handle, so it is not set here.
+	resp := Response{OK: true}
 	for name, e := range s.sessions {
 		resp.Sessions = append(resp.Sessions, SessionInfo{
 			Name:    name,
