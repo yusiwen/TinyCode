@@ -1,0 +1,32 @@
+# The command boundary, asserted on the filesystem rather than on what a command printed.
+# Gated by SANDBOX_TEST because it needs a kernel mechanism for subprocesses (Landlock on
+# Linux); `make test-tui-confine` probes with the real launcher and skips loudly where there
+# is none.
+#
+# The stub (asked for "confine" mode) makes one bash call that writes one file inside the
+# working directory and one at a fixed path outside it. The wrapper shell checks both after
+# the program exits and prints the verdict, so the assertion is about what ended up on disk.
+#
+# It is selective on purpose: if the boundary were unavailable and the command were refused
+# wholesale, *neither* file would exist and the "inside" half would fail — a fail-closed
+# refusal can therefore never read as a working boundary.
+#
+# The verdict comes from that shell rather than from the tool result because the TUI renders
+# tool calls, not tool result text, so a refusal marker is not assertable on screen. The
+# outside path is deliberately not under the temp area: the command's writable roots are the
+# project and its auto-allowed paths, and nothing else.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-confine --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'chmod -R u+w /tmp/tinyscen-home-confine 2>/dev/null; rm -rf /tmp/tinyscen-home-confine; mkdir -p /tmp/tinyscen-home-confine/.tinycode /tmp/tinyscen-home-confine/sessions && printf %s "{\"sandbox\":{\"confine_commands\":true}}" > /tmp/tinyscen-home-confine/.tinycode/config.json && rm -f .stub-confine-inside.txt /tmp/tinycode-stub-confine-outside.txt && python3 tui/testdata/stub/openai_stub.py 18513 confine & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18513/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-confine/sessions --log-level=debug; status=$?; kill %1 2>/dev/null; if [ -e .stub-confine-inside.txt ] && [ ! -e /tmp/tinycode-stub-confine-outside.txt ]; then echo "CONFINE inside=yes outside=no"; else echo "CONFINE-BROKEN inside=$([ -e .stub-confine-inside.txt ] && echo yes || echo no) outside=$([ -e /tmp/tinycode-stub-confine-outside.txt ] && echo yes || echo no)"; fi; rm -f .stub-confine-inside.txt /tmp/tinycode-stub-confine-outside.txt; exit $status'
+wait --text "Get started" --timeout 20s
+# Type only once the input row exists: the welcome heading appears first, and keys sent
+# before the input is ready can be lost (issue #102).
+wait --text "Type your request" --timeout 20s
+send --text "write the two files"
+send --key enter
+wait --text "stub-final-ok" --timeout 40s
+send --text /exit
+send --key enter
+# The verdict is printed by the wrapper shell after the program exits, so it has to be waited
+# for before waiting for the shell itself to end.
+wait --text "CONFINE inside=yes outside=no" --timeout 30s
+wait-exit 30s
+expect-exit 0
