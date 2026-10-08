@@ -6,10 +6,13 @@
 # failure #96 was about; and a per-scenario home that is not wiped would fail on its
 # *second* run, because the rule would already be stored.
 #
-# What this pins: the option is selectable by its key, the tool then runs, and the loop
-# reaches the model's final text. What it does NOT pin: what exactly got stored, and for
-# how long — that is invisible on this screen and belongs to the tool's own tests.
-open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-allow-always --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-allow-always && mkdir -p /tmp/tinyscen-home-allow-always/sessions && python3 tui/testdata/stub/openai_stub.py 18492 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+# What this pins now goes past the screen: the label names the file the choice writes, and
+# after the program exits the wrapper shell reads that file and prints what it found. The
+# surface has to say where a permanent permission goes (issue #124); before, the option
+# read "Always allow" and the consequence was only visible to someone who later opened the
+# config by hand. What this still does NOT pin: that the next session honours the grant —
+# a scenario cannot yet tell one process's screen from the next one's (#126).
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-allow-always --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-allow-always && mkdir -p /tmp/tinyscen-home-allow-always/sessions && python3 tui/testdata/stub/openai_stub.py 18492 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; status=$?; kill %1 2>/dev/null; cfg=/tmp/tinyscen-home-allow-always/.tinycode/config.json; if grep -q "allowed_path_grants" "$cfg" && grep -q "stub-outside-write.txt" "$cfg" && grep -q "\"project\"" "$cfg"; then echo "GRANT recorded=yes project=yes"; else echo "GRANT-BROKEN $(tr -d "\n" < "$cfg" 2>/dev/null)"; fi; exit $status'
 wait --text "Get started" --timeout 20s
 # Type only once the input row exists: the welcome heading appears first, and keys sent
 # before the input is ready can be lost (issue #102).
@@ -21,6 +24,9 @@ send --text "write a file outside the workspace"
 send --key enter
 wait --text "🔒 Write to /tmp/stub-outside-write.txt?" --timeout 20s
 wait --text "Allow once" --timeout 10s
+# The permanent answer names the file it writes, so the choice is made with the
+# consequence in sight.
+wait --text "saves to /tmp/tinyscen-home-allow-always/.tinycode/config.json" --timeout 10s
 screenshot /tmp/tinyscen-shots/permission-allow-always-120x30.png --scale 2
 send --text 3
 wait --text "stub-final-ok" --timeout 30s
@@ -36,6 +42,9 @@ stable 200ms --timeout 15s
 send --key ctrl+c
 wait --text "Press Ctrl\+C again to quit" --timeout 15s
 send --key ctrl+c
+# The wrapper shell prints this after the program exits, so it has to be waited for before
+# waiting for the shell itself to end.
+wait --text "GRANT recorded=yes project=yes" --timeout 20s
 # 45s, not 15s: this flow waits for a second model round-trip (the tool result goes back
 # and the stub answers again) before the program leaves. That is real work, unlike the
 # local command whose 10s budget must not be widened — a CI runner under load failed the

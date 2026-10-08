@@ -4,9 +4,28 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
 )
+
+// The permission dialog's answers. "Always allow" is the only one that outlives
+// the session, so its label names the file it writes: a person choosing it is
+// changing a file they will otherwise never see, and the choice is only
+// deliberate if that is visible when it is made.
+const (
+	allowOnceLabel    = "Allow once"
+	allowSessionLabel = "Allow session"
+	alwaysAllowPrefix = "Always allow"
+)
+
+func alwaysAllowLabel() string {
+	path, err := config.UserConfigPath()
+	if err != nil {
+		return alwaysAllowPrefix + " (saves to your config)"
+	}
+	return alwaysAllowPrefix + " (saves to " + path + ")"
+}
 
 // sandboxReport renders what actually confines file operations in this process,
 // for the /sandbox command.

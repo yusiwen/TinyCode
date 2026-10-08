@@ -381,21 +381,21 @@ func (m *TuiModel) checkPermissionDialog() bool {
 	reqID := tool.PendingPermissionID()
 	reqPath := path
 	m.showDialogWithCancel(title, []string{
-		"Allow once",
-		"Allow session",
-		"Always allow",
+		allowOnceLabel,
+		allowSessionLabel,
+		alwaysAllowLabel(),
 		"Deny",
 	}, func(sel string) {
 		var allowed bool
 		var mode string
-		switch sel {
-		case "Allow once":
+		switch {
+		case sel == allowOnceLabel:
 			allowed = true
 			mode = "once"
-		case "Allow session":
+		case sel == allowSessionLabel:
 			allowed = true
 			mode = "session"
-		case "Always allow":
+		case strings.HasPrefix(sel, alwaysAllowPrefix):
 			allowed = true
 			mode = "always"
 		default:
@@ -422,9 +422,13 @@ func (m *TuiModel) checkPermissionDialog() bool {
 		}
 		if allowed && mode == "always" && reqPath != "" {
 			// Persist to the user's global config on "Always allow". Only the
-			// sandbox.allowed_paths key is touched, so project-local (untrusted)
+			// sandbox grant keys are touched, so project-local (untrusted)
 			// values and today's defaults are never written to the user file.
-			if err := config.AddAllowedPath(reqPath); err != nil {
+			//
+			// The project goes in with the grant, so a later reader can tell
+			// where a path was allowed from; the label the person chose already
+			// named the file this writes.
+			if err := config.AddAllowedPathGrant(reqPath, tool.DefaultSandbox.ProjectRoot); err != nil {
 				tlog.Warn("tui.permission", "save_config_error", "err", err)
 			}
 		}
