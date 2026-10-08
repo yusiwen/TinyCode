@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -81,6 +82,21 @@ func runConfined(spec launcherSpec) int {
 
 // errLandlockUnavailable reports a host without a usable Landlock.
 var errLandlockUnavailable = errors.New("this kernel has no usable Landlock")
+
+var (
+	commandConfinementOnce sync.Once
+	commandConfinementOK   bool
+)
+
+// commandConfinementAvailable answers the launcher-capability question once: the
+// ABI probe is a syscall, and the answer cannot change during a run.
+func commandConfinementAvailable() bool {
+	commandConfinementOnce.Do(func() {
+		_, err := landlockABI()
+		commandConfinementOK = err == nil
+	})
+	return commandConfinementOK
+}
 
 // applyLandlock restricts the calling process: write-class access is denied
 // everywhere except /dev/null and the given roots.

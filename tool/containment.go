@@ -96,6 +96,27 @@ func SetRequireHardBoundary(required bool) { requireHardBoundary.Store(required)
 // HardBoundaryRequired reports whether that policy is on.
 func HardBoundaryRequired() bool { return requireHardBoundary.Load() }
 
+var confineCommands atomic.Bool
+
+// SetConfineCommands turns command confinement on or off: when on, every shell
+// command runs under the kernel file boundary instead of only under the string
+// checks.
+//
+// It is off by default and is a deliberate choice, not a default: a confined
+// command can write only under the session's writable roots, so toolchains that
+// write their own caches (GOCACHE, ~/.npm, …) fail unless those roots are
+// granted. Flipping it on changes what every command in the session can do.
+func SetConfineCommands(confined bool) { confineCommands.Store(confined) }
+
+// ConfineCommands reports whether shell commands run under the boundary.
+func ConfineCommands() bool { return confineCommands.Load() }
+
+// CommandConfinementAvailable reports whether this host can confine a
+// subprocess at all. It is a different question from ContainmentInfo: a
+// platform can enforce the agent's own opens (the macOS component walk) and
+// still have no way to confine a command it spawns.
+func CommandConfinementAvailable() bool { return commandConfinementAvailable() }
+
 // ErrHardBoundaryUnavailable is returned when the policy demands a kernel
 // boundary and the host has none.
 //

@@ -31,6 +31,18 @@ func sandboxReport() string {
 	b.WriteString("Sandbox\n")
 	fmt.Fprintf(&b, "  containment: %s\n", info.String())
 	fmt.Fprintf(&b, "  hard boundary required: %s\n", required)
+
+	// Command confinement is its own capability and its own switch: a host can
+	// enforce the agent's opens and still have no way to confine a subprocess.
+	switch {
+	case !tool.ConfineCommands():
+		b.WriteString("  command confinement: off\n")
+	case tool.CommandConfinementAvailable():
+		b.WriteString("  command confinement: on (available)\n")
+	default:
+		b.WriteString("  command confinement: on, but UNAVAILABLE on this host — commands are refused\n")
+	}
+
 	fmt.Fprintf(&b, "  project root: %s\n", root)
 
 	roots := tool.DefaultSandbox.WritableRoots()

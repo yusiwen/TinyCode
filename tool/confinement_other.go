@@ -12,3 +12,7 @@ package tool
 func runConfined(_ launcherSpec) int {
 	return launcherFail("no kernel file-boundary mechanism for subprocesses on this platform")
 }
+
+// commandConfinementAvailable is false here for the same reason: there is no
+// mechanism to apply.
+func commandConfinementAvailable() bool { return false }

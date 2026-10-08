@@ -504,12 +504,26 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 	if cfg.Sandbox != nil && cfg.Sandbox.RequireHardBoundary {
 		tool.SetRequireHardBoundary(true)
 	}
+	if cfg.Sandbox != nil && cfg.Sandbox.ConfineCommands {
+		tool.SetConfineCommands(true)
+	}
 	info := tool.ContainmentInfo()
 	tlog.Info("sandbox", "containment", info.String())
 	if tool.HardBoundaryRequired() && info.Level != tool.ContainmentKernel {
 		tlog.Warn("sandbox", "hard_boundary_unavailable",
 			"containment", info.String(),
 			"effect", "fenced file operations will be refused")
+	}
+	if tool.ConfineCommands() {
+		// Confining a subprocess is a different capability from confining our
+		// own opens, so it gets its own verdict: a host can enforce one and not
+		// the other, and the caller needs to know which one it configured.
+		available := tool.CommandConfinementAvailable()
+		tlog.Info("sandbox", "command_confinement", "requested", true, "available", available)
+		if !available {
+			tlog.Warn("sandbox", "command_confinement_unavailable",
+				"effect", "every shell command will be refused rather than run unconfined")
+		}
 	}
 }
 

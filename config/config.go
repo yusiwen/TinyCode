@@ -80,6 +80,13 @@ type SandboxConfig struct {
 	// with no kernel mechanism every fenced operation is refused instead of
 	// being silently allowed.
 	RequireHardBoundary bool `json:"require_hard_boundary,omitempty"`
+
+	// ConfineCommands runs shell commands under the kernel file boundary
+	// instead of only under the string checks. Off by default, and worth
+	// turning on only with the consequence understood: a confined command can
+	// write only under the session's writable roots, so any toolchain that
+	// writes its own cache outside them will fail.
+	ConfineCommands bool `json:"confine_commands,omitempty"`
 }
 
 // MCPServerConfig defines a single MCP server to connect to.
@@ -251,6 +258,9 @@ func merge(dst, src Config) Config {
 		// being absent.
 		if src.Sandbox.RequireHardBoundary {
 			dst.Sandbox.RequireHardBoundary = true
+		}
+		if src.Sandbox.ConfineCommands {
+			dst.Sandbox.ConfineCommands = true
 		}
 	}
 
