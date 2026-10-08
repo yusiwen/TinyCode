@@ -35,6 +35,13 @@ func init() {
 }
 
 func main() {
+	// The confinement launcher is this same binary, re-exec'd. It is
+	// intercepted before anything else — before cobra and before the dotenv
+	// init above would matter — because its whole job is to apply a kernel
+	// boundary and then replace the process with the command.
+	if len(os.Args) > 1 && os.Args[1] == tool.SandboxLauncherCommand {
+		os.Exit(tool.RunSandboxLauncher(os.Args[2:]))
+	}
 	if err := newRootCmd().Execute(); err != nil {
 		log.Fatal(err)
 	}
