@@ -57,6 +57,12 @@ func (c *sessionCommand) call(req daemon.Request) (daemon.Response, int) {
 		req.Name = c.name
 	}
 	client := &daemon.Client{Socket: daemon.SocketFromEnvOrFlag(c.socket)}
+	// A command that had to start a daemon hands it back once the daemon holds
+	// nothing: `open` keeps it — a session is there — while a lookup that found
+	// no session, or a one-off against a stale socket, does not leave a process
+	// behind. A daemon another client started is never touched: Started is only
+	// set for one this command launched.
+	defer client.Release()
 	resp, err := client.Call(req)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "tuiprobe: %v\n", err)
@@ -335,7 +341,7 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.StringVar(&socket, "socket", "", "socket to listen on")
-	fs.DurationVar(&ttl, "ttl", daemon.DefaultTTL, "exit after this long with no sessions and no traffic")
+	fs.DurationVar(&ttl, "ttl", daemon.DefaultTTL, "close the sessions and exit after this long with no command")
 	if err := fs.Parse(args); err != nil {
 		return daemon.CodeFailure
 	}

@@ -3,8 +3,14 @@
 // An agent, or a person, drives a TUI one command at a time: open it, look at the
 // screen, press a key, look again. Each of those is a separate process, so the
 // session has to live somewhere else — here, in a small daemon reached over a
-// unix socket. The first command starts it; it exits on its own once it has been
-// idle for a while, so nothing lingers.
+// unix socket.
+//
+// The daemon is shared and session-scoped, not forever: the first command that
+// needs it starts it, and it ends when the client that started it is done with it
+// and its sessions are closed, or after a whole TTL with no command at all. That
+// second deadline is what keeps an abandoned daemon from holding a program under
+// test — and the children that program spawned — alive for days on a machine
+// nobody is watching.
 package daemon
 
 import (
@@ -31,6 +37,11 @@ const (
 	CodeTimeout = 3
 	CodeNoSuch  = 4 // no such session
 )
+
+// CmdRelease is the request a client that started a daemon sends when it is done
+// with it: the daemon stops once it holds no session, and stays if another client
+// has attached one in the meantime.
+const CmdRelease = "release"
 
 // Request is one command sent to the daemon. Every field is optional except Cmd.
 type Request struct {
@@ -92,7 +103,13 @@ type SessionInfo struct {
 	Created string `json:"created"`
 }
 
-// DefaultTTL is how long the daemon stays alive with no sessions and no traffic.
+// DefaultTTL is how long a daemon may go without a single command before it
+// closes whatever it still holds and exits.
+//
+// It is the second half of the "nothing lingers" promise. A daemon that holds no
+// session ends with the request that emptied it; a daemon that still holds one is
+// what an abandoned client leaves behind, and without this deadline it would keep
+// that program under test (and its child processes) alive indefinitely.
 var DefaultTTL = 10 * time.Minute
 
 // DefaultSocket is where the daemon listens unless told otherwise.
@@ -118,6 +135,15 @@ type Server struct {
 	sessions map[string]*entry
 	lastSeen time.Time
 	stopped  bool
+	// stopAsked records an explicit `stop` request, which ends the daemon even
+	// while it still holds sessions.
+	stopAsked bool
+	// inFlight counts the requests being served right now, so a request that
+	// finds the daemon drained never retires it out from under another request
+	// that is still starting the session it is about to add.
+	inFlight int
+
+	ln net.Listener // set by Serve; closed by retire
 }
 
 type entry struct {
@@ -161,13 +187,16 @@ func (s *Server) Listen() (net.Listener, error) {
 	return net.Listen("unix", s.socket)
 }
 
-// Serve accepts connections until the daemon goes idle or Stop is called.
+// Serve accepts connections until the daemon has nothing left to hold.
 //
-// It returns nil on an idle exit and the listener's error otherwise; the idle
-// eviction is what keeps a session-scoped tool from leaving a process behind on
-// a machine nobody is looking at.
+// It returns nil for every deliberate exit — drained, idle, or an explicit stop —
+// and the listener's error otherwise, so the process that launched this one can
+// tell "done" from "broken".
 func (s *Server) Serve(ln net.Listener) error {
-	go s.reapIdle(ln)
+	s.mu.Lock()
+	s.ln = ln
+	s.mu.Unlock()
+	go s.reapIdle()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -200,8 +229,46 @@ func (s *Server) Stop() {
 	_ = os.Remove(s.socket)
 }
 
-// reapIdle stops the daemon once it has been unused for the whole TTL.
-func (s *Server) reapIdle(ln net.Listener) {
+// retire is the single exit door: close what the daemon holds, drop the socket
+// and stop accepting, so every reason to stop — the last session closed, no
+// command for the whole TTL, an explicit request — ends the process the same way,
+// with the PTY children signalled before the socket disappears.
+func (s *Server) retire() {
+	s.Stop()
+	s.mu.Lock()
+	ln := s.ln
+	s.mu.Unlock()
+	if ln != nil {
+		_ = ln.Close()
+	}
+}
+
+// maybeRetire ends a daemon that a request has left with nothing to hold.
+//
+// It runs after the response is written, so the caller always gets its answer,
+// and only while it is the sole request in flight: a concurrent `open` is about
+// to add the session it is still starting, and retiring underneath it would
+// orphan the program it just spawned — the very failure this file exists to
+// prevent.
+func (s *Server) maybeRetire(release bool) {
+	s.mu.Lock()
+	last := s.inFlight <= 1
+	decided := last && (s.stopAsked || (release && len(s.sessions) == 0))
+	s.mu.Unlock()
+	if decided {
+		s.retire()
+	}
+}
+
+// reapIdle closes the daemon — sessions included — once no command has arrived
+// for the whole TTL.
+//
+// The session count deliberately plays no part. A daemon holding a session whose
+// client is gone is exactly the case this deadline exists for: without it, the
+// daemon stays alive for as long as the program under test runs, which is what
+// left two orphaned daemons and their TUI children burning CPU for days on this
+// machine.
+func (s *Server) reapIdle() {
 	interval := s.ttl / 10
 	if interval > time.Minute {
 		interval = time.Minute
@@ -212,11 +279,15 @@ func (s *Server) reapIdle(ln net.Listener) {
 	for {
 		time.Sleep(interval)
 		s.mu.Lock()
-		idle := len(s.sessions) == 0 && time.Since(s.lastSeen) > s.ttl
+		idle := s.inFlight == 0 && time.Since(s.lastSeen) > s.ttl
+		stopped := s.stopped
 		s.mu.Unlock()
+		if stopped {
+			return
+		}
 		if idle {
-			s.Stop()
-			_ = ln.Close()
+			s.log("daemon: no command for %s; closing %s", s.ttl, s.socket)
+			s.retire()
 			return
 		}
 	}
@@ -229,20 +300,33 @@ func (s *Server) handle(conn net.Conn) {
 	dec := json.NewDecoder(bufio.NewReader(conn))
 	enc := json.NewEncoder(conn)
 
+	// The request is counted for its whole life, and the idle clock is restarted
+	// when it finishes rather than when it arrives: a `wait` that took longer than
+	// the TTL must not hand the reaper a daemon that looks abandoned the moment it
+	// answers.
+	s.mu.Lock()
+	s.inFlight++
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.inFlight--
+		s.lastSeen = time.Now()
+		s.mu.Unlock()
+	}()
+
 	var req Request
 	if err := dec.Decode(&req); err != nil {
 		_ = enc.Encode(Response{OK: false, Code: CodeFailure, Error: fmt.Sprintf("daemon: read request: %v", err)})
 		return
 	}
 
-	s.mu.Lock()
-	s.lastSeen = time.Now()
-	s.mu.Unlock()
-
 	resp := s.dispatch(req)
 	if err := enc.Encode(resp); err != nil {
 		s.log("daemon: write response: %v", err)
 	}
+	// After the answer is on the wire: a request that leaves the daemon with
+	// nothing to hold may take it with it.
+	s.maybeRetire(req.Cmd == CmdRelease)
 }
 
 func (s *Server) dispatch(req Request) Response {
@@ -254,7 +338,15 @@ func (s *Server) dispatch(req Request) Response {
 	case "open":
 		return s.open(req)
 	case "stop":
-		go s.Stop()
+		// Answered first, then acted on: handle retires the daemon once this
+		// response is written, so the caller learns it was heard.
+		s.mu.Lock()
+		s.stopAsked = true
+		s.mu.Unlock()
+		return Response{OK: true}
+	case CmdRelease:
+		// The check happens in handle, after this answer is written: retiring
+		// here would close the socket before the caller could read it.
 		return Response{OK: true}
 	}
 
@@ -488,10 +580,27 @@ type Client struct {
 	// StartDaemon is how a missing daemon is launched; tests replace it with a
 	// no-op and run a server in-process.
 	StartDaemon func(socket string) error
+	// Started reports whether this client had to launch the daemon. Only the
+	// client that started one may release it: another client's sessions are not
+	// ours to end.
+	Started bool
 }
 
 // NewClient returns a client for the default socket.
 func NewClient() *Client { return &Client{Socket: DefaultSocket()} }
+
+// Release ends the daemon this client started, if it holds nothing any more.
+//
+// It is the polite exit: a command that had to start a daemon — a scenario run,
+// or a one-off that found no session — would otherwise leave that process behind
+// for the whole TTL. It never starts a daemon of its own: if the socket is
+// already gone there is nothing to release.
+func (c *Client) Release() {
+	if !c.Started {
+		return
+	}
+	_, _ = c.try(Request{Cmd: CmdRelease})
+}
 
 // Call sends one request, starting the daemon on the first attempt if needed.
 func (c *Client) Call(req Request) (Response, error) {
@@ -506,6 +615,7 @@ func (c *Client) Call(req Request) (Response, error) {
 	if startErr := start(c.Socket); startErr != nil {
 		return Response{}, fmt.Errorf("daemon: start: %w", startErr)
 	}
+	c.Started = true
 	// The daemon needs a moment to bind; retry for a second before giving up.
 	var lastErr error
 	for i := 0; i < 50; i++ {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -220,5 +221,111 @@ func TestIdleExitStopsTheDaemon(t *testing.T) {
 	}
 	if _, err := net.DialTimeout("unix", socket, 100*time.Millisecond); err == nil {
 		t.Error("the socket is still accepting after the idle exit")
+	}
+}
+
+// TestIdleExitClosesALiveSession is the regression guard for the leak this daemon
+// used to have: its idle rule demanded an empty session map, so a daemon holding a
+// session never expired. A client that was killed, or that simply walked away,
+// then left the program under test — and every child it had spawned — running for
+// as long as the machine was up. Measured before the fix, on this repository's own
+// TUI targets: a daemon with `--ttl 5s` and one live child was still there 30
+// seconds later, and two such pairs had run for six and five days.
+func TestIdleExitClosesALiveSession(t *testing.T) {
+	socket := filepath.Join(os.TempDir(), fmt.Sprintf("tpd-live-%d.sock", os.Getpid()))
+	t.Cleanup(func() { _ = os.Remove(socket) })
+
+	srv := New(socket, 200*time.Millisecond)
+	ln, err := srv.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ln) }()
+	t.Cleanup(func() { srv.Stop(); _ = ln.Close() })
+
+	c := &Client{Socket: socket, StartDaemon: func(string) error { return nil }}
+	opened := call(t, c, Request{
+		Cmd:  "open",
+		Name: "leak",
+		Args: []string{"/bin/sh", "-c", "while :; do sleep 0.2; done"},
+	})
+	if err := syscall.Kill(opened.Pid, 0); err != nil {
+		t.Fatalf("the program under test (pid %d) is not running: %v", opened.Pid, err)
+	}
+
+	// Nobody will talk to this daemon again: the TTL is the only thing that can
+	// end it, and it must end it even though a session is still open.
+	select {
+	case err := <-done:
+		t.Fatalf("Serve returned before the TTL elapsed: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve after the idle exit = %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the daemon outlived its TTL while holding a live session")
+	}
+
+	// It has to take the program with it: a daemon that exits without reaping its
+	// PTY children leaves exactly the orphan this guards against.
+	if err := syscall.Kill(opened.Pid, 0); err == nil {
+		_ = syscall.Kill(opened.Pid, syscall.SIGKILL)
+		t.Errorf("the program under test (pid %d) survived the daemon that held it", opened.Pid)
+	}
+}
+
+// TestReleaseSparesABusyDaemonAndStopsADrainedOne pins the polite exit a client
+// uses when it is the one that started a daemon (issue #141): a run must not leave
+// its daemon behind, and it must never end a daemon that another client is using.
+func TestReleaseSparesABusyDaemonAndStopsADrainedOne(t *testing.T) {
+	socket := filepath.Join(os.TempDir(), fmt.Sprintf("tpd-release-%d.sock", os.Getpid()))
+	t.Cleanup(func() { _ = os.Remove(socket) })
+
+	srv := New(socket, time.Minute)
+	ln, err := srv.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ln) }()
+	t.Cleanup(func() { srv.Stop(); _ = ln.Close() })
+
+	c := &Client{Socket: socket, StartDaemon: func(string) error { return nil }}
+	call(t, c, Request{Cmd: "open", Name: "app", Args: []string{"/bin/sh", "-c", "sleep 30"}})
+
+	// A client that did not start this daemon does not release it.
+	c.Release()
+	select {
+	case err := <-done:
+		t.Fatalf("a client that did not start the daemon ended it: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// One that did start it still cannot end a daemon that holds a session: the
+	// release is refused, and the session is still there afterwards.
+	c.Started = true
+	c.Release()
+	if sessions := call(t, c, Request{Cmd: "sessions"}); sessions.SessionCnt != 1 {
+		t.Fatalf("session count after a refused release = %d, want 1", sessions.SessionCnt)
+	}
+
+	// With the session closed the daemon holds nothing, and the release takes it.
+	call(t, c, Request{Cmd: "close", Name: "app"})
+	c.Release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve after the release = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the released daemon is still running with nothing to hold")
+	}
+	if _, err := net.DialTimeout("unix", socket, 100*time.Millisecond); err == nil {
+		t.Error("the socket is still accepting after the release")
 	}
 }
