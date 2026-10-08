@@ -329,3 +329,43 @@ func TestReleaseSparesABusyDaemonAndStopsADrainedOne(t *testing.T) {
 		t.Error("the socket is still accepting after the release")
 	}
 }
+
+// TestEveryResponseCarriesTheLiveCount is the guard for issue #146. SessionCnt has
+// no omitempty so that a caller can read it on every answer, and it used to be
+// filled only by `sessions`: `open --json` reported `"sessionCount": 0` on the very
+// response that had just added the session.
+func TestEveryResponseCarriesTheLiveCount(t *testing.T) {
+	c, _ := startServer(t)
+	live := []string{"/bin/sh", "-c", "echo up; sleep 30"}
+
+	if opened := call(t, c, Request{Cmd: "open", Name: "a", Args: live}); opened.SessionCnt != 1 {
+		t.Errorf("open reported sessionCount %d, want 1", opened.SessionCnt)
+	}
+	if waited := call(t, c, Request{Cmd: "wait", Name: "a", Pattern: "up", Timeout: "5s"}); waited.SessionCnt != 1 {
+		t.Errorf("wait reported sessionCount %d, want 1", waited.SessionCnt)
+	}
+	if screen := call(t, c, Request{Cmd: "text", Name: "a"}); screen.SessionCnt != 1 {
+		t.Errorf("text reported sessionCount %d, want 1", screen.SessionCnt)
+	}
+	call(t, c, Request{Cmd: "open", Name: "b", Args: live})
+	if listed := call(t, c, Request{Cmd: "sessions"}); listed.SessionCnt != 2 || len(listed.Sessions) != 2 {
+		t.Fatalf("sessions = %+v, want two sessions", listed)
+	}
+
+	// The count is the live one at answer time, so it is what the next `sessions`
+	// reports too — after a close that removed a session, not before it.
+	closed := call(t, c, Request{Cmd: "close", Name: "a"})
+	if closed.SessionCnt != 1 {
+		t.Errorf("close reported sessionCount %d, want 1", closed.SessionCnt)
+	}
+	if listed := call(t, c, Request{Cmd: "sessions"}); listed.SessionCnt != closed.SessionCnt {
+		t.Errorf("sessions reports %d where close reported %d; they must agree",
+			listed.SessionCnt, closed.SessionCnt)
+	}
+
+	// A refusal carries it as well: the field describes the daemon, not how many
+	// sessions the command managed to touch.
+	if refused, _ := c.Call(Request{Cmd: "text", Name: "nope"}); refused.OK || refused.SessionCnt != 1 {
+		t.Errorf("a refused text = %+v, want OK=false with sessionCount 1", refused)
+	}
+}
