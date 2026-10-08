@@ -44,16 +44,22 @@ var landlockVersionedRights = []struct {
 	{3, unix.LANDLOCK_ACCESS_FS_TRUNCATE},
 }
 
-// landlockPathBeneathAttrSize is sizeof(struct landlock_path_beneath_attr),
-// which is __packed: a __u64 followed by a __s32, so 12 bytes and not the 16
-// Go would lay out. The kernel compares the size it is given against its own,
-// so passing unsafe.Sizeof of the Go struct would be rejected.
-const landlockPathBeneathAttrSize = 12
-
+// landlockRulesetAttr mirrors struct landlock_ruleset_attr. Only the filesystem
+// mask is carried, so the struct the kernel reads is the original 8 bytes; a
+// newer kernel's added fields stay absent rather than being sent as zero.
 type landlockRulesetAttr struct {
 	handledAccessFS uint64
 }
 
+// landlockPathBeneathAttr mirrors struct landlock_path_beneath_attr, which is
+// __packed: a __u64 followed by a __s32, so the kernel reads 12 bytes.
+//
+// landlock_add_rule takes no size argument — it copies its own struct — so the
+// only thing this layout has to get right is the field order and offsets. Go
+// places parentFd at offset 8, which is exactly where the packed struct has it;
+// the trailing padding Go adds is never read. Passing that padding as if it
+// were a size (a 4th syscall argument) lands in the syscall's `flags`
+// parameter, where any non-zero value is rejected with EINVAL.
 type landlockPathBeneathAttr struct {
 	allowedAccess uint64
 	parentFd      int32
@@ -177,12 +183,13 @@ func landlockAllowPath(rulesetFd int, path string, access uint64) error {
 	defer unix.Close(pathFd)
 
 	attr := landlockPathBeneathAttr{allowedAccess: access, parentFd: int32(pathFd)}
+	// No size argument: landlock_add_rule copies its own struct. The 4th
+	// argument is `flags`, and the kernel rejects any non-zero value.
 	_, _, errno := unix.Syscall6(unix.SYS_LANDLOCK_ADD_RULE,
 		uintptr(rulesetFd),
 		uintptr(unix.LANDLOCK_RULE_PATH_BENEATH),
 		uintptr(unsafe.Pointer(&attr)),
-		landlockPathBeneathAttrSize,
-		0, 0)
+		0, 0, 0)
 	if errno != 0 {
 		return errno
 	}
