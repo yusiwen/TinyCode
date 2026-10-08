@@ -211,17 +211,31 @@ type Tool struct {
 - `edit` — search/replace with 7 fuzzy strategies + indentation correction
 - `apply_patch` — V4A multi-file patch (UPDATE/ADD/DELETE)
 
-**Sandbox (3 layers + dialog):**
-1. Command blacklist (bash tool)
-2. Path restriction (default: project directory only)
-3. Interactive TUI dialog with 4 options:
-   - **Allow once** — one tool call only, no cache
-   - **Allow session** — cached for session, persisted to session file, restored on resume
-   - **Always allow** — cached + persisted to `config.json`, loaded on every startup
-   - **Deny** — blocks access, dialog dismissed
-4. User whitelist (allow/deny/always prompt via TUI dialog)
-5. `read_file` triggers dialog (previously returned text hint to LLM) — e2832e3
-6. Dialog auto-shows on View() even without keypress — 57359db
+**Sandbox:**
+
+File effects are restricted by a policy frozen onto each run — one mode
+(`read-only` / `workspace-write` / `danger-full-access`) and one list of writable
+roots, read by the path fence, the command boundary and the plan-mode guard
+alike, so no two of them can disagree about what is writable.
+
+- **Path fence** — the file tools resolve and compare paths against the roots, and
+  where the kernel can, it re-checks the decision at the point of use
+  (`openat2 RESOLVE_BENEATH`; the `O_NOFOLLOW` component walk on macOS).
+- **Command boundary** — with `sandbox.confine_commands` on, `bash` runs under
+  Landlock on Linux: a write outside the roots is refused by the kernel, and a
+  host that cannot apply the boundary refuses the command rather than running it
+  unconfined.
+- **Approval dialog** — **Allow once** (one call, nothing cached), **Allow
+  session** (the session file, restored on resume), **Always allow** (the user
+  config, named in the dialog and revocable with `--revoke-grant`), **Deny**. It
+  auto-shows when a tool is refused, and a `read_file` can trigger it too.
+- `/sandbox` reports the containment level, the command-boundary switch and the
+  effective roots; every refusal is one marker with one shape, carrying what kind
+  of recovery is possible.
+
+Design, the launch protocol, grant lifetimes, the refusal vocabulary and what is
+deliberately not promised: **[docs/sandbox.md](docs/sandbox.md)**. Confinement is
+opt-in and Linux-only today.
 
 **Permissions:** `ToolAllowedFor(cfg, toolName)` — checked before every tool execution. Plan mode denies write/git/task/skill_manage.
 
@@ -277,7 +291,7 @@ viewport.SetContent() → terminal display
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
-docs/           Reference documents (TUI visual harness)
+docs/           Reference documents (sandbox design, TUI visual harness)
 internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
@@ -343,6 +357,11 @@ toolchain so it behaves identically everywhere.
 The TUI visual layers (golden frames, PNG screenshots, the PTY smoke tests and
 the live-stream replay) have their own reference:
 [docs/tui-verification.md](docs/tui-verification.md).
+
+The sandbox — modes, the frozen per-run policy, the path fence, the command
+boundary and its launch protocol, grant lifetimes, the refusal vocabulary, and
+what is deliberately not promised — has its own reference:
+[docs/sandbox.md](docs/sandbox.md).
 
 ---
 
