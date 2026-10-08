@@ -3,6 +3,7 @@ package tool
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -12,6 +13,15 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
+
+// exitCodeOf reports the exit status a finished command failed with, if it did.
+func exitCodeOf(err error) (int, bool) {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), true
+	}
+	return 0, false
+}
 
 // maxOutputBytes caps how much of each stream (stdout/stderr) is retained, so
 // a runaway command cannot exhaust the agent's memory.
@@ -220,7 +230,14 @@ func Bash() Tool {
 			cmdCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 			defer cancel()
 
-			cmd := exec.CommandContext(cmdCtx, "bash", "-c", cmdStr)
+			// Confinement wraps the same ['bash','-c',cmd] argv, so the command
+			// the caller asked for is unchanged; only what enforces its file
+			// effects differs.
+			argv, invErr := bashInvocation(ctx, cmdStr)
+			if invErr != nil {
+				return "", invErr
+			}
+			cmd := exec.CommandContext(cmdCtx, argv[0], argv[1:]...)
 			// Run the shell in its own process group and kill the whole group
 			// on timeout, so background children do not survive the call.
 			configureProcessGroup(cmd)
@@ -291,6 +308,24 @@ func Bash() Tool {
 			}
 
 			var sb strings.Builder
+
+			// A launcher failure is not a command failure: the command never
+			// ran, and reporting it as an ordinary error would send the reader
+			// looking for a bug in their command. Both the exit status and our
+			// own diagnostic prefix must match, so a command that exits 125 by
+			// itself is not read as a sandbox report.
+			if ConfineCommands() {
+				if code, ok := exitCodeOf(err); ok && SandboxLauncherFailed(code, stderr.String()) {
+					tlog.Warn("shell.bash", "sandbox_launcher_failed", "exit", code)
+					sb.WriteString("\n[SANDBOX] the command did not run: the file boundary could not be applied on this host.\n")
+					for _, line := range SandboxLauncherDiagnostics(stderr.String()) {
+						sb.WriteString("  " + line + "\n")
+					}
+					sb.WriteString("Do not retry: a kernel boundary is a capability of the machine, not a permission that can be granted.\n")
+					return strings.TrimSpace(sb.String()), nil
+				}
+			}
+
 			if stdout.Len() > 0 {
 				sb.WriteString("STDOUT:\n")
 				sb.WriteString(stdout.String())

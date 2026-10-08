@@ -1,9 +1,12 @@
 package tool
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/yusiwen/tinycode/types"
 )
 
 // This file defines the contract between the agent and the confinement
@@ -130,4 +133,48 @@ func RunSandboxLauncher(args []string) int {
 func SandboxLauncherFailed(exitCode int, stderr string) bool {
 	return exitCode == SandboxLauncherFailureExit &&
 		strings.Contains(stderr, SandboxLauncherDiagnosticPrefix)
+}
+
+// SandboxLauncherDiagnostics returns only the lines the launcher itself wrote,
+// stripped of the prefix. Everything else in a confined run's stderr belongs to
+// the command and must never be presented as a report from the sandbox.
+func SandboxLauncherDiagnostics(stderr string) []string {
+	var lines []string
+	for _, line := range strings.Split(stderr, "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), SandboxLauncherDiagnosticPrefix); ok {
+			lines = append(lines, rest)
+		}
+	}
+	return lines
+}
+
+// sandboxSelfPath locates the binary to re-exec as the launcher. It is a
+// variable so a test can stand in a script for the launcher; production uses
+// the running executable, because the launcher has to be this exact build.
+var sandboxSelfPath = os.Executable
+
+// bashInvocation returns the argv that runs one shell command.
+//
+// Without command confinement it is bash itself, exactly as before. With it, the
+// command goes through the launcher under the mode the run is in: plan mode is
+// read-only, build mode is workspace-write over the session's writable roots.
+func bashInvocation(ctx context.Context, cmdStr string) ([]string, error) {
+	bash := []string{"bash", "-c", cmdStr}
+	if !ConfineCommands() {
+		return bash, nil
+	}
+
+	self, err := sandboxSelfPath()
+	if err != nil {
+		return nil, fmt.Errorf("locate the confinement launcher: %w", err)
+	}
+
+	mode := "workspace-write"
+	var roots []string
+	if types.PlanWriteRestricted(ctx) {
+		mode = "read-only"
+	} else {
+		roots = DefaultSandbox.WritableRoots()
+	}
+	return SandboxLauncherInvocation(self, mode, roots, bash), nil
 }
