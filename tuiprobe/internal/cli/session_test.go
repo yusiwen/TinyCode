@@ -79,6 +79,11 @@ func TestSessionCommandsEndToEnd(t *testing.T) {
 		t.Errorf("sessions: exit %d, output %q", code, out)
 	}
 
+	// Wait until the shell has really left before asking `close` for its code. A
+	// close that arrives first kills the program and reports -1, which is the same
+	// race the scenario suite lost on CI (issue #135); `text --json` answers
+	// `hasExited` as soon as the session's reaper has the status.
+	waitForExit(t, base)
 	code, out, _ = run(append([]string{"close"}, append(base, "--expect-exit", "4")...), "")
 	if code != 0 || !strings.Contains(out, "exited with 4") {
 		t.Errorf("close: exit %d, output %q", code, out)
@@ -154,5 +159,23 @@ func TestDaemonCommandServesUntilStopped(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the daemon command did not return after stop")
+	}
+}
+
+// waitForExit blocks until the session reports that its program has left, so an
+// exit-code assertion does not race the program's own exit: `close` on a running
+// program kills it and reports -1 (issue #135).
+func waitForExit(t *testing.T, base []string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		code, out, _ := run(append([]string{"text"}, append(base, "--json")...), "")
+		if code == 0 && strings.Contains(out, `"hasExited": true`) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the program never reported an exit (text --json: exit %d, output %q)", code, out)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

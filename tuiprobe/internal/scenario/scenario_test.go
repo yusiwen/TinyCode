@@ -71,7 +71,11 @@ fit --size 90x20
 golden welcome.txt
 send --text hello --key enter
 wait --text "got:hello" --timeout 5s
-close
+# "It stopped printing" and "it exited" are different moments: the line above
+# matches as soon as the shell prints it, which is before it reaches its exit
+# statement. Closing here would kill it and record -1, so the exit is waited for
+# first (issue #135 — this exact script failed on CI that way).
+wait-exit 5s
 expect-exit 4
 `
 	steps, err := Parse(strings.NewReader(script))
