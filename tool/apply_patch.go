@@ -204,7 +204,7 @@ func ApplyPatch() Tool {
 
 			// Build summary
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("Applied patch: %d operation(s)\n", len(results)))
+			sb.WriteString(fmt.Sprintf("Applied patch: %d operation(s)%s\n", len(results), containmentNote()))
 			for _, r := range results {
 				switch r.applied {
 				case "updated":

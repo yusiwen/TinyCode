@@ -174,7 +174,7 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 
-			result := fmt.Sprintf("Wrote %d bytes to %s", len(content), path)
+			result := fmt.Sprintf("Wrote %d bytes to %s%s", len(content), path, containmentNote())
 			tlog.Info("fs.write", "done", "file", path, "bytes", len(content))
 
 			// LSP diagnostics: only new errors introduced by this edit

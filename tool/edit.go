@@ -156,7 +156,7 @@ func Edit() Tool {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 
-			result := fmt.Sprintf("Applied %d edit(s) to %s (%d line(s) changed)", applied, path, totalChanges)
+			result := fmt.Sprintf("Applied %d edit(s) to %s (%d line(s) changed)%s", applied, path, totalChanges, containmentNote())
 
 			if lsp.IsAvailable() {
 				if newDiags := lsp.GetNewDiagnostics(safePath, content); len(newDiags) > 0 {

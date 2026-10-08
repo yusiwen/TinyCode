@@ -1,0 +1,30 @@
+# "/sandbox" reports what actually confines file operations in this process: the
+# enforcement level, the mechanism behind it, whether a hard boundary is required,
+# and the effective writable roots.
+#
+# The command exists because the fact otherwise lives only in a tool result and a
+# log line, and the TUI draws tool *calls*, not tool result text — so a degraded
+# host was invisible on screen. What this file asserts is deliberately the part
+# that is the same on every host: the report's shape. The level itself is a
+# property of the machine (openat2 on Linux, the component walk on macOS,
+# in-process checks where neither exists), so pinning its value here would make
+# the scenario fail for a reason that has nothing to do with the code.
+#
+# The write-result half of the same fact is asserted where it can be: a Go test
+# in the tool package presents a host with no kernel mechanism and reads the note
+# out of a real mutation's result.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+# Type only once the input row exists: the welcome heading appears first, and keys sent
+# before the input is ready can be lost (issue #102).
+wait --text "Type your request" --timeout 20s
+send --text /sandbox
+send --key enter
+wait --text "containment:" --timeout 10s
+wait --text "hard boundary required:" --timeout 10s
+wait --text "writable roots:" --timeout 10s
+screenshot /tmp/tinyscen-shots/sandbox-120x30.png --scale 2
+send --text /exit
+send --key enter
+wait-exit 15s
+expect-exit 0

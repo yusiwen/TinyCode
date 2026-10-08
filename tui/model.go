@@ -198,6 +198,7 @@ func commandList() []cmdEntry {
 		{"/theme", "Switch theme"},
 		{"/skill", "Load a skill"},
 		{"/diagnostics", "LSP diagnostics"},
+		{"/sandbox", "Sandbox status"},
 		{"/model", "Switch model"},
 		{"/fork", "Create session branch"},
 		{"/session", "List/switch branch"},
@@ -414,6 +415,7 @@ func (m *TuiModel) checkPermissionDialog() bool {
 					// the process working directory).
 					sess := session.New(m.currentBranch, m.SessionDir)
 					sess.AllowedPaths = []string{reqPath}
+					sess.Containment = tool.ContainmentInfo().String()
 					sess.Flush()
 				}
 			}

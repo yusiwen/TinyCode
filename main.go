@@ -108,6 +108,7 @@ func newRootCmd() *cobra.Command {
 				tool.DefaultSandbox.DenyCommands = append(
 					tool.DefaultSandbox.DenyCommands, cfg.Sandbox.DenyCommands...)
 			}
+			applySandboxCapabilityPolicy(&cfg)
 
 			reg := agent.NewRegistry()
 			if err := applyAgentOverrides(reg, &cfg); err != nil {
@@ -424,10 +425,12 @@ func newRootCmd() *cobra.Command {
 					tool.DefaultSandbox.AllowAlways(p)
 				}
 			}
+			applySandboxCapabilityPolicy(&cfg)
 
 			// The session is created last: an informational command must never
 			// create or flush a session file.
 			sess := store.Create("default")
+			sess.Containment = tool.ContainmentInfo().String()
 			ag.SessionStore = sess
 			defer sess.Flush()
 
@@ -480,6 +483,27 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVar(&searchSessions, "search-sessions", "", "Search session content")
 
 	return rootCmd
+}
+
+// applySandboxCapabilityPolicy turns the configured hard-boundary requirement
+// into the tool package's policy, and records once what this host can enforce.
+//
+// The verdict is logged rather than assumed: a deployment that relies on the
+// kernel boundary should see, in the run's own log, whether it got one. When
+// the requirement is on and no kernel mechanism exists, the warning says what
+// will happen next — every fenced operation refuses — so a refusal later in the
+// run is not a surprise.
+func applySandboxCapabilityPolicy(cfg *config.Config) {
+	if cfg.Sandbox != nil && cfg.Sandbox.RequireHardBoundary {
+		tool.SetRequireHardBoundary(true)
+	}
+	info := tool.ContainmentInfo()
+	tlog.Info("sandbox", "containment", info.String())
+	if tool.HardBoundaryRequired() && info.Level != tool.ContainmentKernel {
+		tlog.Warn("sandbox", "hard_boundary_unavailable",
+			"containment", info.String(),
+			"effect", "fenced file operations will be refused")
+	}
 }
 
 // expandPath expands $VARS and a leading "~" in a configured path, so values
