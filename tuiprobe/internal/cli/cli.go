@@ -40,6 +40,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runSend(args[1:], stdout, stderr)
 	case "wait":
 		return runWait(args[1:], stdout, stderr)
+	case "mark":
+		return runMark(args[1:], stdout, stderr)
 	case "text", "ansi", "html", "trace":
 		return runScreen(args[0], args[1:], stdout, stderr)
 	case "resize":
@@ -74,7 +76,8 @@ Usage:
 Sessions (a program on a real terminal, kept alive between commands):
   open [--name app] [--size 80x24] [--dir d] [--env K=V]… -- <command> [args…]
   send --name app [--text "…"] [--key enter] [--key ctrl+c] [--repeat n]
-  wait --name app [--text <regexp>] [--stable 200ms] [--timeout 10s]
+  wait --name app [--text <regexp>] [--since] [--stable 200ms] [--timeout 10s]
+  mark --name app                  record the output position, for wait --since
   text|ansi|html --name app        print the screen
   trace --name app [--n 4096]      print the tail of the raw stream
   resize --name app --size 100x30

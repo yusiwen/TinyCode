@@ -179,3 +179,47 @@ func waitForExit(t *testing.T, base []string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// TestMarkAndWaitSinceSeeOnlyNewText drives the pair through the CLI, which is how an
+// agent uses it: mark after the first frame, then wait only for what the program draws
+// next. A program started twice prints the same line twice, so without --since the
+// second run's prompt is indistinguishable from the first run's leftovers (issue #126).
+func TestMarkAndWaitSinceSeeOnlyNewText(t *testing.T) {
+	socket := startDaemon(t)
+	base := []string{"--socket", socket, "--name", "app"}
+	program := []string{"--size", "80x24", "--", "/bin/sh", "-c", "echo ready; read l; echo ready; sleep 5"}
+
+	if code, _, errOut := run(append([]string{"open"}, append(base, program...)...), ""); code != 0 {
+		t.Fatalf("open: exit %d, stderr %s", code, errOut)
+	}
+	if code, _, errOut := run(append([]string{"wait"}, append(base, "--text", "ready", "--timeout", "5s")...), ""); code != 0 {
+		t.Fatalf("wait: exit %d, stderr %s", code, errOut)
+	}
+
+	// Before any mark, the narrowing is refused rather than widened to the whole screen.
+	if code, _, errOut := run(append([]string{"wait"}, append(base, "--text", "ready", "--since", "--timeout", "200ms")...), ""); code != daemon.CodeFailure || errOut == "" {
+		t.Errorf("wait --since with no mark: exit %d, stderr %q, want %d and a message", code, errOut, daemon.CodeFailure)
+	}
+
+	code, out, errOut := run(append([]string{"mark"}, base...), "")
+	if code != 0 || !strings.Contains(out, "marked app at generation") {
+		t.Fatalf("mark: exit %d, output %q, stderr %q", code, out, errOut)
+	}
+
+	// The first copy is still on screen: the plain wait sees it, the narrowed one must not.
+	if code, _, _ := run(append([]string{"wait"}, append(base, "--text", "ready", "--timeout", "300ms")...), ""); code != 0 {
+		t.Errorf("a plain wait stopped reading the whole screen: exit %d", code)
+	}
+	if code, _, _ := run(append([]string{"wait"}, append(base, "--text", "ready", "--since", "--timeout", "300ms")...), ""); code != daemon.CodeTimeout {
+		t.Errorf("wait --since on text from before the mark: exit %d, want %d", code, daemon.CodeTimeout)
+	}
+
+	// Printing it again satisfies the narrowed wait.
+	if code, _, errOut := run(append([]string{"send"}, append(base, "--text", "again", "--key", "enter")...), ""); code != 0 {
+		t.Fatalf("send: exit %d, stderr %s", code, errOut)
+	}
+	if code, _, errOut := run(append([]string{"wait"}, append(base, "--text", "ready", "--since", "--timeout", "5s")...), ""); code != 0 {
+		t.Fatalf("wait --since after the reprint: exit %d, stderr %s", code, errOut)
+	}
+	run(append([]string{"close"}, base...), "")
+}

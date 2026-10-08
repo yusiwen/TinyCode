@@ -170,10 +170,12 @@ func runSend(args []string, stdout, stderr io.Writer) int {
 func runWait(args []string, stdout, stderr io.Writer) int {
 	var pattern, stable string
 	var timeout time.Duration
+	var since bool
 	cmd, err := newSessionCommand("wait", args, stdout, stderr, func(fs *flag.FlagSet) {
 		fs.StringVar(&pattern, "text", "", "wait until the screen matches this regular expression")
 		fs.StringVar(&stable, "stable", "", "wait until the screen has not changed for this long, for example 200ms")
 		fs.DurationVar(&timeout, "timeout", 10*time.Second, "give up after this long")
+		fs.BoolVar(&since, "since", false, "match only text the program drew after the last mark")
 	})
 	if err != nil {
 		return daemon.CodeFailure
@@ -181,8 +183,11 @@ func runWait(args []string, stdout, stderr io.Writer) int {
 	if pattern == "" && stable == "" {
 		return fail(stderr, "wait", "give --text or --stable")
 	}
+	if since && pattern == "" {
+		return fail(stderr, "wait", "--since narrows --text, so it needs one")
+	}
 
-	resp, code := cmd.call(daemon.Request{Cmd: "wait", Name: cmd.name, Pattern: pattern, Stable: stable, Timeout: timeout.String()})
+	resp, code := cmd.call(daemon.Request{Cmd: "wait", Name: cmd.name, Pattern: pattern, Stable: stable, Timeout: timeout.String(), Since: since})
 	if code != daemon.CodeOK {
 		return code
 	}
@@ -191,6 +196,30 @@ func runWait(args []string, stdout, stderr io.Writer) int {
 	} else {
 		fmt.Fprintln(stdout, "ready")
 	}
+	return daemon.CodeOK
+}
+
+// runMark records how far the program's output has reached, so a later `wait --since`
+// can tell text drawn from then on from text that was already on the screen.
+//
+// It exists for the flow a single screen cannot express: a program started twice in one
+// session paints the same frame twice, so the second run's prompt is indistinguishable
+// from the first run's leftovers (issue #126).
+func runMark(args []string, stdout, stderr io.Writer) int {
+	cmd, err := newSessionCommand("mark", args, stdout, stderr, nil)
+	if err != nil {
+		return daemon.CodeFailure
+	}
+
+	resp, code := cmd.call(daemon.Request{Cmd: "mark", Name: cmd.name})
+	if code != daemon.CodeOK {
+		return code
+	}
+	if cmd.asJSON {
+		printJSON(stdout, resp)
+		return daemon.CodeOK
+	}
+	fmt.Fprintf(stdout, "marked %s at generation %d\n", resp.Name, resp.Generation)
 	return daemon.CodeOK
 }
 

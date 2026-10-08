@@ -373,3 +373,49 @@ func TestTerminalQueriesAreAnswered(t *testing.T) {
 		t.Errorf("with answers off the session still replied:\n%s", silent.Text())
 	}
 }
+
+// TestWaitTextSinceIgnoresTextFromBeforeTheMark is the self-test issue #126 asks for:
+// the string is deliberately put on the screen *before* the mark, and the wait must
+// not be satisfied by that copy — only by the program printing it again.
+func TestWaitTextSinceIgnoresTextFromBeforeTheMark(t *testing.T) {
+	s, err := Start(Options{
+		Args: []string{"/bin/sh", "-c", "printf 'ready\\n'; read l; printf 'ready\\n'; sleep 5"},
+		Size: pty.Size{Cols: 80, Rows: 24},
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	// A since-wait with no mark is a mistake worth naming, not a wait over the whole
+	// screen: silently widening it would hide the stale text this exists to exclude.
+	if err := s.WaitTextSince("ready", 10*time.Millisecond); err == nil || !strings.Contains(err.Error(), "Mark first") {
+		t.Fatalf("WaitTextSince without a mark = %v, want it to ask for a mark", err)
+	}
+
+	if err := s.WaitText("ready", 5*time.Second); err != nil {
+		t.Fatalf("first frame: %v", err)
+	}
+	s.Mark()
+
+	// The copy printed before the mark is on the screen: a plain wait still matches it...
+	if err := s.WaitText("ready", time.Second); err != nil {
+		t.Fatalf("WaitText after the mark should still read the whole screen: %v", err)
+	}
+	// ...and the since-wait must not, because nothing has been drawn since the mark.
+	err = s.WaitTextSince("ready", 300*time.Millisecond)
+	if !errors.Is(err, ErrStageTimeout) {
+		t.Fatalf("WaitTextSince on text from before the mark = %v, want a timeout", err)
+	}
+	if !strings.Contains(err.Error(), "since the mark") {
+		t.Errorf("the timeout should name the screen it looked at: %v", err)
+	}
+
+	// The second print of the same string does satisfy it.
+	if err := s.Send("again", "enter"); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.WaitTextSince("ready", 5*time.Second); err != nil {
+		t.Fatalf("WaitTextSince after the program printed it again: %v", err)
+	}
+}

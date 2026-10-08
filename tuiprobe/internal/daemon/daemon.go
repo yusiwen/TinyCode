@@ -61,6 +61,10 @@ type Request struct {
 	Pattern string `json:"pattern,omitempty"`
 	Stable  string `json:"stable,omitempty"`
 	Timeout string `json:"timeout,omitempty"`
+	// Since narrows a text wait to what the program has drawn since the last `mark`,
+	// which is how a session that starts the same program twice tells the second run
+	// from the first run's leftover frame (issue #126).
+	Since bool `json:"since,omitempty"`
 }
 
 // Response is the daemon's answer. Screen content is only filled in for the
@@ -86,6 +90,9 @@ type Response struct {
 	Exited    bool `json:"exited,omitempty"`
 	ExitCode  int  `json:"exitCode,omitempty"`
 	HasExited bool `json:"hasExited,omitempty"`
+	// Generation is the position `mark` recorded: how many writes of the program's
+	// output had been replayed when it was taken (issue #126).
+	Generation uint64 `json:"generation,omitempty"`
 	// SessionCnt has no omitempty: an empty daemon is a count of zero, not a
 	// missing field, and a caller should not have to guess which it is. Every
 	// response carries the live count — handle fills it after dispatch — because a
@@ -375,6 +382,8 @@ func (s *Server) dispatch(req Request) Response {
 		return screenResponse(req.Name, sess, func(r *Response) { r.Trace = sess.Trace(req.N) })
 	case "wait":
 		return s.wait(req, sess)
+	case "mark":
+		return s.mark(req, sess)
 	case "resize":
 		return s.resize(req, sess)
 	case "close":
@@ -449,6 +458,16 @@ func (s *Server) send(sess *session.Session, req Request) Response {
 	return screenResponse(req.Name, sess, nil)
 }
 
+// mark records where the program's output has reached and reports that position.
+//
+// It exists because a screen cannot say *when* its text was drawn: a program started
+// twice in one session paints the same frame twice, and a `wait --text` on the second
+// run is satisfied by the first run's leftovers. A wait carrying Since only reads the
+// cells written after this mark (issue #126).
+func (s *Server) mark(req Request, sess *session.Session) Response {
+	return screenResponse(req.Name, sess, func(r *Response) { r.Generation = sess.Mark() })
+}
+
 func (s *Server) wait(req Request, sess *session.Session) Response {
 	timeout := 10 * time.Second
 	if req.Timeout != "" {
@@ -461,8 +480,14 @@ func (s *Server) wait(req Request, sess *session.Session) Response {
 
 	var err error
 	switch {
+	case req.Since && req.Pattern == "":
+		return Response{OK: false, Code: CodeFailure, Error: "daemon: wait --since needs --text"}
 	case req.Pattern != "":
-		err = sess.WaitText(req.Pattern, timeout)
+		if req.Since {
+			err = sess.WaitTextSince(req.Pattern, timeout)
+		} else {
+			err = sess.WaitText(req.Pattern, timeout)
+		}
 	case req.Stable != "":
 		quiet, parseErr := time.ParseDuration(req.Stable)
 		if parseErr != nil {

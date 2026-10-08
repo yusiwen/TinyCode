@@ -30,7 +30,8 @@ depends on no other repository — and `make test-tuiprobe-examples` runs it.
 | --- | --- |
 | `open [--size WxH] [--dir D] [--env K=V]… -- <command> [args…]` | start the program on a real terminal |
 | `send [--text "…"] [--key NAME]…` | type text and/or press keys (`enter`, `ctrl+c`, `alt+left`, `f5`, …) |
-| `wait --text <regexp> [--timeout 10s]` | wait until the screen matches |
+| `wait --text <regexp> [--since] [--timeout 10s]` | wait until the screen matches. With `--since`, only text the program drew after the last `mark` counts — see [Telling a second run from the first](#telling-a-second-run-from-the-first) |
+| `mark` | record how far the program's output has come, so a later `wait --since` cannot be satisfied by text that was already on screen |
 | `stable 200ms [--timeout 10s]` | wait until the screen stops changing — better than a sleep |
 | `sleep 500ms` | do nothing for a while (rarely what you want; `stable` usually is) |
 | `golden <file>` | compare the plain-text screen against that file (normalized: no escapes, no trailing blanks) |
@@ -48,6 +49,39 @@ depends on no other repository — and `make test-tuiprobe-examples` runs it.
 Quoting: use single or double quotes around an argument that contains spaces —
 `open -- /bin/sh -c 'echo ready; read l'`. Everything after `--` belongs to the
 program, even if it looks like one of our flags.
+
+## Telling a second run from the first
+
+Some flows need the program to start **twice in one session**: the clearest is proving
+that a persisted permission grant is honoured on the next start — the first run writes
+the grant, the second must not show the approval dialog. The wrapper shell runs the
+binary once and then again:
+
+```
+open -- /bin/sh -c './myapp; ./myapp'
+wait --text "Type your request"
+```
+
+That wait is ambiguous. It matches the screen, and the screen still holds the *first*
+run's prompt when the second starts, so the scenario can send keys before the new
+instance has drawn anything. A marker printed between the runs only proves the wrapper
+reached a line, not that the new program is on screen.
+
+`mark` closes that gap: it records how far the program's output has come, and a wait
+with `--since` reads only the cells written after it. Text from the first run stays on
+screen — `golden` and a plain `wait` still see it — but it cannot satisfy a `--since`
+wait:
+
+```
+open -- /bin/sh -c './myapp; ./myapp'
+wait --text "Type your request"      # the first run's prompt
+mark                                 # from here on, only new output counts
+wait --text "Type your request" --since   # the second run's prompt, or a timeout
+```
+
+The rule is per cell, not per screen: text the second run redraws counts, text merely
+left over does not. A `--since` wait with no `mark` before it is refused rather than
+quietly widened to the whole screen.
 
 ## Gating
 

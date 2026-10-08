@@ -117,8 +117,8 @@ There are three files today: `startup` (80x24, geometry, exit code), `narrow` (4
 and `palette` (`/` opens the command palette, typing filters it, Esc closes it — note
 that Ctrl+C while the palette is open *closes the palette*, so Esc comes first).
 
-Steps are `open`, `send`, `wait`, `stable`, `sleep`, `golden`, `diff`, `fit`,
-`screenshot`, `close`, `wait-exit`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
+Steps are `open`, `send`, `wait`, `mark`, `stable`, `sleep`, `golden`, `diff`, `fit`,
+`screenshot`, `shot`, `close`, `wait-exit`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
 is the reference. The runner is a CLI feature (its package is internal), so scenario
 files run through `make test-tui-scenarios` — which is also the CI step in the
 `tui-visual` job — and never through a Go test. `wait-exit` before `expect-exit` when

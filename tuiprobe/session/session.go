@@ -8,6 +8,7 @@ package session
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -67,6 +68,11 @@ type Session struct {
 	changedAt      time.Time
 	readErr        error
 	readClosed     bool
+	// mark is where the program's output had reached at the last Mark, and marked
+	// says whether one was taken at all: `wait --since` without a mark is a mistake
+	// worth naming rather than a wait that matches the whole screen.
+	mark   uint64
+	marked bool
 }
 
 // Start launches the program and begins replaying its stream into a screen.
@@ -221,7 +227,9 @@ func (s *Session) Resize(size pty.Size) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.size = size
-	s.terminal = screen.New(size.Cols, size.Rows)
+	// Reset rather than replace: the write counter has to survive a resize, or a
+	// mark taken before it would be unreachable afterwards (screen.Buffer.Reset).
+	s.terminal.Reset(size.Cols, size.Rows)
 	s.changedAt = time.Now()
 	return nil
 }
@@ -235,9 +243,28 @@ func (s *Session) Size() pty.Size {
 
 // Text is the screen as plain text, one line per row, trailing blanks trimmed.
 func (s *Session) Text() string {
+	return s.TextSince(0)
+}
+
+// TextSince is the screen as text, but only from the cells the program wrote after
+// the given generation — everything that was already there reads as blank.
+func (s *Session) TextSince(gen uint64) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.terminal.String()
+	return s.terminal.StringSince(gen)
+}
+
+// Mark records where the program's output has reached and returns that generation.
+//
+// It exists for the flow a single screen cannot express: a program started twice in
+// one session draws the same frame twice, so `wait --text` on the second run is
+// satisfied by the first run's leftovers. After a Mark, WaitTextSince only accepts
+// text drawn after it (issue #126).
+func (s *Session) Mark() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mark, s.marked = s.terminal.Generation(), true
+	return s.mark
 }
 
 // ANSI is the screen with its styling encoded as escape sequences.
@@ -279,13 +306,35 @@ func (s *Session) Close() (int, error) { return s.program.Close() }
 // The failure names the step and shows what the screen actually said, so a
 // timeout is a diagnosis rather than a shrug.
 func (s *Session) WaitText(pattern string, timeout time.Duration) error {
+	return s.waitText(pattern, timeout, "screen", s.Text)
+}
+
+// WaitTextSince waits until the screen matches pattern on text the program drew
+// after the last Mark.
+//
+// Text that was already on screen when Mark was called cannot satisfy it, which is
+// the difference from WaitText: a second run of a program draws a frame the first run
+// already left behind, and this wait is about the new one (issue #126).
+func (s *Session) WaitTextSince(pattern string, timeout time.Duration) error {
+	s.mu.Lock()
+	mark, marked := s.mark, s.marked
+	s.mu.Unlock()
+	if !marked {
+		return errors.New("session: wait for text since a mark: nothing was marked; call Mark first")
+	}
+	return s.waitText(pattern, timeout, "screen drawn since the mark", func() string { return s.TextSince(mark) })
+}
+
+// waitText is the one wait loop: what differs between the two forms is which screen
+// it reads, and the wording of the failure.
+func (s *Session) waitText(pattern string, timeout time.Duration, scope string, screen func() string) error {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return fmt.Errorf("session: wait for text: bad pattern %q: %w", pattern, err)
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		if re.MatchString(s.Text()) {
+		if re.MatchString(screen()) {
 			return nil
 		}
 		if s.Exited() {
@@ -294,13 +343,13 @@ func (s *Session) WaitText(pattern string, timeout time.Duration) error {
 			// the exit flag and the final screen are not ordered. Look once more,
 			// briefly, before reporting failure: a CI run of the CLI tests found
 			// "got:hello" on the screen and this error at the same time.
-			if s.awaitFinal(re, 500*time.Millisecond) {
+			if s.awaitFinal(re, 500*time.Millisecond, screen) {
 				return nil
 			}
-			return fmt.Errorf("session: wait for text %q: the program exited first; screen:\n%s", pattern, s.Text())
+			return fmt.Errorf("session: wait for text %q: the program exited first; %s:\n%s", pattern, scope, screen())
 		}
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("session: wait for text %q: %w after %s; screen:\n%s", pattern, ErrStageTimeout, timeout, s.Text())
+			return fmt.Errorf("session: wait for text %q: %w after %s; %s:\n%s", pattern, ErrStageTimeout, timeout, scope, screen())
 		}
 		time.Sleep(PollInterval)
 	}
@@ -308,10 +357,10 @@ func (s *Session) WaitText(pattern string, timeout time.Duration) error {
 
 // awaitFinal looks for the pattern in the final output of a program that has already
 // exited, giving the reader a bounded moment to finish applying the last bytes.
-func (s *Session) awaitFinal(re *regexp.Regexp, budget time.Duration) bool {
+func (s *Session) awaitFinal(re *regexp.Regexp, budget time.Duration, screen func() string) bool {
 	deadline := time.Now().Add(budget)
 	for {
-		if re.MatchString(s.Text()) {
+		if re.MatchString(screen()) {
 			return true
 		}
 		if !time.Now().Before(deadline) {
