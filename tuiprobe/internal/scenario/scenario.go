@@ -153,7 +153,13 @@ func Run(steps []Step, opts Options) (Result, error) {
 
 	client := &daemon.Client{Socket: daemon.SocketFromEnvOrFlag(opts.Socket)}
 	runner := &runner{opts: opts, client: client, logf: logf}
-	defer runner.cleanup()
+	// Cleanup closes the session first: only then has the daemon nothing left to
+	// hold, and only a daemon this run started is released — a scenario driven
+	// against someone else's long-lived daemon must not end it.
+	defer func() {
+		runner.cleanup()
+		client.Release()
+	}()
 
 	for _, step := range steps {
 		if err := runner.step(step); err != nil {
