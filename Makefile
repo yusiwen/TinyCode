@@ -18,7 +18,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls test-tuiprobe test-tuiprobe-race lint-tuiprobe build-tuiprobe lint staticcheck fmt fmt-check fuzz clean all
+.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls test-tuiprobe test-tuiprobe-race lint-tuiprobe build-tuiprobe lint staticcheck fmt fmt-check fuzz clean all test-tui-confine
 
 default: build
 
@@ -111,7 +111,7 @@ test-tui-scenarios: build
 	# whatever earlier runs happened to leave behind.
 	cp -n tui/testdata/fixtures/*.json /tmp/tinyscen-home/sessions/ 2>/dev/null || true
 	@for f in tui/testdata/scenarios/*.scenario; do \
-		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; *lsp-*) echo "== $$f (skipped: run make test-tui-lsp)"; continue;; esac; \
+		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; *lsp-*) echo "== $$f (skipped: run make test-tui-lsp)"; continue;; *confine-*) echo "== $$f (skipped: run make test-tui-confine)"; continue;; esac; \
 		echo "== $$f"; \
 		TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TUI_SHOT --dir . "$$f" || exit 1; \
 	done
@@ -128,6 +128,24 @@ test-tui-lsp: build
 		echo "== $$f"; \
 		LSP_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate LSP_TEST --dir . "$$f" || exit 1; \
 	done
+
+# The command-boundary scenarios, gated the way make test-lsp is: they need a kernel
+# mechanism for subprocesses, which a plain `make test` host may not have. The gate is
+# decided by asking the real launcher rather than by guessing from the platform name, and a
+# host without the mechanism skips with the reason printed — a gated check that silently
+# passed would look like evidence and be none.
+# One shell for the probe and the loop: an `exit` in a recipe line only ends that line, so
+# a skip written as its own line would still run the scenarios below it.
+test-tui-confine: build
+	mkdir -p /tmp/tinyscen-shots
+	@if ! ./bin/tinycode __sandbox-exec --mode read-only -- true 2>/dev/null; then \
+		echo "skipped: this host cannot apply a kernel file boundary to a subprocess"; \
+	else \
+		for f in tui/testdata/scenarios/confine-*.scenario; do \
+			echo "== $$f"; \
+			SANDBOX_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate SANDBOX_TEST --dir . "$$f" || exit 1; \
+		done; \
+	fi
 
 test-tui-live: build
 	mkdir -p /tmp/tinyscen-live

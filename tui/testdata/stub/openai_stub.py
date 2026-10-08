@@ -60,6 +60,24 @@ LSP_CALL = (
     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
     'data: [DONE]\n\n'
 ) % json.dumps(json.dumps({"file_path": os.path.join(os.getcwd(), "main.go")}))
+# "confine" asks for one bash call that writes two files: one inside the working directory
+# (a writable root) and one at a fixed path outside it. The scenario's own shell checks both
+# paths after the program exits, so the assertion is about the filesystem rather than about
+# the command's output — and it is selective on purpose: a host that refuses the command
+# wholesale leaves *neither* file, which the "inside" half catches instead of reporting a
+# working boundary. The outside path is deliberately NOT under the temp directory the file
+# fence allows for other purposes; the command roots are the project plus its auto-allowed
+# paths only.
+CONFINE_INSIDE = ".stub-confine-inside.txt"
+CONFINE_OUTSIDE = "/tmp/tinycode-stub-confine-outside.txt"
+CONFINE_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_c","type":"function",'
+    '"function":{"name":"bash","arguments":%s}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+) % json.dumps(json.dumps({
+    "command": "echo inside > %s; echo outside > %s" % (CONFINE_INSIDE, CONFINE_OUTSIDE)
+}))
 WRITE_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_w","type":"function",'
     '"function":{"name":"write_file","arguments":"{\\"path\\":\\"/tmp/stub-outside-write.txt\\",\\"content\\":\\"stub\\"}"}}]}}]}\n\n'
@@ -100,6 +118,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "todo": TODO_CALL,
                 "read": READ_CALL,
                 "lsp": LSP_CALL,
+                "confine": CONFINE_CALL,
             }[MODE].encode()
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")

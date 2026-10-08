@@ -84,6 +84,26 @@ jobs:
       - name: TUI LSP scenarios
         run: make test-tui-lsp
 
+  confine:
+    name: Sandbox confinement (Landlock + PTY)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      # The command-boundary scenarios drive the real binary on a PTY with confinement
+      # switched on, and assert on the filesystem afterwards: a write under the workspace
+      # must happen and one outside it must not. The target probes the launcher itself and
+      # skips with a printed reason where the kernel has no mechanism, so a host without
+      # Landlock cannot look like a pass.
+      - name: TUI command-boundary scenarios
+        run: make test-tui-confine
+
   cross:
     name: Cross-compile + vet (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
