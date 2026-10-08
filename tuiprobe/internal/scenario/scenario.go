@@ -33,6 +33,7 @@ import (
 	"github.com/yusiwen/TinyCode/tuiprobe/golden"
 	"github.com/yusiwen/TinyCode/tuiprobe/internal/daemon"
 	"github.com/yusiwen/TinyCode/tuiprobe/internal/shot"
+	"github.com/yusiwen/TinyCode/tuiprobe/session"
 )
 
 // DefaultTimeout bounds a step that does not give its own.
@@ -208,10 +209,27 @@ func (r *runner) call(req daemon.Request) (daemon.Response, error) {
 		return resp, err
 	}
 	if !resp.OK {
+		// Keep the class the daemon put on its refusal: a wait that ran out of time is a
+		// timeout (exit code 3), not a generic failure, and flattening every refusal into
+		// one message made `tuiprobe run` answer 2 for exactly the case the contract
+		// promises 3 (issue #153).
+		if resp.Code == daemon.CodeTimeout {
+			return resp, timeoutError{msg: resp.Error}
+		}
 		return resp, errors.New(resp.Error)
 	}
 	return resp, nil
 }
+
+// timeoutError is a daemon refusal that was a timeout, carrying the daemon's own message
+// and the class callers already classify with: the CLI's command path answers 3 by
+// reading the response code, and the run path now answers 3 because errors.Is finds
+// session.ErrStageTimeout here (issue #153).
+type timeoutError struct{ msg string }
+
+func (e timeoutError) Error() string { return e.msg }
+
+func (e timeoutError) Is(target error) bool { return target == session.ErrStageTimeout }
 
 // cleanup closes the session if the scenario did not, so a failing scenario does
 // not leave a program behind.

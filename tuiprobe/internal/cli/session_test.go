@@ -223,3 +223,30 @@ func TestMarkAndWaitSinceSeeOnlyNewText(t *testing.T) {
 	}
 	run(append([]string{"close"}, base...), "")
 }
+
+// TestRunReportsATimeoutAsATimeout is the guard for issue #153: the exit-code contract
+// says 3 is a timeout, and the scenario path answered 2 because the runner flattened the
+// daemon's refusal into a bare error and lost the class.
+func TestRunReportsATimeoutAsATimeout(t *testing.T) {
+	socket := startDaemon(t)
+	file := filepath.Join(t.TempDir(), "deadline.scenario")
+	body := "open --size 80x24 -- /bin/sh -c 'sleep 30'\nwait --text never-appears --timeout 300ms\n"
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, errOut := run([]string{"run", "--socket", socket, file}, "")
+	if code != daemon.CodeTimeout {
+		t.Errorf("run on a timed-out scenario: exit %d (stderr %q), want %d", code, errOut, daemon.CodeTimeout)
+	}
+	if !strings.Contains(errOut, "stage timed out") {
+		t.Errorf("stderr = %q, want the timeout the step reported", errOut)
+	}
+
+	// The machine-readable form carries the class too, or a caller parsing --json cannot
+	// tell a timeout from an assertion failure either.
+	code, out, _ := run([]string{"run", "--json", "--socket", socket, file}, "")
+	if code != daemon.CodeTimeout || !strings.Contains(out, `"code": 3`) {
+		t.Errorf("run --json: exit %d, output %q, want code 3", code, out)
+	}
+}
