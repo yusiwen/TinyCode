@@ -148,25 +148,102 @@ func resolveRealPath(path string) string {
 	}
 }
 
+// beneathRoot reports whether realPath is inside realRoot, or is realRoot
+// itself. Both arguments must already be in the OS-resolved, cleaned form this
+// file produces (resolveRealPath + Clean); comparing resolved forms is what
+// stops a symlink, or a "link/.." sequence, from looking contained.
+func beneathRoot(realRoot, realPath string) bool {
+	if realRoot == "" {
+		return false
+	}
+	rel, err := filepath.Rel(realRoot, realPath)
+	return err == nil && !escapes(rel)
+}
+
+// projectRootResolved returns the project root in the OS-resolved, cleaned form
+// the containment predicate compares against, or "" when no root is configured.
+//
+// It is the single derivation of that value: WritableRoots builds its first
+// entry from it, and CheckPath uses it for the kernel probe, so the two cannot
+// disagree about which directory the project root really is.
+func (sc *SandboxConfig) projectRootResolved() string {
+	if sc.ProjectRoot == "" {
+		return ""
+	}
+	return filepath.Clean(resolveRealPath(filepath.Clean(absoluteNoClean(sc.ProjectRoot))))
+}
+
+// WritableRoots returns every directory this configuration treats as writable,
+// canonical and deduplicated: the resolved project root first (when one is
+// configured), then each auto-allowed path.
+//
+// It exists so that the file fence and command execution cannot drift apart:
+// both must decide containment by asking this one list, and adding a root here
+// must change the effective policy for both at once. The predicate they share
+// is beneathRoot over the resolved forms returned here.
+//
+// It is computed per call rather than cached. Resolving symlinks is what makes
+// the list safe, and a cached copy would answer a question about an earlier
+// moment; the cost is the same as the per-path resolution the check already
+// did.
+//
+// Two facts about the current set are deliberate, not accidental:
+//
+//   - No platform temp area is included. The file fence does not today allow
+//     writes to /tmp, and folding it in here would widen the fence as a side
+//     effect of a refactor. Making a temp area writable is a separate policy
+//     change that must land for every consumer in one commit, with its own
+//     test.
+//   - The list may hold several roots, while the kernel probe
+//     (kernelEscapeCheck) can only express one: RESOLVE_BENEATH is
+//     single-root. CheckPath therefore runs that probe for the project root
+//     and decides the remaining roots by the resolved comparison, which is
+//     what the behavior already did. A caller that needs several roots
+//     enforced by the kernel requires a mechanism that accepts a path list.
+func (sc *SandboxConfig) WritableRoots() []string {
+	candidates := make([]string, 0, 1+len(sc.AutoAllowPaths))
+	if root := sc.projectRootResolved(); root != "" {
+		candidates = append(candidates, root)
+	}
+	for _, permit := range sc.AutoAllowPaths {
+		if strings.TrimSpace(permit) == "" {
+			continue
+		}
+		candidates = append(candidates, filepath.Clean(resolveRealPath(absoluteNoClean(permit))))
+	}
+
+	roots := make([]string, 0, len(candidates))
+	seen := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		roots = append(roots, candidate)
+	}
+	return roots
+}
+
 // CheckPath checks if the given path is allowed. Returns nil if allowed,
 // or an *AccessDenied error. Pattern D auto-rules are checked before rejection.
 //
 // Containment is decided on the OS-resolved forms of both the root and the
 // requested path, so neither a symlink nor a "link/.." sequence can escape.
+// The roots come from WritableRoots, which is also what command execution
+// consumes, so the two cannot hold different opinions about the writable set.
 func (sc *SandboxConfig) CheckPath(absPath string) error {
 	if sc.ProjectRoot == "" {
 		return nil
 	}
 
 	rawAbs := absoluteNoClean(absPath)
-	root := filepath.Clean(absoluteNoClean(sc.ProjectRoot))
 	realAbs := filepath.Clean(resolveRealPath(rawAbs))
-	realRoot := filepath.Clean(resolveRealPath(root))
+	realRoot := sc.projectRootResolved()
 
 	// 1) Within project root. The OS-resolved forms are authoritative: a
 	// lexical check alone would accept a link (or a link plus "..") that
 	// points outside.
-	if rel, err := filepath.Rel(realRoot, realAbs); err == nil && !escapes(rel) {
+	if beneathRoot(realRoot, realAbs) {
 		// On Linux the kernel re-evaluates the path with RESOLVE_BENEATH: if a
 		// directory along it was swapped for an escaping symlink (or is a
 		// magic link) after EvalSymlinks ran, the probe returns EXDEV and the
@@ -177,7 +254,7 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 		// wrong: RESOLVE_BENEATH rejects absolute symlinks wherever they
 		// point, so a symlink inside the root pointing back inside the root
 		// would be reported as an escape even though it resolves here.
-		if kernelEscapeCheck(root, realAbs) {
+		if kernelEscapeCheck(sc.ProjectRoot, realAbs) {
 			return &AccessDenied{
 				Path:    rawAbs,
 				Message: fmt.Sprintf("Path %q escapes the project root %q.", rawAbs, sc.ProjectRoot),
@@ -194,11 +271,14 @@ func (sc *SandboxConfig) CheckPath(absPath string) error {
 		return nil
 	}
 
-	// 3) Pattern D: auto-allow paths (CWD, parent dir, etc.), compared on the
-	// resolved forms for the same reason.
-	for _, permit := range sc.AutoAllowPaths {
-		realPermit := filepath.Clean(resolveRealPath(absoluteNoClean(permit)))
-		if pRel, err := filepath.Rel(realPermit, realAbs); err == nil && !escapes(pRel) {
+	// 3) The remaining writable roots (auto-allowed paths: CWD, parent dir,
+	// etc.), compared on the resolved forms for the same reason. The project
+	// root was decided above, with its kernel probe.
+	for _, root := range sc.WritableRoots() {
+		if root == realRoot {
+			continue
+		}
+		if beneathRoot(root, realAbs) {
 			// Auto-cache so future checks are instant
 			sc.AllowAlways(rawAbs)
 			return nil

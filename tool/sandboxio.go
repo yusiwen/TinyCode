@@ -129,12 +129,18 @@ func createTempSandboxed(dir, base string, perm os.FileMode) (string, *os.File, 
 // is refused, because that difference is exactly the swap this layer exists to
 // catch.
 func openSandboxed(path string, flags int, perm os.FileMode) (*os.File, error) {
-	root := DefaultSandbox.ProjectRoot
-	if root == "" {
+	// The project root comes from the same derivation the fence uses, so the
+	// root this layer hands to the kernel is the root CheckPath approved
+	// against. Before, the two computed it with different expressions: this one
+	// resolved the configured value directly, while CheckPath cleaned it first.
+	// They agreed for every ordinary path and could differ for a root written
+	// with ".." or redundant separators — precisely the kind of divergence a
+	// second derivation invites.
+	realRoot := DefaultSandbox.projectRootResolved()
+	if realRoot == "" {
 		return os.OpenFile(path, flags, perm)
 	}
 
-	realRoot := filepath.Clean(resolveRealPath(absoluteNoClean(root)))
 	realPath := filepath.Clean(resolveRealPath(absoluteNoClean(path)))
 	if rel, ok := relBeneath(realRoot, realPath); ok {
 		file, err := openBeneathRoot(realRoot, rel, flags, perm)
