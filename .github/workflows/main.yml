@@ -96,11 +96,24 @@ jobs:
         with:
           go-version: 1.27
 
+      # Which mechanisms this kernel actually offers, printed rather than assumed. A silent
+      # skip on a host without Landlock looks exactly like a pass, and the difference decides
+      # whether the scenario below is evidence or a no-op.
+      - name: Report the confinement capability
+        run: |
+          uname -a
+          echo "LSM list: $(cat /sys/kernel/security/lsm 2>/dev/null || echo '(not readable)')"
+
+      # -v on purpose, for the same reason make test-lsp has it: whether the acceptance test
+      # ran or skipped, with the reason, is the point. Without -v a skipped test prints
+      # nothing, and the job reads as green evidence it does not have.
+      - name: Landlock acceptance test, verbosely
+        run: go test ./tool/ -run 'TestLandlock' -count=1 -v
+
       # The command-boundary scenarios drive the real binary on a PTY with confinement
       # switched on, and assert on the filesystem afterwards: a write under the workspace
       # must happen and one outside it must not. The target probes the launcher itself and
-      # skips with a printed reason where the kernel has no mechanism, so a host without
-      # Landlock cannot look like a pass.
+      # skips with the kernel's own reason where there is no mechanism.
       - name: TUI command-boundary scenarios
         run: make test-tui-confine
 
