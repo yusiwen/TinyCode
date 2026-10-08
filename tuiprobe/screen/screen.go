@@ -40,6 +40,12 @@ type Buffer struct {
 	row, col      int
 	pendingWrap   bool
 	style         Style
+	// generation counts the writes this buffer has replayed, and gen records, per
+	// cell, the generation that last wrote it. A screen alone cannot tell a second
+	// run of a program from the first — both draw the same frame — so the age of
+	// each cell is what makes "text drawn since this moment" answerable (issue #126).
+	generation uint64
+	gen        []uint64
 	// pending holds an escape sequence that was split across Write calls. Terminal
 	// output arrives in arbitrary chunks, and a chunk boundary can fall inside an
 	// SGR or an OSC sequence: without this, the leading half was dropped and the
@@ -61,10 +67,53 @@ func New(width, height int) *Buffer {
 	if height < 1 {
 		height = 1
 	}
-	return &Buffer{width: width, height: height, cells: make([]Cell, width*height)}
+	return &Buffer{
+		width: width, height: height,
+		cells: make([]Cell, width*height),
+		gen:   make([]uint64, width*height),
+	}
 }
 
+// Reset re-lays-out the buffer for a new geometry, dropping what was on it but
+// keeping the write counter.
+//
+// Keeping it matters: a mark recorded before a resize must stay comparable, or a
+// wait "since" it would either match nothing for ever (a fresh counter behind the
+// mark) or match the old screen again (a counter reset to zero).
+func (b *Buffer) Reset(width, height int) {
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	b.width, b.height = width, height
+	b.cells = make([]Cell, width*height)
+	b.gen = make([]uint64, width*height)
+	b.row, b.col, b.pendingWrap, b.style = 0, 0, false, Style{}
+	b.pending = nil
+}
+
+// Generation is how many writes this buffer has replayed. Record it to ask later,
+// with StringSince, what has been drawn in the meantime.
+func (b *Buffer) Generation() uint64 { return b.generation }
+
 func (s *Buffer) idx(row, col int) int { return row*s.width + col }
+
+// clear blanks the cells with row-major indices in [from, to) and records that the
+// blank is their newest state.
+func (s *Buffer) clear(from, to int) {
+	if from < 0 {
+		from = 0
+	}
+	if to > len(s.cells) {
+		to = len(s.cells)
+	}
+	for i := from; i < to; i++ {
+		s.cells[i] = Cell{}
+		s.gen[i] = s.generation
+	}
+}
 
 // scrollUp drops the top row when the cursor moves past the last one.
 func (s *Buffer) scrollUp() {
@@ -72,9 +121,8 @@ func (s *Buffer) scrollUp() {
 		return
 	}
 	copy(s.cells, s.cells[s.width:])
-	for i := (s.height - 1) * s.width; i < s.height*s.width; i++ {
-		s.cells[i] = Cell{}
-	}
+	copy(s.gen, s.gen[s.width:])
+	s.clear((s.height-1)*s.width, s.height*s.width)
 	s.row = s.height - 1
 }
 
@@ -98,9 +146,13 @@ func (s *Buffer) put(r rune) {
 	if w < 1 {
 		w = 1
 	}
-	s.cells[s.idx(s.row, s.col)] = Cell{r: r, Style: s.style}
+	lead := s.idx(s.row, s.col)
+	s.cells[lead] = Cell{r: r, Style: s.style}
+	s.gen[lead] = s.generation
 	if w == 2 && s.col+1 < s.width {
-		s.cells[s.idx(s.row, s.col+1)] = Cell{cont: true, Style: s.style}
+		cont := s.idx(s.row, s.col+1)
+		s.cells[cont] = Cell{cont: true, Style: s.style}
+		s.gen[cont] = s.generation
 	}
 	if s.col+w >= s.width {
 		s.col = s.width - 1
@@ -124,7 +176,7 @@ func (s *Buffer) eraseLine(row, mode int) {
 		to = s.col
 	}
 	for c := from; c <= to; c++ {
-		s.cells[s.idx(row, c)] = Cell{}
+		s.clear(s.idx(row, c), s.idx(row, c)+1)
 	}
 }
 
@@ -133,23 +185,16 @@ func (s *Buffer) eraseLine(row, mode int) {
 func (s *Buffer) eraseDisplay(mode int) {
 	switch mode {
 	case 2:
-		for i := range s.cells {
-			s.cells[i] = Cell{}
-		}
+		s.clear(0, len(s.cells))
 		s.row, s.col, s.pendingWrap = 0, 0, false
 	case 0:
 		s.eraseLine(s.row, 0)
 		for r := s.row + 1; r < s.height; r++ {
-			s.cells[s.idx(r, 0)] = Cell{}
-			for c := 0; c < s.width; c++ {
-				s.cells[s.idx(r, c)] = Cell{}
-			}
+			s.clear(s.idx(r, 0), s.idx(r, 0)+s.width)
 		}
 	case 1:
 		for r := 0; r < s.row; r++ {
-			for c := 0; c < s.width; c++ {
-				s.cells[s.idx(r, c)] = Cell{}
-			}
+			s.clear(s.idx(r, 0), s.idx(r, 0)+s.width)
 		}
 		s.eraseLine(s.row, 1)
 	}
@@ -175,6 +220,11 @@ func (s *Buffer) Write(p []byte) (int, error) {
 		joined = append(joined, p...)
 		p = joined
 		s.pending = nil
+	}
+	if len(p) > 0 {
+		// One chunk is one moment: everything it draws shares a generation, and a
+		// caller's mark either precedes the whole chunk or follows it.
+		s.generation++
 	}
 	for i := 0; i < len(p); {
 		switch {
@@ -288,7 +338,15 @@ func (s *Buffer) csi(raw string, final byte) {
 
 // String renders the visible screen as plain text with trailing blanks removed,
 // the form the frame goldens use.
-func (s *Buffer) String() string {
+func (s *Buffer) String() string { return s.StringSince(0) }
+
+// StringSince renders like String, but only from the cells last written *after* gen:
+// everything the screen held at that point reads as blank.
+//
+// A pattern that matches this text therefore comes from output the program produced
+// after the generation was recorded, which is what lets a scenario tell a second run
+// of a program from the first run's leftover frame (issue #126).
+func (s *Buffer) StringSince(gen uint64) string {
 	var b strings.Builder
 	for row := 0; row < s.height; row++ {
 		var line strings.Builder
@@ -297,7 +355,7 @@ func (s *Buffer) String() string {
 			if cell.cont {
 				continue
 			}
-			if cell.r == 0 {
+			if cell.r == 0 || s.gen[s.idx(row, col)] <= gen {
 				line.WriteByte(' ')
 				continue
 			}

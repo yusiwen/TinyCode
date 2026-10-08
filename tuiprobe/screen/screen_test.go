@@ -222,3 +222,77 @@ func TestLoneEscapeIsNotText(t *testing.T) {
 		t.Errorf("screen = %q, want the styled text without the escape", got)
 	}
 }
+
+// TestStringSinceTellsNewTextFromTheFramesBeforeIt is the screen-level half of
+// issue #126: a second process can draw exactly the same frame as the first, so the
+// text on screen cannot say whether it is new. The generation can.
+func TestStringSinceTellsNewTextFromTheFramesBeforeIt(t *testing.T) {
+	b := New(20, 3)
+	_, _ = b.Write([]byte("stale\r\n"))
+	mark := b.Generation()
+
+	if got := strings.TrimSpace(b.StringSince(mark)); got != "" {
+		t.Errorf("StringSince(mark) = %q, want nothing: no write happened after the mark", got)
+	}
+	_, _ = b.Write([]byte("fresh\r\n"))
+	if got := b.StringSince(mark); !strings.Contains(got, "fresh") || strings.Contains(got, "stale") {
+		t.Errorf("StringSince(mark) = %q, want only the text written after it", got)
+	}
+	if got := b.String(); !strings.Contains(got, "stale") || !strings.Contains(got, "fresh") {
+		t.Errorf("String() = %q, want the whole screen: the filter must not change it", got)
+	}
+}
+
+// TestStringSinceIsPerCell: the filter is the age of each cell, not of the screen, so
+// text rewritten in place counts while the cells around it stay left over.
+func TestStringSinceIsPerCell(t *testing.T) {
+	b := New(10, 1)
+	_, _ = b.Write([]byte("aaaaaaaaaa"))
+	mark := b.Generation()
+	_, _ = b.Write([]byte("\x1b[9Gbb")) // column 9, then two cells
+
+	got := strings.TrimRight(b.StringSince(mark), "\n")
+	if want := "        bb"; got != want {
+		t.Errorf("StringSince = %q, want %q: only the two cells written after the mark count", got, want)
+	}
+}
+
+// TestStringSinceSurvivesScrolling: a row that scrolls up carries the age of its
+// cells with it, so text written before the mark stays old wherever it lands.
+func TestStringSinceSurvivesScrolling(t *testing.T) {
+	b := New(10, 2)
+	_, _ = b.Write([]byte("keep\r\nx"))
+	mark := b.Generation()
+	_, _ = b.Write([]byte("\r\nnew")) // scrolls "x" up to row 0, draws "new" on row 1
+
+	if got, want := b.String(), "x\nnew\n"; got != want {
+		t.Fatalf("String() = %q, want %q", got, want)
+	}
+	if got, want := b.StringSince(mark), "\nnew\n"; got != want {
+		t.Errorf("StringSince = %q, want %q: the scrolled cell is still old", got, want)
+	}
+}
+
+// TestResetKeepsTheGeneration: a resize re-lays-out the buffer, and a mark taken
+// before it must stay meaningful — a fresh counter behind the mark would match
+// nothing for ever, or the old screen again.
+func TestResetKeepsTheGeneration(t *testing.T) {
+	b := New(10, 2)
+	_, _ = b.Write([]byte("before"))
+	mark := b.Generation()
+
+	b.Reset(20, 3)
+	if b.Generation() != mark {
+		t.Errorf("generation after Reset = %d, want %d", b.Generation(), mark)
+	}
+	if cols, rows := b.Bounds(); cols != 20 || rows != 3 {
+		t.Errorf("bounds after Reset = %dx%d, want 20x3", cols, rows)
+	}
+	if got := strings.TrimSpace(b.StringSince(mark)); got != "" {
+		t.Errorf("StringSince(mark) after Reset = %q, want nothing", got)
+	}
+	_, _ = b.Write([]byte("after"))
+	if got := b.StringSince(mark); !strings.Contains(got, "after") {
+		t.Errorf("StringSince(mark) after Reset and a write = %q, want the new text", got)
+	}
+}

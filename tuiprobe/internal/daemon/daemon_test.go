@@ -369,3 +369,41 @@ func TestEveryResponseCarriesTheLiveCount(t *testing.T) {
 		t.Errorf("a refused text = %+v, want OK=false with sessionCount 1", refused)
 	}
 }
+
+// TestMarkMakesAWaitSeeOnlyNewText is the daemon-level guard for issue #126: a program
+// started twice in one session paints the same frame twice, so a plain `wait --text` on
+// the second run is satisfied by the first run's leftovers. A wait carrying Since reads
+// only what was drawn after the mark.
+func TestMarkMakesAWaitSeeOnlyNewText(t *testing.T) {
+	c, _ := startServer(t)
+	call(t, c, Request{
+		Cmd: "open", Name: "app",
+		Args: []string{"/bin/sh", "-c", "printf 'ready\\n'; read l; printf 'ready\\n'; sleep 5"},
+	})
+
+	// Two refusals, so neither mistake is quietly widened into a match on the whole
+	// screen: no mark yet, and nothing to match on.
+	if resp, _ := c.Call(Request{Cmd: "wait", Name: "app", Pattern: "ready", Since: true, Timeout: "100ms"}); resp.OK || resp.Code != CodeFailure {
+		t.Fatalf("wait --since without a mark = %+v, want a refusal", resp)
+	}
+	if resp, _ := c.Call(Request{Cmd: "wait", Name: "app", Since: true, Timeout: "100ms"}); resp.OK || !strings.Contains(resp.Error, "needs --text") {
+		t.Fatalf("wait --since without --text = %+v, want a usage refusal", resp)
+	}
+
+	call(t, c, Request{Cmd: "wait", Name: "app", Pattern: "ready", Timeout: "5s"})
+	marked := call(t, c, Request{Cmd: "mark", Name: "app"})
+	if marked.Generation == 0 {
+		t.Fatalf("mark = %+v, want the generation it recorded", marked)
+	}
+
+	// The stale copy is still on the screen: the plain wait sees it, the since-wait
+	// must not.
+	call(t, c, Request{Cmd: "wait", Name: "app", Pattern: "ready", Timeout: "1s"})
+	if resp, _ := c.Call(Request{Cmd: "wait", Name: "app", Pattern: "ready", Since: true, Timeout: "300ms"}); resp.OK || resp.Code != CodeTimeout {
+		t.Fatalf("wait --since on text from before the mark = %+v, want a timeout", resp)
+	}
+
+	// Printing it again does satisfy the since-wait.
+	call(t, c, Request{Cmd: "send", Name: "app", Text: "again", Keys: []string{"enter"}})
+	call(t, c, Request{Cmd: "wait", Name: "app", Pattern: "ready", Since: true, Timeout: "5s"})
+}

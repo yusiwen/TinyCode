@@ -282,3 +282,77 @@ expect-exit 7
 		t.Error("waiting on a session that is gone must fail, not pass silently")
 	}
 }
+
+// TestMarkMakesAWaitSeeOnlyNewText is the scenario-level self-test issue #126 asks for:
+// the string is deliberately placed on screen *before* the mark, and the wait carrying
+// --since must not be satisfied by it — while the same wait, without --since, is.
+//
+// The program prints the same line twice, which is what a scenario that starts the same
+// program twice sees on one screen.
+func TestMarkMakesAWaitSeeOnlyNewText(t *testing.T) {
+	// One line before the mark, one after a line is read: the second print stands in for
+	// the second start of a program.
+	program := `/bin/sh -c 'echo ready; read l; echo ready; sleep 5'`
+
+	t.Run("text from before the mark does not satisfy a since-wait", func(t *testing.T) {
+		script := fmt.Sprintf(`open --size 80x24 -- %s
+wait --text ready --timeout 5s
+mark
+wait --text ready --since --timeout 400ms
+`, program)
+		steps, err := Parse(strings.NewReader(script))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		_, err = Run(steps, Options{Socket: startDaemon(t), Stdout: io.Discard})
+		if err == nil {
+			t.Fatal("the since-wait matched text that was on screen before the mark")
+		}
+		if !strings.Contains(err.Error(), "stage timed out") {
+			t.Errorf("Run = %v, want a timeout: the stale copy must not satisfy the wait", err)
+		}
+		// The daemon answers with an error string, so the class is read from the message
+		// here; what the message dumps must be the empty post-mark screen.
+		if !strings.Contains(err.Error(), "screen drawn since the mark") {
+			t.Errorf("Run = %v, want it to name the screen it looked at", err)
+		}
+		if !strings.Contains(err.Error(), "line 4") {
+			t.Errorf("Run = %v, want it to name line 4", err)
+		}
+	})
+
+	t.Run("a second print of the same text does satisfy it", func(t *testing.T) {
+		script := fmt.Sprintf(`open --size 80x24 -- %s
+wait --text ready --timeout 5s
+mark
+send --text again --key enter
+wait --text ready --since --timeout 5s
+`, program)
+		steps, err := Parse(strings.NewReader(script))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		res, err := Run(steps, Options{Socket: startDaemon(t), Stdout: io.Discard})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if res.Steps != 5 {
+			t.Errorf("ran %d steps, want 5", res.Steps)
+		}
+	})
+
+	t.Run("a plain wait still reads the whole screen", func(t *testing.T) {
+		script := fmt.Sprintf(`open --size 80x24 -- %s
+wait --text ready --timeout 5s
+mark
+wait --text ready --timeout 300ms
+`, program)
+		steps, err := Parse(strings.NewReader(script))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		if _, err := Run(steps, Options{Socket: startDaemon(t), Stdout: io.Discard}); err != nil {
+			t.Fatalf("Run: %v — the plain wait must still match the text already on screen", err)
+		}
+	})
+}

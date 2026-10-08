@@ -47,7 +47,7 @@ var DefaultTimeout = 10 * time.Second
 // listed ten of thirteen verbs until issue #145, and the reference table had missed
 // `screenshot` until issue #142 — because each one was written by hand.
 var verbs = []string{
-	"open", "send", "wait", "stable", "sleep",
+	"open", "send", "wait", "mark", "stable", "sleep",
 	"golden", "diff", "fit", "screenshot", "shot",
 	"close", "wait-exit", "expect-exit",
 }
@@ -229,6 +229,8 @@ func (r *runner) step(s Step) error {
 		return r.stepSend(s)
 	case "wait":
 		return r.stepWait(s)
+	case "mark":
+		return r.stepMark(s)
 	case "stable":
 		return r.stepStable(s)
 	case "sleep":
@@ -314,10 +316,38 @@ func (r *runner) stepWait(s Step) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.call(daemon.Request{Cmd: "wait", Pattern: pattern, Timeout: timeout.String()}); err != nil {
+	since := hasFlag(s, "--since")
+	if _, err := r.call(daemon.Request{Cmd: "wait", Pattern: pattern, Timeout: timeout.String(), Since: since}); err != nil {
 		return err
 	}
+	if since {
+		r.logf("saw %s (since the mark)", pattern)
+		return nil
+	}
 	r.logf("saw %s", pattern)
+	return nil
+}
+
+// stepMark records how far the program's output has come, so a later `wait --since`
+// only accepts text drawn after this line.
+//
+// It exists for the flow a single screen cannot express: a scenario that starts the
+// same program twice gets the same frame twice, and a wait placed after the second
+// start was satisfied by the first run's leftovers. The workaround was a unique
+// marker printed between the runs, which proves the wrapper reached a line, not that
+// the new program is on screen (issue #126).
+func (r *runner) stepMark(s Step) error {
+	if !r.opened {
+		return errors.New("mark needs an open first")
+	}
+	if _, _, _, err := parseStep(s, stepFlags{}); err != nil {
+		return err
+	}
+	resp, err := r.call(daemon.Request{Cmd: "mark"})
+	if err != nil {
+		return err
+	}
+	r.logf("marked %s (generation %d)", resp.Name, resp.Generation)
 	return nil
 }
 

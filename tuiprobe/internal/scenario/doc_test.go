@@ -111,3 +111,55 @@ func documentedVerbs(doc string) map[string]bool {
 	}
 	return out
 }
+
+// backtickedStep matches a verb written as code in prose.
+var backtickedStep = regexp.MustCompile("`([a-z-]+)`")
+
+// TestConsumerDocsNameTheSteps keeps the two lists a *consumer* reads in step with the
+// vocabulary: the workspace guide an agent loads, and the verification document.
+//
+// Both are prose, and both had drifted the same way as the CLI help: twelve verbs were
+// named and `shot` was never one of them (issue #145), and `mark` joined the vocabulary
+// later (issue #126). A reader there cannot know a step exists if the sentence that
+// enumerates them does not name it.
+func TestConsumerDocsNameTheSteps(t *testing.T) {
+	authority := map[string]bool{}
+	for _, v := range Verbs() {
+		authority[v] = true
+	}
+	for _, path := range []string{"../../../AGENTS.md", "../../../docs/tui-verification.md"} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		text := string(body)
+		start := strings.Index(text, "teps are ")
+		if start < 0 {
+			t.Errorf("%s no longer says \"Steps are ...\"; this check reads that sentence", path)
+			continue
+		}
+		list := text[start:]
+		if end := strings.Index(list, ";"); end >= 0 {
+			list = list[:end]
+		}
+
+		named := map[string]bool{}
+		for _, m := range backtickedStep.FindAllStringSubmatch(list, -1) {
+			named[m[1]] = true
+		}
+		if len(named) < 10 {
+			t.Errorf("%s: found %d step names, want the whole list: did the sentence change shape?", path, len(named))
+			continue
+		}
+		for v := range named {
+			if !authority[v] {
+				t.Errorf("%s names %q, which the runner does not accept", path, v)
+			}
+		}
+		for v := range authority {
+			if !named[v] {
+				t.Errorf("%s does not name %q: a reader there cannot know the step exists (issue #145)", path, v)
+			}
+		}
+	}
+}
