@@ -37,7 +37,8 @@ depends on no other repository — and `make test-tuiprobe-examples` runs it.
 | `golden --ansi <file>` | compare the ANSI screen, escapes and all |
 | `golden --against <file>` | the same comparison, for a caller that assembles the flags rather than the arguments |
 | `diff <file>` | the same as `golden`; both names are accepted |
-| `screenshot <file> [--scale N] [--font FILE] [--format png\|html] [--renderer font\|chromium] [--browser PATH]` | write the screen to a PNG (default) or HTML and **read it back**: the pixel size is asserted against this session's geometry, so the image is evidence of that geometry. `shot` is the same step |
+| `screenshot <file> [--scale N] [--font FILE] [--format png\|html] [--renderer font\|chromium] [--browser PATH]` | write the screen to a PNG (default) or HTML and **read it back**: the pixel size is asserted against this session's geometry, so the image is evidence of that geometry |
+| `shot <file> [flags]` | the same step as `screenshot`; both names are accepted |
 | `fit --size WxH` | assert the session really is that size and the screen fits it |
 | `wait-exit [duration]` | wait for the program to end **on its own** and remember its code (default 10s) — use this before `expect-exit` when the program leaves by itself |
 | `close` | end the session and remember its exit code |

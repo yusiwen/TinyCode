@@ -3,7 +3,6 @@ package scenario
 import (
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -19,10 +18,14 @@ var verbLiteral = regexp.MustCompile(`"([a-z-]+)"`)
 //
 // docs/scenario.md lagged this switch once already: `screenshot` and its `shot` alias were
 // handled, used by 25 of the consumer's 31 scenario files, and absent from the table — and
-// nothing failed, because a table is prose (issue #142). So the verbs are read out of step()
-// here, the switch being the authority, and each one must be documented.
+// nothing failed, because a table is prose (issue #142). The CLI help drifted the same way
+// and listed ten of the thirteen verbs (issue #145).
 //
-// It parses the source on purpose. The other direction — every documented verb really is
+// So `Verbs()` is the authority now, and this test holds two of the three surfaces to it in
+// both directions: the switch that runs the verbs, and the table an author reads. The third —
+// the CLI help — is generated from the same list and checked in package cli.
+//
+// It parses the sources on purpose. The other property — every listed verb really is
 // accepted — is covered by the example scenario, which runs the vocabulary against a program.
 func TestDocumentedSteps(t *testing.T) {
 	src, err := os.ReadFile("scenario.go")
@@ -49,24 +52,62 @@ func TestDocumentedSteps(t *testing.T) {
 		t.Fatalf("found %d verbs in step(), want the whole vocabulary: did the switch change shape?", len(verbs))
 	}
 
+	authority := map[string]bool{}
+	for _, v := range Verbs() {
+		authority[v] = true
+	}
+	for v := range verbs {
+		if !authority[v] {
+			t.Errorf("step() accepts %q but Verbs() does not list it: the help and the table are "+
+				"rendered from Verbs(), so the verb would be runnable and undocumented (issue #145)", v)
+		}
+	}
+	for v := range authority {
+		if !verbs[v] {
+			t.Errorf("Verbs() lists %q but step() does not accept it: every surface would advertise "+
+				"a step that fails at line one", v)
+		}
+	}
+
 	doc, err := os.ReadFile("../../docs/scenario.md")
 	if err != nil {
 		t.Fatalf("read docs/scenario.md: %v", err)
 	}
-
-	names := make([]string, 0, len(verbs))
-	for v := range verbs {
-		names = append(names, v)
+	documented := documentedVerbs(string(doc))
+	if len(documented) < 10 {
+		t.Fatalf("found %d documented verbs, want the whole table: did the table change shape?", len(documented))
 	}
-	sort.Strings(names)
-
-	for _, v := range names {
-		// The verb must be a backticked token of its own: `wait` must not be satisfied by
-		// finding `wait-exit`.
-		row := regexp.MustCompile("`" + regexp.QuoteMeta(v) + "([\\s<`])")
-		if !row.Match(doc) {
-			t.Errorf("step() handles %q but docs/scenario.md has no `%s` row: an author reads the "+
+	for v := range authority {
+		if !documented[v] {
+			t.Errorf("Verbs() lists %q but docs/scenario.md has no `%s` row: an author reads the "+
 				"table, so the runner and its reference must not drift (issue #142)", v, v)
 		}
 	}
+	for v := range documented {
+		if !authority[v] {
+			t.Errorf("docs/scenario.md documents %q, which the runner does not accept", v)
+		}
+	}
+}
+
+// stepRow matches the first cell of a row in the reference's step table. The verb is
+// backticked, and a row that documents flags (`golden --ansi <file>`) starts with the
+// same verb, so one row per spelling is enough.
+var stepRow = regexp.MustCompile("(?m)^\\| `([a-z-]+)")
+
+// documentedVerbs reads the verbs out of the step table in docs/scenario.md, in the
+// "## Steps" section only: the prose elsewhere names verbs too, and a mention is not a row.
+func documentedVerbs(doc string) map[string]bool {
+	section := doc
+	if start := strings.Index(doc, "\n## Steps"); start >= 0 {
+		section = doc[start+1:]
+		if end := strings.Index(section, "\n## "); end >= 0 {
+			section = section[:end]
+		}
+	}
+	out := map[string]bool{}
+	for _, m := range stepRow.FindAllStringSubmatch(section, -1) {
+		out[m[1]] = true
+	}
+	return out
 }
