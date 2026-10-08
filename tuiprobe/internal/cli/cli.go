@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"strings"
+
+	"github.com/yusiwen/TinyCode/tuiprobe/internal/scenario"
 )
 
 // Version is the tool version, overridable at build time:
@@ -63,7 +66,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `tuiprobe — see and assert what a TUI really draws
+	fmt.Fprintf(w, `tuiprobe — see and assert what a TUI really draws
 
 Usage:
   tuiprobe <command> [flags]
@@ -82,8 +85,8 @@ Sessions (a program on a real terminal, kept alive between commands):
   sessions                         list live sessions
 
 Scripted:
-  run [--update] [--gate VAR] [--dir DIR] <scenario>   steps: open, send, wait,
-      stable, sleep, golden, diff, fit, close, expect-exit
+  run [--update] [--gate VAR] [--dir DIR] <scenario>
+      steps: %s
 
 Offline:
   replay --stream <file|-> --size 80x24 [--format text|ansi|html]
@@ -98,5 +101,32 @@ sessions, and itself, rather than keeping a program running (tuiprobe daemon
 
 Exit codes:
   0 success · 2 usage or assertion failure · 3 timeout · 4 unknown session
-`)
+`, stepList(50))
+}
+
+// stepList renders the scenario vocabulary for the help, wrapped at width so the
+// enumeration fits a terminal instead of running off it.
+//
+// It reads scenario.Verbs(), the one authority the runner, the reference table and
+// this help all answer to: the help enumerated ten of the thirteen verbs for two
+// releases, `screenshot` among the missing (issue #145), because it was a literal
+// here that nothing checked.
+func stepList(width int) string {
+	var lines []string
+	line := ""
+	for _, verb := range scenario.Verbs() {
+		switch {
+		case line == "":
+			line = verb
+		case len(line)+len(", ")+len(verb) <= width:
+			line += ", " + verb
+		default:
+			lines = append(lines, line+",")
+			line = verb
+		}
+	}
+	lines = append(lines, line)
+	// The continuation lines sit under the first verb: "      steps: " is thirteen
+	// columns wide.
+	return strings.Join(lines, "\n             ")
 }

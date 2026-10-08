@@ -38,6 +38,24 @@ import (
 // DefaultTimeout bounds a step that does not give its own.
 var DefaultTimeout = 10 * time.Second
 
+// verbs are the step verbs this package accepts, in the order the references
+// present them; an alias (`diff` for `golden`, `shot` for `screenshot`) is listed
+// with the verb it names, because both spellings are accepted by step().
+//
+// It is the single authority for the three surfaces that enumerate the vocabulary:
+// this switch, docs/scenario.md and the CLI help. They drifted twice — the help
+// listed ten of thirteen verbs until issue #145, and the reference table had missed
+// `screenshot` until issue #142 — because each one was written by hand.
+var verbs = []string{
+	"open", "send", "wait", "stable", "sleep",
+	"golden", "diff", "fit", "screenshot", "shot",
+	"close", "wait-exit", "expect-exit",
+}
+
+// Verbs returns the step verbs the runner accepts, as a copy: a surface that lists
+// them cannot change what the runner accepts.
+func Verbs() []string { return append([]string(nil), verbs...) }
+
 // Step is one line of a scenario.
 type Step struct {
 	Line int

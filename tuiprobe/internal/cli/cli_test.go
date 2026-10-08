@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/yusiwen/TinyCode/tuiprobe/internal/scenario"
 )
 
 func run(args []string, stdin string) (int, string, string) {
@@ -64,5 +66,50 @@ func TestVersionAndUnknownCommand(t *testing.T) {
 	}
 	if code, _, _ := run(nil, ""); code != 2 {
 		t.Errorf("no arguments should be a usage error, got exit %d", code)
+	}
+}
+
+// TestHelpListsEveryStep is the guard for issue #145: the help enumerated ten of
+// the thirteen verbs for two releases, so `screenshot`/`shot` appeared in no surface
+// a user reads before the reference document. The enumeration is rendered from
+// scenario.Verbs() now, and this compares the *printed* help against that authority —
+// editing a literal back in around the generated list fails here.
+func TestHelpListsEveryStep(t *testing.T) {
+	var out strings.Builder
+	usage(&out)
+	help := out.String()
+
+	start := strings.Index(help, "steps: ")
+	if start < 0 {
+		t.Fatal(`the help no longer has a "steps: " enumeration for this check to read`)
+	}
+	rest := help[start+len("steps: "):]
+	end := strings.Index(rest, "\n\n")
+	if end < 0 {
+		t.Fatal("the steps enumeration is not followed by a blank line")
+	}
+
+	listed := map[string]bool{}
+	for _, verb := range strings.FieldsFunc(rest[:end], func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n'
+	}) {
+		listed[verb] = true
+	}
+	if len(listed) < 10 {
+		t.Fatalf("parsed %d steps out of the help, want the whole vocabulary: %q", len(listed), rest[:end])
+	}
+
+	authority := map[string]bool{}
+	for _, verb := range scenario.Verbs() {
+		authority[verb] = true
+		if !listed[verb] {
+			t.Errorf("scenario.Verbs() lists %q and the help does not: the enumeration is generated "+
+				"from that list, so the help was edited around it", verb)
+		}
+	}
+	for verb := range listed {
+		if !authority[verb] {
+			t.Errorf("the help lists %q, which the runner does not accept", verb)
+		}
 	}
 }
