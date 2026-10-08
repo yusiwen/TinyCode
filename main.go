@@ -524,6 +524,14 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 			tlog.Warn("sandbox", "command_confinement_unavailable",
 				"effect", "every shell command will be refused rather than run unconfined")
 		}
+		// A confined command may write only under the writable roots, so with
+		// none configured the boundary allows nothing and every command fails.
+		// That is the configuration being incomplete rather than the boundary
+		// misbehaving, and it is worth saying before the first command does.
+		if roots := tool.DefaultSandbox.WritableRoots(); len(roots) == 0 {
+			tlog.Warn("sandbox", "command_confinement_without_roots",
+				"effect", "no writable root is configured, so confined commands cannot write anywhere; set sandbox.project_root")
+		}
 	}
 }
 
