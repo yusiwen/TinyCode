@@ -73,19 +73,73 @@ type ToolCall struct {
 	Arguments string // raw JSON
 }
 
-// planWriteKey is the context key for the plan-mode write restriction.
-type planWriteKey struct{}
+// SandboxMode names the file effects a run may perform. It is the same
+// vocabulary the confinement boundary uses, so a policy value can be handed to
+// it unchanged.
+type SandboxMode string
 
-// WithPlanWriteRestriction returns a context marked as plan mode (read-only).
-// The restriction travels with the run instead of living in package state, so
-// concurrent sub-agents cannot enable or disable it for each other.
-func WithPlanWriteRestriction(ctx context.Context, restricted bool) context.Context {
-	return context.WithValue(ctx, planWriteKey{}, restricted)
+const (
+	// SandboxReadOnly denies writes except required sinks.
+	SandboxReadOnly SandboxMode = "read-only"
+	// SandboxWorkspaceWrite allows writes under the policy's roots.
+	SandboxWorkspaceWrite SandboxMode = "workspace-write"
+	// SandboxFullAccess applies no boundary.
+	SandboxFullAccess SandboxMode = "danger-full-access"
+)
+
+// SandboxPolicy is one run's file-effect policy, decided once when the run
+// starts and carried on its context.
+//
+// It is a value, not a reference to configuration: a run that has begun cannot
+// have its mode or its writable roots changed by another run, by a later
+// configuration edit, or by a grant given to a different call. Consumers
+// (the path fence, the command boundary, the plan-mode guard) read it and
+// nothing else; none of them re-derives a mode or a root.
+type SandboxPolicy struct {
+	Mode SandboxMode
+	// ProjectRoot is the one root the single-root kernel probe can express
+	// (openat2 RESOLVE_BENEATH). It is empty when no root is configured.
+	ProjectRoot string
+	// Roots is every directory a write may land under, canonical and
+	// deduplicated. ProjectRoot is normally its first entry; other entries are
+	// paths the session auto-allows, which the probe cannot cover.
+	Roots []string
+	// Source names where the policy came from, for reports. It is not a
+	// security decision, only a way to explain one.
+	Source string
 }
 
-// PlanWriteRestricted reports whether the current run is plan mode. The bash
-// tool uses it to block write operations.
-func PlanWriteRestricted(ctx context.Context) bool {
-	restricted, _ := ctx.Value(planWriteKey{}).(bool)
-	return restricted
+// sandboxPolicyKey is the context key for the run's sandbox policy.
+type sandboxPolicyKey struct{}
+
+// WithSandboxPolicy returns a context carrying policy for the run that is about
+// to start.
+//
+// It deliberately replaces any policy already there: a nested call that wants a
+// wider boundary must say so explicitly with its own value, and that value
+// lives no longer than the context it was attached to.
+func WithSandboxPolicy(ctx context.Context, policy SandboxPolicy) context.Context {
+	return context.WithValue(ctx, sandboxPolicyKey{}, policy)
+}
+
+// SandboxPolicyFrom returns the policy carried by ctx. The second result is
+// false when the context has none, which is the case for a direct Agent use
+// outside this binary's wiring; callers must then fall back to their own
+// configuration rather than inventing a boundary.
+func SandboxPolicyFrom(ctx context.Context) (SandboxPolicy, bool) {
+	policy, ok := ctx.Value(sandboxPolicyKey{}).(SandboxPolicy)
+	return policy, ok
+}
+
+// ResolveSandboxRoots is installed by the composition that owns the sandbox
+// configuration, and answers one question: which roots are writable for this
+// mode. It is a function rather than state — it returns a value that the caller
+// then freezes into a SandboxPolicy, so a run's roots cannot move under it.
+//
+// It is a variable because the configuration lives in a package that cannot be
+// imported here (the dependency runs the other way), and because tests need to
+// present a configuration of their own. When it is nil, a run gets a policy
+// with no writable roots.
+var ResolveSandboxRoots = func(mode SandboxMode) (projectRoot string, roots []string) {
+	return "", nil
 }

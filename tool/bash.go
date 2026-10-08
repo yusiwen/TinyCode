@@ -204,8 +204,9 @@ func Bash() Tool {
 				return "", fmt.Errorf("command is required")
 			}
 
-			// Plan mode: block write operations
-			if types.PlanWriteRestricted(ctx) {
+			// Plan mode: block write operations. The run's policy says which mode
+			// this is; the guard does not infer it from configuration.
+			if runPolicy(ctx).Mode == types.SandboxReadOnly {
 				if err := checkPlanModeWrite(cmdStr); err != nil {
 					tlog.Warn("shell.bash", "plan_mode_blocked", "command", cmdStr, "reason", err.Error())
 					return fmt.Sprintf("\n[PLAN MODE BLOCKED] %s\n\nPlan mode does not allow file modifications. "+

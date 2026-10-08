@@ -172,9 +172,24 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		maxSteps = a.Config.MaxSteps
 	}
 
-	// Set plan mode write restriction on the run context (not package state),
-	// so concurrent sub-agent runs cannot flip it for each other.
-	ctx = types.WithPlanWriteRestriction(ctx, a.Config != nil && a.Config.Name == "plan")
+	// Freeze this run's file-effect policy onto its context, not into package
+	// state, so concurrent runs — including sub-agents — cannot change a mode
+	// or a writable root for each other. A policy already on the context wins:
+	// a caller that set a boundary meant it, and a nested run must not widen it
+	// by starting with one of its own.
+	if _, ok := types.SandboxPolicyFrom(ctx); !ok {
+		mode := types.SandboxWorkspaceWrite
+		if a.Config != nil && a.Config.Name == "plan" {
+			mode = types.SandboxReadOnly
+		}
+		projectRoot, roots := types.ResolveSandboxRoots(mode)
+		ctx = types.WithSandboxPolicy(ctx, types.SandboxPolicy{
+			Mode:        mode,
+			ProjectRoot: projectRoot,
+			Roots:       roots,
+			Source:      "agent " + a.agentPrefix(),
+		})
+	}
 
 	for step < maxSteps {
 		tlog.Info("agent.loop", "llm call", "step", step, "mode", a.agentPrefix())

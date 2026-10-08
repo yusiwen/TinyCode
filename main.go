@@ -507,6 +507,10 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 	if cfg.Sandbox != nil && cfg.Sandbox.ConfineCommands {
 		tool.SetConfineCommands(true)
 	}
+	// Let a run freeze its policy from this configuration. Installed here and
+	// not in an init so the wiring stays visible: the agent package cannot
+	// import this one, and without the hook a run gets a policy with no roots.
+	tool.InstallSandboxPolicyResolver()
 	info := tool.ContainmentInfo()
 	tlog.Info("sandbox", "containment", info.String())
 	if tool.HardBoundaryRequired() && info.Level != tool.ContainmentKernel {
@@ -528,7 +532,7 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 		// none configured the boundary allows nothing and every command fails.
 		// That is the configuration being incomplete rather than the boundary
 		// misbehaving, and it is worth saying before the first command does.
-		if roots := tool.DefaultSandbox.WritableRoots(); len(roots) == 0 {
+		if roots := tool.PolicyFor(types.SandboxWorkspaceWrite).Roots; len(roots) == 0 {
 			tlog.Warn("sandbox", "command_confinement_without_roots",
 				"effect", "no writable root is configured, so confined commands cannot write anywhere; set sandbox.project_root")
 		}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yusiwen/tinycode/tool"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // sandboxReport renders what actually confines file operations in this process,
@@ -45,7 +46,9 @@ func sandboxReport() string {
 
 	fmt.Fprintf(&b, "  project root: %s\n", root)
 
-	roots := tool.DefaultSandbox.WritableRoots()
+	// The roots come from the same resolver a run uses, so the report cannot
+	// describe a writable set the fence would not grant.
+	roots := tool.PolicyFor(types.SandboxWorkspaceWrite).Roots
 	if len(roots) == 0 {
 		b.WriteString("  writable roots: none\n")
 	} else {
