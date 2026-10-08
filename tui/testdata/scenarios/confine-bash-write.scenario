@@ -25,6 +25,13 @@ wait --text "Get started" --timeout 20s
 # Type only once the input row exists: the welcome heading appears first, and keys sent
 # before the input is ready can be lost (issue #102).
 wait --text "Type your request" --timeout 20s
+# Build mode, explicitly. The run starts in plan, which maps to the read-only boundary: no
+# writable root is granted and *neither* write is allowed, so the verdict below would read as
+# a broken boundary when it is the configured one. The read-only half is the other case and
+# is asserted by the mode-mapping unit tests; this file is about workspace-write.
+send --text /build
+send --key enter
+wait --text "⚡ build" --timeout 10s
 send --text "write the two files"
 send --key enter
 wait --text "stub-final-ok" --timeout 40s
