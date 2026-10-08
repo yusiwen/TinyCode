@@ -62,6 +62,8 @@ func newRootCmd() *cobra.Command {
 	var deleteSession string
 	var exportSession string
 	var searchSessions string
+	var listGrants bool
+	var revokeGrant string
 
 	rootCmd := &cobra.Command{
 		Use:     "tinycode",
@@ -381,6 +383,53 @@ func newRootCmd() *cobra.Command {
 				return nil
 			}
 
+			// Persistent path grants: the answers that outlived their session.
+			// They are listed here because "Always allow" is otherwise invisible
+			// until someone reads the config file by hand — and a permission
+			// that cannot be audited is one that gets left on.
+			if listGrants {
+				grants, err := config.ListAllowedPathGrants()
+				if err != nil {
+					return err
+				}
+				path, pathErr := config.UserConfigPath()
+				if pathErr != nil {
+					path = "(config path unavailable)"
+				}
+				if len(grants) == 0 {
+					fmt.Printf("No persistent path grants in %s\n", path)
+					return nil
+				}
+				fmt.Printf("Persistent path grants in %s:\n", path)
+				for _, g := range grants {
+					switch {
+					case g.Legacy:
+						fmt.Printf("  %-50s recorded before grants carried context\n", g.Path)
+					default:
+						project := g.Project
+						if project == "" {
+							project = "(unknown project)"
+						}
+						fmt.Printf("  %-50s granted %s from %s\n",
+							g.Path, g.Granted.Local().Format("2006-01-02 15:04"), project)
+					}
+				}
+				fmt.Println("Revoke one with --revoke-grant <path>")
+				return nil
+			}
+			if revokeGrant != "" {
+				removed, err := config.RevokeAllowedPathGrant(revokeGrant)
+				if err != nil {
+					return err
+				}
+				if removed {
+					fmt.Printf("Revoked the persistent grant for %s\n", revokeGrant)
+				} else {
+					fmt.Printf("No persistent grant for %s\n", revokeGrant)
+				}
+				return nil
+			}
+
 			// The informational commands above returned already. Everything
 			// below belongs to a real run: connecting MCP servers, wiring the
 			// sandbox, and creating the session file that a run appends to.
@@ -488,6 +537,8 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVar(&deleteSession, "delete-session", "", "Delete a saved session by ID")
 	rootCmd.Flags().StringVar(&exportSession, "export-session", "", "Export a session as Markdown")
 	rootCmd.Flags().StringVar(&searchSessions, "search-sessions", "", "Search session content")
+	rootCmd.Flags().BoolVar(&listGrants, "list-grants", false, "List persistent path grants and exit")
+	rootCmd.Flags().StringVar(&revokeGrant, "revoke-grant", "", "Revoke a persistent path grant and exit")
 
 	return rootCmd
 }
