@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sync"
 	"unsafe"
 
@@ -72,10 +73,19 @@ func runConfined(spec launcherSpec) int {
 	if err := applyLandlock(spec.mode, spec.roots); err != nil {
 		return launcherFail("cannot apply the file boundary: %v", err)
 	}
-	if err := unix.Exec(spec.argv[0], spec.argv, os.Environ()); err != nil {
+
+	// execve takes a path, not a name: "bash" is not found on its own, and a
+	// launcher that failed here would report a boundary it had already applied
+	// as the reason the command did not run. Resolve through PATH, and keep the
+	// caller's argv[0] as they wrote it — that is what a shell would do.
+	binary, err := exec.LookPath(spec.argv[0])
+	if err != nil {
+		return launcherFail("cannot find %q: %v", spec.argv[0], err)
+	}
+	if err := unix.Exec(binary, spec.argv, os.Environ()); err != nil {
 		// Past applyLandlock, so the command is not running; saying so is the
 		// whole point of the failure status.
-		return launcherFail("cannot execute %q: %v", spec.argv[0], err)
+		return launcherFail("cannot execute %q: %v", binary, err)
 	}
 	return 0 // unreachable: Exec replaces the process
 }
