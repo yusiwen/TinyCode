@@ -42,6 +42,37 @@ func TestAppendAndFlush(t *testing.T) {
 	}
 }
 
+// TestContainmentRoundTrips pins the field a later reader uses to tell how a
+// session's file operations were enforced. It is asserted twice: through the
+// struct (so the field survives Flush/Load) and in the raw file (so the key is
+// stable for anyone reading the JSON rather than the Go type).
+func TestContainmentRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	const enforcement = "kernel (openat2 RESOLVE_BENEATH)"
+
+	s := New("containment-roundtrip", dir)
+	s.Containment = enforcement
+	if err := s.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load("containment-roundtrip", dir)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if loaded.Containment != enforcement {
+		t.Fatalf("Containment = %q after Load, want %q", loaded.Containment, enforcement)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "containment-roundtrip.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"containment"`) || !strings.Contains(string(raw), enforcement) {
+		t.Fatalf("persisted file does not carry the containment fact under its documented key:\n%s", raw)
+	}
+}
+
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	s := New("load-test", dir)

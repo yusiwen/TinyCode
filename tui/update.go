@@ -903,6 +903,7 @@ func (m *TuiModel) persistSession() {
 	} else {
 		s = session.New(id, m.SessionDir)
 	}
+	s.Containment = tool.ContainmentInfo().String()
 	for _, chatMsg := range m.messages {
 		s.Append(types.Message{
 			Role:             chatMsg.Role,
@@ -1275,6 +1276,10 @@ Mouse:
 		default:
 			m.ShowStatus("No LSP diagnostics.")
 		}
+		return m, nil
+	case "/sandbox":
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: sandboxReport()})
+		m.autoScroll()
 		return m, nil
 	case "/skill":
 		parts := strings.Fields(cmd)

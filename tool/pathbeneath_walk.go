@@ -16,10 +16,12 @@ import (
 //
 // This is the fallback for every path openat2 cannot cover (issue #7): a path the
 // user allowed outside the project root has no common dirfd to be RESOLVE_BENEATH
-// against, and platforms without openat2 (macOS) have no kernel-side containment
-// at all. Opening such a path by name after the sandbox decision is the
+// against, and platforms without openat2 (macOS) have no single-syscall form at
+// all. Opening such a path by name after the sandbox decision is the
 // check-then-open window: a component swapped for an escaping symlink in between
-// would be followed.
+// would be followed. The walk closes that window one component at a time, so a
+// host that reaches here is still kernel-enforced — what it lacks is the atomic
+// decision-and-open that RESOLVE_BENEATH performs, not the boundary.
 //
 // A resolved path contains no symlink by construction, so any symlink found here
 // was swapped in after the check and is refused with ELOOP instead of followed.

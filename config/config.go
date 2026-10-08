@@ -73,6 +73,13 @@ type SandboxConfig struct {
 	ProjectRoot  string   `json:"project_root,omitempty"`
 	DenyCommands []string `json:"deny_commands,omitempty"`
 	AllowedPaths []string `json:"allowed_paths,omitempty"`
+
+	// RequireHardBoundary refuses file operations that would be enforced by
+	// in-process checks alone. It is for a deployment that must not run with a
+	// weaker boundary than the kernel provides, and it fails closed: on a host
+	// with no kernel mechanism every fenced operation is refused instead of
+	// being silently allowed.
+	RequireHardBoundary bool `json:"require_hard_boundary,omitempty"`
 }
 
 // MCPServerConfig defines a single MCP server to connect to.
@@ -237,6 +244,13 @@ func merge(dst, src Config) Config {
 		}
 		if len(src.Sandbox.AllowedPaths) > 0 {
 			dst.Sandbox.AllowedPaths = append(dst.Sandbox.AllowedPaths, src.Sandbox.AllowedPaths...)
+		}
+		// A bool has no "unset" to distinguish from false, so it is only
+		// inherited when the overlay turns it on: a project file cannot turn
+		// off a user-level requirement, and a user file cannot turn it on by
+		// being absent.
+		if src.Sandbox.RequireHardBoundary {
+			dst.Sandbox.RequireHardBoundary = true
 		}
 	}
 

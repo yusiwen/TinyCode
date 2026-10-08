@@ -232,6 +232,12 @@ func (sc *SandboxConfig) WritableRoots() []string {
 // The roots come from WritableRoots, which is also what command execution
 // consumes, so the two cannot hold different opinions about the writable set.
 func (sc *SandboxConfig) CheckPath(absPath string) error {
+	// The capability check comes first, and before the "no project root" escape:
+	// a policy that demands a kernel boundary must refuse an unconfigured
+	// sandbox too, not fall through to the unconfined path.
+	if err := checkHardBoundary(); err != nil {
+		return err
+	}
 	if sc.ProjectRoot == "" {
 		return nil
 	}

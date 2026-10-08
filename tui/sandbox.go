@@ -1,0 +1,46 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/yusiwen/tinycode/tool"
+)
+
+// sandboxReport renders what actually confines file operations in this process,
+// for the /sandbox command.
+//
+// The facts come from the tool package, where they otherwise exist only as a
+// log line. Printing them here is what makes a degraded host visible to the
+// person running the agent — and what a scenario can assert, since a fact that
+// lives only in a tool result is never drawn on screen.
+func sandboxReport() string {
+	info := tool.ContainmentInfo()
+
+	required := "no"
+	if tool.HardBoundaryRequired() {
+		required = "yes"
+	}
+
+	root := tool.DefaultSandbox.ProjectRoot
+	if root == "" {
+		root = "(unset — file fencing is off)"
+	}
+
+	var b strings.Builder
+	b.WriteString("Sandbox\n")
+	fmt.Fprintf(&b, "  containment: %s\n", info.String())
+	fmt.Fprintf(&b, "  hard boundary required: %s\n", required)
+	fmt.Fprintf(&b, "  project root: %s\n", root)
+
+	roots := tool.DefaultSandbox.WritableRoots()
+	if len(roots) == 0 {
+		b.WriteString("  writable roots: none\n")
+	} else {
+		b.WriteString("  writable roots:\n")
+		for _, r := range roots {
+			b.WriteString("    " + r + "\n")
+		}
+	}
+	return b.String()
+}

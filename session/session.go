@@ -32,6 +32,14 @@ type Session struct {
 	// Permission paths allowed for this session (Allow session)
 	AllowedPaths []string `json:"allowed_paths,omitempty"`
 
+	// Containment records what enforced file boundaries when this session ran,
+	// as reported by the tool package at creation ("kernel (…)",
+	// "userspace (…)"). It is recorded once because it is a property of the
+	// host, not of a call: a later reader can tell how the session's file
+	// operations were enforced instead of having to infer it from the platform
+	// the file happens to be read on.
+	Containment string `json:"containment,omitempty"`
+
 	Messages []types.Message `json:"messages"`
 	dir      string
 }

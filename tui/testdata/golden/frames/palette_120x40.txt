@@ -45,6 +45,7 @@
   /theme  Switch theme
   /skill  Load a skill
   /diagnostics  LSP diagnostics
+  /sandbox  Sandbox status
   /model  Switch model
   /fork  Create session branch
   /session  List/switch branch
