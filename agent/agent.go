@@ -89,10 +89,6 @@ const (
 	MemoryModeNone     = 0
 	MemoryModeAuto     = 1
 	MemoryModeOnDemand = 2
-
-	// securityBlockMarker is the prefix used by sandbox tools to indicate
-	// a security restriction. The agent loop detects this and bypasses the LLM.
-	securityBlockMarker = "[SECURITY BLOCKED]"
 )
 
 // New creates an Agent with sensible defaults.
@@ -392,8 +388,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 					callbacks.OnToolResult(tc.Name)
 				}
 
-				isBlock := strings.HasPrefix(result, "\n"+securityBlockMarker) ||
-					strings.HasPrefix(result, securityBlockMarker)
+				// A terminal refusal is one nothing the model tries can change
+				// — a capability the machine lacks, or a configured rule. The
+				// loop reports it instead of spending another model turn on it.
+				isBlock := types.RefusalIsTerminal(result)
 
 				trunc := TruncateOutput(result)
 

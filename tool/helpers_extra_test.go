@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // TestCheckToolPermission delegates to the shared permission evaluation, so a
@@ -40,22 +41,45 @@ func TestCheckToolPermission(t *testing.T) {
 }
 
 // TestAccessDeniedMessages covers what the model and the user are told when the
-// sandbox refuses a path.
+// sandbox refuses a path: the shared marker, the mode, and the ask field that
+// says what kind of recovery is possible. The same marker must serve the
+// interactive and the non-interactive answer — they differ by field, not by
+// prefix.
 func TestAccessDeniedMessages(t *testing.T) {
-	denied := &AccessDenied{Path: "/etc/passwd", Message: `File "/etc/passwd" is outside the project root.`}
+	denied := &AccessDenied{
+		Path:    "/etc/passwd",
+		Message: `File "/etc/passwd" is outside the project root.`,
+		Mode:    types.SandboxWorkspaceWrite,
+	}
 	if denied.Error() != denied.Message {
 		t.Errorf("Error() = %q, want the message", denied.Error())
 	}
+
 	hint := denied.DenyHint()
 	for _, want := range []string{
-		"[SECURITY]",
-		"allow /etc/passwd",
-		"always /etc/passwd",
-		"deny /etc/passwd",
+		types.RefusalMarker,
+		`path "/etc/passwd"`,
+		"mode: " + string(types.SandboxWorkspaceWrite),
+		"ask: " + types.AskInteractive,
+		"allow \"/etc/passwd\" once",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Errorf("DenyHint is missing %q:\n%s", want, hint)
 		}
+	}
+
+	nonInteractive := denied.NonInteractiveHint()
+	for _, want := range []string{
+		types.RefusalMarker,
+		"ask: " + types.AskUnavailable,
+		"do not retry this path",
+	} {
+		if !strings.Contains(nonInteractive, want) {
+			t.Errorf("NonInteractiveHint is missing %q:\n%s", want, nonInteractive)
+		}
+	}
+	if strings.Contains(nonInteractive, "ask: "+types.AskInteractive) {
+		t.Errorf("the non-interactive refusal must not claim a person can be asked:\n%s", nonInteractive)
 	}
 }
 
