@@ -138,8 +138,10 @@ test-tui-lsp: build
 # a skip written as its own line would still run the scenarios below it.
 test-tui-confine: build
 	mkdir -p /tmp/tinyscen-shots
-	@if ! ./bin/tinycode __sandbox-exec --mode read-only -- true 2>/dev/null; then \
+	@if ! out=$$(./bin/tinycode __sandbox-exec --mode read-only -- true 2>&1); then \
 		echo "skipped: this host cannot apply a kernel file boundary to a subprocess"; \
+		echo "  launcher said: $$out"; \
+		echo "  kernel LSMs: $$(cat /sys/kernel/security/lsm 2>/dev/null || echo '(not readable)')"; \
 	else \
 		for f in tui/testdata/scenarios/confine-*.scenario; do \
 			echo "== $$f"; \
