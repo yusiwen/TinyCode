@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yusiwen/TinyCode/tuiprobe/internal/daemon"
+	"github.com/yusiwen/TinyCode/tuiprobe/session"
 )
 
 // startDaemon runs a daemon on a short socket path (unix sockets have a length
@@ -311,8 +313,11 @@ wait --text ready --since --timeout 400ms
 		if !strings.Contains(err.Error(), "stage timed out") {
 			t.Errorf("Run = %v, want a timeout: the stale copy must not satisfy the wait", err)
 		}
-		// The daemon answers with an error string, so the class is read from the message
-		// here; what the message dumps must be the empty post-mark screen.
+		// The class survives the daemon boundary now, and what the message dumps must be
+		// the empty post-mark screen.
+		if !errors.Is(err, session.ErrStageTimeout) {
+			t.Errorf("Run = %v, want session.ErrStageTimeout: a timeout must stay a timeout", err)
+		}
 		if !strings.Contains(err.Error(), "screen drawn since the mark") {
 			t.Errorf("Run = %v, want it to name the screen it looked at", err)
 		}
