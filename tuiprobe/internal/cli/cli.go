@@ -90,8 +90,11 @@ Offline:
   version | help
 
 Every session command takes --json and --socket. The socket defaults to
-$TUIPROBE_SOCKET, else a per-user path in $TMPDIR; the first command starts the
-daemon, which exits on its own once idle.
+$TUIPROBE_SOCKET, else a per-user path in $TMPDIR. The first command starts a
+daemon to hold the session; a daemon a command started is given back once it
+holds nothing, and any daemon left with no command for ten minutes closes its
+sessions, and itself, rather than keeping a program running (tuiprobe daemon
+--ttl).
 
 Exit codes:
   0 success · 2 usage or assertion failure · 3 timeout · 4 unknown session

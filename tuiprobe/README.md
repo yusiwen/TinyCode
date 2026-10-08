@@ -20,8 +20,9 @@ described.
 go install github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe@latest
 
 # Drive a program on a real terminal, one command at a time. The first command
-# starts a small daemon so the session survives between invocations; it exits on
-# its own once idle.
+# starts a small daemon so the session survives between invocations. It is given
+# back once it holds nothing, and it closes its sessions, and itself, if no
+# command arrives for ten minutes.
 tuiprobe open --name app --size 100x30 -- ./myapp
 tuiprobe wait --name app --text 'ready' --timeout 5s
 tuiprobe text --name app                  # the screen as text

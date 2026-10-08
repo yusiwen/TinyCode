@@ -2,6 +2,27 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
+## v0.1.3 — 2026-10-08
+
+- **daemon: a session no longer keeps the daemon — and its program — alive forever**
+  (issue #141). The idle rule demanded an empty session map, so a daemon was immortal
+  for as long as it held one, and the map is emptied only by `close` or `wait-exit`: a
+  client that was killed, crashed, or simply walked away left the program under test
+  (and every child it had spawned) running, with the daemon orphaned at ppid 1. Two
+  such pairs were found on this machine after six and five days, their TUI children
+  having burned 107 and 126 minutes of CPU. The deadline now covers sessions: with no
+  command for the TTL (ten minutes by default, `tuiprobe daemon --ttl`), the daemon
+  closes what it holds and exits, killing the program's process group as `close` does.
+- **daemon: a client that started a daemon gives it back when it holds nothing**
+  (`release`). A finished `run` — every `make test-tui-*` scenario target — used to
+  leave its daemon behind for the whole TTL; now the run stops the daemon it started,
+  and never one another client is using (the request is refused while any session is
+  open, and a client only releases a daemon it launched itself). A `stop` request now
+  actually ends the process: it used to mark the server stopped without closing the
+  listener, so the daemon only left when the idle reaper happened to fire.
+- The help text and README said the daemon "exits on its own once idle"; both now
+  describe what it does, which is the thing that was wrong for as long as the code was.
+
 ## v0.1.2 — 2026-10-03
 
 - **`screen`: an escape sequence split across `Write` calls is no longer torn in half**
