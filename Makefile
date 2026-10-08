@@ -143,6 +143,17 @@ test-tui-confine: build
 		echo "  launcher said: $$out"; \
 		echo "  kernel LSMs: $$(cat /sys/kernel/security/lsm 2>/dev/null || echo '(not readable)')"; \
 	else \
+		probe=$$(mktemp -d); \
+		pout=$$(./bin/tinycode __sandbox-exec --mode workspace-write --allow "$$probe" -- sh -c "echo ok > $$probe/inside.txt" 2>&1); prc=$$?; \
+		if [ $$prc -ne 0 ] || [ ! -f "$$probe/inside.txt" ]; then \
+			echo "FAILED: the launcher cannot write inside a root it was told to allow (rc=$$prc)"; \
+			echo "  launcher said: $$pout"; \
+			echo "  kernel LSMs: $$(cat /sys/kernel/security/lsm 2>/dev/null || echo '(not readable)')"; \
+			rm -rf "$$probe"; \
+			exit 1; \
+		fi; \
+		echo "mechanism check: a granted root is writable"; \
+		rm -rf "$$probe"; \
 		for f in tui/testdata/scenarios/confine-*.scenario; do \
 			echo "== $$f"; \
 			SANDBOX_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate SANDBOX_TEST --dir . "$$f" || exit 1; \
