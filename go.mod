@@ -13,7 +13,7 @@ require (
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/spf13/cobra v1.9.1
 	github.com/yuin/goldmark v1.8.2
-	github.com/yusiwen/TinyCode/tuiprobe v0.1.2
+	github.com/yusiwen/TinyCode/tuiprobe v0.1.3
 	golang.org/x/net v0.27.0
 	golang.org/x/sys v0.48.0
 )
