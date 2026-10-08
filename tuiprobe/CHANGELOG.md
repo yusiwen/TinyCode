@@ -2,6 +2,32 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
+## v0.1.4 — 2026-10-09
+
+- **`mark` and `wait --since`: a scenario can tell a second run of a program from the first**
+  (issue #126). A scenario drives one PTY, so a flow that starts the same program twice — proving a
+  persisted permission grant is honoured on the next start, say — gets the same frame twice, and a
+  `wait --text` after the second start was satisfied by the first run's leftovers. The emulator now
+  records, per cell, the write that last touched it: `mark` records that position, and a wait
+  carrying `--since` reads only the cells written after it. Text the second run redraws counts,
+  text merely left over does not; a `--since` with no `mark` is refused rather than widened to the
+  whole screen; and a resize keeps the counter, so a mark stays comparable across it. New step
+  `mark`, new flag `wait --since`, documented with the two-run example that motivated them.
+- **Every daemon response carries the live session count** (issue #146). `SessionCnt` has no
+  `omitempty` on purpose — an empty daemon is a count of zero, not a missing field — but only
+  `sessions` filled it in, so `open --json` reported `"sessionCount": 0` on the response that had
+  just added the session. `handle` fills it for every answer now, with the count as it stands when
+  the answer is written.
+- **The CLI help lists every step, from one authority** (issue #145). The help enumerated ten of the
+  thirteen verbs, and `screenshot` appeared nowhere in it; the reference table had drifted the same
+  way once before (issue #142). `scenario.Verbs()` is the authority now: the help renders its list
+  from it, the step switch and the reference table are compared against it in both directions, and
+  the two documents a consumer reads (`AGENTS.md`, `docs/tui-verification.md`) are held to it too.
+- **A scenario timeout is reported as a timeout** (issue #153). `tuiprobe run` answered 2 where the
+  CLI's own `wait` answered 3 for the same daemon answer: the runner flattened the refusal into a
+  bare error and lost the class. A refusal carrying `CodeTimeout` keeps it now, so the exit code and
+  `--json`'s `code` are 3.
+
 ## v0.1.3 — 2026-10-08
 
 - **daemon: a session no longer keeps the daemon — and its program — alive forever**
