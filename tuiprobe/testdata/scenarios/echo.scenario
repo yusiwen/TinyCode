@@ -1,0 +1,23 @@
+# The smallest useful scenario: drive a program on a real terminal, assert the screen it drew,
+# type into it, take a picture of it, and read its exit code.
+#
+# Nothing here depends on this repository — the program is /bin/sh — so this file is also what a
+# new consumer copies to start. Paths are relative to --dir, and the target that runs it uses
+# --dir testdata/scenarios:
+#
+#   make test-tuiprobe-examples
+#   cd tuiprobe && ../bin/tuiprobe run --dir testdata/scenarios testdata/scenarios/echo.scenario
+open --size 80x24 -- /bin/sh -c 'printf "ready\r\n"; read line; printf "got: %s\r\n" "$line"'
+wait --text "ready" --timeout 5s
+send --text hello --key enter
+wait --text "got: hello" --timeout 5s
+# The golden is the whole exchange, not just the last line: it is what a reviewer reads to see
+# what a user sees.
+golden golden/echo-dialogue_80x24.txt
+# A picture is an assertion too: the step reads the PNG back and checks its pixel size against the
+# geometry of this session. It goes to a scratch path, so no binary artifact is committed.
+screenshot /tmp/tuiprobe-example-echo_80x24.png --scale 2
+# The shell exits on its own once it has answered. Wait for that and then read its code: checking
+# the code before the program leaves reports -1, which reads like a failure and is not one.
+wait-exit 5s
+expect-exit 0

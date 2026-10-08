@@ -44,10 +44,12 @@ jobs:
 
       # tuiprobe is a nested module: the root's ./... silently skips it, so it is
       # tested here explicitly. Formatting is already covered by make fmt-check.
+      # The examples are tuiprobe's own scenarios, run through its own runner.
       - name: Test the tuiprobe module
         run: |
           make test-tuiprobe
           make test-tuiprobe-race
+          make test-tuiprobe-examples
 
   lsp:
     name: LSP integration (gopls + typescript)

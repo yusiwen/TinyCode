@@ -1,0 +1,3 @@
+ready
+hello
+got: hello

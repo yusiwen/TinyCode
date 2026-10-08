@@ -18,7 +18,7 @@ PLATFORM_LIST = \
 	linux-arm64 \
 	darwin-arm64
 
-.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls test-tuiprobe test-tuiprobe-race lint-tuiprobe build-tuiprobe lint staticcheck fmt fmt-check fuzz clean all test-tui-confine
+.PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls test-tuiprobe test-tuiprobe-race test-tuiprobe-examples lint-tuiprobe build-tuiprobe lint staticcheck fmt fmt-check fuzz clean all test-tui-confine
 
 default: build
 
@@ -192,6 +192,16 @@ lint-tuiprobe:
 build-tuiprobe:
 	@mkdir -p $(BINDIR)
 	cd $(TUIPROBE_DIR) && go build -o ../$(BINDIR)/tuiprobe ./cmd/tuiprobe
+
+# The scenarios tuiprobe ships itself, under tuiprobe/testdata/scenarios/. They drive programs
+# this repository does not contain (/bin/sh), which is what makes them the file a new consumer
+# copies; the consumer's own suite is test-tui-scenarios. They need no browser, no network and no
+# gate variable, so they run everywhere `go test` does and rot loudly rather than silently.
+test-tuiprobe-examples: build-tuiprobe
+	@cd $(TUIPROBE_DIR) && for f in testdata/scenarios/*.scenario; do \
+		echo "== $$f"; \
+		../$(BINDIR)/tuiprobe run --dir testdata/scenarios "$$f" || exit 1; \
+	done
 
 # Format the tracked Go sources in place.
 fmt:
