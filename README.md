@@ -366,6 +366,12 @@ boundary and its launch protocol, grant lifetimes, the refusal vocabulary, and
 what is deliberately not promised — has its own reference:
 [docs/sandbox.md](docs/sandbox.md).
 
+What TinyCode does **not** have yet, verified entry by entry against the source
+and recorded once so it does not have to be re-derived, is inventoried in
+[docs/roadmap.md](docs/roadmap.md). It is a record rather than a commitment: an
+entry becomes work when it is picked up, tracked in
+[issue #168](https://github.com/yusiwen/TinyCode/issues/168).
+
 ---
 
 # Changelog
