@@ -481,6 +481,13 @@ func newRootCmd() *cobra.Command {
 					tool.DefaultSandbox.AllowAlways(p)
 				}
 			}
+			// …and the grants "Always allow" records in their own form. Nothing
+			// read that form back before issue #155: the dialog appended a record
+			// and the next start ignored it, so a permanent answer lasted exactly
+			// as long as the process that made it.
+			if err := loadPersistentGrants(); err != nil {
+				tlog.Warn("sandbox", "grants_unreadable", "err", err)
+			}
 			applySandboxCapabilityPolicy(&cfg)
 
 			// The session is created last: an informational command must never
@@ -588,6 +595,31 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 				"effect", "no writable root is configured, so confined commands cannot write anywhere; set sandbox.project_root")
 		}
 	}
+}
+
+// loadPersistentGrants puts the paths a person allowed with "Always allow" on
+// the sandbox's allow-list, so the answer outlives the run that gave it.
+//
+// Only the user's own config file is read. The project-local
+// ./.tinycode/config.json is attacker-controlled — a checked-out repository must
+// not be able to grant itself a path outside its own root — so grants are read
+// through the user-config helper rather than through the merged configuration.
+// A missing file is not an error: the first run has nothing granted.
+//
+// The project recorded with a grant stays audit context (--list-grants shows
+// it); the grant applies wherever the path is requested, which is what "always
+// allow this path" says and what the older sandbox.allowed_paths list did.
+func loadPersistentGrants() error {
+	grants, err := config.ListAllowedPathGrants()
+	if err != nil {
+		return err
+	}
+	for _, grant := range grants {
+		if grant.Path != "" {
+			tool.DefaultSandbox.AllowAlways(grant.Path)
+		}
+	}
+	return nil
 }
 
 // expandPath expands $VARS and a leading "~" in a configured path, so values

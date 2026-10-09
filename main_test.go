@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/tool"
 )
 
 func TestLoadProjectContextNoFile(t *testing.T) {
@@ -131,6 +133,90 @@ func TestExpandPath(t *testing.T) {
 		if got := expandPath(tc.in); got != tc.want {
 			t.Errorf("expandPath(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// TestPersistedGrantIsHonouredOnTheNextStart is the regression test for the gap
+// issue #155's scenario exposed: "Always allow" recorded a persistent grant that
+// no start read back, so the answer lasted exactly as long as the process that
+// gave it. The negative control runs first — a path the sandbox already allowed
+// would make the positive half prove nothing.
+//
+// This pins the loading rule; the call site in the startup path is pinned by
+// tui/testdata/scenarios/permission-allow-always.scenario, which starts the real
+// binary twice and fails if the second start asks again.
+func TestPersistedGrantIsHonouredOnTheNextStart(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".tinycode")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// The grant names a real path outside the project the run uses; the sandbox
+	// caches both the requested and the OS-resolved form (on macOS /tmp is a
+	// symlink), so either spelling must be honoured.
+	granted := filepath.Join(t.TempDir(), "granted-outside-the-project.txt")
+	body := fmt.Sprintf(`{"sandbox":{"allowed_path_grants":[{"path":%q,"project":"/repo"}]}}`, granted)
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	previousRoot := tool.DefaultSandbox.ProjectRoot
+	tool.DefaultSandbox.ProjectRoot = t.TempDir()
+	tool.DefaultSandbox.ResetAllowed()
+	t.Cleanup(func() {
+		tool.DefaultSandbox.ResetAllowed()
+		tool.DefaultSandbox.ProjectRoot = previousRoot
+	})
+
+	if err := tool.DefaultSandbox.CheckPath(granted); err == nil {
+		t.Fatalf("%s is allowed before any grant was loaded; this test would prove nothing", granted)
+	}
+	if err := loadPersistentGrants(); err != nil {
+		t.Fatalf("loadPersistentGrants: %v", err)
+	}
+	if err := tool.DefaultSandbox.CheckPath(granted); err != nil {
+		t.Fatalf("the persisted grant was not honoured on the next start: %v", err)
+	}
+	// Loading grants must not open the fence around them: a path nobody granted
+	// stays refused.
+	if err := tool.DefaultSandbox.CheckPath(filepath.Join(filepath.Dir(granted), "never-granted.txt")); err == nil {
+		t.Error("a path that was never granted is allowed")
+	}
+}
+
+// TestProjectLocalConfigCannotGrantAPath pins the half of the loading rule that
+// is a security property: grants are read from the user's own config file only.
+// A checked-out repository can ship ./.tinycode/config.json, and a project that
+// could grant itself a path outside its own root would turn "open this repo"
+// into an escape from the fence.
+func TestProjectLocalConfigCannotGrantAPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // the user's config grants nothing
+	work := t.TempDir()
+	t.Chdir(work)
+
+	granted := filepath.Join(t.TempDir(), "granted-by-the-repository.txt")
+	body := fmt.Sprintf(`{"sandbox":{"allowed_path_grants":[{"path":%q,"project":"/repo"}]}}`, granted)
+	if err := os.MkdirAll(filepath.Join(work, ".tinycode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".tinycode", "config.json"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	previousRoot := tool.DefaultSandbox.ProjectRoot
+	tool.DefaultSandbox.ProjectRoot = t.TempDir()
+	tool.DefaultSandbox.ResetAllowed()
+	t.Cleanup(func() {
+		tool.DefaultSandbox.ResetAllowed()
+		tool.DefaultSandbox.ProjectRoot = previousRoot
+	})
+
+	if err := loadPersistentGrants(); err != nil {
+		t.Fatalf("loadPersistentGrants: %v", err)
+	}
+	if err := tool.DefaultSandbox.CheckPath(granted); err == nil {
+		t.Errorf("a repository-local config granted itself %s", granted)
 	}
 }
 

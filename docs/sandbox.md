@@ -186,6 +186,10 @@ Both are surfaced rather than assumed:
 
 - The permission dialog names the file the permanent option writes, so the
   consequence is visible when the choice is made.
+- A grant is honoured by every later run: the startup path puts the granted paths on
+  the sandbox's allow-list, so the next start writes without a dialog. Only the
+  user's own config file is read — a repository-local `./.tinycode/config.json` must
+  not be able to grant itself a path outside its own root.
 - The older `sandbox.allowed_paths` list is still read and reported, marked as
   recorded before grants carried context. Nothing rewrites it.
 - Revocation reaches **both** storage forms — every way a grant can be stored, it
