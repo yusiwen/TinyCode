@@ -22,6 +22,11 @@ import (
 	"os"
 )
 
+// runInProgressStatus is the one wording both refusals of a second concurrent
+// run use: the raw ChatMsg path and the Enter key path must read alike, so the
+// string lives here instead of being copied into each (issue #119).
+const runInProgressStatus = "A run is already in progress"
+
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
@@ -292,6 +297,16 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.status != StatusStreaming && !m.runIsActive() && strings.TrimSpace(m.input.Value()) != "" {
 				return m.submitInput()
 			}
+			// The refusal is deliberate — a second run must not start — but it
+			// must not be silent either: the text stays in the input box and the
+			// status line says why nothing happened (issue #119). Without this the
+			// screen was indistinguishable from a command the user had not
+			// submitted yet, which is exactly how a dropped /exit read.
+			if strings.TrimSpace(m.input.Value()) != "" {
+				m.ShowStatus(runInProgressStatus)
+				m.autoScroll()
+				return m, nil
+			}
 		}
 
 		// Ctrl+J → newline
@@ -395,7 +410,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.compressIsActive() {
 				m.ShowStatus("Cannot start a run: compression is in progress")
 			} else {
-				m.ShowStatus("A run is already in progress")
+				m.ShowStatus(runInProgressStatus)
 			}
 			m.autoScroll()
 			return m, nil
