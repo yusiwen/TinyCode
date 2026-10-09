@@ -233,10 +233,18 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
 
+      # The toolchain is pinned HERE, and only here, because the pinned
+      # STATICCHECK_VERSION cannot read what a newer Go writes: go1.27.2 export
+      # data is version 5, staticcheck v0.8.1's x/tools decodes at most version 4,
+      # and every import fails with `cannot decode ... export data version 5 is
+      # greater than maximum supported version 4` (issue #172). Measured on
+      # 2026-10-09: this job passed on go1.27.1 and failed on go1.27.2 with an
+      # unchanged tree. Float this back to `1.27` once a staticcheck release
+      # decodes export data v5. The other jobs are unaffected and stay floated.
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.27
+          go-version: 1.27.1
 
       # Blocking, and pinned: `latest` could red the build without a code
       # change. Bump the pin together with the Makefile's
