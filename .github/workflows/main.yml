@@ -119,6 +119,23 @@ jobs:
       - name: TUI command-boundary scenarios
         run: make test-tui-confine
 
+      # The scenario drives the app with --log-level=debug, so the app's own log lands under
+      # the scenario HOME. On a failure that log is the only artifact that says which stage
+      # stalled, and this job used to discard it — which is why the intermittent timeout in
+      # issue #152 could be attributed only from the screen dump. Preserve it, with the
+      # config the scenario wrote (it names the granted root), so the next sighting is
+      # attributable rather than re-guessed.
+      - name: Preserve the app debug log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: confine-debug-log
+          path: |
+            /tmp/tinyscen-home-confine/.tinycode/log
+            /tmp/tinyscen-home-confine/.tinycode/config.json
+          if-no-files-found: warn
+          retention-days: 7
+
   cross:
     name: Cross-compile + vet (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
