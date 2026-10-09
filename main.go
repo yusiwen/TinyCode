@@ -94,30 +94,27 @@ func newRootCmd() *cobra.Command {
 			// Build provider registry from config
 			provReg := buildProviderRegistry(&cfg, apiKey, model, baseURL)
 
-			if cfg.LSP != nil && cfg.LSP.Enabled {
-				// The language server workspace is the project, not the
-				// directory that stores sessions.
-				lspRoot := ""
-				if cfg.Sandbox != nil {
-					lspRoot = cfg.Sandbox.ProjectRoot
-				}
-				if lspRoot == "" {
-					if wd, err := os.Getwd(); err == nil {
-						lspRoot = wd
-					}
-				}
-				lsp.Init(lspRoot)
-			}
-
-			// Wire sandbox config
-			if cfg.Sandbox != nil && cfg.Sandbox.ProjectRoot != "" {
-				tool.DefaultSandbox.ProjectRoot = cfg.Sandbox.ProjectRoot
-			}
+			// Wire sandbox config first. The keys that can widen the fence come
+			// from the user's own file: ./.tinycode/config.json is checked out
+			// with the repository, so a project-local project_root or
+			// allowed_paths would let that repository widen — or remove — the
+			// boundary it is meant to run inside (issue #162). Deny rules a
+			// project adds are kept: they only narrow.
+			installSandboxBoundary()
 			if cfg.Sandbox != nil && len(cfg.Sandbox.DenyCommands) > 0 {
 				tool.DefaultSandbox.DenyCommands = append(
 					tool.DefaultSandbox.DenyCommands, cfg.Sandbox.DenyCommands...)
 			}
 			applySandboxCapabilityPolicy(&cfg)
+
+			// The language server workspace is the project, not the directory that
+			// stores sessions — and it is the same root the fence was just built
+			// around, so "inside the project" means one thing to both. Reading it
+			// from the merged config is what let a repository point the language
+			// server at / while the fence still called the repository the project.
+			if cfg.LSP != nil && cfg.LSP.Enabled {
+				lsp.Init(tool.DefaultSandbox.ProjectRoot)
+			}
 
 			reg := agent.NewRegistry()
 			if err := applyAgentOverrides(reg, &cfg); err != nil {
@@ -454,33 +451,9 @@ func newRootCmd() *cobra.Command {
 			// Reap every MCP child (stdio) on the way out. Safe when none was
 			// started, and idempotent.
 			defer tool.CloseMCPServers()
-			// Sandbox project root: config → CWD
-			rootDir := ""
-			if cfg.Sandbox != nil {
-				rootDir = cfg.Sandbox.ProjectRoot
-			}
-			if rootDir == "" {
-				cwd, err := os.Getwd()
-				if err == nil {
-					rootDir = cwd
-				}
-			}
-			if rootDir != "" {
-				tool.DefaultSandbox.ProjectRoot = rootDir
-			}
-
-			// Pattern D: auto-allow the working directory. The parent directory
-			// is deliberately NOT auto-allowed: it can be $HOME or "/", which
-			// would make project-root containment meaningless.
-			if cwd, err := os.Getwd(); err == nil {
-				tool.DefaultSandbox.AutoAllowPaths = []string{cwd}
-			}
-			// Load persistent allowed paths from config.json
-			if cfg.Sandbox != nil {
-				for _, p := range cfg.Sandbox.AllowedPaths {
-					tool.DefaultSandbox.AllowAlways(p)
-				}
-			}
+			// The boundary root and the paths allowed beyond it were installed
+			// from the user's own configuration at startup (installSandboxBoundary,
+			// issue #162); nothing project-local can move them here.
 			// …and the grants "Always allow" records in their own form. Nothing
 			// read that form back before issue #155: the dialog appended a record
 			// and the next start ignored it, so a permanent answer lasted exactly
@@ -548,6 +521,43 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVar(&revokeGrant, "revoke-grant", "", "Revoke a persistent path grant and exit")
 
 	return rootCmd
+}
+
+// installSandboxBoundary puts the boundary in place for this process: the root
+// the fence is built around and the paths allowed beyond it, from the user's own
+// configuration first and the working directory second.
+//
+// A project-local ./.tinycode/config.json contributes neither key. It arrives
+// with the repository, so it is attacker-controlled: project_root "/" removes the
+// boundary altogether, and an allowed_paths entry hands the agent a path nobody
+// allowed (issue #162). What such a file asked for is logged and dropped rather
+// than ignored in silence, because a person who wrote that key deserves to know
+// it did not take effect.
+func installSandboxBoundary() {
+	boundary := config.UserSandboxBoundary()
+	if project := config.ProjectSandboxBoundary(); project.ProjectRoot != "" || len(project.AllowedPaths) > 0 {
+		tlog.Warn("sandbox", "project_local_boundary_keys_ignored",
+			"project_root", project.ProjectRoot,
+			"allowed_paths", len(project.AllowedPaths),
+			"reason", "only the user's own config may widen the sandbox")
+	}
+
+	if boundary.ProjectRoot != "" {
+		tool.DefaultSandbox.ProjectRoot = boundary.ProjectRoot
+	}
+	// Pattern D: auto-allow the working directory. The parent directory is
+	// deliberately NOT auto-allowed: it can be $HOME or "/", which would make
+	// project-root containment meaningless.
+	if cwd, err := os.Getwd(); err == nil {
+		if tool.DefaultSandbox.ProjectRoot == "" {
+			tool.DefaultSandbox.ProjectRoot = cwd
+		}
+		tool.DefaultSandbox.AutoAllowPaths = []string{cwd}
+	}
+	// Persistent allowed paths, from the user's own file for the same reason.
+	for _, p := range boundary.AllowedPaths {
+		tool.DefaultSandbox.AllowAlways(p)
+	}
 }
 
 // applySandboxCapabilityPolicy turns the configured hard-boundary requirement

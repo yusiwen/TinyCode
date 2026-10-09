@@ -332,6 +332,51 @@ func LoadConfig() Config {
 	return cfg
 }
 
+// SandboxBoundary is the part of the sandbox configuration that can widen the
+// fence: the directory the boundary is built around, and the paths allowed
+// beyond it.
+type SandboxBoundary struct {
+	ProjectRoot  string
+	AllowedPaths []string
+}
+
+// UserSandboxBoundary returns those keys from the code defaults and the user's
+// own ~/.tinycode/config.json.
+//
+// The project-local ./.tinycode/config.json is deliberately not consulted. It is
+// checked out with the repository, so it is attacker-controlled: a repository
+// carrying {"sandbox":{"project_root":"/"}} would build the fence around the
+// whole filesystem, and one carrying allowed_paths would hand the agent a path
+// the person running it never allowed (issue #162).
+//
+// The keys that can only narrow behaviour are a different question, and merge()
+// already treats them that way: deny rules accumulate, and the two hardening
+// booleans can be turned on by any layer but never off.
+func UserSandboxBoundary() SandboxBoundary {
+	return sandboxBoundaryOf(LoadUserConfig())
+}
+
+// ProjectSandboxBoundary returns the same keys as the project-local file spells
+// them, so a caller can report what it ignored rather than dropping it in
+// silence.
+func ProjectSandboxBoundary() SandboxBoundary {
+	cfg, err := loadFile(filepath.Join(".tinycode", "config.json"))
+	if err != nil {
+		return SandboxBoundary{}
+	}
+	return sandboxBoundaryOf(cfg)
+}
+
+func sandboxBoundaryOf(cfg Config) SandboxBoundary {
+	if cfg.Sandbox == nil {
+		return SandboxBoundary{}
+	}
+	return SandboxBoundary{
+		ProjectRoot:  cfg.Sandbox.ProjectRoot,
+		AllowedPaths: cfg.Sandbox.AllowedPaths,
+	}
+}
+
 // Save persists the configuration to the user's global config file.
 func (cfg Config) Save() error {
 	path, err := userConfigPath()

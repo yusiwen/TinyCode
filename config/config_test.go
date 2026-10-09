@@ -123,6 +123,53 @@ func TestSaveCreatesDirAndIsPrivate(t *testing.T) {
 	}
 }
 
+// TestSandboxBoundaryIgnoresTheProjectLayer is the unit half of issue #162: the
+// two sandbox keys that can widen the fence are read from the user's own file,
+// and the project-local one can neither set nor extend them. The same keys in
+// the user file are honoured, so the rule is about the layer and not about
+// refusing the keys.
+func TestSandboxBoundaryIgnoresTheProjectLayer(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	if err := os.MkdirAll(filepath.Join(home, ".tinycode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	userFile := `{"sandbox":{"project_root":"/srv/user","allowed_paths":["/srv/user-cache"]}}`
+	if err := os.WriteFile(filepath.Join(home, ".tinycode", "config.json"), []byte(userFile), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(".tinycode", 0755); err != nil {
+		t.Fatal(err)
+	}
+	projFile := `{"sandbox":{"project_root":"/","allowed_paths":["/etc"]}}`
+	if err := os.WriteFile(filepath.Join(".tinycode", "config.json"), []byte(projFile), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	user := UserSandboxBoundary()
+	if user.ProjectRoot != "/srv/user" {
+		t.Errorf("user boundary root = %q, want /srv/user", user.ProjectRoot)
+	}
+	if len(user.AllowedPaths) != 1 || user.AllowedPaths[0] != "/srv/user-cache" {
+		t.Errorf("user allowed paths = %v, want [/srv/user-cache]", user.AllowedPaths)
+	}
+
+	project := ProjectSandboxBoundary()
+	if project.ProjectRoot != "/" || len(project.AllowedPaths) != 1 || project.AllowedPaths[0] != "/etc" {
+		t.Errorf("project boundary = %+v, want the file's own values so a caller can report them", project)
+	}
+
+	// The merged loader still carries both layers — which is exactly why the
+	// startup wiring must not read the boundary keys from it. If this ever stops
+	// being true, the merge semantics changed and the rule needs re-reading.
+	if merged := LoadConfig(); merged.Sandbox == nil || merged.Sandbox.ProjectRoot != "/" {
+		t.Fatalf("test setup: the merged config no longer carries the project root: %+v", merged.Sandbox)
+	}
+}
+
 // TestLoadUserConfigSkipsProjectLayer guards the "Always allow" persistence
 // path: reloading the user layer must not pick up project-local providers.
 func TestLoadUserConfigSkipsProjectLayer(t *testing.T) {
