@@ -264,7 +264,7 @@ result: a command that prints words resembling a refusal is output, not a report
 | Kernel acceptance | a real Landlock boundary: a write **inside** a granted root happens and one **outside** it does not | `TestLandlockBoundaryIsEnforced` (Linux; skips with a reason elsewhere) |
 | Wiring | the real binary on a PTY with confinement on, asserting on the **filesystem** afterwards | `tui/testdata/scenarios/confine-bash-write.scenario` |
 | Report | `/sandbox`'s output, on screen | `tui/testdata/scenarios/sandbox-command.scenario` |
-| Grants | the dialog names the file, and the file carries the grant | `tui/testdata/scenarios/permission-allow-always.scenario` |
+| Grants | the dialog names the file, the file carries the grant, and a second start writes without a dialog | `tui/testdata/scenarios/permission-allow-always.scenario` |
 
 ```bash
 go test ./... -count=1 -race             # units and the policy properties
