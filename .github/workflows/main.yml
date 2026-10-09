@@ -119,6 +119,11 @@ jobs:
       - name: TUI command-boundary scenarios
         run: make test-tui-confine
 
+      # Deliberate probe: prove the artifact step below really publishes the app log when a
+      # job fails. Removed before this branch is deleted; the probe branch is never merged.
+      - name: Probe (deliberate failure)
+        run: 'echo "probe: forcing the job red so the artifact step runs"; exit 1'
+
       # The scenario drives the app with --log-level=debug, so the app's own log lands under
       # the scenario HOME. On a failure that log is the only artifact that says which stage
       # stalled, and this job used to discard it — which is why the intermittent timeout in
