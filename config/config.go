@@ -84,11 +84,12 @@ type SandboxConfig struct {
 	RequireHardBoundary bool `json:"require_hard_boundary,omitempty"`
 
 	// ConfineCommands runs shell commands under the kernel file boundary
-	// instead of only under the string checks. Off by default, and worth
-	// turning on only with the consequence understood: a confined command can
-	// write only under the session's writable roots, so any toolchain that
-	// writes its own cache outside them will fail.
-	ConfineCommands bool `json:"confine_commands,omitempty"`
+	// instead of only under the string checks. It is a pointer so "unset"
+	// differs from an explicit false: the default is decided per platform by
+	// ResolveConfineCommands — on where this host can confine a subprocess, off
+	// where it cannot — and a user who needs the wider boundary can set it to
+	// false in their own config.
+	ConfineCommands *bool `json:"confine_commands,omitempty"`
 }
 
 // MCPServerConfig defines a single MCP server to connect to.
@@ -261,8 +262,13 @@ func merge(dst, src Config) Config {
 		if src.Sandbox.RequireHardBoundary {
 			dst.Sandbox.RequireHardBoundary = true
 		}
-		if src.Sandbox.ConfineCommands {
-			dst.Sandbox.ConfineCommands = true
+		// Confinement can be turned on by any layer (narrowing); turning it
+		// off is a widening, so only the user's own file may do it and that is
+		// resolved from the user layer by UserConfineCommands rather than here
+		// — merge() cannot tell which layer it is merging.
+		if src.Sandbox.ConfineCommands != nil && *src.Sandbox.ConfineCommands {
+			on := true
+			dst.Sandbox.ConfineCommands = &on
 		}
 	}
 
@@ -375,6 +381,70 @@ func sandboxBoundaryOf(cfg Config) SandboxBoundary {
 		ProjectRoot:  cfg.Sandbox.ProjectRoot,
 		AllowedPaths: cfg.Sandbox.AllowedPaths,
 	}
+}
+
+// UserConfineCommands returns the confine_commands value from the user's own
+// ~/.tinycode/config.json and whether it was present. The project-local file is
+// not consulted: turning confinement off widens the fence, and a repository
+// that arrives with the checkout must not be able to do that (issue #162).
+//
+// It reads the raw user file rather than the merged one because merge() keeps
+// only the narrowing direction of this key: an explicit false survives no
+// merged Config, so the layer is the only place it can be read.
+func UserConfineCommands() (value bool, set bool) {
+	file, err := userConfigPath()
+	if err != nil {
+		return false, false
+	}
+	raw, err := readConfigObject(file)
+	if err != nil {
+		return false, false
+	}
+	sandbox, _ := raw["sandbox"].(map[string]any)
+	if sandbox == nil {
+		return false, false
+	}
+	value, ok := sandbox["confine_commands"].(bool)
+	return value, ok
+}
+
+// sandboxAsksForConfinement reports whether a merged configuration carries an
+// explicit request to confine commands. Past the user layer such a request can
+// only have come from the project-local file, because merge() keeps this key's
+// "on" direction and drops its "off" one.
+func sandboxAsksForConfinement(cfg *Config) bool {
+	return cfg != nil && cfg.Sandbox != nil && cfg.Sandbox.ConfineCommands != nil && *cfg.Sandbox.ConfineCommands
+}
+
+// ResolveConfineCommands decides whether shell commands run under the kernel
+// boundary, given whether this host can confine a subprocess.
+//
+// The user's own configuration decides when it names the key. Both directions
+// are the user's to choose: off where the platform default is on is the
+// documented escape hatch for a workflow that needs the wider boundary, and on
+// where the default is off is an explicit request — on a host with no mechanism
+// the launcher then refuses every command, which is the honest answer to a
+// request a person made in their own file, and /sandbox states it as such.
+//
+// With no user-level value the answer is the platform default: on where the
+// host can apply the boundary, off where it cannot. A project-local on-request
+// cannot move that answer, and the no-mechanism half is why — merge() keeps
+// "on" from any layer, so without the veto a repository shipping
+// `confine_commands: true` would turn confinement on for a host that cannot
+// apply it and refuse every command in a session that merely cloned it (macOS).
+// Narrowing is still allowed where it can actually be applied, which is what
+// the platform default already gives.
+func ResolveConfineCommands(cfg *Config, hostHasMechanism bool) bool {
+	if value, set := UserConfineCommands(); set {
+		return value
+	}
+	// Vetoed: the request came from the project-local file and this host cannot
+	// honour it, so the platform default (off) stands rather than a session in
+	// which every command is refused.
+	if sandboxAsksForConfinement(cfg) && !hostHasMechanism {
+		return false
+	}
+	return hostHasMechanism
 }
 
 // Save persists the configuration to the user's global config file.

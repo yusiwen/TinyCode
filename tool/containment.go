@@ -102,20 +102,53 @@ var confineCommands atomic.Bool
 // command runs under the kernel file boundary instead of only under the string
 // checks.
 //
-// It is off by default and is a deliberate choice, not a default: a confined
-// command can write only under the session's writable roots, so toolchains that
-// write their own caches (GOCACHE, ~/.npm, …) fail unless those roots are
-// granted. Flipping it on changes what every command in the session can do.
+// The composition decides the value through config.ResolveConfineCommands: the
+// per-platform default is on where this host can confine a subprocess and off
+// where it cannot (the launcher fails closed, so a default of on there would
+// refuse every command), and the user's own config may set it either way. A
+// confined command writes only under the session's writable roots, so the
+// composition also grants the platform user cache root — toolchains write
+// GOCACHE and friends there — and points the command's TMPDIR inside it.
 func SetConfineCommands(confined bool) { confineCommands.Store(confined) }
 
 // ConfineCommands reports whether shell commands run under the boundary.
 func ConfineCommands() bool { return confineCommands.Load() }
 
+// commandConfinementProbe answers the capability question. It is a variable so
+// this package's tests can present a host without a mechanism; production
+// never reassigns it.
+var commandConfinementProbe = commandConfinementAvailable
+
 // CommandConfinementAvailable reports whether this host can confine a
 // subprocess at all. It is a different question from ContainmentInfo: a
 // platform can enforce the agent's own opens (the macOS component walk) and
 // still have no way to confine a command it spawns.
-func CommandConfinementAvailable() bool { return commandConfinementAvailable() }
+func CommandConfinementAvailable() bool { return commandConfinementProbe() }
+
+// setCommandConfinementProbeForTest swaps the capability probe for one test and
+// returns the restore function.
+func setCommandConfinementProbeForTest(probe func() bool) func() {
+	previous := commandConfinementProbe
+	commandConfinementProbe = probe
+	return func() { commandConfinementProbe = previous }
+}
+
+// CommandConfinementStatus describes, in one line, whether commands run under
+// the boundary and, where they do not, why. It is what /sandbox prints, so the
+// per-platform default is stated on the host it applies to instead of being
+// left for the reader to infer.
+func CommandConfinementStatus() string {
+	switch {
+	case ConfineCommands() && CommandConfinementAvailable():
+		return "on (available)"
+	case ConfineCommands():
+		return "on, but UNAVAILABLE on this host — commands are refused"
+	case CommandConfinementAvailable():
+		return "off (turned off for this configuration; commands run under the string checks only)"
+	default:
+		return "off (this host has no subprocess mechanism; the platform default is off, and commands run under the string checks only)"
+	}
+}
 
 // ErrHardBoundaryUnavailable is returned when the policy demands a kernel
 // boundary and the host has none.

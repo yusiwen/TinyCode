@@ -8,9 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/yusiwen/tinycode/types"
 )
 
 // Environment of the child half below.
@@ -19,6 +22,13 @@ const (
 	landlockRootsEnv = "TINYCODE_LANDLOCK_ROOTS"
 	landlockInnerEnv = "TINYCODE_LANDLOCK_INSIDE"
 	landlockOuterEnv = "TINYCODE_LANDLOCK_OUTSIDE"
+)
+
+// Environment of the exec child used by TestRepoBuildAndTestRunUnderTheDefaultBoundary.
+const (
+	landlockExecEnv      = "TINYCODE_LANDLOCK_EXEC"
+	landlockExecRootsEnv = "TINYCODE_LANDLOCK_EXEC_ROOTS"
+	landlockExecArgvEnv  = "TINYCODE_LANDLOCK_EXEC_ARGV"
 )
 
 // TestLandlockChildHelper is not a test: it is the child half of
@@ -96,6 +106,130 @@ func TestLandlockBoundaryIsEnforced(t *testing.T) {
 	if _, err := os.Stat(outside); err == nil {
 		t.Fatal("outside file was written: the boundary did not hold")
 	}
+}
+
+// TestLandlockExecHelper is the child half of
+// TestRepoBuildAndTestRunUnderTheDefaultBoundary: it applies the boundary to itself
+// and then execs the command, so the parent asserts the real command's exit
+// status under the real boundary. Landlock cannot be applied inside the
+// parent's own process image, which is why this is a child.
+func TestLandlockExecHelper(t *testing.T) {
+	if os.Getenv(landlockExecEnv) != "1" {
+		t.Skip("child half of TestRepoBuildAndTestRunUnderTheDefaultBoundary")
+	}
+
+	var roots []string
+	if raw := os.Getenv(landlockExecRootsEnv); raw != "" {
+		roots = strings.Split(raw, "\n")
+	}
+	if err := applyLandlock("workspace-write", roots); err != nil {
+		fmt.Fprintf(os.Stderr, "apply landlock: %v\n", err)
+		os.Exit(11)
+	}
+
+	argv := strings.Split(os.Getenv(landlockExecArgvEnv), "\n")
+	if len(argv) == 0 || argv[0] == "" {
+		fmt.Fprintln(os.Stderr, "no command to exec")
+		os.Exit(15)
+	}
+	binary, err := exec.LookPath(argv[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot find %q: %v\n", argv[0], err)
+		os.Exit(16)
+	}
+	if err := unix.Exec(binary, argv, os.Environ()); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot execute %q: %v\n", binary, err)
+		os.Exit(17)
+	}
+}
+
+// TestRepoBuildAndTestRunUnderTheDefaultBoundary is the acceptance test for
+// issue #139 on a host with a mechanism: the repository's own build and test
+// commands run under the boundary the product derives by default, with the
+// platform user cache root granted and TMPDIR pointed inside it. It is skipped
+// only where the kernel has no Landlock.
+func TestRepoBuildAndTestRunUnderTheDefaultBoundary(t *testing.T) {
+	if _, err := landlockABI(); err != nil {
+		t.Skipf("no Landlock on this kernel: %v", err)
+	}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skipf("no go on PATH: %v", err)
+	}
+
+	cacheRoots := PlatformCacheRoots()
+	if len(cacheRoots) == 0 {
+		t.Skip("no platform user cache directory to grant")
+	}
+	repoRoot, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, "go.mod")); err != nil {
+		t.Skipf("not running from the repository's tool/ directory: %v", err)
+	}
+
+	// The roots are the product's, not this test's: PolicyFromConfig is the one
+	// derivation the fence and the command boundary both consume, so the
+	// boundary asserted here is the one the default actually produces rather
+	// than a list assembled in the test.
+	saved := DefaultSandbox
+	DefaultSandbox = &SandboxConfig{
+		ProjectRoot:  repoRoot,
+		CacheRoots:   cacheRoots,
+		allowedPaths: map[string]bool{},
+	}
+	defer func() { DefaultSandbox = saved }()
+	roots := PolicyFromConfig(DefaultSandbox, types.SandboxWorkspaceWrite).Roots
+
+	tmp := PlatformTempDir()
+	if tmp == "" {
+		t.Skip("no platform temp dir under the cache root")
+	}
+	if err := os.MkdirAll(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// GOCACHE is pointed inside the granted cache root instead of skipping when
+	// the ambient one lies elsewhere: a redirected cache is exactly the
+	// environment this repository documents for local verification, and
+	// skipping there would leave the acceptance assertion unrun precisely where
+	// it is most likely to be relied on.
+	gocache := filepath.Join(cacheRoots[0], "go-build")
+
+	runUnderBoundary(t, goBin, roots, tmp, gocache, "build", "./...")
+	runUnderBoundary(t, goBin, roots, tmp, gocache, "test", "./config/", "./types/", "-count=1")
+}
+
+// runUnderBoundary runs one go subcommand through the launcher child with the
+// given roots, TMPDIR and build cache, and fails the test if the command does
+// not exit 0.
+func runUnderBoundary(t *testing.T, goBin string, roots []string, tmp, gocache string, args ...string) {
+	t.Helper()
+	argv := append([]string{goBin}, args...)
+	cmd := exec.Command(os.Args[0], "-test.run=TestLandlockExecHelper")
+	cmd.Dir = repoRootForTest(t)
+	cmd.Env = append(os.Environ(),
+		landlockExecEnv+"=1",
+		landlockExecRootsEnv+"="+strings.Join(roots, "\n"),
+		landlockExecArgvEnv+"="+strings.Join(argv, "\n"),
+		"TMPDIR="+tmp,
+		"GOCACHE="+gocache,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("`go %s` failed under the default boundary: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+// repoRootForTest returns the repository root the test is running from.
+func repoRootForTest(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 // TestLandlockHandledRightsFollowTheABI pins the version rule: handling a right

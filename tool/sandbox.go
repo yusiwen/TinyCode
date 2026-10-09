@@ -62,6 +62,20 @@ type SandboxConfig struct {
 	// AutoAllowPaths are paths automatically allowed (CWD, parent, etc.)
 	AutoAllowPaths []string
 
+	// CacheRoots are the additional writable roots outside the project that a
+	// confined command needs to run a real toolchain: the platform user cache
+	// directory, where GOCACHE and most build tools write. They are grants, not
+	// defaults — an empty list adds nothing, so a library caller or a test gets
+	// exactly the roots it asked for — and the composition installs them
+	// (main.applySandboxCapabilityPolicy) only where the host can confine a
+	// subprocess, so a host without a mechanism does not widen the fence for a
+	// boundary it cannot apply.
+	//
+	// The fence and the command boundary both read WritableRoots, so a cache
+	// root here is writable by both or neither; that is the shared-list rule
+	// from issue #120, not a per-consumer choice.
+	CacheRoots []string
+
 	mu           sync.Mutex
 	allowedPaths map[string]bool
 }
@@ -184,7 +198,7 @@ func (sc *SandboxConfig) projectRootResolved() string {
 
 // WritableRoots returns every directory this configuration treats as writable,
 // canonical and deduplicated: the resolved project root first (when one is
-// configured), then each auto-allowed path.
+// configured), then each auto-allowed path, then each cache root.
 //
 // It exists so that the file fence and command execution cannot drift apart:
 // both must decide containment by asking this one list, and adding a root here
@@ -196,13 +210,16 @@ func (sc *SandboxConfig) projectRootResolved() string {
 // moment; the cost is the same as the per-path resolution the check already
 // did.
 //
-// Two facts about the current set are deliberate, not accidental:
+// Facts about the current set that are deliberate, not accidental:
 //
-//   - No platform temp area is included. The file fence does not today allow
-//     writes to /tmp, and folding it in here would widen the fence as a side
-//     effect of a refactor. Making a temp area writable is a separate policy
-//     change that must land for every consumer in one commit, with its own
-//     test.
+//   - The platform user cache directory is included when the composition
+//     grants it (CacheRoots). A confined command needs it: toolchains write
+//     GOCACHE and friends there, and a boundary that forbids it breaks
+//     `go build`/`go test`. Granting it also widens the path fence, which is
+//     the point of one shared list.
+//   - No platform temp area is included. The shared temp area is not writable
+//     through the fence; a confined command that needs scratch is given a
+//     per-user TMPDIR under the granted cache root instead (PlatformTempDir).
 //   - The list may hold several roots, while the kernel probe
 //     (kernelEscapeCheck) can only express one: RESOLVE_BENEATH is
 //     single-root. CheckPath therefore runs that probe for the project root
@@ -210,7 +227,7 @@ func (sc *SandboxConfig) projectRootResolved() string {
 //     what the behavior already did. A caller that needs several roots
 //     enforced by the kernel requires a mechanism that accepts a path list.
 func (sc *SandboxConfig) WritableRoots() []string {
-	candidates := make([]string, 0, 1+len(sc.AutoAllowPaths))
+	candidates := make([]string, 0, 1+len(sc.AutoAllowPaths)+len(sc.CacheRoots))
 	if root := sc.projectRootResolved(); root != "" {
 		candidates = append(candidates, root)
 	}
@@ -219,6 +236,12 @@ func (sc *SandboxConfig) WritableRoots() []string {
 			continue
 		}
 		candidates = append(candidates, filepath.Clean(resolveRealPath(absoluteNoClean(permit))))
+	}
+	for _, cache := range sc.CacheRoots {
+		if strings.TrimSpace(cache) == "" {
+			continue
+		}
+		candidates = append(candidates, filepath.Clean(resolveRealPath(absoluteNoClean(cache))))
 	}
 
 	roots := make([]string, 0, len(candidates))

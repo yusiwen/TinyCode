@@ -572,8 +572,16 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 	if cfg.Sandbox != nil && cfg.Sandbox.RequireHardBoundary {
 		tool.SetRequireHardBoundary(true)
 	}
-	if cfg.Sandbox != nil && cfg.Sandbox.ConfineCommands {
-		tool.SetConfineCommands(true)
+	// The default is per platform and the user's own config may set it either
+	// way; the decision (and the reason it is off on a host with no mechanism)
+	// belongs to config.ResolveConfineCommands. When confinement is on, grant
+	// the platform user cache root so a confined toolchain can write GOCACHE
+	// and friends — the fence consumes the same list, which is the shared-root
+	// rule — and the command's TMPDIR is pointed inside it (tool.confinedEnv).
+	confined := config.ResolveConfineCommands(cfg, tool.CommandConfinementAvailable())
+	tool.SetConfineCommands(confined)
+	if confined {
+		tool.DefaultSandbox.CacheRoots = tool.PlatformCacheRoots()
 	}
 	// Let a run freeze its policy from this configuration. Installed here and
 	// not in an init so the wiring stays visible: the agent package cannot
@@ -604,6 +612,12 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 			tlog.Warn("sandbox", "command_confinement_without_roots",
 				"effect", "no writable root is configured, so confined commands cannot write anywhere; set sandbox.project_root")
 		}
+	} else if !tool.CommandConfinementAvailable() {
+		// State it rather than leave commands silently unconfined: the
+		// per-platform default is off here because the launcher would fail
+		// closed, and /sandbox draws the same fact.
+		tlog.Info("sandbox", "command_confinement_off",
+			"reason", "this host has no subprocess mechanism; the platform default is off and commands run under the string checks only")
 	}
 }
 

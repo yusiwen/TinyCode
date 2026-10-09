@@ -249,6 +249,16 @@ func Bash() Tool {
 				return "", invErr
 			}
 			cmd := exec.CommandContext(cmdCtx, argv[0], argv[1:]...)
+			// A confined command cannot write the shared temp area, but a
+			// toolchain still needs scratch (the go command makes its work
+			// directory under $TMPDIR), so point it at the per-user scratch
+			// inside the granted cache root. Unconfined runs inherit the
+			// environment unchanged.
+			if ConfineCommands() {
+				if env := confinedEnv(runPolicy(ctx)); env != nil {
+					cmd.Env = env
+				}
+			}
 			// Run the shell in its own process group and kill the whole group
 			// on timeout, so background children do not survive the call.
 			configureProcessGroup(cmd)
