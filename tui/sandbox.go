@@ -54,14 +54,10 @@ func sandboxReport() string {
 
 	// Command confinement is its own capability and its own switch: a host can
 	// enforce the agent's opens and still have no way to confine a subprocess.
-	switch {
-	case !tool.ConfineCommands():
-		b.WriteString("  command confinement: off\n")
-	case tool.CommandConfinementAvailable():
-		b.WriteString("  command confinement: on (available)\n")
-	default:
-		b.WriteString("  command confinement: on, but UNAVAILABLE on this host — commands are refused\n")
-	}
+	// The line says why when it is off, so the per-platform default (off where
+	// no mechanism exists) is stated on the host it applies to rather than
+	// leaving commands silently unconfined.
+	fmt.Fprintf(&b, "  command confinement: %s\n", tool.CommandConfinementStatus())
 
 	fmt.Fprintf(&b, "  project root: %s\n", root)
 

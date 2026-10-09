@@ -62,14 +62,28 @@ Two properties follow, and both have tests:
 ## Writable roots
 
 `tool.WritableRoots()` returns the canonical, symlink-resolved, deduplicated list
-the fence and the command boundary both consume: the project root plus the
-auto-allowed paths (the working directory).
+the fence and the command boundary both consume: the project root, the
+auto-allowed paths (the working directory), and the granted cache roots.
 
-Two deliberate facts:
+The cache root is the **platform user cache directory** (`os.UserCacheDir()`),
+granted only when command confinement is on (the composition sets
+`CacheRoots`). It exists because a confined toolchain writes its own caches —
+`GOCACHE` and most build tools live under it — and a boundary that forbids them
+breaks `go build`/`go test`. It is acceptable to grant because it is not source
+(a lost cache costs a rebuild, not data) and it is already the user's own
+writable, per-user area. Because the fence and the command boundary share this
+one list, granting it to a command also states that the agent's `write_file` may
+touch it; that is the deliberate cost of the shared-list rule, not a second
+policy.
 
-- **No temp area is a root.** `/tmp` is not writable through the fence. Adding it
-  would widen the boundary, so it is a policy change of its own — with its own
-  test — rather than a side effect of anything else.
+Deliberate facts:
+
+- **No temp area is a root.** `/tmp` is not writable through the fence, so the
+  list must not include it. A confined command that needs scratch is given a
+  per-user `TMPDIR` under the granted cache root (`tool.PlatformTempDir`,
+  `<cache>/tinycode/tmp`), created before the command starts; that is how a
+  toolchain that makes a work directory under `$TMPDIR` (the `go` command does)
+  still runs. The shared temp area stays outside the boundary.
 - **The list may hold several roots; the kernel probe can express one.**
   `openat2(RESOLVE_BENEATH)` is single-root, so the fence runs that probe for the
   project root and decides the remaining roots by comparing resolved paths. A
@@ -106,9 +120,42 @@ Shell commands are guarded in two layers, and only the second is a boundary:
    These are speed bumps: `sh -c 'rm -fr /'`, a path assembled from variables, or
    `base64 -d | sh` all walk past a substring match. They stay for the obvious
    cases and for the advice they carry.
-2. **The kernel boundary**, when `sandbox.confine_commands` is on. The same
+2. **The kernel boundary**, on by default where the host can apply it. The same
    `['bash','-c',cmd]` argv is wrapped in a launcher and the boundary is applied
    to the process that will run it.
+
+### The per-platform default
+
+`confine_commands` has no single default; the default is decided per platform by
+`config.ResolveConfineCommands`, from whether this host can confine a
+subprocess at all:
+
+| Host | Default | What happens |
+| --- | --- | --- |
+| A kernel mechanism (Linux with Landlock) | **on** | every shell command runs under the boundary |
+| No mechanism (macOS, and any host whose probe fails) | **off** | commands run under the string checks, and `/sandbox` says so |
+
+It is not a default of `true` because the launcher **fails closed**: on a host
+with no mechanism, on would refuse every command, and refusing every command is
+not a boundary anyone can keep. The honest per-platform answer is off there, and
+the fact is stated in `/sandbox` rather than left for commands to be silently
+unconfined.
+
+The user's own `~/.tinycode/config.json` may set `confine_commands` either way —
+including `false` on a capable host, for a workflow that needs the wider
+boundary, and `true` where the default is off (an explicit request the launcher
+then answers by refusing each command, which `/sandbox` states). A project-local
+`./.tinycode/config.json` may turn it on (narrow) but never off (widen):
+`merge()` keeps only the on direction, and the off direction is read from the
+user layer alone, the same rule as `project_root`.
+
+**Where the host cannot apply the boundary, the project layer's on-request is
+vetoed.** That layer is attacker-controlled — it arrives with the checkout — and
+a repository shipping `confine_commands: true` would otherwise turn confinement
+on for a host whose launcher then refuses every command, so a session that merely
+cloned it would be unusable. The user's own file is not vetoed: a person asking
+for confinement in their own configuration gets the refusal and the reason,
+rather than a silent override.
 
 ### The launcher
 
@@ -161,8 +208,9 @@ they are not the same question:
 
 Both are surfaced rather than assumed:
 
-- `/sandbox` prints the containment level, whether command confinement is on and
-  available, and the effective writable roots.
+- `/sandbox` prints the containment level, the command-confinement line with the
+  per-platform default stated on the host it applies to, and the effective
+  writable roots (including the granted cache root).
 - `sandbox.require_hard_boundary` refuses an operation that would be enforced by
   in-process checks alone, including when no project root is configured. It fails
   closed: no approval creates a capability the host lacks.
@@ -248,7 +296,7 @@ result: a command that prints words resembling a refusal is output, not a report
 | `sandbox.allowed_paths` | — | legacy persistent grants (read-only now) |
 | `sandbox.allowed_path_grants` | — | persistent grants with context |
 | `sandbox.require_hard_boundary` | `false` | refuse anything enforced only in process |
-| `sandbox.confine_commands` | `false` | run shell commands under the kernel boundary |
+| `sandbox.confine_commands` | on where the host can confine a subprocess, off where it cannot | run shell commands under the kernel boundary |
 
 | Command | What it does |
 | --- | --- |
@@ -270,7 +318,7 @@ sandbox keys are therefore split by what they can do to the fence.
 | `sandbox.allowed_path_grants` | **not add one** — read from the user's file only (#155) |
 | `sandbox.deny_commands` | add refusals; the lists accumulate |
 | `sandbox.require_hard_boundary` | turn the requirement **on**, never off |
-| `sandbox.confine_commands` | turn confinement **on**, never off |
+| `sandbox.confine_commands` | turn confinement **on**, never off — and where the host has no mechanism that request is vetoed, so a cloned repository cannot refuse every command |
 
 `merge()` has enforced the bottom three since the sandbox landed; the widening
 keys are read through the user-layer helpers (`config.UserSandboxBoundary`,
@@ -286,7 +334,10 @@ wrote that key can see it did not take effect.
 | --- | --- | --- |
 | Unit | policy freezing, non-widening, roots, the launcher argv and exit-code contract, grant records | `go test ./...` |
 | Kernel acceptance | a real Landlock boundary: a write **inside** a granted root happens and one **outside** it does not | `TestLandlockBoundaryIsEnforced` (Linux; skips with a reason elsewhere) |
-| Wiring | the real binary on a PTY with confinement on, asserting on the **filesystem** afterwards | `tui/testdata/scenarios/confine-bash-write.scenario` |
+| Toolchain acceptance | the repository's own `go build ./config/` and `go test ./types/` run under the boundary the product derives by default, cache root and `TMPDIR` included | `TestRepoBuildAndTestRunUnderTheDefaultBoundary` (Linux; skips with a reason) |
+| Shared roots | the fence's writable set and the command's `--allow` set are the **same** list, cache root included; a second derivation fails it | `TestCacheRootIsSharedByTheFenceAndTheCommandBoundary` |
+| Default | on where a mechanism exists, off where it does not, and the user may turn it off | `TestResolveConfineCommandsDefaultIsPerPlatform`, `TestResolveConfineCommandsUserMayTurnItOff`, `TestCommandConfinementStatusNamesThePlatformDefault` |
+| Wiring | the real binary on a PTY with the **default** boundary, asserting on the **filesystem** afterwards | `tui/testdata/scenarios/confine-bash-write.scenario` |
 | Report | `/sandbox`'s output, on screen | `tui/testdata/scenarios/sandbox-command.scenario` |
 | Grants | the dialog names the file, the file carries the grant, and a second start writes without a dialog | `tui/testdata/scenarios/permission-allow-always.scenario` |
 | Layer rule | a project-local widening key is refused, and the same key in the user's file is allowed | `TestProjectLocalConfigCannotWidenTheFence`, `TestSandboxBoundaryIgnoresTheProjectLayer` |
@@ -295,6 +346,7 @@ wrote that key can see it did not take effect.
 go test ./... -count=1 -race             # units and the policy properties
 make test-tui-confine                    # the filesystem assertion (needs a kernel mechanism)
 go test ./tool/ -run Landlock -v         # which mechanism this host offers
+go test ./tool/ -run RepoBuild -v        # a real build+test under the default boundary (needs Landlock)
 make test-tui-scenarios                  # the rest of the TUI scenarios
 ```
 
@@ -313,14 +365,17 @@ working boundary.
 
 - **File effects only.** Network access is unrestricted in every mode. Process
   visibility is unchanged (no namespaces).
-- **Confinement is off by default.** `sandbox.confine_commands` is `false`, so the
-  default posture for shell commands is still the string checks. That is a
-  deliberate choice — a confined command may write only under the roots, and
-  toolchains write their own caches — and it is tracked as issue #139 rather than
-  left as a comment.
+- **Confinement is on by default only where it can be enforced.** On a kernel
+  with Landlock every shell command runs under the boundary, with the platform
+  user cache root granted and `TMPDIR` inside it (see
+  [Writable roots](#writable-roots)). On a host with no mechanism the default is
+  off and `/sandbox` says why; the string checks are the posture there. A user
+  who needs the wider boundary on a capable host can set `confine_commands` to
+  `false` in their own config.
 - **macOS cannot confine a subprocess.** The component walk confines the agent's
-  own opens; there is no mechanism for a command it spawns, so the launcher
-  reports a capability refusal. Command confinement is a Linux feature today.
+  own opens; there is no mechanism for a command it spawns, so command
+  confinement is off by default there, and turning it on explicitly makes the
+  launcher report a capability refusal rather than run the command unconfined.
 - **The kernel probe is single-root**, as described above; `danger-full-access` is
   in the vocabulary but nothing sets it; per-call escalation is a tested shape
   with no producer yet (the dialog's ladder is `once → session → always`).
@@ -337,6 +392,7 @@ working boundary.
 | `tool/pathbeneath_*.go` | `openat2` containment and the `O_NOFOLLOW` component walk |
 | `tool/containment_*.go` | the capability probes and the degraded-result note |
 | `tool/sandboxexec.go` | the launcher contract, argv, and classification |
+| `tool/cacheroots.go` | the granted cache root, the per-user `TMPDIR`, and the confined command's env |
 | `tool/confinement_linux.go` | the Landlock ruleset and the launcher entry point |
 | `tool/confinement_other.go` | the honest failure where there is no mechanism |
 | `config/config.go` | the sandbox keys and the persistent-grant store |

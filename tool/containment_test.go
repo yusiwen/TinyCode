@@ -81,6 +81,41 @@ func TestWriteResultCarriesTheDegradedFact(t *testing.T) {
 	}
 }
 
+// TestCommandConfinementStatusNamesThePlatformDefault pins the line /sandbox
+// draws: a host with no subprocess mechanism says the platform default is off
+// and commands run under the string checks, rather than leaving them silently
+// unconfined.
+func TestCommandConfinementStatusNamesThePlatformDefault(t *testing.T) {
+	withCommandConfinement(t, false)
+
+	t.Run("no mechanism states the platform default", func(t *testing.T) {
+		restore := setCommandConfinementProbeForTest(func() bool { return false })
+		defer restore()
+		got := CommandConfinementStatus()
+		if !strings.Contains(got, "no subprocess mechanism") || !strings.Contains(got, "platform default is off") {
+			t.Fatalf("status = %q, want it to state the platform default", got)
+		}
+	})
+
+	t.Run("turned off on a capable host", func(t *testing.T) {
+		restore := setCommandConfinementProbeForTest(func() bool { return true })
+		defer restore()
+		got := CommandConfinementStatus()
+		if !strings.Contains(got, "turned off") {
+			t.Fatalf("status = %q, want it to say the configuration turned it off", got)
+		}
+	})
+
+	t.Run("on and available", func(t *testing.T) {
+		restore := setCommandConfinementProbeForTest(func() bool { return true })
+		defer restore()
+		SetConfineCommands(true)
+		if got := CommandConfinementStatus(); got != "on (available)" {
+			t.Fatalf("status = %q, want %q", got, "on (available)")
+		}
+	})
+}
+
 // TestHardBoundaryPolicyFailsClosed covers the policy: where a kernel
 // mechanism exists the operation proceeds; where it does not, the operation is
 // refused instead of silently weakened, and no permission dialog can change

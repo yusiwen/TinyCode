@@ -226,11 +226,13 @@ func restoreSandbox(t *testing.T) {
 	t.Helper()
 	previousRoot := tool.DefaultSandbox.ProjectRoot
 	previousAuto := tool.DefaultSandbox.AutoAllowPaths
+	previousCache := tool.DefaultSandbox.CacheRoots
 	tool.DefaultSandbox.ResetAllowed()
 	t.Cleanup(func() {
 		tool.DefaultSandbox.ResetAllowed()
 		tool.DefaultSandbox.ProjectRoot = previousRoot
 		tool.DefaultSandbox.AutoAllowPaths = previousAuto
+		tool.DefaultSandbox.CacheRoots = previousCache
 	})
 }
 

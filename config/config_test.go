@@ -320,6 +320,95 @@ func TestAddAllowedPathPreservesFile(t *testing.T) {
 	}
 }
 
+// boolPtr is a small helper for the pointer-valued confine_commands field.
+func boolPtr(b bool) *bool { return &b }
+
+// TestResolveConfineCommandsDefaultIsPerPlatform pins the decision issue #139
+// asks for: where the host can confine a subprocess the default is on, and
+// where it cannot the default is off — never a default of on that would refuse
+// every command because the launcher fails closed.
+func TestResolveConfineCommandsDefaultIsPerPlatform(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	noSandbox := Config{}
+	if !ResolveConfineCommands(&noSandbox, true) {
+		t.Error("with a mechanism and no configuration, confinement = off; want the platform default on")
+	}
+	if ResolveConfineCommands(&noSandbox, false) {
+		t.Error("without a mechanism and no configuration, confinement = on; want the platform default off")
+	}
+}
+
+// TestResolveConfineCommandsUserMayTurnItOff covers the escape hatch the issue
+// requires: the user's own config may turn confinement off even where the
+// default is on, while a project-local file may not.
+func TestResolveConfineCommandsUserMayTurnItOff(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".tinycode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".tinycode", "config.json"),
+		[]byte(`{"sandbox":{"confine_commands":false}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+
+	// The merged config cannot express the false (merge keeps "on" only), so
+	// the resolver reads it from the user layer.
+	if merged := LoadConfig(); merged.Sandbox != nil && merged.Sandbox.ConfineCommands != nil {
+		t.Fatalf("test setup: the merged config already carries confine_commands = %v", *merged.Sandbox.ConfineCommands)
+	}
+	if ResolveConfineCommands(&Config{}, true) {
+		t.Error("the user's explicit false did not turn confinement off on a capable host")
+	}
+	// The escape hatch is the user's, so it also beats a checked-out
+	// repository's request to turn confinement on.
+	projectAsked := Config{Sandbox: &SandboxConfig{ConfineCommands: boolPtr(true)}}
+	if ResolveConfineCommands(&projectAsked, true) {
+		t.Error("a project-local on-request overrode the user's explicit false")
+	}
+}
+
+// TestResolveConfineCommandsProjectCannotForceItOnWithoutAMechanism is the veto
+// the layer rule needs: the project-local file is attacker-controlled and
+// merge() keeps its "on" direction, so on a host that cannot apply the boundary
+// the request must not take effect — the launcher fails closed, and the session
+// would refuse every command because it merely cloned that repository.
+func TestResolveConfineCommandsProjectCannotForceItOnWithoutAMechanism(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	projectAsked := Config{Sandbox: &SandboxConfig{ConfineCommands: boolPtr(true)}}
+	if ResolveConfineCommands(&projectAsked, false) {
+		t.Error("a project-local on-request turned confinement on where the host has no mechanism; every command would be refused")
+	}
+	if !ResolveConfineCommands(&projectAsked, true) {
+		t.Error("a project-local on-request was vetoed on a host that can apply the boundary")
+	}
+}
+
+// TestMergeConfineCommandsOnlyNarrows pins the layer rule: a project-local
+// config may turn confinement on but cannot turn it off, because off is the
+// widening direction.
+func TestMergeConfineCommandsOnlyNarrows(t *testing.T) {
+	base := DefaultConfig()
+	base.Sandbox = &SandboxConfig{ConfineCommands: boolPtr(true)}
+
+	dropped := merge(base, Config{Sandbox: &SandboxConfig{ConfineCommands: boolPtr(false)}})
+	if dropped.Sandbox == nil || dropped.Sandbox.ConfineCommands == nil || !*dropped.Sandbox.ConfineCommands {
+		t.Fatal("an overlay turned confinement off; a project-local file must not be able to widen the fence")
+	}
+
+	raised := merge(DefaultConfig(), Config{Sandbox: &SandboxConfig{ConfineCommands: boolPtr(true)}})
+	if raised.Sandbox == nil || raised.Sandbox.ConfineCommands == nil || !*raised.Sandbox.ConfineCommands {
+		t.Fatal("an overlay could not turn confinement on; an overlay must be able to narrow")
+	}
+}
+
 // TestMergeAgentPermissions covers the ruleset override added to AgentOverride.
 func TestMergeAgentPermissions(t *testing.T) {
 	base := DefaultConfig()

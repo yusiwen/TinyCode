@@ -1,9 +1,12 @@
 package tool
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yusiwen/tinycode/types"
 )
 
 // TestWritableRootsCanonicalizesAndDeduplicates covers the property the shared
@@ -90,6 +93,72 @@ func TestWritableRootsExcludesTempAreasByDefault(t *testing.T) {
 	if err := sandbox.CheckPath(probe); err == nil {
 		t.Fatalf("CheckPath(%q) was allowed; the default policy does not allow temp-area writes", probe)
 	}
+}
+
+// TestCacheRootIsSharedByTheFenceAndTheCommandBoundary is the drift guard the
+// shared-list rule needs: the path fence's writable set and the roots the
+// confined command is given are one list, including the granted cache root. A
+// second derivation on either side would make one of these assertions fail.
+func TestCacheRootIsSharedByTheFenceAndTheCommandBoundary(t *testing.T) {
+	project := t.TempDir()
+	cache := t.TempDir()
+	outside := t.TempDir()
+
+	saved := DefaultSandbox
+	DefaultSandbox = &SandboxConfig{
+		ProjectRoot:  project,
+		CacheRoots:   []string{cache},
+		allowedPaths: map[string]bool{},
+	}
+	defer func() { DefaultSandbox = saved }()
+
+	withCommandConfinement(t, true)
+
+	// Fence side: the cache root is writable, a path outside every root is not.
+	if err := DefaultSandbox.CheckPath(filepath.Join(cache, "go-build", "x")); err != nil {
+		t.Fatalf("the fence refuses the cache root the command boundary grants: %v", err)
+	}
+	if err := DefaultSandbox.CheckPath(filepath.Join(outside, "x")); err == nil {
+		t.Fatal("the fence allowed a path outside every writable root")
+	}
+
+	// Command side: the launcher's --allow set is exactly the policy's roots.
+	policy := PolicyFromConfig(DefaultSandbox, types.SandboxWorkspaceWrite)
+	argv, err := bashInvocation(context.Background(), "echo hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	granted := grantedRoots(argv)
+	want := make(map[string]bool, len(policy.Roots))
+	for _, r := range policy.Roots {
+		want[r] = true
+	}
+	if len(granted) != len(want) {
+		t.Fatalf("command boundary granted %d roots, policy has %d: command=%v policy=%v", len(granted), len(want), granted, policy.Roots)
+	}
+	for r := range want {
+		if !granted[r] {
+			t.Fatalf("policy root %q is not granted to the command: %v", r, argv)
+		}
+	}
+	for r := range granted {
+		if !want[r] {
+			t.Fatalf("command boundary granted %q, which is not in the policy roots %v", r, policy.Roots)
+		}
+	}
+}
+
+// grantedRoots extracts the values of the launcher's --allow options from a
+// bash invocation.
+func grantedRoots(argv []string) map[string]bool {
+	roots := map[string]bool{}
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == "--allow" {
+			roots[argv[i+1]] = true
+			i++
+		}
+	}
+	return roots
 }
 
 // TestCheckPathAgreesWithWritableRoots is the agreement test for this step: the
