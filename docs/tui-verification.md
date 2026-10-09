@@ -150,6 +150,17 @@ is never wiped would fail on its *second* run because the rule would already be 
 They pin that the option is selectable and the loop still finishes; what exactly got stored
 is invisible on this screen and belongs to the tool's own tests.
 
+`permission-allow-always` goes one step further, because a permanent grant is a promise
+about the *next* run and a screen could not tell one process from the next until `mark` and
+`wait --since` existed (issue #126). Its wrapper shell starts the binary twice against one
+two-cycle stub, marks the boundary, and asserts with `wait --text stub-final-ok --since`
+that the second start reaches the model's final answer with no dialog answered — if the
+grant were ignored, the dialog would be drawn, nothing would answer it, and that wait would
+time out. The shell also checks the stub's own count (`STUB cycles=2 requests=4`), so a stub
+that served one cycle fails the run loudly instead of letting the second start pass on the
+first one's answer. `permission-allow-session` has no second-start half: its grant lives in
+the session file, and this flow does not resume a session.
+
 `plan-write-no-prompt` is that pair's negative: the same write stub in **plan** mode must
 finish on its own, with no key pressed. A screen cannot assert an absence any other way —
 under build mode the identical call raises the dialog and waits for a human, so reaching

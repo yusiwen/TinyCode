@@ -6,13 +6,23 @@
 # failure #96 was about; and a per-scenario home that is not wiped would fail on its
 # *second* run, because the rule would already be stored.
 #
-# What this pins now goes past the screen: the label names the file the choice writes, and
-# after the program exits the wrapper shell reads that file and prints what it found. The
-# surface has to say where a permanent permission goes (issue #124); before, the option
-# read "Always allow" and the consequence was only visible to someone who later opened the
-# config by hand. What this still does NOT pin: that the next session honours the grant —
-# a scenario cannot yet tell one process's screen from the next one's (#126).
-open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-allow-always --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-allow-always && mkdir -p /tmp/tinyscen-home-allow-always/sessions && python3 tui/testdata/stub/openai_stub.py 18492 write & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; status=$?; kill %1 2>/dev/null; cfg=/tmp/tinyscen-home-allow-always/.tinycode/config.json; if grep -q "allowed_path_grants" "$cfg" && grep -q "stub-outside-write.txt" "$cfg" && grep -q "\"project\"" "$cfg"; then echo "GRANT recorded=yes project=yes"; else echo "GRANT-BROKEN $(tr -d "\n" < "$cfg" 2>/dev/null)"; fi; exit $status'
+# What this pins now reaches past both the screen and the process. The label names the
+# file the choice writes, and after both runs the wrapper shell reads that file and prints
+# what it found; the surface has to say where a permanent permission goes (issue #124).
+# On top of that the shell starts the binary **twice** against one stub: the first run
+# answers the dialog with "Always allow", and the second has nobody to answer it at all
+# and must still reach the model's final answer. That is the property the stored grant
+# exists for, and it was unpinnable until #126: `mark` plus `wait --since` tell the second
+# process's output from the first's, so an unanswered dialog in run 2 fails the wait
+# instead of matching the text run 1 left on screen.
+#
+# The stub's own count of served cycles is checked too (STUB cycles=2 requests=4), so a
+# stub that served one cycle fails the run loudly rather than letting run 2 pass on run
+# 1's answer. Deleting the grant between the two starts — or pointing the second start at
+# a fresh HOME — turns this red at the `stub-final-ok` --since wait: the dialog appears,
+# nothing answers it, and the run never reaches the final answer. That mutation is the
+# check this scenario has to survive.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-allow-always --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-allow-always && mkdir -p /tmp/tinyscen-home-allow-always/sessions; python3 tui/testdata/stub/openai_stub.py 18492 write 2 /tmp/tinyscen-home-allow-always/stub-count.txt & count=/tmp/tinyscen-home-allow-always/stub-count.txt; i=0; while [ ! -s "$count" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; first=$?; ./bin/tinycode --base-url=http://127.0.0.1:18492/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-allow-always/sessions --log-level=error; second=$?; kill %1 2>/dev/null; served=$(tr -d "\n" < "$count" 2>/dev/null); case "$served" in "cycles=2 requests=4 "*) echo "STUB $served";; *) echo "STUB-BROKEN got=[$served] want=[cycles=2 requests=4]";; esac; cfg=/tmp/tinyscen-home-allow-always/.tinycode/config.json; if grep -q "allowed_path_grants" "$cfg" && grep -q "stub-outside-write.txt" "$cfg" && grep -q "\"project\"" "$cfg"; then echo "GRANT recorded=yes project=yes"; else echo "GRANT-BROKEN $(tr -d "\n" < "$cfg" 2>/dev/null)"; fi; exit $((first + second))'
 wait --text "Get started" --timeout 20s
 # Type only once the input row exists: the welcome heading appears first, and keys sent
 # before the input is ready can be lost (issue #102).
@@ -28,26 +38,53 @@ wait --text "Allow once" --timeout 10s
 # consequence in sight.
 wait --text "saves to /tmp/tinyscen-home-allow-always/.tinycode/config.json" --timeout 10s
 screenshot /tmp/tinyscen-shots/permission-allow-always-120x30.png --scale 2
+# Key 3 is "Always allow": the answer that has to outlive this process.
 send --text 3
 wait --text "stub-final-ok" --timeout 30s
-# Exit deterministically. The final answer is rendered by the last StreamMsg, i.e. before
-# the terminal StreamDone leaves "streaming", and two Ctrl+C presses that both land in that
-# window cancel the run without arming a quit: the program then never exits and this step
-# fails as a bare timeout naming an exit step instead of the state (issue #130). Waiting for
-# the screen to settle is a real idle signal — the spinner animates while a run streams —
-# and the confirmation prompt between the presses turns a wrong state into a named assertion
-# instead of a hang that burns the whole exit budget. The plus in the prompt is escaped
-# because --text is a regexp, where "Ctrl+C" would mean "one or more l".
+# Exit run 1 deterministically. The final answer is rendered by the last StreamMsg, i.e.
+# before the terminal StreamDone leaves "streaming", and two Ctrl+C presses that both land
+# in that window cancel the run without arming a quit: the program then never exits and
+# this step fails as a bare timeout naming an exit step instead of the state (issue #130).
+# Waiting for the screen to settle is a real idle signal — the spinner animates while a
+# run streams — and the confirmation prompt between the presses turns a wrong state into a
+# named assertion instead of a hang that burns the whole exit budget. The plus in the
+# prompt is escaped because --text is a regexp, where "Ctrl+C" would mean "one or more l".
 stable 200ms --timeout 15s
 send --key ctrl+c
 wait --text "Press Ctrl\+C again to quit" --timeout 15s
+# Mark before the quit, not after the second start: the wrapper shell starts run 2 the
+# moment run 1 leaves, so a mark taken later could miss the paint it is meant to catch.
+# Everything the second process draws — including its identical repaint of the welcome
+# screen — is written after this point, and no --since wait below can be satisfied by run
+# 1's leftovers.
+mark
 send --key ctrl+c
-# The wrapper shell prints this after the program exits, so it has to be waited for before
-# waiting for the shell itself to end.
+wait --text "Type your request" --since --timeout 20s
+send --text /build
+send --key enter
+wait --text "⚡ build" --since --timeout 10s
+# The same request as run 1, and the assertion this scenario exists for: with the grant
+# honoured the write runs with no dialog, the tool result goes back and the stub answers
+# again; without it the dialog is drawn, nobody answers, and this wait times out.
+send --text "write a file outside the workspace"
+send --key enter
+wait --text "stub-final-ok" --since --timeout 30s
+# Exit run 2 the same way, with its own mark: the quit prompt run 1 drew may still be on
+# screen, and only a fresh one may satisfy this wait.
+stable 200ms --timeout 15s
+mark
+send --key ctrl+c
+wait --text "Press Ctrl\+C again to quit" --since --timeout 15s
+send --key ctrl+c
+# The wrapper shell prints these after both programs exit, so they have to be waited for
+# before waiting for the shell itself to end. The first line is the stub's own count: two
+# complete cycles, four scripted requests, title calls excluded.
+wait --text "STUB cycles=2 requests=4" --timeout 20s
 wait --text "GRANT recorded=yes project=yes" --timeout 20s
-# 45s, not 15s: this flow waits for a second model round-trip (the tool result goes back
-# and the stub answers again) before the program leaves. That is real work, unlike the
-# local command whose 10s budget must not be widened — a CI runner under load failed the
-# 15s budget while the same scenario passed here (PR #109).
+# 45s, not 15s: each run waits for a second model round-trip (the tool result goes back
+# and the stub answers again) before the program leaves, and this shell now runs two of
+# them. That is real work, unlike the local command whose 10s budget must not be widened —
+# a CI runner under load failed the 15s budget while the same scenario passed here
+# (PR #109).
 wait-exit 45s
 expect-exit 0

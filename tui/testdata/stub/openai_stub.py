@@ -2,8 +2,15 @@
 
 It answers any chat completion with one fixed streaming answer, so a scenario can drive
 the real request path — provider, SSE parsing, incremental render — with no network, no
-key and no cost. Deliberately dumb: the request body is ignored, which is what makes it
-deterministic. Started by the scenario that needs it; see prompt-answer.scenario.
+key and no cost. Which answer a request gets is decided by MODE and a request counter,
+not by the request body, which is what makes it deterministic; the one thing the body is
+consulted for is the marker of the TUI's asynchronous session-title call, which must not
+consume a position in the script (see TITLE_MARKER below).
+
+Usage: openai_stub.py <port> [mode [cycles [count_file]]]
+Started by the scenario that needs it; see prompt-answer.scenario, and
+permission-allow-always.scenario for a flow that starts the binary twice and therefore
+asks for two cycles.
 """
 import http.server
 import json
@@ -95,51 +102,99 @@ TOOL_CALL = (
 # "tool" asks for a bash call, "write" for a write_file outside the workspace (which is
 # what makes the TUI ask for approval in build mode — see permission-allow.scenario).
 MODE = sys.argv[2] if len(sys.argv) > 2 else ""
-_calls = {"n": 0}
+# How many times the mode script is served, and where to record what was served.
+#
+# One tinycode start consumes one cycle in a flow that ends on the model's final answer,
+# so a scenario that starts the binary twice needs two (permission-allow-always.scenario).
+# The count is explicit because that scenario's wrapper shell checks it: a stub asked for
+# two cycles that served one must fail the check loudly instead of answering the second
+# start with the final answer, which would let the scenario pass without exercising the
+# persisted grant at all (issue #155).
+CYCLES = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+COUNT_FILE = sys.argv[4] if len(sys.argv) > 4 else ""
+# Requests in one cycle: the tool call(s) that make the scenario do something, then the
+# final answer that ends the agent loop. "todo" answered two requests with the tool call
+# before #155 and keeps that shape.
+TOOL_CALLS = 2 if MODE == "todo" else 1
+CYCLE = TOOL_CALLS + 1
+# The TUI derives a session title with one extra model call after a run's last answer
+# (tui/update.go puts this marker into the prompt it builds). That call is asynchronous —
+# it may or may not reach the stub before the process exits — so it is answered with the
+# final text and counted on its own: were it to consume a cycle position, the request
+# after it would be served the wrong half of the script and the scenario would depend on
+# a race.
+TITLE_MARKER = b"Conversation so far:"
+_served = {"requests": 0, "cycles": 0, "title": 0}
+
+# The answer a tool-asking mode gives at the start of each cycle.
+SCRIPT = {
+    "tool": TOOL_CALL,
+    "write": WRITE_CALL,
+    "multi": MULTI_CALL,
+    "fail": FAIL_CALL,
+    "todo": TODO_CALL,
+    "read": READ_CALL,
+    "lsp": LSP_CALL,
+    "confine": CONFINE_CALL,
+}
+
+
+def final_payload():
+    """The streaming answer that ends the loop: FINAL text in a mode, ANSWER otherwise."""
+    parts = [FINAL if MODE else ANSWER]
+    chunks = [('data: {"choices":[{"delta":{"content":"%s"}}]}\n\n' % part).encode()
+              for part in parts]
+    chunks.append(b"data: [DONE]\n\n")
+    return b"".join(chunks)
+
+
+def record():
+    """Write what has been served so far, for the scenario's wrapper shell to read."""
+    if not COUNT_FILE:
+        return
+    with open(COUNT_FILE, "w") as f:
+        f.write("cycles=%d requests=%d title=%d\n"
+                % (_served["cycles"], _served["requests"], _served["title"]))
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        body = b"".join(iter(lambda: self.rfile.read(1), b"")) if False else self.rfile.read(
-            int(self.headers.get("content-length", 0))
-        )
-        del body  # ignored on purpose
-        _calls["n"] += 1
-        # In TUI mode the first request is the session-title call and only the second is
-        # the prompt, so "todo" answers the first two with the tool call; every other mode
-        # is only ever driven one-shot, where the first request is the prompt.
-        first_tool_call = _calls["n"] <= (2 if MODE == "todo" else 1)
-        if MODE and first_tool_call:
-            payload = {
-                "tool": TOOL_CALL,
-                "write": WRITE_CALL,
-                "multi": MULTI_CALL,
-                "fail": FAIL_CALL,
-                "todo": TODO_CALL,
-                "read": READ_CALL,
-                "lsp": LSP_CALL,
-                "confine": CONFINE_CALL,
-            }[MODE].encode()
-            self.send_response(200)
-            self.send_header("content-type", "text/event-stream")
-            self.send_header("content-length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+        body = self.rfile.read(int(self.headers.get("content-length", 0)))
+        if TITLE_MARKER in body:
+            # The session-title call: answered, but not part of the mode script.
+            _served["title"] += 1
+            self.answer(final_payload())
             return
 
-        chunks = []
-        for part in (FINAL if MODE else ANSWER,):
-            chunks.append(('data: {"choices":[{"delta":{"content":"%s"}}]}\n\n' % part).encode())
-        chunks.append(b"data: [DONE]\n\n")
-        payload = b"".join(chunks)
+        _served["requests"] += 1
+        # Which position of which cycle this request is. "requests" counts only the
+        # requests that belong to the script, so the number a scenario checks is stable
+        # whatever the title call does.
+        position = (_served["requests"] - 1) % CYCLE
+        serving = _served["cycles"] < CYCLES
+        if MODE and serving and position < TOOL_CALLS:
+            # The script constants are SSE text; the final answer is built the same way.
+            self.answer(SCRIPT[MODE].encode())
+            return
+        if MODE and serving and position == CYCLE - 1:
+            _served["cycles"] += 1
+        self.answer(final_payload())
+
+    def answer(self, payload):
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
         self.send_header("content-length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
+        # Written after every answer, so a wrapper shell can report what was served even
+        # when the flow stopped halfway (the failure a scenario has to diagnose).
+        record()
 
     def log_message(self, *args):
         pass
 
 
+# Readiness: the count file exists before the first request, so a scenario's wrapper
+# shell can wait for it instead of sleeping and hoping the server came up.
+record()
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
