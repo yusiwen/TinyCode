@@ -174,6 +174,72 @@ func TestSecondSubmitDoesNotStartConcurrentRun(t *testing.T) {
 	drainUntilTerminal(t, m, 3*time.Second)
 }
 
+// TestSettledScreenMeansTheNextCommandLands pins the invariant the exit path in
+// confine-bash-write.scenario rests on (issue #152): the status bar carries the
+// run-in-flight indicator exactly while a run is streaming, and once that
+// indicator is gone a submitted command is accepted instead of refused. The
+// scenario waits for a settled screen before sending /exit on the strength of
+// this, because waiting only for the final text landed the command inside the
+// run and dropped it — the app then sat idle with "/exit" in the input row
+// until the verdict wait timed out.
+func TestSettledScreenMeansTheNextCommandLands(t *testing.T) {
+	started := make(chan struct{}, 1)
+	var calls int32
+	provider := &agent.MockProvider{ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
+		atomic.AddInt32(&calls, 1)
+		started <- struct{}{}
+		if atomic.LoadInt32(&calls) == 1 {
+			return &types.ChatResponse{Content: "first-answer"}, nil
+		}
+		return &types.ChatResponse{Content: "second-answer"}, nil
+	}}
+	m := newRunTestTUI(provider)
+	// A real geometry, so the status-bar assertions read a rendered bar.
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	m.Update(ChatMsg{Text: "first"})
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("run never reached the provider")
+	}
+	// Nothing has drained the stream channel yet, so the run is still in flight:
+	// the bar must show it.
+	if bar := stripANSIView(m.renderStatusBar()); !strings.Contains(bar, m.spinner.View()) {
+		t.Errorf("the status bar does not show the run in flight: %q", bar)
+	}
+
+	// Let the run report completion. The terminal StreamDone clears runActive
+	// before it clears the streaming status, so the settled screen below is
+	// exactly the state in which a command is accepted.
+	drainUntilTerminal(t, m, 3*time.Second)
+	settled := stripANSIView(m.renderStatusBar())
+	for _, frame := range m.spinner.Spinner.Frames {
+		if strings.Contains(settled, frame) {
+			t.Errorf("the settled screen still shows the run-in-flight frame %q: %q", frame, settled)
+		}
+	}
+
+	// A command submitted on that settled screen must land: this is what the
+	// scenario's /exit relies on.
+	m.input.SetValue("second")
+	_, enterCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if enterCmd == nil {
+		t.Fatal("Enter did not submit the typed command on a settled screen")
+	}
+	m.Update(enterCmd())
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Enter on a settled screen did not start a run: the command was refused")
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Errorf("expected a second provider call, got %d", got)
+	}
+
+	drainUntilTerminal(t, m, 3*time.Second)
+}
+
 // TestStreamDoneNilCurAssistantNoPanic verifies the nil curAssistant paths.
 func TestStreamDoneNilCurAssistantNoPanic(t *testing.T) {
 	m := streamModel()

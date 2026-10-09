@@ -35,6 +35,18 @@ wait --text "⚡ build" --timeout 10s
 send --text "write the two files"
 send --key enter
 wait --text "stub-final-ok" --timeout 40s
+# The final answer is rendered by the last stream message, i.e. *before* the run is over, and
+# a command submitted in that window is refused (#119): the refusal now names itself on the
+# status line, but the command still does not run. Sending /exit there is how this scenario
+# used to sit idle until the verdict wait below timed out (issue #152).
+#
+# So wait for the run to be over rather than for the text it prints. The status bar draws a
+# spinner frame only while the model is StatusStreaming, and the spinner animates every
+# ~100ms, so a screen that stops changing is a screen with no run in flight — and the
+# terminal StreamDone clears runActive *before* it clears that status (tui/update.go), so
+# such a screen cannot still refuse the command. This is the same idle signal that already
+# guards the Ctrl+C exit in permission-allow-always.scenario, and the wait is bounded.
+stable 200ms --timeout 30s
 send --text /exit
 send --key enter
 # The verdict is printed by the wrapper shell after the program exits, so it has to be waited
