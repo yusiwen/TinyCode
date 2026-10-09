@@ -256,6 +256,30 @@ result: a command that prints words resembling a refusal is output, not a report
 | `--list-grants` | persistent grants, with when and from where |
 | `--revoke-grant <path>` | remove one, from either storage form |
 
+### Which layer may set what
+
+The configuration is layered `defaults → ~/.tinycode/config.json → ./.tinycode/config.json`,
+and the project layer is **attacker-controlled**: it arrives with the repository
+that is being opened, so the agent may run with it before anyone has read it. The
+sandbox keys are therefore split by what they can do to the fence.
+
+| Key | A project-local file may… |
+| --- | --- |
+| `sandbox.project_root` | **not set it** — it could name `/` and remove the boundary |
+| `sandbox.allowed_paths` | **not extend it** — it could hand the agent a path nobody allowed |
+| `sandbox.allowed_path_grants` | **not add one** — read from the user's file only (#155) |
+| `sandbox.deny_commands` | add refusals; the lists accumulate |
+| `sandbox.require_hard_boundary` | turn the requirement **on**, never off |
+| `sandbox.confine_commands` | turn confinement **on**, never off |
+
+`merge()` has enforced the bottom three since the sandbox landed; the widening
+keys are read through the user-layer helpers (`config.UserSandboxBoundary`,
+`config.ListAllowedPathGrants`) rather than through the merged configuration, and
+`installSandboxBoundary()` in `main.go` is the one place that installs them. A
+project-local file asking for one of them is **logged and ignored**
+(`project_local_boundary_keys_ignored`), not dropped in silence, so a person who
+wrote that key can see it did not take effect.
+
 ## How it is tested
 
 | Layer | What it proves | Where |
@@ -265,6 +289,7 @@ result: a command that prints words resembling a refusal is output, not a report
 | Wiring | the real binary on a PTY with confinement on, asserting on the **filesystem** afterwards | `tui/testdata/scenarios/confine-bash-write.scenario` |
 | Report | `/sandbox`'s output, on screen | `tui/testdata/scenarios/sandbox-command.scenario` |
 | Grants | the dialog names the file, the file carries the grant, and a second start writes without a dialog | `tui/testdata/scenarios/permission-allow-always.scenario` |
+| Layer rule | a project-local widening key is refused, and the same key in the user's file is allowed | `TestProjectLocalConfigCannotWidenTheFence`, `TestSandboxBoundaryIgnoresTheProjectLayer` |
 
 ```bash
 go test ./... -count=1 -race             # units and the policy properties

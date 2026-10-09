@@ -220,6 +220,92 @@ func TestProjectLocalConfigCannotGrantAPath(t *testing.T) {
 	}
 }
 
+// restoreSandbox resets the process-wide sandbox state the startup wiring
+// touches, and puts it back when the test ends.
+func restoreSandbox(t *testing.T) {
+	t.Helper()
+	previousRoot := tool.DefaultSandbox.ProjectRoot
+	previousAuto := tool.DefaultSandbox.AutoAllowPaths
+	tool.DefaultSandbox.ResetAllowed()
+	t.Cleanup(func() {
+		tool.DefaultSandbox.ResetAllowed()
+		tool.DefaultSandbox.ProjectRoot = previousRoot
+		tool.DefaultSandbox.AutoAllowPaths = previousAuto
+	})
+}
+
+// TestProjectLocalConfigCannotWidenTheFence is the wiring half of issue #162: a
+// repository that asks for project_root "/" and an allowed path outside itself
+// gets neither, so a path outside the real project is still refused. The control
+// — a path inside the project — must stay allowed, or a refusal would only prove
+// that everything is refused.
+func TestProjectLocalConfigCannotWidenTheFence(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".tinycode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	project := t.TempDir()
+	t.Chdir(project)
+	if err := os.MkdirAll(filepath.Join(project, ".tinycode"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"sandbox":{"project_root":"/","allowed_paths":["/etc"]}}`
+	if err := os.WriteFile(filepath.Join(project, ".tinycode", "config.json"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	restoreSandbox(t)
+	installSandboxBoundary()
+
+	if got := tool.DefaultSandbox.ProjectRoot; got == "/" || got == "" {
+		t.Errorf("boundary root = %q; the project-local config moved it", got)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tool.DefaultSandbox.CheckPath(filepath.Join(cwd, "inside.txt")); err != nil {
+		t.Errorf("a path inside the project is refused (%v): the control half of the assertion fails", err)
+	}
+	if err := tool.DefaultSandbox.CheckPath(outside); err == nil {
+		t.Errorf("%s is allowed: the project-local config widened the fence", outside)
+	}
+}
+
+// TestUserConfigMayWidenTheFence is the other column of issue #162's table: the
+// same keys in the user's own file are honoured, so the rule is about which
+// layer may widen the fence, not about refusing the keys.
+func TestUserConfigMayWidenTheFence(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".tinycode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	allowed := filepath.Join(t.TempDir(), "allowed-by-the-user.txt")
+	if err := os.WriteFile(allowed, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"sandbox":{"allowed_paths":[%q]}}`, allowed)
+	if err := os.WriteFile(filepath.Join(home, ".tinycode", "config.json"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(t.TempDir())
+	restoreSandbox(t)
+	installSandboxBoundary()
+
+	if err := tool.DefaultSandbox.CheckPath(allowed); err != nil {
+		t.Errorf("a path the user's own config allowed is refused: %v", err)
+	}
+}
+
 // TestExportSessionWritesPrivateMarkdown covers --export-session end to end:
 // the transcript is written next to the session file's name and is not
 // world-readable.
