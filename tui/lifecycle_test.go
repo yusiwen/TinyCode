@@ -123,6 +123,9 @@ func TestSecondSubmitDoesNotStartConcurrentRun(t *testing.T) {
 		return nil, ctx.Err()
 	}}
 	m := newRunTestTUI(provider)
+	// A real geometry, so the frame assertions below are about the rendered
+	// screen rather than about a model that never received a size.
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 
 	m.Update(ChatMsg{Text: "first"})
 	select {
@@ -143,7 +146,11 @@ func TestSecondSubmitDoesNotStartConcurrentRun(t *testing.T) {
 		t.Errorf("expected no new messages for a refused submit, got %d (was %d)", len(m.messages), msgCount)
 	}
 
-	// Enter is also refused while the run is active.
+	// Enter is also refused while the run is active — and visibly (issue #119):
+	// the text stays in the input box and the status line names the reason.
+	// The status the raw ChatMsg refusal left behind is cleared first, so this
+	// assertion is about the Enter path and cannot pass on the earlier message.
+	m.statusMsg = ""
 	m.input.SetValue("third")
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -151,6 +158,15 @@ func TestSecondSubmitDoesNotStartConcurrentRun(t *testing.T) {
 	}
 	if len(m.messages) != msgCount {
 		t.Errorf("expected no new messages after Enter, got %d", len(m.messages))
+	}
+	if got := m.input.Value(); got != "third" {
+		t.Errorf("the refused text must stay in the input box, got %q", got)
+	}
+	if m.statusMsg != runInProgressStatus {
+		t.Errorf("the refusal must name its reason: statusMsg = %q, want %q", m.statusMsg, runInProgressStatus)
+	}
+	if frame := stripANSIView(m.View()); !strings.Contains(frame, runInProgressStatus) {
+		t.Errorf("the frame does not show the refusal reason %q", runInProgressStatus)
 	}
 
 	// Clean up: cancel and let the run finish so no goroutine leaks.
