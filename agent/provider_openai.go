@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,46 @@ import (
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
+
+// Bounds on one OpenAI-compatible request.
+//
+// The two measure different things, for the same reason the Ollama pair do (see
+// provider_ollama.go): a batch answer has no intermediate progress to watch, so
+// the whole request is bounded; a streaming answer may legitimately run for
+// minutes while tokens keep arriving, so only the silence between them is
+// bounded — a total limit would kill a long generation that is working fine.
+// Both are variables so the tests can shrink them.
+var (
+	// openAIRequestTimeout bounds one non-streaming request, body included.
+	openAIRequestTimeout = 120 * time.Second
+	// openAIIdleTimeout bounds the wait for the next line of a streaming
+	// response; every line the scanner delivers resets it.
+	openAIIdleTimeout = 2 * time.Minute
+)
+
+// errOpenAISilent is the cancel cause of a streaming request that produced no
+// data for openAIIdleTimeout, so the failure names the bound instead of the
+// opaque transport error a cancelled context produces.
+var errOpenAISilent = errors.New("stream went silent")
+
+// openAIRequestError prefers the bound that fired over the transport error it
+// produced: a cancelled request surfaces as "context canceled" or a closed
+// connection, neither of which says why.
+//
+// A cancellation by the caller (Ctrl+C) keeps both, because the caller
+// classifies its own cancellation with errors.Is(err, context.Canceled) — a TUI
+// run shows "Interrupted" that way — while the transport error still explains
+// what the read saw.
+func openAIRequestError(ctx context.Context, err error) error {
+	cause := context.Cause(ctx)
+	if cause == nil {
+		return err
+	}
+	if errors.Is(cause, context.Canceled) {
+		return fmt.Errorf("%w: %w", cause, err)
+	}
+	return cause
+}
 
 // OpenAIProvider implements LLMProvider for OpenAI-compatible APIs (DeepSeek, OpenAI, Groq, etc.).
 type OpenAIProvider struct {
@@ -120,7 +161,24 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 
 	tlog.Trace("llm.provider", "request", "model", model, "body", string(body))
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+	// Bound the stream (issue #176). The cancel cause carries the bound that
+	// fired into the error message; a streaming request starts its clock at the
+	// request, so an endpoint that never sends even the response headers fails on
+	// the same idle bound as one that goes quiet mid-answer. The batch path keeps
+	// the whole-request bound on the client, because it has no interim progress
+	// to watch.
+	reqCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	var watchdog *time.Timer
+	if cb != nil {
+		watchdog = time.AfterFunc(openAIIdleTimeout, func() {
+			cancel(fmt.Errorf("%w for %s", errOpenAISilent, openAIIdleTimeout))
+		})
+		defer watchdog.Stop()
+	}
+
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost,
 		p.baseURL+"/chat/completions",
 		bytes.NewReader(body))
 	if err != nil {
@@ -130,12 +188,12 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	authVal := fmt.Sprintf("Bearer %s", p.apiKey)
 	httpReq.Header.Set("Authorization", authVal)
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := &http.Client{Timeout: openAIRequestTimeout}
 	httpResp, err := client.Do(httpReq)
 	start := time.Now()
 	if err != nil {
 		tlog.Error("llm.provider", "api error", "error", err)
-		return nil, fmt.Errorf("api call: %w", err)
+		return nil, fmt.Errorf("api call: %w", openAIRequestError(reqCtx, err))
 	}
 	defer httpResp.Body.Close()
 
@@ -147,9 +205,9 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 
 	// Branch: streaming SSE or batch
 	if cb != nil {
-		return p.chatStream(ctx, httpResp.Body, start, cb)
+		return p.chatStream(reqCtx, httpResp.Body, start, cb, watchdog)
 	}
-	return p.chatBatch(ctx, httpResp.Body, start)
+	return p.chatBatch(reqCtx, httpResp.Body, start)
 }
 
 // chatBatch parses a batch (non-streaming) response.
@@ -202,7 +260,13 @@ func (p *OpenAIProvider) chatBatch(ctx context.Context, body io.ReadCloser, star
 }
 
 // chatStream parses an SSE streaming response with real-time callbacks.
-func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, start time.Time, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
+//
+// watchdog is the caller's idle bound for this stream (nil for none, as the
+// parser-level tests use): every line the scanner delivers resets it, so it
+// fires only when the endpoint stops talking. A read that fails — including one
+// this bound cut — is returned as an error rather than as the partial answer it
+// managed to send, so a stalled stream cannot be mistaken for a finished one.
+func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, start time.Time, cb *types.StreamCallbacks, watchdog *time.Timer) (*types.ChatResponse, error) {
 	defer body.Close()
 
 	result := &types.ChatResponse{}
@@ -224,6 +288,9 @@ func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, sta
 	reasoningWritten := false
 
 	for scanner.Scan() {
+		if watchdog != nil {
+			watchdog.Reset(openAIIdleTimeout)
+		}
 		line := scanner.Text()
 
 		// SSE format: "data: {...}" or "data: [DONE]"
@@ -310,6 +377,7 @@ func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, sta
 
 	if err := scanner.Err(); err != nil {
 		tlog.Warn("llm.provider", "sse_scan_error", "error", err.Error())
+		return nil, fmt.Errorf("openai stream: %w", openAIRequestError(ctx, err))
 	}
 
 	result.ReasoningContent = reasoning.String()

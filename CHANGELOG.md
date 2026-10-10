@@ -37,6 +37,18 @@ estimate for an endpoint that reports nothing. Because usage covers the prompt t
 `tokens:` is larger than it used to be — the estimate counted streamed output only. Roadmap
 entry A2; cost and pricing accounting remain open with A3.
 
+### A stream that goes quiet now fails instead of hanging
+
+Reading to `data: [DONE]` is what made the usage chunk reachable, and it took away the early
+return at `finish_reason` without putting anything in its place: an endpoint that sent a
+complete answer and then held the connection open left the step waiting for the provider's
+whole 120 s request timeout, and the text it had was handed back as a **successful** answer.
+The OpenAI-compatible provider now carries the same pair of bounds the Ollama one does — a
+whole-request bound for a batch call, and a per-line idle bound (2 min) for a stream — and a
+read that is cut returns an error naming the bound instead of a partial answer. A caller
+cancellation is still recognisable as one, so an interrupted run keeps reading as
+interrupted. Reported as #176.
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration
