@@ -96,6 +96,8 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		sub.MaxSteps = cfg.MaxSteps
 		sub.ShowThinking = false
 		sub.SessionStore = nil
+		sub.BudgetTokensPerRun = deps.BudgetTokensPerRun
+		sub.BudgetTokensPerSession = deps.BudgetTokensPerSession
 
 		tlog.Debug("task.bg", "start", "id", id, "agent", name, "goal", goal,
 			"tools", len(subTools), "maxSteps", cfg.MaxSteps)

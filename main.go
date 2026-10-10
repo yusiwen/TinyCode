@@ -140,6 +140,8 @@ func newRootCmd() *cobra.Command {
 			if ag.CompressionThreshold <= 0 {
 				ag.CompressionThreshold = ag.ContextLength / 2
 			}
+			// Cumulative token budgets (0 = unlimited, the default).
+			ag.BudgetTokensPerRun, ag.BudgetTokensPerSession = cfg.TokenBudgets()
 			if cfg.Truncation != nil {
 				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
 			}
@@ -269,6 +271,9 @@ func newRootCmd() *cobra.Command {
 				Provider:  provReg.Current(),
 				AllTools:  allToolList,
 				BgTaskMgr: bgTaskMgr,
+				// Sub-agents enforce the same limits against their own spend.
+				BudgetTokensPerRun:     ag.BudgetTokensPerRun,
+				BudgetTokensPerSession: ag.BudgetTokensPerSession,
 				GetAgentConfig: func(name string) *agent.AgentConfig {
 					cfg, err := reg.Get(name)
 					if err != nil {

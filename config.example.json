@@ -56,6 +56,12 @@
     "output_dir": "/tmp/tinycode/truncated"
   },
 
+  "budget": {
+    "$comment": "Optional cumulative token budgets, as the provider reports them. Both default to 0 = unlimited. max_tokens_per_run bounds one prompt's ReAct loop; max_tokens_per_session bounds every run on this session together. A run stops before its next provider call once either is reached.",
+    "max_tokens_per_run": 0,
+    "max_tokens_per_session": 0
+  },
+
   "agents": {
     "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), permissions (an explicit ruleset that REPLACES both the built-in ruleset and the two tool lists: [{action, resource, effect: allow|deny}], last match wins), model.",
     "plan": {

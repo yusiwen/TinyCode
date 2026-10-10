@@ -442,3 +442,52 @@ func TestMergeAgentPermissions(t *testing.T) {
 		t.Errorf("permissions are not serialised: %s", round)
 	}
 }
+
+// TestMergeBudgetLimits covers the merge rule for the cumulative token budgets:
+// a positive limit is taken, an absent one leaves the base alone, and a negative
+// one is not a way to switch a limit off — only zero is.
+func TestMergeBudgetLimits(t *testing.T) {
+	base := DefaultConfig()
+	if base.Budget != nil {
+		t.Fatalf("default config has a budget: %+v, want none so nothing is bounded by default", base.Budget)
+	}
+	if run, session := base.TokenBudgets(); run != 0 || session != 0 {
+		t.Fatalf("default TokenBudgets() = %d/%d, want 0/0", run, session)
+	}
+
+	got := merge(base, Config{Budget: &BudgetConfig{MaxTokensPerRun: 5000}})
+	if got.Budget == nil {
+		t.Fatal("budget is nil, want the merged section")
+	}
+	if got.Budget.MaxTokensPerRun != 5000 {
+		t.Errorf("max_tokens_per_run = %d, want 5000", got.Budget.MaxTokensPerRun)
+	}
+	if got.Budget.MaxTokensPerSession != 0 {
+		t.Errorf("max_tokens_per_session = %d, want 0 (unset)", got.Budget.MaxTokensPerSession)
+	}
+
+	// A later layer may raise or lower a limit, but not disable one with a
+	// negative value: that would read as "no limit" to a careless comparison.
+	got = merge(got, Config{Budget: &BudgetConfig{MaxTokensPerRun: -1, MaxTokensPerSession: 900}})
+	if got.Budget.MaxTokensPerRun != 5000 {
+		t.Errorf("max_tokens_per_run = %d after a negative override, want it unchanged at 5000", got.Budget.MaxTokensPerRun)
+	}
+	if got.Budget.MaxTokensPerSession != 900 {
+		t.Errorf("max_tokens_per_session = %d, want 900", got.Budget.MaxTokensPerSession)
+	}
+	if run, session := got.TokenBudgets(); run != 5000 || session != 900 {
+		t.Errorf("TokenBudgets() = %d/%d, want 5000/900", run, session)
+	}
+}
+
+// TestBudgetRoundTripsThroughJSON pins the file names a user types.
+func TestBudgetRoundTripsThroughJSON(t *testing.T) {
+	raw := []byte(`{"budget":{"max_tokens_per_run":120000,"max_tokens_per_session":2000000}}`)
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if run, session := cfg.TokenBudgets(); run != 120000 || session != 2000000 {
+		t.Errorf("TokenBudgets() = %d/%d, want 120000/2000000", run, session)
+	}
+}

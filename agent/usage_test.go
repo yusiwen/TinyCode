@@ -244,11 +244,17 @@ func TestAgentAccumulatesReportedUsageAcrossSteps(t *testing.T) {
 	}
 }
 
+// TestAgentReportsNoUsageWhenEndpointReportsNone covers an endpoint that reports
+// nothing. Two different things must happen, and they are not symmetric: the
+// event stays silent, because a consumer must never be handed an estimate as a
+// provider number, while the total still advances, because a token budget that a
+// silent provider could switch off is not a budget (see budget_test.go).
 func TestAgentReportsNoUsageWhenEndpointReportsNone(t *testing.T) {
+	const answer = "answer"
 	fired := 0
 	provider := &MockProvider{
 		ChatFunc: func(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
-			return &types.ChatResponse{Content: "answer"}, nil
+			return &types.ChatResponse{Content: answer}, nil
 		},
 	}
 	a := &Agent{
@@ -264,8 +270,11 @@ func TestAgentReportsNoUsageWhenEndpointReportsNone(t *testing.T) {
 	if fired != 0 {
 		t.Fatalf("OnUsage fired %d times for a call that reported nothing", fired)
 	}
-	if a.UsageTotal != (types.Usage{}) {
-		t.Fatalf("UsageTotal = %+v, want the zero value", a.UsageTotal)
+	if want := EstimateTokens(answer); a.UsageTotal.TotalTokens != want {
+		t.Fatalf("UsageTotal = %+v, want the %d-token estimate", a.UsageTotal, want)
+	}
+	if a.UsageTotal.PromptTokens != 0 {
+		t.Fatalf("UsageTotal = %+v, want no prompt tokens: the estimate covers the output only", a.UsageTotal)
 	}
 }
 

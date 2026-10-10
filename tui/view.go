@@ -425,10 +425,21 @@ func (m *TuiModel) renderStatusBar() string {
 		statusMsg = "  │ " + statusMsg
 	}
 
-	status := fmt.Sprintf("%s %s%s%s  ■ %s  tokens: %d  tools: %d  msgs: %d%s  session: %s%s%s",
+	// Pair the counter with a limit only when one is configured, and only with
+	// the session limit: the counter is a session total, so showing a per-run
+	// limit beside it would put two different scopes in one fraction. With no
+	// budget configured the text is exactly what it has always been.
+	tokensStr := fmt.Sprintf("tokens: %d", m.sessionTokens)
+	if m.config != nil {
+		if _, perSession := m.config.TokenBudgets(); perSession > 0 {
+			tokensStr = fmt.Sprintf("tokens: %d/%d", m.sessionTokens, perSession)
+		}
+	}
+
+	status := fmt.Sprintf("%s %s%s%s  ■ %s  %s  tools: %d  msgs: %d%s  session: %s%s%s",
 		modeIcon, modelName, spinnerStr, procStr,
 		provName,
-		m.sessionTokens, m.sessionToolCalls, len(m.messages),
+		tokensStr, m.sessionToolCalls, len(m.messages),
 		diagStr,
 		durStr, histStr, statusMsg)
 

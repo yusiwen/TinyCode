@@ -44,26 +44,80 @@ type Agent struct {
 	ShowThinking    bool                   // when true, display reasoning_content from thinking mode
 	StreamCallbacks *types.StreamCallbacks // optional streaming callbacks (TUI mode)
 
-	// UsageTotal is every provider-reported usage record this Agent has seen,
-	// summed. A call whose endpoint reports nothing adds nothing, so the total
-	// is a lower bound rather than a substitute for an estimate.
+	// UsageTotal is every token this Agent has spent, as the provider reported
+	// it. A call whose endpoint reports nothing adds an estimate of the text it
+	// produced, so the total is a safe over-approximation rather than a lower
+	// bound — a provider that omits usage must not silently disable a budget.
 	UsageTotal types.Usage
+
+	// Budgets bound that total, in tokens, and stop a run before it makes another
+	// provider call. Zero means unlimited. BudgetTokensPerRun covers the run in
+	// flight; BudgetTokensPerSession covers every run this Agent has served.
+	BudgetTokensPerRun     int
+	BudgetTokensPerSession int
+
+	// runUsage is UsageTotal restricted to the run in flight, reset by each Run.
+	runUsage types.Usage
 
 	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
 }
 
-// recordUsage accumulates one provider-reported usage record and publishes it to
-// the run's callbacks. Both halves are skipped when the endpoint reported
-// nothing: an absent report must neither move the total nor replace a caller's
-// estimate with a zero.
-func (a *Agent) recordUsage(cb *types.StreamCallbacks, usage *types.Usage) {
-	if usage == nil {
+// callSpend is the token accounting for one provider call: what the provider
+// reported, or — for an endpoint that reports nothing — an estimate of the text
+// it produced. The second result says which of the two it is.
+//
+// The fallback covers the output only, so it undercounts the prompt, which is
+// why a reported record always wins; its purpose is to keep the boundary moving
+// on every call rather than only on the calls whose accounting we like.
+func callSpend(resp *types.ChatResponse) (spend types.Usage, reported bool) {
+	if resp.Usage != nil {
+		return *resp.Usage, true
+	}
+	n := EstimateTokens(resp.Content) + EstimateTokens(resp.ReasoningContent)
+	if n == 0 {
+		return types.Usage{}, false
+	}
+	return types.Usage{CompletionTokens: n, TotalTokens: n}, false
+}
+
+// recordUsage accumulates one provider call into the run and session totals and
+// publishes a *reported* record to the run's callbacks. The callback never fires
+// for the estimate fallback, so no consumer is handed an estimate dressed as a
+// provider number.
+func (a *Agent) recordUsage(cb *types.StreamCallbacks, resp *types.ChatResponse) {
+	spend, reported := callSpend(resp)
+	if !reported && spend.TotalTokens == 0 {
 		return
 	}
-	a.UsageTotal = a.UsageTotal.Add(*usage)
-	if cb != nil && cb.OnUsage != nil {
-		cb.OnUsage(*usage)
+	a.UsageTotal = a.UsageTotal.Add(spend)
+	a.runUsage = a.runUsage.Add(spend)
+	if reported && cb != nil && cb.OnUsage != nil {
+		cb.OnUsage(spend)
 	}
+}
+
+// budgetReached reports the budget that has been spent, if any, with the numbers
+// the stop message names.
+//
+// The session limit is checked first: once a session is out of budget no run may
+// start at all, and a fresh run's own total is nowhere near its limit, so the
+// session is the fact worth reporting.
+func (a *Agent) budgetReached() (which string, limit, spent int, reached bool) {
+	if a.BudgetTokensPerSession > 0 && a.UsageTotal.TotalTokens >= a.BudgetTokensPerSession {
+		return "session", a.BudgetTokensPerSession, a.UsageTotal.TotalTokens, true
+	}
+	if a.BudgetTokensPerRun > 0 && a.runUsage.TotalTokens >= a.BudgetTokensPerRun {
+		return "run", a.BudgetTokensPerRun, a.runUsage.TotalTokens, true
+	}
+	return "", 0, 0, false
+}
+
+// budgetMessage is what a run returns when it stops at a budget. It is an
+// outcome to read, like the step-limit summary, rather than an error: the user
+// asked for a bound and got it, and the message says which knob to turn.
+func budgetMessage(which string, limit, spent int) string {
+	return fmt.Sprintf("Stopped at the %s token budget: %d of %d tokens spent. "+
+		"Raise budget.max_tokens_per_%s to continue.", which, spent, limit, which)
 }
 
 // ANSI color codes for terminal output.
@@ -206,8 +260,29 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		})
 	}
 
+	// The run's own spend is measured from here, whatever the session has already
+	// spent. A nested run (a sub-agent) has its own Agent and so its own totals.
+	a.runUsage = types.Usage{}
+
 	for step < maxSteps {
 		tlog.Info("agent.loop", "llm call", "step", step, "mode", a.agentPrefix())
+
+		// A budget is enforced here, before the call that would spend, because
+		// this is the only place in the loop that spends. Checking after the call
+		// would let every run overshoot by one call; the call that crossed the
+		// line is already counted, and the message reports the real numbers.
+		if which, limit, spent, reached := a.budgetReached(); reached {
+			msg := budgetMessage(which, limit, spent)
+			tlog.Info("agent.loop", "budget reached", "budget", which, "limit", limit, "spent", spent, "steps", step)
+			if a.SessionStore != nil {
+				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
+				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: msg})
+				if err := a.SessionStore.Flush(); err != nil {
+					log.Printf("warning: flush session: %v", err)
+				}
+			}
+			return msg, nil
+		}
 
 		// Build tool definitions, filtering by config permissions
 		toolDefs := make([]types.ToolDef, 0, len(a.Tools))
@@ -256,7 +331,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.HandleContextError(err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
-		a.recordUsage(callbacks, resp.Usage)
+		a.recordUsage(callbacks, resp)
 
 		// Reasoning already handled by streaming callback (OnReasoningDelta)
 		if a.ShowThinking {
@@ -498,7 +573,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
-	a.recordUsage(summaryCallbacks, resp.Usage)
+	a.recordUsage(summaryCallbacks, resp)
 	return resp.Content, nil
 }
 

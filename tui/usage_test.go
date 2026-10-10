@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -122,5 +123,39 @@ func TestResetSessionStatsClearsTheCallShare(t *testing.T) {
 
 	if m.sessionTokens != 0 || m.callTokens != 0 {
 		t.Errorf("counters not cleared: tokens=%d callTokens=%d", m.sessionTokens, m.callTokens)
+	}
+}
+
+// TestStatusBarPairsTheCounterWithAConfiguredBudget covers the visibility half of
+// the token budget. With no budget the bar must carry exactly the text it always
+// has (which is what keeps the 27 frame goldens byte-identical); with a session
+// budget it shows the spend against that limit.
+//
+// A per-run budget deliberately does not appear here: this counter is a session
+// total, and putting a run limit beside it would mix two scopes in one fraction.
+// The run limit is enforced in the loop and reported in the transcript when it
+// fires.
+func TestStatusBarPairsTheCounterWithAConfiguredBudget(t *testing.T) {
+	m := layoutModel(30)
+	m.sessionTokens = 1200
+	// A real config with no budget in it: the bar must carry the plain text it
+	// has always had, which is also what the committed frame goldens assert.
+	m.config = &config.Config{}
+
+	if bar := m.renderStatusBar(); !strings.Contains(bar, "tokens: 1200") || strings.Contains(bar, "1200/") {
+		t.Errorf("with no budget configured, bar = %q, want a plain 'tokens: 1200'", bar)
+	}
+
+	m.config = &config.Config{Budget: &config.BudgetConfig{MaxTokensPerRun: 1000}}
+	if bar := m.renderStatusBar(); strings.Contains(bar, "1200/") {
+		t.Errorf("with only a run budget, bar = %q, want no fraction: the counter is a session total", bar)
+	}
+
+	m.config = &config.Config{Budget: &config.BudgetConfig{
+		MaxTokensPerRun:     1000,
+		MaxTokensPerSession: 5000,
+	}}
+	if bar := m.renderStatusBar(); !strings.Contains(bar, "tokens: 1200/5000") {
+		t.Errorf("with a session budget, bar = %q, want 'tokens: 1200/5000'", bar)
 	}
 }

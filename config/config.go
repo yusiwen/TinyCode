@@ -32,6 +32,18 @@ type TruncationConfig struct {
 	OutputDir string `json:"output_dir,omitempty"`
 }
 
+// BudgetConfig bounds what a run and a session may spend, in tokens, as the
+// provider reports them.
+//
+// Zero means unlimited, which is the default: a budget is something a user opts
+// into, not a policy this project imposes. The two limits are independent — a
+// run inside a fresh session is still bounded by the run limit, and a long-lived
+// session stops at the session limit even when each run is small.
+type BudgetConfig struct {
+	MaxTokensPerRun     int `json:"max_tokens_per_run,omitempty"`
+	MaxTokensPerSession int `json:"max_tokens_per_session,omitempty"`
+}
+
 // AgentRule mirrors agent.Rule for configuration files. Keeping a local copy
 // avoids a config → agent dependency; main.go translates it.
 type AgentRule struct {
@@ -110,6 +122,7 @@ type Config struct {
 	Verbose      *bool                    `json:"verbose,omitempty"`
 	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
 	Truncation   *TruncationConfig        `json:"truncation,omitempty"`
+	Budget       *BudgetConfig            `json:"budget,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox      *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme        string                   `json:"theme,omitempty"`
@@ -126,6 +139,16 @@ type Config struct {
 
 	// MCP servers
 	MCPServers []MCPServerConfig `json:"mcp_servers,omitempty"`
+}
+
+// TokenBudgets returns the configured cumulative token limits, or zero for each
+// when no budget is configured. Zero is unlimited, and it is also what a caller
+// passes on to the agent loop.
+func (c Config) TokenBudgets() (perRun, perSession int) {
+	if c.Budget == nil {
+		return 0, 0
+	}
+	return c.Budget.MaxTokensPerRun, c.Budget.MaxTokensPerSession
 }
 
 // DefaultConfig returns the hardcoded default configuration.
@@ -208,6 +231,19 @@ func merge(dst, src Config) Config {
 		}
 		if src.Truncation.OutputDir != "" {
 			dst.Truncation.OutputDir = src.Truncation.OutputDir
+		}
+	}
+	if src.Budget != nil {
+		if dst.Budget == nil {
+			dst.Budget = &BudgetConfig{}
+		}
+		// A negative value in a file is not a way to switch a limit off; only
+		// zero (or absent) is unlimited, so a typo cannot widen a fence.
+		if src.Budget.MaxTokensPerRun > 0 {
+			dst.Budget.MaxTokensPerRun = src.Budget.MaxTokensPerRun
+		}
+		if src.Budget.MaxTokensPerSession > 0 {
+			dst.Budget.MaxTokensPerSession = src.Budget.MaxTokensPerSession
 		}
 	}
 	if src.SessionDir != "" {
