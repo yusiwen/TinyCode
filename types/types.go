@@ -1,6 +1,11 @@
 package types
 
-import "context"
+import (
+	"context"
+	"sort"
+	"strconv"
+	"strings"
+)
 
 // Role constants for messages.
 const (
@@ -51,6 +56,7 @@ type StreamCallbacks struct {
 	OnToolResult     func(name string)             // called after each tool result
 	OnStepDone       func()                        // called after all tools complete for one step
 	OnUsage          func(usage Usage)             // called once per LLM call that reported token usage
+	OnCost           func(event CostEvent)         // called once per LLM call, including one whose cost is unknown
 }
 
 // Usage is the token accounting a provider reported for one request.
@@ -58,20 +64,126 @@ type StreamCallbacks struct {
 // It travels as a pointer on ChatResponse because "this endpoint reported no
 // usage" and "it reported zero tokens" are different facts: the first has to
 // fall back to an estimate, the second must not.
+//
+// The fields are one per *billing lane*, not one per wire name. A route that
+// reports prompt_tokens_details.cached_tokens and one that reports DeepSeek's
+// prompt_cache_hit_tokens mean the same thing, and both land in
+// CachedPromptTokens, so nothing downstream has to know which route it is on.
+// The detail fields are part of the counts beside them, not extra tokens:
+// CachedPromptTokens and ReasoningTokens are subsets of PromptTokens and
+// CompletionTokens respectively.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+
+	// CachedPromptTokens is the part of PromptTokens the provider served from a
+	// cache, billed below the standard input rate.
+	CachedPromptTokens int `json:"cached_prompt_tokens,omitempty"`
+	// CacheWriteTokens is the part written *into* an explicit cache, billed
+	// above the standard input rate by the providers that charge for it.
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+	// ReasoningTokens is the part of CompletionTokens spent on reasoning, which
+	// some providers price separately from the answer.
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
 }
 
 // Add returns the sum of two usage records, so a caller can accumulate a
 // session total without adding the fields itself.
 func (u Usage) Add(v Usage) Usage {
 	return Usage{
-		PromptTokens:     u.PromptTokens + v.PromptTokens,
-		CompletionTokens: u.CompletionTokens + v.CompletionTokens,
-		TotalTokens:      u.TotalTokens + v.TotalTokens,
+		PromptTokens:       u.PromptTokens + v.PromptTokens,
+		CompletionTokens:   u.CompletionTokens + v.CompletionTokens,
+		TotalTokens:        u.TotalTokens + v.TotalTokens,
+		CachedPromptTokens: u.CachedPromptTokens + v.CachedPromptTokens,
+		CacheWriteTokens:   u.CacheWriteTokens + v.CacheWriteTokens,
+		ReasoningTokens:    u.ReasoningTokens + v.ReasoningTokens,
 	}
+}
+
+// Cost is money, with the unit it is denominated in.
+//
+// The unit is not decoration: a provider may bill in its own credits while a
+// user-declared price is in the currency of their invoice, and adding those
+// together would produce a number with no meaning. Callers accumulate per
+// currency rather than across it.
+type Cost struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// CostSource says where a cost number came from. It is the same distinction the
+// usage path draws between a reported record and an estimate, and it exists so
+// that "we do not know what this call cost" can never be displayed as zero.
+type CostSource string
+
+const (
+	// CostUnknown means no reported cost and no declared price: the call's cost
+	// is not known, which is not the same as its being free.
+	CostUnknown CostSource = "unknown"
+	// CostReported means the provider said what it charged.
+	CostReported CostSource = "reported"
+	// CostDeclared means it was computed from a price the user declared; it is
+	// an estimate of the bill, not a reading of it.
+	CostDeclared CostSource = "declared"
+)
+
+// CostEvent is what one provider call cost, and where that number came from.
+type CostEvent struct {
+	Cost   Cost       `json:"cost"`
+	Source CostSource `json:"source"`
+}
+
+// CostTotals accumulates money per unit.
+//
+// The unit is part of the key because two routes can bill differently — an
+// account's own credits beside the currency of the user's invoice — and summing
+// those into one number would produce something no one can act on. An empty
+// currency key collects amounts whose route did not name a unit.
+type CostTotals map[string]float64
+
+// Add returns the totals with one cost added. It returns a new map rather than
+// mutating, so a caller can accumulate onto a struct field in one expression.
+func (t CostTotals) Add(c Cost) CostTotals {
+	out := make(CostTotals, len(t)+1)
+	for k, v := range t {
+		out[k] = v
+	}
+	out[c.Currency] += c.Amount
+	return out
+}
+
+// String renders the totals for display, ordered by unit so a caller can assert
+// on the text. The order is case-insensitive — "credits" before "USD" reads the
+// way a person would write it — with the raw string as a tiebreak so two units
+// differing only in case still have a fixed order. An amount whose unit is
+// unknown prints as a bare number: naming a unit the route did not give would be
+// an invention.
+func (t CostTotals) String() string {
+	if len(t) == 0 {
+		return ""
+	}
+	units := make([]string, 0, len(t))
+	for k := range t {
+		units = append(units, k)
+	}
+	sort.Slice(units, func(i, j int) bool {
+		li, lj := strings.ToLower(units[i]), strings.ToLower(units[j])
+		if li != lj {
+			return li < lj
+		}
+		return units[i] < units[j]
+	})
+	parts := make([]string, 0, len(units))
+	for _, unit := range units {
+		amount := strconv.FormatFloat(t[unit], 'f', -1, 64)
+		if unit == "" {
+			parts = append(parts, amount)
+			continue
+		}
+		parts = append(parts, amount+" "+unit)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ChatResponse is the LLM's reply — either text or tool calls.
@@ -80,6 +192,7 @@ type ChatResponse struct {
 	ToolCalls        []ToolCall
 	ReasoningContent string // DeepSeek thinking mode
 	Usage            *Usage // provider-reported token usage; nil when the endpoint reported none
+	Cost             *Cost  // provider-reported charge; nil when the endpoint reported none
 }
 
 // ToolDef describes one tool to the LLM (function calling schema).

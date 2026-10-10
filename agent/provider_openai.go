@@ -63,7 +63,45 @@ type OpenAIProvider struct {
 	model   string
 	apiKey  string
 	baseURL string
+
+	// route is the name the user gave this provider in config.json, and
+	// costCurrency is the unit its route bills a reported cost in. Both are set
+	// once from the configuration (SetRouteInfo) and are empty for a provider
+	// built without one.
+	route        string
+	costCurrency string
 }
+
+// RouteInfo is implemented by a provider that can say which configuration route
+// it serves and which model it uses by default.
+//
+// The agent needs both to look a price up, and only the provider knows them: a
+// route can be switched while a session is running, so a value captured when the
+// agent was built would go stale and price a call against another route's rates.
+type RouteInfo interface {
+	Route() string
+	DefaultModel() string
+	CostCurrency() string
+}
+
+// SetRouteInfo names the configuration route this provider serves, its default
+// model and the unit that route bills a reported cost in.
+func (p *OpenAIProvider) SetRouteInfo(route, model, costCurrency string) {
+	p.route = route
+	if model != "" {
+		p.model = model
+	}
+	p.costCurrency = costCurrency
+}
+
+// Route returns the configuration name the user gave this provider.
+func (p *OpenAIProvider) Route() string { return p.route }
+
+// DefaultModel returns the model this provider uses when a request names none.
+func (p *OpenAIProvider) DefaultModel() string { return p.model }
+
+// CostCurrency returns the unit this route bills a reported cost in.
+func (p *OpenAIProvider) CostCurrency() string { return p.costCurrency }
 
 // NewOpenAIProvider creates a provider for OpenAI-compatible APIs (DeepSeek, OpenAI, etc.).
 func NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider {
@@ -243,6 +281,7 @@ func (p *OpenAIProvider) chatBatch(ctx context.Context, body io.ReadCloser, star
 		Content:          choice.Content,
 		ReasoningContent: choice.ReasoningContent,
 		Usage:            rawResp.Usage.toUsage(),
+		Cost:             rawResp.Usage.toCost(p.costCurrency),
 	}
 
 	if len(choice.ToolCalls) > 0 {
@@ -327,6 +366,7 @@ func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, sta
 		// array, so it has to be read before the choices check below.
 		if event.Usage != nil {
 			result.Usage = event.Usage.toUsage()
+			result.Cost = event.Usage.toCost(p.costCurrency)
 		}
 
 		if len(event.Choices) == 0 {
@@ -413,10 +453,36 @@ type jsonToolCallRef struct {
 // usageJSON mirrors the OpenAI usage object, which the batch body and the final
 // streaming chunk both carry. It is a pointer at every call site: an absent
 // object means the endpoint reported nothing, which is not the same as zero.
+//
+// The wire names differ per route while the meaning does not, so this type is
+// the only place that knows them: prompt_tokens_details.cached_tokens (OpenAI,
+// OpenRouter, DeepSeek's newer shape) and prompt_cache_hit_tokens (DeepSeek's
+// older one) are the same lane, and both end up in Usage.CachedPromptTokens.
 type usageJSON struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+
+	PromptTokensDetails *struct {
+		CachedTokens     int `json:"cached_tokens"`
+		CacheWriteTokens int `json:"cache_write_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details,omitempty"`
+
+	// DeepSeek's own names for the input split. They are read only when the
+	// nested shape above is absent, so a route that sends both is not
+	// double-counted.
+	PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens int `json:"prompt_cache_miss_tokens,omitempty"`
+
+	// Reported cost (OpenRouter). Its unit is the account's, not a currency code,
+	// which is why it is carried through verbatim rather than converted.
+	Cost       *float64 `json:"cost,omitempty"`
+	CostDetail *struct {
+		UpstreamInferenceCost *float64 `json:"upstream_inference_cost,omitempty"`
+	} `json:"cost_details,omitempty"`
 }
 
 // toUsage normalizes a reported usage object for the shared types.Usage. A
@@ -430,9 +496,38 @@ func (u *usageJSON) toUsage() *types.Usage {
 	if total == 0 {
 		total = u.PromptTokens + u.CompletionTokens
 	}
-	return &types.Usage{
+	usage := &types.Usage{
 		PromptTokens:     u.PromptTokens,
 		CompletionTokens: u.CompletionTokens,
 		TotalTokens:      total,
 	}
+	if d := u.PromptTokensDetails; d != nil {
+		usage.CachedPromptTokens = d.CachedTokens
+		usage.CacheWriteTokens = d.CacheWriteTokens
+	} else {
+		usage.CachedPromptTokens = u.PromptCacheHitTokens
+	}
+	// prompt_cache_miss_tokens is the rest of the prompt, so it is not a field of
+	// its own: deriving it from the hit count keeps one number per lane.
+	if d := u.CompletionTokensDetails; d != nil {
+		usage.ReasoningTokens = d.ReasoningTokens
+	}
+	return usage
+}
+
+// toCost reports the charge a route stated for this request, or nil when it
+// stated none. The upstream figure is a detail of the charge, not a second one,
+// so it is only used when the route billed nothing itself (a BYOK request, where
+// the account is charged nothing and the upstream cost is the informative one).
+func (u *usageJSON) toCost(currency string) *types.Cost {
+	if u == nil {
+		return nil
+	}
+	if u.Cost != nil {
+		return &types.Cost{Amount: *u.Cost, Currency: currency}
+	}
+	if u.CostDetail != nil && u.CostDetail.UpstreamInferenceCost != nil {
+		return &types.Cost{Amount: *u.CostDetail.UpstreamInferenceCost, Currency: currency}
+	}
+	return nil
 }

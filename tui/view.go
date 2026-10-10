@@ -436,10 +436,27 @@ func (m *TuiModel) renderStatusBar() string {
 		}
 	}
 
-	status := fmt.Sprintf("%s %s%s%s  ■ %s  %s  tools: %d  msgs: %d%s  session: %s%s%s",
+	// Money appears only once there is something to say about it, so a session
+	// with no cost information renders exactly the bar it always has. A total is
+	// shown together with the count of calls it does not include: "0.40 USD" and
+	// "0.40 USD, and three calls nobody priced" are different statements, and the
+	// second is the one that is true.
+	costStr := ""
+	switch {
+	case len(m.sessionCost) == 0 && m.unpricedCalls == 0:
+	case len(m.sessionCost) == 0:
+		costStr = fmt.Sprintf("  cost: unknown (%d unpriced)", m.unpricedCalls)
+	default:
+		costStr = "  cost: " + m.sessionCost.String()
+		if m.unpricedCalls > 0 {
+			costStr += fmt.Sprintf(" (+%d unpriced)", m.unpricedCalls)
+		}
+	}
+
+	status := fmt.Sprintf("%s %s%s%s  ■ %s  %s%s  tools: %d  msgs: %d%s  session: %s%s%s",
 		modeIcon, modelName, spinnerStr, procStr,
 		provName,
-		tokensStr, m.sessionToolCalls, len(m.messages),
+		tokensStr, costStr, m.sessionToolCalls, len(m.messages),
 		diagStr,
 		durStr, histStr, statusMsg)
 
