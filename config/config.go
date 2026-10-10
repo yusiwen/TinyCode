@@ -23,6 +23,11 @@ type ProviderRecordConfig struct {
 	Model     string `json:"model,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`
 	APIKeyEnv string `json:"api_key_env,omitempty"` // env var name for API key
+	// CostCurrency names the unit this route bills a *reported* charge in, e.g.
+	// "credits" for an account that bills in its own credits. Empty means the
+	// route's unit is unknown, and an amount is then displayed without one
+	// rather than labelled with a unit nobody stated.
+	CostCurrency string `json:"cost_currency,omitempty"`
 }
 
 // TruncationConfig holds tool output truncation settings.
@@ -30,6 +35,39 @@ type TruncationConfig struct {
 	MaxLines  int    `json:"max_lines,omitempty"`
 	MaxBytes  int    `json:"max_bytes,omitempty"`
 	OutputDir string `json:"output_dir,omitempty"`
+}
+
+// PricingConfig declares what a route charges, for the routes that do not report
+// a charge themselves.
+//
+// The key of Prices is "<route>/<model>", where the route is the provider's name
+// in this file — a price belongs to a billing endpoint, not to a model name,
+// because the same model costs differently through a reseller, a gateway and the
+// vendor's own API. "*" is allowed for the route, the model or both, so one rate
+// can cover a whole route.
+//
+// Currency names the unit the rates are in (e.g. "USD"). It is deliberately not
+// defaulted: a number with the wrong unit is worse than a number whose unit the
+// user has to state. It is also independent of a provider's own
+// cost_currency — an account billed in credits can still be priced from an
+// invoice in dollars, and the two are accumulated apart rather than added.
+type PricingConfig struct {
+	Currency string                `json:"currency,omitempty"`
+	Prices   map[string]PriceEntry `json:"prices,omitempty"`
+}
+
+// PriceEntry is a rate per million tokens, per billing lane.
+//
+// A zero detail rate falls back to the lane it is carved out of: cached and
+// written input to the input rate, reasoning to the output rate. That is how a
+// route with one input price and one output price is declared, and it is why a
+// zero here is "not separately priced" rather than "free".
+type PriceEntry struct {
+	InputPerMillion      float64 `json:"input_per_million"`
+	OutputPerMillion     float64 `json:"output_per_million"`
+	CacheReadPerMillion  float64 `json:"cache_read_per_million,omitempty"`
+	CacheWritePerMillion float64 `json:"cache_write_per_million,omitempty"`
+	ReasoningPerMillion  float64 `json:"reasoning_per_million,omitempty"`
 }
 
 // BudgetConfig bounds what a run and a session may spend, in tokens, as the
@@ -123,6 +161,7 @@ type Config struct {
 	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
 	Truncation   *TruncationConfig        `json:"truncation,omitempty"`
 	Budget       *BudgetConfig            `json:"budget,omitempty"`
+	Pricing      *PricingConfig           `json:"pricing,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox      *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme        string                   `json:"theme,omitempty"`
@@ -244,6 +283,25 @@ func merge(dst, src Config) Config {
 		}
 		if src.Budget.MaxTokensPerSession > 0 {
 			dst.Budget.MaxTokensPerSession = src.Budget.MaxTokensPerSession
+		}
+	}
+	if src.Pricing != nil {
+		if dst.Pricing == nil {
+			dst.Pricing = &PricingConfig{}
+		}
+		if src.Pricing.Currency != "" {
+			dst.Pricing.Currency = src.Pricing.Currency
+		}
+		// Rates merge per key, so a project file can price one route the user's
+		// global file does not mention. A later layer wins for the keys it names
+		// and leaves the rest alone.
+		if len(src.Pricing.Prices) > 0 {
+			if dst.Pricing.Prices == nil {
+				dst.Pricing.Prices = map[string]PriceEntry{}
+			}
+			for key, entry := range src.Pricing.Prices {
+				dst.Pricing.Prices[key] = entry
+			}
 		}
 	}
 	if src.SessionDir != "" {

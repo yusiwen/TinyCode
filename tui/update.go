@@ -521,6 +521,20 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.autoScroll()
 		return m, m.waitForStream()
 
+	case CostMsg:
+		if m.isStaleRun(msg.RunID) {
+			return m, m.waitForStream()
+		}
+		// One event per call, including the calls nobody could price: an unknown
+		// cost is counted as unknown, never as zero.
+		if msg.Event.Source == types.CostUnknown {
+			m.unpricedCalls++
+		} else {
+			m.sessionCost = m.sessionCost.Add(msg.Event.Cost)
+		}
+		m.autoScroll()
+		return m, m.waitForStream()
+
 	case StreamDone:
 		// Ignore output from a superseded run while a newer run is active.
 		if m.isStaleRun(msg.RunID) {
@@ -1418,6 +1432,9 @@ func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string) {
 		},
 		OnUsage: func(usage types.Usage) {
 			m.streamCh <- UsageMsg{RunID: runID, Usage: usage}
+		},
+		OnCost: func(event types.CostEvent) {
+			m.streamCh <- CostMsg{RunID: runID, Event: event}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)

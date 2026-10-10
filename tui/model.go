@@ -19,6 +19,7 @@ import (
 	"github.com/yusiwen/tinycode/skill"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/tool"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // Button represents a clickable region in the message area.
@@ -150,6 +151,12 @@ type TuiModel struct {
 	callTokens       int
 	sessionTitle     string // auto-generated conversation title
 	sessionToolCalls int
+	// sessionCost is the money this session is known to have cost, per unit, and
+	// unpricedCalls counts the calls whose cost is not known. The bar shows both,
+	// because a total without its unknowns is a different claim from a total
+	// alone.
+	sessionCost   types.CostTotals
+	unpricedCalls int
 
 	// LSP diagnostics tracking
 	diagTotal   int      // total errors across all files
@@ -576,6 +583,8 @@ func (m *TuiModel) resetSessionStats() {
 	m.sessionTokens = 0
 	m.callTokens = 0
 	m.sessionToolCalls = 0
+	m.sessionCost = nil
+	m.unpricedCalls = 0
 }
 
 // ensureMsgTracking ensures msgDirty and msgRowCount arrays match m.messages length.

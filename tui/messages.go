@@ -20,6 +20,15 @@ type UsageMsg struct {
 	Usage types.Usage
 }
 
+// CostMsg carries what one LLM call cost, and where that number came from. The
+// agent emits it once per call, in stream order, right after that call's
+// UsageMsg. An unknown source is an event like any other: a call nobody could
+// price has to be visible as such rather than silently counted as free.
+type CostMsg struct {
+	RunID uint64 // generation id of the producing run (0 in legacy tests)
+	Event types.CostEvent
+}
+
 // StreamDone is sent when the agent completes (final answer or error).
 type StreamDone struct {
 	RunID            uint64 // generation id of the producing run (0 in legacy tests)

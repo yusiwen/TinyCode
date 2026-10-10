@@ -35,6 +35,10 @@ type TaskToolDeps struct {
 	// otherwise would report a number that cannot be computed.
 	BudgetTokensPerRun     int
 	BudgetTokensPerSession int
+	// PriceTable is the declared rate table sub-agents price against, so a
+	// delegated call is accounted the same way as one the parent made. Nil
+	// prices nothing, which is reported as an unknown cost rather than as zero.
+	PriceTable *agent.PriceTable
 }
 
 // TaskTool creates the task tool for delegating to sub-agents.
@@ -107,6 +111,7 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			sub.SessionStore = nil
 			sub.BudgetTokensPerRun = deps.BudgetTokensPerRun
 			sub.BudgetTokensPerSession = deps.BudgetTokensPerSession
+			sub.PriceTable = deps.PriceTable
 
 			tlog.Debug("task", "start", "agent", name, "goal", goal,
 				"tools", len(subTools), "maxSteps", cfg.MaxSteps)
