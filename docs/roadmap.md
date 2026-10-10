@@ -78,6 +78,12 @@ current tree.
 
 ### A3 — No cumulative token or cost budget, no circuit breaker
 
+- **Picked up**: [#179](https://github.com/yusiwen/TinyCode/issues/179) — S1 (the config surface),
+  S2 (enforcement before every provider call, per run and per session), S3 (the status bar shows the
+  session limit when one is set), S4 (tests and docs). Cost and pricing are **not** part of it: they
+  need a per-model price table, which no command in this repository can produce, while tokens are
+  what a provider reports. The evidence below is the `7e6b017` baseline, so its `rg` exit code
+  describes that tree rather than the current one.
 - **Gap**: nothing bounds a run or a session by tokens or money, and nothing stops a run that is
   burning either.
 - **Evidence**: `rg -in 'circuit' . -g '!*_test.go'` → exit 1; no cost, spend, price or quota

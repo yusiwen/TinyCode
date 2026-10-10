@@ -49,6 +49,19 @@ read that is cut returns an error naming the bound instead of a partial answer. 
 cancellation is still recognisable as one, so an interrupted run keeps reading as
 interrupted. Reported as #176.
 
+### A run can be stopped at a token budget
+
+`budget.max_tokens_per_run` and `budget.max_tokens_per_session` bound what one prompt's ReAct loop and
+a whole session may spend, counted in the tokens the provider reports. Both default to `0` =
+unlimited, so a configuration that does not set them behaves exactly as before.
+
+The loop checks before every provider call — the only point that spends — and a run that reaches
+either limit ends with a message naming the limit, the spend and the knob to raise, instead of making
+one call too many. A provider that reports no usage is counted as an estimate of its output, so a
+silent endpoint cannot switch the budget off; such a call never fires the usage event, which stays a
+report of what the provider actually said. Sub-agents enforce the same limits against their own
+spend — attributing a sub-agent's tokens to its parent is roadmap G1. Roadmap entry A3.
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration

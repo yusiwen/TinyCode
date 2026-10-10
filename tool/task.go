@@ -29,6 +29,12 @@ type TaskToolDeps struct {
 	GetAgentConfig func(name string) *agent.AgentConfig
 	// BgTaskMgr is the shared background task manager.
 	BgTaskMgr *BackgroundTaskManager
+	// Token budgets copied onto every sub-agent this tool builds. Zero means
+	// unlimited. A sub-agent's spend is counted against itself, not against the
+	// parent's totals: attribution across agents is roadmap G1, and pretending
+	// otherwise would report a number that cannot be computed.
+	BudgetTokensPerRun     int
+	BudgetTokensPerSession int
 }
 
 // TaskTool creates the task tool for delegating to sub-agents.
@@ -99,6 +105,8 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			sub.MaxSteps = cfg.MaxSteps
 			sub.ShowThinking = false
 			sub.SessionStore = nil
+			sub.BudgetTokensPerRun = deps.BudgetTokensPerRun
+			sub.BudgetTokensPerSession = deps.BudgetTokensPerSession
 
 			tlog.Debug("task", "start", "agent", name, "goal", goal,
 				"tools", len(subTools), "maxSteps", cfg.MaxSteps)

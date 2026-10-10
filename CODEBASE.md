@@ -42,7 +42,10 @@
   - `SystemPrompt string`, `MaxSteps int`, `MaxTokens int`
   - `Verbose bool`, `ShowThinking bool`
   - `StreamCallbacks *types.StreamCallbacks`
-  - `UsageTotal types.Usage` — every provider-reported usage record summed; a call whose endpoint reports nothing adds nothing
+  - `UsageTotal types.Usage` — every token the agent has spent: provider-reported records summed, plus an estimate of the output for a call whose endpoint reported nothing (so a silent provider cannot switch a budget off)
+  - `BudgetTokensPerRun`, `BudgetTokensPerSession` (int) — cumulative token limits, 0 = unlimited; `runUsage` is the same accounting restricted to the run in flight, reset by each `Run`
+  - `callSpend(resp)` → reported usage, or an output estimate marked as such; `recordUsage(cb, resp)` adds it to both totals and fires `OnUsage` only for the reported case
+  - `budgetReached()` / `budgetMessage(which, limit, spent)` — the check runs at the top of the loop, before the call that would spend, and its message names the budget, the spend and the knob (`budget.max_tokens_per_run` / `..._session`)
   - `ContentStreamed bool`
 - **`New(provider LLMProvider) *Agent`** — defaults: MaxSteps=20, MaxTokens=4096
 - **`(*Agent) AddTool(t Tool)`** — registers a tool
@@ -161,6 +164,7 @@
   - `DefaultMode string`, `ShowThinking *bool`, `Verbose *bool`
   - `Providers []ProviderRecordConfig`
   - `Truncation *TruncationConfig`
+  - `Budget *BudgetConfig`
   - `Agents map[string]AgentOverride`
   - `Sandbox *SandboxConfig`
   - `Theme string`, `SessionDir string`
@@ -175,6 +179,8 @@
 - **`MCPServerConfig`**: `Name`, `Transport` ("stdio"|"http"), `Command`, `Args`, `Env`, `URL`, `Headers`
 - **`LSPConfig`**: `Enabled bool`
 - **`TruncationConfig`**: `MaxLines`, `MaxBytes`, `OutputDir`
+- **`BudgetConfig`**: `MaxTokensPerRun`, `MaxTokensPerSession` — both default to 0 = unlimited; a negative value in a file is ignored rather than read as "no limit", so only zero switches a limit off
+- **`(cfg Config) TokenBudgets() (perRun, perSession int)`** — nil-safe accessor used by `main.go` to set the agent's limits
 - **`DefaultConfig() Config`** — DeepSeek V4 Flash, `https://api.deepseek.com`, 1M context
 - **`LoadConfig() Config`** — merge order: defaults → `~/.tinycode/config.json` → `./.tinycode/config.json`; `merge` covers every section (providers, agents, sandbox, mcp_servers, theme, searxng_url, truncation, LSP, context limits); a malformed file is reported on stderr and the defaults are used
 - **`AddAllowedPath(path) error`** — patches only `sandbox.allowed_paths` in the *user* config (preserving unknown keys and never materialising defaults); used by "Always allow"
@@ -442,7 +448,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - Incremental rendering: dirty-message tracking, only re-renders from first dirty (~2.3ms)
 - Banner messages (`msg.Banner != nil`) bypass word-wrap and place each pre-laid-out row inline
 - `stripANSI` removes both CSI and OSC sequences, so OSC 8 hyperlinks never leak into selection/copy text
-- Status bar: mode icon, model, spinner, provider, tokens, tool calls, msg count, diagnostics, duration, history
+- Status bar: mode icon, model, spinner, provider, tokens, tool calls, msg count, diagnostics, duration, history. `tokens:` is the session counter; when `budget.max_tokens_per_session` is configured it reads `spent/limit`, and with no budget configured it is byte-identical to what it has always been (which is what keeps the committed frame goldens stable)
 - Character-level selection via `grid.Fill()` with SelectionStyle
 
 ### Frame verification (test files)
