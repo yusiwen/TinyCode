@@ -62,6 +62,30 @@ silent endpoint cannot switch the budget off; such a call never fires the usage 
 report of what the provider actually said. Sub-agents enforce the same limits against their own
 spend — attributing a sub-agent's tokens to its parent is roadmap G1. Roadmap entry A3.
 
+### Cost accounting: what a call charged, and what it cost
+
+Two things were missing to answer "what did this session cost", and they are separate problems.
+
+**What a route charges.** Some routes report it per request: OpenRouter returns a `cost` in its usage
+object, and a `prompt_tokens_details` split of cached and cache-written input beside it. Those numbers
+are now carried through unchanged — never recomputed, never added to a figure derived from a price
+list — with `cost_currency` on the provider naming the unit that route bills in.
+
+**What the tokens were.** A route that does not report a charge has to be priced from rates, and rates
+need the lanes: DeepSeek bills four input lanes (cache hit vs cache miss) times a peak/off-peak rule,
+which a single input price cannot express. `Usage` now carries `cached_prompt_tokens`,
+`cache_write_tokens` and `reasoning_tokens` — one field per billing lane, so OpenAI's nested
+`prompt_tokens_details` and DeepSeek's flat `prompt_cache_hit_tokens` land in the same place.
+
+`pricing` in the configuration then declares rates per million tokens, keyed by `<route>/<model>` with
+`*` wildcards, because a price belongs to a billing endpoint rather than to a model name. A call is
+priced from a declaration only when its tokens were *reported*: multiplying a declared rate by a
+guessed token count would dress a second estimate as a measurement. Everything else is counted as
+**unknown**, which the status bar shows as an unknown rather than as zero — `Ollama` and subscription
+plans have no per-token price at all, and "0" would read as free in exactly the decisions the number
+is there to inform. Whether this project should ship a price table of its own is a separate,
+undecided question (#182).
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration
