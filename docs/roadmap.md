@@ -80,10 +80,16 @@ current tree.
 
 - **Picked up**: [#179](https://github.com/yusiwen/TinyCode/issues/179) — S1 (the config surface),
   S2 (enforcement before every provider call, per run and per session), S3 (the status bar shows the
-  session limit when one is set), S4 (tests and docs). Cost and pricing are **not** part of it: they
-  need a per-model price table, which no command in this repository can produce, while tokens are
-  what a provider reports. The evidence below is the `7e6b017` baseline, so its `rg` exit code
-  describes that tree rather than the current one.
+  session limit when one is set), S4 (tests and docs). The **token** half is delivered; **cost** is
+  tracked separately in [#181](https://github.com/yusiwen/TinyCode/issues/181) — a provider-reported
+  cost, user-declared prices, and the cache-tier usage detail money has to be computed from — with its
+  price-table question in [#182](https://github.com/yusiwen/TinyCode/issues/182), a data-governance
+  decision whose deliverable is a written verdict rather than code. That split narrows this entry's
+  original wording: a price list is *not* the only way to know what a call cost, because a provider
+  may report the cost itself, and because a table carrying one input price and one output price is
+  wrong for the provider this repository ships by default — DeepSeek prices four input lanes times a
+  peak/off-peak rule. The evidence below is the `7e6b017` baseline, so its `rg` exit code describes
+  that tree rather than the current one.
 - **Gap**: nothing bounds a run or a session by tokens or money, and nothing stops a run that is
   burning either.
 - **Evidence**: `rg -in 'circuit' . -g '!*_test.go'` → exit 1; no cost, spend, price or quota
