@@ -181,3 +181,28 @@ func TestOpenAIStreamIdleBound(t *testing.T) {
 		}
 	})
 }
+
+// TestOpenAIBatchTimesOutOnSilentEndpoint covers non-streaming request timeout on an endpoint
+// that accepts connections but never responds.
+func TestOpenAIBatchTimesOutOnSilentEndpoint(t *testing.T) {
+	previous := openAIRequestTimeout
+	openAIRequestTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { openAIRequestTimeout = previous })
+
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release // accept the request, never answer it
+	}))
+	t.Cleanup(func() { close(release); srv.Close() })
+
+	start := time.Now()
+	_, err := NewOpenAIProvider("test-key", srv.URL, "test-model").Chat(context.Background(), types.ChatRequest{})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Chat against a silent endpoint returned success")
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("Chat took %s to report the timeout", elapsed)
+	}
+}
