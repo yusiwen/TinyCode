@@ -44,7 +44,10 @@
   - `StreamCallbacks *types.StreamCallbacks`
   - `UsageTotal types.Usage` — every token the agent has spent: provider-reported records summed, plus an estimate of the output for a call whose endpoint reported nothing (so a silent provider cannot switch a budget off)
   - `BudgetTokensPerRun`, `BudgetTokensPerSession` (int) — cumulative token limits, 0 = unlimited; `runUsage` is the same accounting restricted to the run in flight, reset by each `Run`
-  - `callSpend(resp)` → reported usage, or an output estimate marked as such; `recordUsage(cb, resp)` adds it to both totals and fires `OnUsage` only for the reported case
+  - `callSpend(resp)` → reported usage, or an output estimate marked as such; `recordCall(cb, resp)` adds it to both totals and fires `OnUsage` only for the reported case
+  - `PriceTable`/`Price` (pricing.go) — the user's declared rates per billing lane; `Lookup` resolves `"<route>/<model>"` with `*` wildcards, most specific first (exact → `route/*` → `*/model` → `*/*`), and `Amount` carves the detail lanes out of the totals, falling back to the lane they belong to and flooring every subtraction at zero
+  - `CostTotal types.CostTotals`, `CostUnknownCalls int` — money per unit, plus how many calls nobody could price; kept together because a total without its unknowns overstates what is known
+  - `priceKey()` asks the provider (RouteInfo) for its route and default model at call time, and prefers the agent's model override — a route can be switched mid-session, so a value captured at construction would price a call against another route's rates
   - `budgetReached()` / `budgetMessage(which, limit, spent)` — the check runs at the top of the loop, before the call that would spend, and its message names the budget, the spend and the knob (`budget.max_tokens_per_run` / `..._session`)
   - `ContentStreamed bool`
 - **`New(provider LLMProvider) *Agent`** — defaults: MaxSteps=20, MaxTokens=4096
@@ -110,7 +113,8 @@
 
 - **`OllamaProvider`** struct (unexported: baseURL, model, http client)
 - **`NewOllamaProvider(baseURL, model string) *OllamaProvider`** — default baseURL: `http://localhost:11434`
-- `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call
+- `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call. A local route reports no charge, so `CostCurrency()` is empty and its calls are priced from the declared table or counted as unknown
+- `SetRouteInfo(route, model, _)` names the configuration route, so a price lookup keys on the route rather than on a model name several routes share; the cost currency is ignored because this route bills in none
 - Bounded (issue #1): `ollamaRequestTimeout` (10 min) covers a whole non-streaming request, `ollamaIdleTimeout` (2 min) covers the silence between tokens on a stream and is reset by every line, so a long generation is not killed while a stalled one fails. Both are package variables (tests shrink them), and the cancel cause names the bound that fired instead of surfacing "context canceled". A stream that ends without its `{"done":true}` line is now an error rather than the partial text it managed to send.
 
 ### `compression.go` — Context Compression
@@ -493,9 +497,11 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 - **`ToolCall`** struct: `ID`, `Name`, `Arguments string` (raw JSON)
 - **`ToolDef`** struct: `Name`, `Description`, `Parameters map[string]any`
 - **`ChatRequest`** struct: `Messages []Message`, `Tools []ToolDef`, `MaxTokens int`, `Model string`, `StreamCallbacks *StreamCallbacks`
-- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage` (nil when the endpoint reported none)
+- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage`, `Cost *Cost` (both nil when the endpoint reported none)
 - **`Usage`** struct: `PromptTokens`, `CompletionTokens`, `TotalTokens`; `Add(v Usage) Usage` sums two records
-- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage)
+- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown)
+- **`Usage`** detail fields: `CachedPromptTokens`, `CacheWriteTokens`, `ReasoningTokens` — one per *billing lane*, so OpenAI's `prompt_tokens_details` shape and DeepSeek's `prompt_cache_hit_tokens` land in the same field. They are subsets of the counts beside them, not extra tokens
+- **`Cost`** struct: `Amount`, `Currency`; **`CostSource`** (`unknown`/`reported`/`declared`); **`CostEvent`**; **`CostTotals map[string]float64`** with `Add` and a `String()` ordered case-insensitively by unit — two routes billing in different units are accumulated apart, never added together
 - **`Memory`** struct: `Key`, `Value`
 - **`MemoryStore`** interface: `Remember`, `Recall`, `Forget`, `List`
 - **`WithPlanWriteRestriction(ctx, bool)` / `PlanWriteRestricted(ctx)`** — plan-mode write restriction travels on the run context, so concurrent sub-agents cannot flip it for each other
