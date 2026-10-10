@@ -170,6 +170,7 @@ func (p *OpenAIProvider) chatBatch(ctx context.Context, body io.ReadCloser, star
 				ReasoningContent string            `json:"reasoning_content,omitempty"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage *usageJSON `json:"usage,omitempty"`
 	}
 
 	if err := json.Unmarshal(respBody, &rawResp); err != nil {
@@ -183,6 +184,7 @@ func (p *OpenAIProvider) chatBatch(ctx context.Context, body io.ReadCloser, star
 	result := &types.ChatResponse{
 		Content:          choice.Content,
 		ReasoningContent: choice.ReasoningContent,
+		Usage:            rawResp.Usage.toUsage(),
 	}
 
 	if len(choice.ToolCalls) > 0 {
@@ -244,13 +246,20 @@ func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, sta
 					ReasoningContent string            `json:"reasoning_content,omitempty"`
 					ToolCalls        []jsonToolCallRef `json:"tool_calls,omitempty"`
 				} `json:"delta"`
-				FinishReason string `json:"finish_reason,omitempty"`
 			} `json:"choices"`
+			Usage *usageJSON `json:"usage,omitempty"`
 		}
 
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			tlog.Debug("llm.provider", "sse_parse_error", "line", line, "error", err.Error())
 			continue
+		}
+
+		// Usage arrives in a chunk of its own, after the one carrying
+		// finish_reason and before [DONE]; that chunk has an empty choices
+		// array, so it has to be read before the choices check below.
+		if event.Usage != nil {
+			result.Usage = event.Usage.toUsage()
 		}
 
 		if len(event.Choices) == 0 {
@@ -297,12 +306,6 @@ func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, sta
 				existing.id = tc.ID
 			}
 		}
-
-		// Finish reason — last event before [DONE]
-		if event.Choices[0].FinishReason != "" {
-			// Signal end of real-time output if content was streamed
-			break
-		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -337,4 +340,31 @@ type jsonToolCallRef struct {
 		Name      string `json:"name,omitempty"`
 		Arguments string `json:"arguments,omitempty"`
 	} `json:"function"`
+}
+
+// usageJSON mirrors the OpenAI usage object, which the batch body and the final
+// streaming chunk both carry. It is a pointer at every call site: an absent
+// object means the endpoint reported nothing, which is not the same as zero.
+type usageJSON struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// toUsage normalizes a reported usage object for the shared types.Usage. A
+// compatible endpoint may omit total_tokens, so the sum is derived from the two
+// halves when it is absent; a genuinely zero report stays zero.
+func (u *usageJSON) toUsage() *types.Usage {
+	if u == nil {
+		return nil
+	}
+	total := u.TotalTokens
+	if total == 0 {
+		total = u.PromptTokens + u.CompletionTokens
+	}
+	return &types.Usage{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		TotalTokens:      total,
+	}
 }

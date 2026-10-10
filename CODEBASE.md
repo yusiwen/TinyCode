@@ -42,6 +42,7 @@
   - `SystemPrompt string`, `MaxSteps int`, `MaxTokens int`
   - `Verbose bool`, `ShowThinking bool`
   - `StreamCallbacks *types.StreamCallbacks`
+  - `UsageTotal types.Usage` — every provider-reported usage record summed; a call whose endpoint reports nothing adds nothing
   - `ContentStreamed bool`
 - **`New(provider LLMProvider) *Agent`** — defaults: MaxSteps=20, MaxTokens=4096
 - **`(*Agent) AddTool(t Tool)`** — registers a tool
@@ -99,13 +100,13 @@
 
 - **`OpenAIProvider`** struct (unexported fields: client, model, apiKey, baseURL)
 - **`NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider`**
-- `Chat()` — SSE streaming via `net/http` (not go-openai SDK's streaming); accumulates reasoning/content deltas and tool calls by index; 120s timeout; 64KB→256KB scanner buffer; `stream_options: {include_usage: true}`
+- `Chat()` — SSE streaming via `net/http` (not go-openai SDK's streaming); accumulates reasoning/content deltas and tool calls by index; 120s timeout; 64KB→256KB scanner buffer; `stream_options: {include_usage: true}`. The parse runs to `data: [DONE]` rather than stopping at `finish_reason`, because the usage chunk that answers that option comes *after* the finish chunk with an empty `choices` array; both it and the batch body's `usage` object land in `ChatResponse.Usage` (a pointer: "not reported" is not "zero"), and a `total_tokens` the endpoint omits is derived from the two halves
 
 ### `provider_ollama.go` — Ollama Provider
 
 - **`OllamaProvider`** struct (unexported: baseURL, model, http client)
 - **`NewOllamaProvider(baseURL, model string) *OllamaProvider`** — default baseURL: `http://localhost:11434`
-- `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning
+- `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call
 - Bounded (issue #1): `ollamaRequestTimeout` (10 min) covers a whole non-streaming request, `ollamaIdleTimeout` (2 min) covers the silence between tokens on a stream and is reset by every line, so a long generation is not killed while a stalled one fails. Both are package variables (tests shrink them), and the cancel cause names the bound that fired instead of surfacing "context canceled". A stream that ends without its `{"done":true}` line is now an error rather than the partial text it managed to send.
 
 ### `compression.go` — Context Compression
@@ -411,7 +412,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 
 ### `messages.go`
 - **`TuiStatus`** (int): `StatusIdle=0`, `StatusStreaming`, `StatusError`
-- TUI messages: `StreamMsg`, `StreamDone`, `ChatMsg`, `ToolCallMsg`, `ToolResultMsg`, `LSPDiagMsg`, `modeSwitchMsg`
+- TUI messages: `StreamMsg`, `UsageMsg`, `StreamDone`, `ChatMsg`, `ToolCallMsg`, `ToolResultMsg`, `LSPDiagMsg`, `modeSwitchMsg`
 - **`chatMessage`** (internal): `Role`, `Content`, `ReasoningContent`, `ReasoningFolded`, `ToolCalls []ToolCallInfo`, `Streaming`, `Blocks []ContentBlock`, `TodoSnapshot []tool.TodoItem`, `Banner *welcomeInfo`
 
 ### `welcome.go` — Startup Banner
@@ -432,7 +433,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - `persistSession()` — the single save path for `/exit`, `/quit` and double-Ctrl+C; reuses `currentBranch` (preserving `AllowedPaths`) instead of minting a duplicate id
 - `generateSessionTitleCmd()` — "title" agent call runs as a `tea.Cmd` (15s timeout) instead of blocking the event loop
 - `lspDiagCmd()` reads `lsp.DiagnosticsSnapshot()` inside a `tea.Cmd` (never on the Update goroutine) and posts `LSPDiagMsg`; it is fired from the existing spinner tick (~10 Hz) and after every tool result, which is what feeds the status-bar `errors: N` counter and `/diagnostics`
-- `/compress` refuses while a run is active (compression must not touch `History` concurrently) and runs the summarizer as a `tea.Cmd` instead of inline: on the Update goroutine a stalled provider froze the whole interface, and the Ctrl+C that would cancel it could never be delivered. `beginCompress`/`finishCompress` hold the compression lifecycle under `runMu` and `beginRun` refuses while it is held, so a run and a compression never touch `History` at once; Ctrl+C cancels the summarizer, and the result message carries the compressed/no-op/cancelled/failed outcome into the status bar. `sessionTokens`/`sessionToolCalls` are maintained from the stream and reset when the transcript is swapped
+- `/compress` refuses while a run is active (compression must not touch `History` concurrently) and runs the summarizer as a `tea.Cmd` instead of inline: on the Update goroutine a stalled provider froze the whole interface, and the Ctrl+C that would cancel it could never be delivered. `beginCompress`/`finishCompress` hold the compression lifecycle under `runMu` and `beginRun` refuses while it is held, so a run and a compression never touch `History` at once; Ctrl+C cancels the summarizer, and the result message carries the compressed/no-op/cancelled/failed outcome into the status bar. `sessionTokens`/`sessionToolCalls` are maintained from the stream and reset when the transcript is swapped; a `UsageMsg` from a call whose endpoint reported usage replaces the estimate charged to that call (`callTokens`) with the reported total, so the counter is provider-accurate where a provider reports and keeps the estimate where it does not
 - `View()` tolerates an empty transcript with a dirty todo list, and a message role with no component renders zero rows so `msgRowCount`/`lineSrcs` stay in sync
 
 ### `view.go`
@@ -485,8 +486,9 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 - **`ToolCall`** struct: `ID`, `Name`, `Arguments string` (raw JSON)
 - **`ToolDef`** struct: `Name`, `Description`, `Parameters map[string]any`
 - **`ChatRequest`** struct: `Messages []Message`, `Tools []ToolDef`, `MaxTokens int`, `Model string`, `StreamCallbacks *StreamCallbacks`
-- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`
-- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`
+- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage` (nil when the endpoint reported none)
+- **`Usage`** struct: `PromptTokens`, `CompletionTokens`, `TotalTokens`; `Add(v Usage) Usage` sums two records
+- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage)
 - **`Memory`** struct: `Key`, `Value`
 - **`MemoryStore`** interface: `Remember`, `Recall`, `Forget`, `List`
 - **`WithPlanWriteRestriction(ctx, bool)` / `PlanWriteRestricted(ctx)`** — plan-mode write restriction travels on the run context, so concurrent sub-agents cannot flip it for each other
