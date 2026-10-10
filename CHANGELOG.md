@@ -23,6 +23,20 @@ reproduced **byte for byte** through the same builders, and both suites ran gree
 same CI job. See [docs/tui-verification.md](docs/tui-verification.md) and
 [tuiprobe/docs/parity.md](tuiprobe/docs/parity.md).
 
+### Provider-reported token usage in the status bar
+
+The status bar's `tokens:` counter now shows the number the provider reported, not
+`len(text)/4` over the streamed answer. The request already asked every
+OpenAI-compatible endpoint for usage (`stream_options: {include_usage: true}`), but the
+usage-only chunk that answers it was thrown away twice over: the SSE parser skipped every
+chunk without choices, and it stopped reading at `finish_reason`, which arrives *before*
+that chunk. Ollama's `prompt_eval_count`/`eval_count` were dropped the same way.
+
+The reported numbers now reach `Agent.UsageTotal` and the counter, which falls back to the
+estimate for an endpoint that reports nothing. Because usage covers the prompt too,
+`tokens:` is larger than it used to be — the estimate counted streamed output only. Roadmap
+entry A2; cost and pricing accounting remain open with A3.
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration
