@@ -23,7 +23,7 @@ const usageSSE = "" +
 func TestOpenAIStreamReportsUsageAfterFinishReason(t *testing.T) {
 	provider := &OpenAIProvider{model: "test-model"}
 	res, err := provider.chatStream(context.Background(),
-		io.NopCloser(strings.NewReader(usageSSE)), time.Now(), &types.StreamCallbacks{})
+		io.NopCloser(strings.NewReader(usageSSE)), time.Now(), &types.StreamCallbacks{}, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestOpenAIStreamWithoutUsageReportsNone(t *testing.T) {
 		"data: [DONE]\n"
 	provider := &OpenAIProvider{model: "test-model"}
 	res, err := provider.chatStream(context.Background(),
-		io.NopCloser(strings.NewReader(input)), time.Now(), &types.StreamCallbacks{})
+		io.NopCloser(strings.NewReader(input)), time.Now(), &types.StreamCallbacks{}, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestOpenAIStreamReportsUsageWithToolCalls(t *testing.T) {
 		"data: [DONE]\n"
 	provider := &OpenAIProvider{model: "test-model"}
 	res, err := provider.chatStream(context.Background(),
-		io.NopCloser(strings.NewReader(input)), time.Now(), &types.StreamCallbacks{})
+		io.NopCloser(strings.NewReader(input)), time.Now(), &types.StreamCallbacks{}, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}

@@ -24,7 +24,7 @@ func TestDeepSeekChatStream_Text(t *testing.T) {
 	}
 
 	provider := &OpenAIProvider{model: "test-model"}
-	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), cb)
+	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), cb, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestDeepSeekChatStream_Reasoning(t *testing.T) {
 	}
 
 	provider := &OpenAIProvider{model: "test-model"}
-	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), cb)
+	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), cb, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestDeepSeekChatStream_ToolCalls(t *testing.T) {
 		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
 		"data: [DONE]\n"
 	provider := &OpenAIProvider{model: "test-model"}
-	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil)
+	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestDeepSeekChatStream_EmptyResponse(t *testing.T) {
 		"data: {\"choices\":[{\"delta\":{\"content\":\"\"}}]}\n\n" +
 		"data: [DONE]\n"
 	provider := &OpenAIProvider{model: "test-model"}
-	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil)
+	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestDeepSeekChatStream_MultipleToolCalls(t *testing.T) {
 		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n" +
 		"data: [DONE]\n"
 	provider := &OpenAIProvider{model: "test-model"}
-	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil)
+	result, err := provider.chatStream(context.Background(), io.NopCloser(strings.NewReader(input)), time.Now(), nil, nil)
 	if err != nil {
 		t.Fatalf("chatStream error: %v", err)
 	}
