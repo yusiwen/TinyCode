@@ -59,7 +59,31 @@ type OllamaProvider struct {
 	baseURL string
 	model   string
 	client  *http.Client
+
+	// route is the name the user gave this provider in config.json. A local
+	// route never reports a charge, so there is no cost currency to carry: a
+	// declared price for it is denominated by the pricing configuration.
+	route string
 }
+
+// SetRouteInfo names the configuration route this provider serves. The cost
+// currency is accepted for the shared signature and ignored: a local endpoint
+// reports no charge in any unit.
+func (p *OllamaProvider) SetRouteInfo(route, model, _ string) {
+	p.route = route
+	if model != "" {
+		p.model = model
+	}
+}
+
+// Route returns the configuration name the user gave this provider.
+func (p *OllamaProvider) Route() string { return p.route }
+
+// DefaultModel returns the model this provider uses when a request names none.
+func (p *OllamaProvider) DefaultModel() string { return p.model }
+
+// CostCurrency is always empty: this route reports no charge.
+func (p *OllamaProvider) CostCurrency() string { return "" }
 
 func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 	if baseURL == "" {

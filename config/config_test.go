@@ -491,3 +491,69 @@ func TestBudgetRoundTripsThroughJSON(t *testing.T) {
 		t.Errorf("TokenBudgets() = %d/%d, want 120000/2000000", run, session)
 	}
 }
+
+// TestMergePricingRates covers the merge rule for declared rates: the currency is
+// taken from the layer that sets it, and rates merge per key so a project file can
+// price one route without dropping the ones the global file declared.
+func TestMergePricingRates(t *testing.T) {
+	base := merge(DefaultConfig(), Config{Pricing: &PricingConfig{
+		Currency: "USD",
+		Prices: map[string]PriceEntry{
+			"deepseek/*": {InputPerMillion: 0.3, OutputPerMillion: 1.2},
+		},
+	}})
+	if base.Pricing == nil || base.Pricing.Currency != "USD" {
+		t.Fatalf("pricing after the first layer = %+v, want USD", base.Pricing)
+	}
+
+	got := merge(base, Config{Pricing: &PricingConfig{
+		Prices: map[string]PriceEntry{
+			"openrouter/*": {InputPerMillion: 3},
+		},
+	}})
+	if len(got.Pricing.Prices) != 2 {
+		t.Fatalf("prices = %v, want both keys kept", got.Pricing.Prices)
+	}
+	if got.Pricing.Prices["deepseek/*"].InputPerMillion != 0.3 {
+		t.Errorf("deepseek/* = %v, want the earlier layer kept", got.Pricing.Prices["deepseek/*"])
+	}
+	if got.Pricing.Prices["openrouter/*"].InputPerMillion != 3 {
+		t.Errorf("openrouter/* = %v, want the later layer added", got.Pricing.Prices["openrouter/*"])
+	}
+	if got.Pricing.Currency != "USD" {
+		t.Errorf("currency = %q, want USD: a layer that sets none must not clear it", got.Pricing.Currency)
+	}
+
+	// A later layer replaces the rate it names.
+	got = merge(got, Config{Pricing: &PricingConfig{
+		Currency: "EUR",
+		Prices:   map[string]PriceEntry{"deepseek/*": {InputPerMillion: 9}},
+	}})
+	if got.Pricing.Prices["deepseek/*"].InputPerMillion != 9 {
+		t.Errorf("deepseek/* = %v, want the later rate", got.Pricing.Prices["deepseek/*"])
+	}
+	if got.Pricing.Currency != "EUR" {
+		t.Errorf("currency = %q, want EUR", got.Pricing.Currency)
+	}
+}
+
+// TestPricingRoundTripsThroughJSON pins the key names a user types, including the
+// route/model key with a model name that itself contains a separator.
+func TestPricingRoundTripsThroughJSON(t *testing.T) {
+	raw := []byte(`{"providers":[{"name":"openrouter","type":"openai","model":"m","cost_currency":"credits"}],` +
+		`"pricing":{"currency":"USD","prices":{"openrouter/anthropic/claude-sonnet-4":{"input_per_million":3,"output_per_million":15,"cache_read_per_million":0.3}}}}`)
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cfg.Providers[0].CostCurrency != "credits" {
+		t.Errorf("cost_currency = %q, want credits", cfg.Providers[0].CostCurrency)
+	}
+	entry, ok := cfg.Pricing.Prices["openrouter/anthropic/claude-sonnet-4"]
+	if !ok {
+		t.Fatalf("prices = %v, want the route/model key", cfg.Pricing.Prices)
+	}
+	if entry.CacheReadPerMillion != 0.3 {
+		t.Errorf("cache_read_per_million = %v, want 0.3", entry.CacheReadPerMillion)
+	}
+}

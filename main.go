@@ -142,6 +142,10 @@ func newRootCmd() *cobra.Command {
 			}
 			// Cumulative token budgets (0 = unlimited, the default).
 			ag.BudgetTokensPerRun, ag.BudgetTokensPerSession = cfg.TokenBudgets()
+			// Declared prices price a call whose route reported no charge. An
+			// empty table prices nothing, which the agent reports as an unknown
+			// cost rather than as zero.
+			ag.PriceTable = priceTable(&cfg)
 			if cfg.Truncation != nil {
 				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
 			}
@@ -274,6 +278,7 @@ func newRootCmd() *cobra.Command {
 				// Sub-agents enforce the same limits against their own spend.
 				BudgetTokensPerRun:     ag.BudgetTokensPerRun,
 				BudgetTokensPerSession: ag.BudgetTokensPerSession,
+				PriceTable:             ag.PriceTable,
 				GetAgentConfig: func(name string) *agent.AgentConfig {
 					cfg, err := reg.Get(name)
 					if err != nil {
@@ -735,6 +740,12 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) *a
 			// "openai" or unknown — use an OpenAI-compatible provider
 			prov = agent.NewOpenAIProvider(key, base, modelName)
 		}
+		// A route is what a price is keyed on: the same model costs differently
+		// through different routes, so the provider has to carry the name the
+		// user gave it rather than only its type and model.
+		if ri, ok := prov.(interface{ SetRouteInfo(string, string, string) }); ok {
+			ri.SetRouteInfo(pc.Name, modelName, pc.CostCurrency)
+		}
 		records = append(records, agent.ProviderRecord{
 			Name:     pc.Name,
 			Provider: prov,
@@ -743,12 +754,34 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) *a
 
 	// Fallback: if no providers are configured, create a default one.
 	if len(records) == 0 {
+		prov := agent.NewOpenAIProvider(apiKey, baseURL, model)
+		prov.SetRouteInfo("default", model, "")
 		records = append(records, agent.ProviderRecord{
 			Name:     "default",
-			Provider: agent.NewOpenAIProvider(apiKey, baseURL, model),
+			Provider: prov,
 		})
 	}
 	return agent.NewProviderRegistry(records)
+}
+
+// priceTable turns the declared rates in the configuration into the table the
+// agent prices a call against. It returns nil when nothing is declared, which
+// the agent reports as an unknown cost rather than as zero.
+func priceTable(cfg *config.Config) *agent.PriceTable {
+	if cfg == nil || cfg.Pricing == nil || len(cfg.Pricing.Prices) == 0 {
+		return nil
+	}
+	table := agent.NewPriceTable(cfg.Pricing.Currency)
+	for key, entry := range cfg.Pricing.Prices {
+		table.Set(key, agent.Price{
+			InputPerMillion:      entry.InputPerMillion,
+			OutputPerMillion:     entry.OutputPerMillion,
+			CacheReadPerMillion:  entry.CacheReadPerMillion,
+			CacheWritePerMillion: entry.CacheWritePerMillion,
+			ReasoningPerMillion:  entry.ReasoningPerMillion,
+		})
+	}
+	return table
 }
 
 // applyAgentOverrides folds the config's per-agent overrides into the registry.

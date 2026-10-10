@@ -59,6 +59,17 @@ type Agent struct {
 	// runUsage is UsageTotal restricted to the run in flight, reset by each Run.
 	runUsage types.Usage
 
+	// PriceTable prices a call whose route reported no charge. Nil prices
+	// nothing, which is reported as an unknown cost rather than as zero.
+	PriceTable *PriceTable
+	// CostTotal is every cost this Agent knows, per unit, and CostUnknownCalls
+	// counts the calls whose cost it does not know. They are kept together
+	// because a total without its unknown count overstates what is known:
+	// "0.40 USD" and "0.40 USD and three calls nobody priced" are different
+	// statements.
+	CostTotal        types.CostTotals
+	CostUnknownCalls int
+
 	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
 }
 
@@ -80,19 +91,47 @@ func callSpend(resp *types.ChatResponse) (spend types.Usage, reported bool) {
 	return types.Usage{CompletionTokens: n, TotalTokens: n}, false
 }
 
-// recordUsage accumulates one provider call into the run and session totals and
-// publishes a *reported* record to the run's callbacks. The callback never fires
-// for the estimate fallback, so no consumer is handed an estimate dressed as a
-// provider number.
-func (a *Agent) recordUsage(cb *types.StreamCallbacks, resp *types.ChatResponse) {
+// recordCall accounts one provider call: its tokens and its cost.
+//
+// Tokens: accumulated into the run and session totals, with a *reported* record
+// published to the callbacks. The callback never fires for the estimate
+// fallback, so no consumer is handed an estimate dressed as a provider number.
+//
+// Cost: a charge the route reported wins outright; otherwise a rate the user
+// declared for this route and model is applied to the *reported* usage. A call
+// whose tokens we estimated is not priced at all — multiplying a declared rate
+// by a guessed token count would dress a second estimate as a measurement — and
+// neither is a call with no declared rate. Both are counted as unknown, which is
+// not the same as free.
+func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse) {
 	spend, reported := callSpend(resp)
-	if !reported && spend.TotalTokens == 0 {
-		return
+	if reported || spend.TotalTokens > 0 {
+		a.UsageTotal = a.UsageTotal.Add(spend)
+		a.runUsage = a.runUsage.Add(spend)
+		if reported && cb != nil && cb.OnUsage != nil {
+			cb.OnUsage(spend)
+		}
 	}
-	a.UsageTotal = a.UsageTotal.Add(spend)
-	a.runUsage = a.runUsage.Add(spend)
-	if reported && cb != nil && cb.OnUsage != nil {
-		cb.OnUsage(spend)
+
+	event := types.CostEvent{Source: types.CostUnknown}
+	switch {
+	case resp.Cost != nil:
+		event = types.CostEvent{Cost: *resp.Cost, Source: types.CostReported}
+	case reported && a.PriceTable != nil:
+		if key, ok := a.priceKey(); ok {
+			if cost, priced := a.PriceTable.Amount(key, spend); priced {
+				event = types.CostEvent{Cost: cost, Source: types.CostDeclared}
+			}
+		}
+	}
+
+	if event.Source == types.CostUnknown {
+		a.CostUnknownCalls++
+	} else {
+		a.CostTotal = a.CostTotal.Add(event.Cost)
+	}
+	if cb != nil && cb.OnCost != nil {
+		cb.OnCost(event)
 	}
 }
 
@@ -331,7 +370,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.HandleContextError(err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
-		a.recordUsage(callbacks, resp)
+		a.recordCall(callbacks, resp)
 
 		// Reasoning already handled by streaming callback (OnReasoningDelta)
 		if a.ShowThinking {
@@ -562,6 +601,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				a.StreamCallbacks.OnUsage(usage)
 			}
 		},
+		OnCost: func(event types.CostEvent) {
+			if a.StreamCallbacks != nil && a.StreamCallbacks.OnCost != nil {
+				a.StreamCallbacks.OnCost(event)
+			}
+		},
 	}
 	resp, err := a.Provider.Chat(ctx, types.ChatRequest{
 		Messages:        messages,
@@ -573,7 +617,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
-	a.recordUsage(summaryCallbacks, resp)
+	a.recordCall(summaryCallbacks, resp)
 	return resp.Content, nil
 }
 

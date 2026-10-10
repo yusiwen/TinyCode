@@ -23,7 +23,8 @@
       "name": "openrouter",
       "type": "openai",
       "model": "anthropic/claude-sonnet-4",
-      "base_url": "https://openrouter.ai/api/v1"
+      "base_url": "https://openrouter.ai/api/v1",
+      "cost_currency": "credits"
     },
     {
       "name": "groq",
@@ -54,6 +55,22 @@
     "max_lines": 2000,
     "max_bytes": 204800,
     "output_dir": "/tmp/tinycode/truncated"
+  },
+
+  "pricing": {
+    "$comment": "Optional. What a route charges per million tokens, for the routes that do NOT report a charge themselves (OpenRouter does; see cost_currency above). Keys are '<route>/<model>' where <route> is the provider name above; '*' is allowed for the route, the model or both. A zero detail rate falls back to the lane it is carved out of: cached and written input to the input rate, reasoning to the output rate. currency names the unit your bill is in and is deliberately not defaulted. A call with no declared rate and no reported charge is displayed as unknown, not as zero.",
+    "currency": "USD",
+    "prices": {
+      "deepseek/deepseek-v4-flash": {
+        "input_per_million": 0.30,
+        "output_per_million": 1.20,
+        "cache_read_per_million": 0.006
+      },
+      "ollama/*": {
+        "input_per_million": 0,
+        "output_per_million": 0
+      }
+    }
   },
 
   "budget": {
