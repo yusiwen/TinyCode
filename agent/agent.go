@@ -44,7 +44,26 @@ type Agent struct {
 	ShowThinking    bool                   // when true, display reasoning_content from thinking mode
 	StreamCallbacks *types.StreamCallbacks // optional streaming callbacks (TUI mode)
 
+	// UsageTotal is every provider-reported usage record this Agent has seen,
+	// summed. A call whose endpoint reports nothing adds nothing, so the total
+	// is a lower bound rather than a substitute for an estimate.
+	UsageTotal types.Usage
+
 	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
+}
+
+// recordUsage accumulates one provider-reported usage record and publishes it to
+// the run's callbacks. Both halves are skipped when the endpoint reported
+// nothing: an absent report must neither move the total nor replace a caller's
+// estimate with a zero.
+func (a *Agent) recordUsage(cb *types.StreamCallbacks, usage *types.Usage) {
+	if usage == nil {
+		return
+	}
+	a.UsageTotal = a.UsageTotal.Add(*usage)
+	if cb != nil && cb.OnUsage != nil {
+		cb.OnUsage(*usage)
+	}
 }
 
 // ANSI color codes for terminal output.
@@ -237,6 +256,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.HandleContextError(err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
+		a.recordUsage(callbacks, resp.Usage)
 
 		// Reasoning already handled by streaming callback (OnReasoningDelta)
 		if a.ShowThinking {
@@ -453,25 +473,32 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		Content: fmt.Sprintf("You have reached the maximum step limit (%d steps). No more tool calls are allowed. Please summarize what you have accomplished so far and what remains to be done.", maxSteps),
 	})
 	// Force one more LLM call with no tools available
-	resp, err := a.Provider.Chat(ctx, types.ChatRequest{
-		Messages:  messages,
-		Tools:     nil, // no tools — LLM must output text only
-		MaxTokens: a.MaxTokens,
-		Model:     a.getModel(),
-		StreamCallbacks: &types.StreamCallbacks{
-			OnReasoningDelta: func(text string) {},
-			OnTextDelta: func(text string) {
-				if a.StreamCallbacks != nil && a.StreamCallbacks.OnTextDelta != nil {
-					a.StreamCallbacks.OnTextDelta(text)
-				} else {
-					fmt.Print(text)
-				}
-			},
+	summaryCallbacks := &types.StreamCallbacks{
+		OnReasoningDelta: func(text string) {},
+		OnTextDelta: func(text string) {
+			if a.StreamCallbacks != nil && a.StreamCallbacks.OnTextDelta != nil {
+				a.StreamCallbacks.OnTextDelta(text)
+			} else {
+				fmt.Print(text)
+			}
 		},
+		OnUsage: func(usage types.Usage) {
+			if a.StreamCallbacks != nil && a.StreamCallbacks.OnUsage != nil {
+				a.StreamCallbacks.OnUsage(usage)
+			}
+		},
+	}
+	resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+		Messages:        messages,
+		Tools:           nil, // no tools — LLM must output text only
+		MaxTokens:       a.MaxTokens,
+		Model:           a.getModel(),
+		StreamCallbacks: summaryCallbacks,
 	})
 	if err != nil {
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
+	a.recordUsage(summaryCallbacks, resp.Usage)
 	return resp.Content, nil
 }
 

@@ -3,7 +3,8 @@
 An inventory of capabilities TinyCode does not have, recorded once so it does not have to be
 re-derived. **This is a record, not a commitment:** an entry becomes work only when it is picked
 up, at which point it gets its own issue with numbered increments (`S1`, `S2`, …) so that a large
-capability does not become several issues nobody can close. The tracker is
+capability does not become several issues nobody can close. A picked-up entry carries a
+**Picked up** line linking that issue; an entry without one has not been started. The tracker is
 [issue #168](https://github.com/yusiwen/TinyCode/issues/168).
 
 ## Provenance and method
@@ -59,6 +60,11 @@ current tree.
 
 ### A2 — Provider-reported usage is discarded; no cost accounting
 
+- **Picked up**: [#174](https://github.com/yusiwen/TinyCode/issues/174) — S1 (`types.Usage` and both
+  providers), S2 (`Agent.UsageTotal` and one `OnUsage` event per reported call), S3 (the status bar
+  shows the reported number and falls back to the estimate). Cost and pricing accounting are **not**
+  part of it and stay here, with A3. The evidence below is the `7e6b017` baseline this entry was
+  written against, so its `rg` exit code describes that tree rather than the current one.
 - **Gap**: token usage the provider already returns is thrown away, so there is no real usage or
   cost figure, and nothing to accumulate per session.
 - **Evidence**: the request already asks for it — `stream_options.include_usage = true`

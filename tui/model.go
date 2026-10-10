@@ -140,8 +140,14 @@ type TuiModel struct {
 	streamDoneNotified bool // true after first GotoBottom on stream completion
 
 	// Session stats
-	sessionStart     time.Time
-	sessionTokens    int
+	sessionStart  time.Time
+	sessionTokens int
+	// callTokens is the estimate charged to the LLM call currently streaming,
+	// in the same units as sessionTokens. A reported usage replaces exactly that
+	// much of the session counter and then clears it; it is cleared as well when
+	// a new assistant message starts, so a call that reported nothing keeps its
+	// estimate instead of donating it to the next call's correction.
+	callTokens       int
 	sessionTitle     string // auto-generated conversation title
 	sessionToolCalls int
 
@@ -568,6 +574,7 @@ func (m *TuiModel) MarkAllDirty() {
 // switch), so the status bar never shows stats from another conversation.
 func (m *TuiModel) resetSessionStats() {
 	m.sessionTokens = 0
+	m.callTokens = 0
 	m.sessionToolCalls = 0
 }
 

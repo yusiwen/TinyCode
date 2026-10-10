@@ -421,6 +421,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.curAssistant = &m.messages[len(m.messages)-1]
 		m.status = StatusStreaming
 		m.streamDoneNotified = false
+		m.callTokens = 0 // a new call starts with no estimate charged to it
 		go m.runAgent(ctx, runID, msg.Text)
 		return m, m.waitForStream()
 
@@ -479,9 +480,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.curAssistant == nil {
 			return m, m.waitForStream()
 		}
-		// Approximate token accounting. The running total is derived from the
-		// accumulated message text (like agent.EstimateTokens) rather than the
-		// delta length, so character-by-character streaming is counted too.
+		// Approximate token accounting for the call in flight. The running total
+		// is derived from the accumulated message text (like
+		// agent.EstimateTokens) rather than the delta length, so
+		// character-by-character streaming is counted too. A reported usage
+		// replaces this estimate when the call ends (see UsageMsg).
 		prevTokens := agent.EstimateTokens(m.curAssistant.Content) +
 			agent.EstimateTokens(m.curAssistant.ReasoningContent)
 		if msg.ReasoningDelta != "" {
@@ -493,12 +496,28 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		curTokens := agent.EstimateTokens(m.curAssistant.Content) +
 			agent.EstimateTokens(m.curAssistant.ReasoningContent)
 		if curTokens > prevTokens {
-			m.sessionTokens += curTokens - prevTokens
+			delta := curTokens - prevTokens
+			m.sessionTokens += delta
+			m.callTokens += delta
 		}
 		// Mark the streaming message as dirty so View() re-renders it
 		if len(m.msgDirty) > 0 {
 			m.msgDirty[len(m.msgDirty)-1] = true
 		}
+		m.autoScroll()
+		return m, m.waitForStream()
+
+	case UsageMsg:
+		if m.isStaleRun(msg.RunID) {
+			return m, m.waitForStream()
+		}
+		// The provider's own number supersedes the estimate charged to the call
+		// that just ended: take back what was estimated for it and add what was
+		// reported. An endpoint that reports nothing sends no UsageMsg, so its
+		// estimate stays in the counter — that is why this is a subtraction of
+		// the call's own share rather than an assignment.
+		m.sessionTokens += msg.Usage.TotalTokens - m.callTokens
+		m.callTokens = 0
 		m.autoScroll()
 		return m, m.waitForStream()
 
@@ -569,6 +588,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cur := chatMessage{Role: "assistant", Streaming: true}
 			m.messages = append(m.messages, cur)
 			m.curAssistant = &m.messages[len(m.messages)-1]
+			m.callTokens = 0 // the next step's call starts with a clean estimate
 			return m, m.waitForStream()
 		}
 		// Terminal step: the run has actually reported completion, so it is
@@ -1395,6 +1415,9 @@ func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string) {
 		},
 		OnStepDone: func() {
 			m.streamCh <- StreamDone{RunID: runID, IsIntermediate: true}
+		},
+		OnUsage: func(usage types.Usage) {
+			m.streamCh <- UsageMsg{RunID: runID, Usage: usage}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)

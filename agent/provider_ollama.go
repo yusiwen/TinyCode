@@ -224,6 +224,8 @@ func (p *OllamaProvider) ollamaBatch(body io.ReadCloser) (*types.ChatResponse, e
 			Thinking  string           `json:"thinking,omitempty"`
 			ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
+		PromptEvalCount *int `json:"prompt_eval_count,omitempty"`
+		EvalCount       *int `json:"eval_count,omitempty"`
 	}
 
 	if err := json.NewDecoder(body).Decode(&ollamaResp); err != nil {
@@ -233,6 +235,7 @@ func (p *OllamaProvider) ollamaBatch(body io.ReadCloser) (*types.ChatResponse, e
 	result := &types.ChatResponse{
 		Content:          ollamaResp.Message.Content,
 		ReasoningContent: ollamaResp.Message.Thinking,
+		Usage:            ollamaUsage(ollamaResp.PromptEvalCount, ollamaResp.EvalCount),
 	}
 
 	if len(ollamaResp.Message.ToolCalls) > 0 {
@@ -286,7 +289,9 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 				Thinking  string           `json:"thinking,omitempty"`
 				ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 			} `json:"message,omitempty"`
-			Done bool `json:"done,omitempty"`
+			Done            bool `json:"done,omitempty"`
+			PromptEvalCount *int `json:"prompt_eval_count,omitempty"`
+			EvalCount       *int `json:"eval_count,omitempty"`
 		}
 
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
@@ -294,7 +299,10 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 			continue
 		}
 
+		// The final line is where the token counters live, so they are read
+		// before the stream is left.
 		if event.Done {
+			result.Usage = ollamaUsage(event.PromptEvalCount, event.EvalCount)
 			break
 		}
 
@@ -337,4 +345,25 @@ func (p *OllamaProvider) ollamaStream(ctx context.Context, body io.ReadCloser, c
 	}
 
 	return result, nil
+}
+
+// ollamaUsage maps Ollama's eval counters onto the shared usage value. It
+// returns nil when neither counter is present, so a server that reports neither
+// leaves the caller's estimate in charge instead of claiming a zero-token call.
+func ollamaUsage(promptEval, eval *int) *types.Usage {
+	if promptEval == nil && eval == nil {
+		return nil
+	}
+	var prompt, completion int
+	if promptEval != nil {
+		prompt = *promptEval
+	}
+	if eval != nil {
+		completion = *eval
+	}
+	return &types.Usage{
+		PromptTokens:     prompt,
+		CompletionTokens: completion,
+		TotalTokens:      prompt + completion,
+	}
 }

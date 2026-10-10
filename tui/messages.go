@@ -1,12 +1,23 @@
 package tui
 
-import "github.com/yusiwen/tinycode/tool"
+import (
+	"github.com/yusiwen/tinycode/tool"
+	"github.com/yusiwen/tinycode/types"
+)
 
 // StreamMsg is sent from the agent goroutine to the TUI for each streaming delta.
 type StreamMsg struct {
 	RunID          uint64 // generation id of the producing run (0 in legacy tests)
 	ReasoningDelta string
 	TextDelta      string
+}
+
+// UsageMsg carries the token usage a provider reported for one LLM call. The
+// agent emits it once per call that reported usage, in stream order: after that
+// call's deltas, before the step boundary that follows them.
+type UsageMsg struct {
+	RunID uint64 // generation id of the producing run (0 in legacy tests)
+	Usage types.Usage
 }
 
 // StreamDone is sent when the agent completes (final answer or error).

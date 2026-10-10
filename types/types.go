@@ -50,6 +50,28 @@ type StreamCallbacks struct {
 	OnToolCall       func(name string, arg string) // called before each tool execution
 	OnToolResult     func(name string)             // called after each tool result
 	OnStepDone       func()                        // called after all tools complete for one step
+	OnUsage          func(usage Usage)             // called once per LLM call that reported token usage
+}
+
+// Usage is the token accounting a provider reported for one request.
+//
+// It travels as a pointer on ChatResponse because "this endpoint reported no
+// usage" and "it reported zero tokens" are different facts: the first has to
+// fall back to an estimate, the second must not.
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// Add returns the sum of two usage records, so a caller can accumulate a
+// session total without adding the fields itself.
+func (u Usage) Add(v Usage) Usage {
+	return Usage{
+		PromptTokens:     u.PromptTokens + v.PromptTokens,
+		CompletionTokens: u.CompletionTokens + v.CompletionTokens,
+		TotalTokens:      u.TotalTokens + v.TotalTokens,
+	}
 }
 
 // ChatResponse is the LLM's reply — either text or tool calls.
@@ -57,6 +79,7 @@ type ChatResponse struct {
 	Content          string
 	ToolCalls        []ToolCall
 	ReasoningContent string // DeepSeek thinking mode
+	Usage            *Usage // provider-reported token usage; nil when the endpoint reported none
 }
 
 // ToolDef describes one tool to the LLM (function calling schema).
