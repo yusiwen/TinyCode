@@ -8,16 +8,38 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
-// TestStatusBarShowsCostOnlyWhenThereIsSome is what keeps the committed frame
-// goldens byte-identical: a session with no cost information renders exactly the
-// bar it always has.
-func TestStatusBarShowsCostOnlyWhenThereIsSome(t *testing.T) {
+// TestStatusBarShowsCostOnlyWhenItIsInPlay is what keeps the committed frame
+// goldens byte-identical, and it is also why the status bar does not grow for a
+// session that is not doing cost accounting: with no declared rate and no route
+// reporting a charge, "unknown" would spend the bar's width on a statement the
+// user never asked for. Silence there is not zero — the accounting still counts
+// the call as unknown (see the agent's TestUnpricedCallIsUnknownNotZero).
+//
+// This is the case a real run hits: the CI stubs report no usage, so every call
+// is unpriced, and a segment here pushed "Press Ctrl+C again to quit" past the
+// wrap in the permission-allow-always scenario.
+func TestStatusBarShowsCostOnlyWhenItIsInPlay(t *testing.T) {
 	m := layoutModel(30)
 	m.config = &config.Config{}
 	m.sessionTokens = 1200
 
 	if bar := m.renderStatusBar(); strings.Contains(bar, "cost") {
 		t.Errorf("bar = %q, want no cost segment before any cost is known", bar)
+	}
+
+	// An unpriced call with nothing declared is still not cost accounting.
+	m.Update(CostMsg{Event: types.CostEvent{Source: types.CostUnknown}})
+	if bar := m.renderStatusBar(); strings.Contains(bar, "cost") {
+		t.Errorf("bar = %q, want no cost segment when no rate is declared and no charge was reported", bar)
+	}
+
+	// A route that reports a charge puts it in play on its own.
+	m.Update(CostMsg{Event: types.CostEvent{
+		Cost:   types.Cost{Amount: 0.5, Currency: "credits"},
+		Source: types.CostReported,
+	}})
+	if bar := m.renderStatusBar(); !strings.Contains(bar, "cost: 0.5 credits (+1 unpriced)") {
+		t.Errorf("bar = %q, want the reported charge and the call it does not include", bar)
 	}
 }
 
@@ -60,7 +82,12 @@ func TestStatusBarShowsCostPerUnit(t *testing.T) {
 // all unpriced must say so, not show nothing and not show zero.
 func TestStatusBarSaysUnknownWhenNothingCouldBePriced(t *testing.T) {
 	m := layoutModel(30)
-	m.config = &config.Config{}
+	// A declared rate is what puts cost accounting in play: the user asked what
+	// their calls cost, so a call nobody could price has to be visible.
+	m.config = &config.Config{Pricing: &config.PricingConfig{
+		Currency: "USD",
+		Prices:   map[string]config.PriceEntry{"local/*": {InputPerMillion: 1}},
+	}}
 
 	m.Update(CostMsg{Event: types.CostEvent{Source: types.CostUnknown}})
 
