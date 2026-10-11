@@ -354,6 +354,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				OnTextDelta: func(text string) {
 					fmt.Print(colorReset + text)
 				},
+				OnRetry: func(attempt, maxAttempts int, err error) {
+					// A backoff is a pause, and a pause with no line printed
+					// looks like a hang.
+					fmt.Printf("\n%sretrying (%d/%d): %v%s\n", colorYellow, attempt, maxAttempts, err, colorReset)
+				},
 			}
 		}
 
@@ -604,6 +609,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		OnCost: func(event types.CostEvent) {
 			if a.StreamCallbacks != nil && a.StreamCallbacks.OnCost != nil {
 				a.StreamCallbacks.OnCost(event)
+			}
+		},
+		OnRetry: func(attempt, maxAttempts int, err error) {
+			if a.StreamCallbacks != nil && a.StreamCallbacks.OnRetry != nil {
+				a.StreamCallbacks.OnRetry(attempt, maxAttempts, err)
 			}
 		},
 	}

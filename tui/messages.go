@@ -29,6 +29,15 @@ type CostMsg struct {
 	Event types.CostEvent
 }
 
+// RetryMsg says a provider request failed transiently and is about to be sent
+// again. Without it a backoff is indistinguishable from a hang.
+type RetryMsg struct {
+	RunID       uint64 // generation id of the producing run (0 in legacy tests)
+	Attempt     int    // the attempt about to be made, counting from 1
+	MaxAttempts int
+	Err         error
+}
+
 // StreamDone is sent when the agent completes (final answer or error).
 type StreamDone struct {
 	RunID            uint64 // generation id of the producing run (0 in legacy tests)

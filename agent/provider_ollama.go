@@ -194,15 +194,51 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		return nil, fmt.Errorf("ollama marshal: %w", err)
 	}
 
-	// Bound the request (issue #1). The cancel cause carries the bound that
-	// fired into the error message; a streaming request starts its clock at the
-	// request, so an endpoint that never sends even the response headers fails
-	// on the same idle bound as one that stalls mid-answer.
+	// Retry a transient failure (issue #192), with the same policy and the same
+	// safe-replay rule as the OpenAI-compatible provider: a stream that already
+	// handed text to the caller is not repeated.
+	maxAttempts := retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	var lastErr error
+	attempts := 0
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attempts = attempt
+		tracker := trackedCallbacks(req.StreamCallbacks)
+		resp, err := p.attempt(ctx, body, tracker.callbacks())
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !shouldRetry(ctx, err, tracker.deliveredSomething(), attempt) {
+			break
+		}
+		delay := backoffDelay(attempt, retryAfterOf(err))
+		tlog.Warn("ollama", "retrying", "attempt", attempt+1, "of", maxAttempts,
+			"in", delay.Round(time.Millisecond).String(), "error", err.Error())
+		notifyRetry(req.StreamCallbacks, attempt+1, maxAttempts, err)
+		if serr := sleepCtx(ctx, delay); serr != nil {
+			return nil, fmt.Errorf("ollama retry wait: %w", serr)
+		}
+	}
+	return nil, attemptsError(attempts, lastErr)
+}
+
+// attempt makes one request to /api/chat and reads its answer.
+//
+// Bound (issue #1): the cancel cause carries the bound that fired into the error
+// message; a streaming request starts its clock at the request, so an endpoint
+// that never sends even the response headers fails on the same idle bound as one
+// that stalls mid-answer. The watchdog belongs to the attempt, not to the call:
+// a retry gets a fresh clock rather than the remainder of the one its
+// predecessor spent.
+func (p *OllamaProvider) attempt(ctx context.Context, body []byte, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
 	var watchdog *time.Timer
-	if req.StreamCallbacks != nil {
+	if cb != nil {
 		watchdog = time.AfterFunc(ollamaIdleTimeout, func() {
 			cancel(fmt.Errorf("%w for %s", errOllamaSilent, ollamaIdleTimeout))
 		})
@@ -227,11 +263,15 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 
 	if httpResp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(httpResp.Body)
-		return nil, fmt.Errorf("ollama api: status %d: %s", httpResp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("ollama api: %w", &statusError{
+			status:     httpResp.StatusCode,
+			body:       string(respBody),
+			retryAfter: parseRetryAfter(httpResp.Header.Get("Retry-After")),
+		})
 	}
 
-	if req.StreamCallbacks != nil {
-		return p.ollamaStream(ctx, httpResp.Body, req.StreamCallbacks, watchdog)
+	if cb != nil {
+		return p.ollamaStream(ctx, httpResp.Body, cb, watchdog)
 	}
 
 	return p.ollamaBatch(httpResp.Body)
