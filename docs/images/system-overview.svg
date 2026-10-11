@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 960" width="800" height="800" role="img" aria-label="TinyCode system overview: the TUI or one-shot CLI hands a prompt to the agent ReAct loop, which streams deltas from an LLM (Large Language Model) provider and runs tool calls under a sandbox policy; stream messages return to the CellGrid frame buffer for rendering in the terminal.">
+  <defs>
+    <marker id="fig-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="fig-mk" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+  <style>
+    .fig-bg   { fill: #ffffff; }
+    .fig-card { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
+    .fig-alt  { fill: #eaeef2; stroke: #d0d7de; stroke-width: 1; }
+    .fig-box  { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
+    .fig-acc  { fill: #ddf4ff; stroke: #0969da; stroke-width: 1; }
+    .fig-dash { fill: none; stroke: #8c959f; stroke-width: 1; stroke-dasharray: 4 3; }
+    .fig-bound { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
+    .fig-flow { stroke: #59636e; stroke-width: 1.5; fill: none; }
+    .fig-mk   { fill: #59636e; }
+    .fig-title { fill: #1f2328; font-size: 19px; font-weight: 600; }
+    .fig-sub   { fill: #59636e; font-size: 12px; }
+    .fig-label { fill: #1f2328; font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+    .fig-cap   { fill: #1f2328; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; }
+    .fig-t     { fill: #1f2328; font-size: 11.5px; font-weight: 600; }
+    .fig-mut   { fill: #59636e; font-size: 10.5px; }
+    .fig-mono  { fill: #0a7ea4; font-size: 10px; }
+    .fig-foot  { fill: #59636e; font-size: 10px; }
+    @media (prefers-color-scheme: dark) {
+      .fig-bg   { fill: #0d1117; }
+      .fig-card { fill: #161b22; stroke: #30363d; }
+      .fig-alt  { fill: #1c2430; stroke: #30363d; }
+      .fig-box  { fill: #0d1117; stroke: #30363d; }
+      .fig-acc  { fill: #121d2f; stroke: #4493f8; }
+      .fig-dash { stroke: #6e7681; }
+      .fig-bound { fill: #161b22; stroke: #30363d; }
+      .fig-flow { stroke: #9198a1; }
+      .fig-mk   { fill: #9198a1; }
+      .fig-title { fill: #e6edf3; }
+      .fig-sub   { fill: #9198a1; }
+      .fig-label { fill: #e6edf3; }
+      .fig-cap   { fill: #e6edf3; }
+      .fig-t     { fill: #e6edf3; }
+      .fig-mut   { fill: #9198a1; }
+      .fig-mono  { fill: #39c5cf; }
+      .fig-foot  { fill: #9198a1; }
+    }
+  </style>
+  <rect class="fig-bg" x="0" y="0" width="960" height="960"/>
+    <text class="fig-title" x="32" y="40">TinyCode - System Overview</text>
+    <text class="fig-sub" x="32" y="56">the request path runs down the left, the stream path returns on the right</text>
+    <rect class="fig-box" x="176" y="72" width="554" height="34" rx="8"/>
+    <text class="fig-mut" x="192" y="94">one process, one event loop</text>
+    <text class="fig-mut" x="714" y="94" text-anchor="end">Go 1.27  |  Bubble Tea</text>
+    <rect class="fig-card" x="176" y="124" width="554" height="60" rx="8"/>
+    <text class="fig-t" x="192" y="148">interactive TUI</text>
+    <text class="fig-mut" x="192" y="167">charmbracelet/bubbletea</text>
+    <text class="fig-t" x="386" y="148">one-shot CLI</text>
+    <text class="fig-mut" x="386" y="167">tinycode "&lt;prompt&gt;"</text>
+    <text class="fig-mut" x="714" y="148" text-anchor="end">resume a session</text>
+    <text class="fig-mut" x="714" y="167" text-anchor="end">--resume=&lt;id&gt;</text>
+    <text class="fig-label" x="32" y="148">ENTRY</text>
+    <text class="fig-mut" x="32" y="166">user surface</text>
+    <line class="fig-flow" x1="96" y1="186" x2="96" y2="210" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="104" y="204">prompt</text>
+    <rect class="fig-card" x="176" y="214" width="554" height="140" rx="8"/>
+    <text class="fig-t" x="192" y="238">Bubble Tea event loop</text>
+    <text class="fig-mut" x="192" y="257">Update() -&gt; View()</text>
+    <text class="fig-mut" x="714" y="238" text-anchor="end">key / mouse / resize</text>
+    <rect class="fig-box" x="192" y="270" width="504" height="68" rx="8"/>
+    <text class="fig-t" x="208" y="292">CellGrid frame buffer</text>
+    <text class="fig-mut" x="208" y="311">markdown render  |  reasoning fold  |  char selection</text>
+    <text class="fig-mut" x="208" y="329">status bar  |  command palette  |  todo list  |  permission dialog</text>
+    <text class="fig-label" x="32" y="238">TUI</text>
+    <text class="fig-mut" x="32" y="256">CellGrid, not a</text>
+    <text class="fig-mut" x="32" y="271">stock renderer</text>
+    <line class="fig-flow" x1="96" y1="356" x2="96" y2="376" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="104" y="374">agent.Run(prompt)</text>
+    <rect class="fig-acc" x="176" y="380" width="554" height="200" rx="10"/>
+    <rect class="fig-card" x="182" y="386" width="542" height="188" rx="8"/>
+    <text class="fig-t" x="192" y="410">ReAct step loop</text>
+    <text class="fig-mut" x="192" y="429">Run(ctx, prompt), step budget</text>
+    <text class="fig-mut" x="714" y="410" text-anchor="end">6 named agents</text>
+    <text class="fig-mut" x="714" y="429" text-anchor="end">plan / build / explore / general / compact / title</text>
+    <text class="fig-label" x="32" y="410">AGENT</text>
+    <text class="fig-mut" x="32" y="428">agent.Run()</text>
+    <rect class="fig-box" x="192" y="440" width="240" height="60" rx="8"/>
+    <text class="fig-t" x="206" y="462">streaming deltas</text>
+    <text class="fig-mut" x="206" y="481">reasoning + text</text>
+    <rect class="fig-box" x="448" y="440" width="248" height="60" rx="8"/>
+    <text class="fig-t" x="462" y="462">parallel tool calls</text>
+    <text class="fig-mut" x="462" y="481">permissions checked first</text>
+    <rect class="fig-alt" x="192" y="508" width="504" height="46" rx="8"/>
+    <text class="fig-t" x="206" y="526">context compression at 50% of the window</text>
+    <text class="fig-mut" x="206" y="544">head + LLM summary of the middle + tail</text>
+    <text class="fig-mut" x="714" y="526" text-anchor="end">auto-recovery</text>
+    <text class="fig-mut" x="714" y="544" text-anchor="end">on overflow</text>
+    <line class="fig-flow" x1="96" y1="582" x2="96" y2="602" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="104" y="600">tool calls</text>
+    <rect class="fig-card" x="176" y="606" width="554" height="178" rx="8"/>
+    <text class="fig-t" x="192" y="630">24 built-in tools + MCP servers</text>
+    <text class="fig-mut" x="714" y="630" text-anchor="end">JSON Schema parameters</text>
+    <text class="fig-label" x="32" y="630">TOOLS</text>
+    <text class="fig-mut" x="32" y="648">tool/</text>
+    <text class="fig-mono" x="192" y="656" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">bash  |  read_file  write_file  edit  apply_patch  |  search_files</text>
+    <text class="fig-mono" x="192" y="676" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">git_status  git_diff  git_commit  git_branch  git_log</text>
+    <text class="fig-mono" x="192" y="696" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">web_search  web_extract  web_extract_browser</text>
+    <text class="fig-mono" x="192" y="716" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">lsp_definition  lsp_references  lsp_hover  lsp_symbols  |  todo  sandbox_allow</text>
+    <text class="fig-mono" x="192" y="736" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">load_skill  skill_manage  task  task_collect</text>
+    <text class="fig-mut" x="192" y="758">sandbox: path fence + command boundary + approval dialog -&gt; one per-run policy</text>
+    <rect class="fig-box" x="192" y="764" width="240" height="18" rx="6"/>
+    <text class="fig-mut" x="202" y="777">LSP (gopls) diagnostics</text>
+    <rect class="fig-box" x="444" y="764" width="252" height="18" rx="6"/>
+    <text class="fig-mut" x="454" y="777">MCP: stdio / HTTP, JSON-RPC 2.0</text>
+    <rect class="fig-alt" x="176" y="810" width="554" height="74" rx="8"/>
+    <text class="fig-t" x="192" y="836">Providers</text>
+    <text class="fig-mut" x="192" y="855">DeepSeek (default)  |  Ollama  |  MockLLM</text>
+    <text class="fig-mut" x="192" y="873">switch at runtime with Tab</text>
+    <text class="fig-mut" x="714" y="836" text-anchor="end">session/  config/  tlog/</text>
+    <text class="fig-mut" x="714" y="855" text-anchor="end">internal/netsafe/  skill/</text>
+    <text class="fig-mut" x="714" y="873" text-anchor="end">second LLM call: compaction</text>
+    <text class="fig-label" x="32" y="836">CONTEXT</text>
+    <text class="fig-mut" x="32" y="854">providers +</text>
+    <text class="fig-mut" x="32" y="869">persistence</text>
+    <rect class="fig-dash" x="150" y="344" width="560" height="452" rx="10"/>
+    <rect class="fig-bound" x="152" y="334" width="132" height="20" rx="6"/>
+    <text class="fig-cap" x="160" y="348">sandbox boundary</text>
+    <rect class="fig-box" x="760" y="104" width="180" height="44" rx="8"/>
+    <text class="fig-t" x="770" y="122">one CellGrid</text>
+    <text class="fig-mut" x="770" y="139">incremental render</text>
+    <rect class="fig-acc" x="760" y="226" width="180" height="74" rx="8"/>
+    <text class="fig-t" x="770" y="246">streamCh</text>
+    <text class="fig-mut" x="770" y="262">buffered 200</text>
+    <text class="fig-mut" x="770" y="278" style="font-size:9px">StreamMsg  ToolCallMsg</text>
+    <text class="fig-mut" x="770" y="292" style="font-size:9px">StreamDone</text>
+    <path class="fig-flow" d="M730 66 H832 V100" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="838" y="60">prompt</text>
+    <path class="fig-flow" d="M832 148 V222" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="788" y="190" text-anchor="end">delta</text>
+    <path class="fig-flow" d="M730 226 H848 V148" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="796" y="220" text-anchor="end">Update()</text>
+    <path class="fig-flow" d="M730 695 H880 V346"/>
+    <path class="fig-flow" d="M880 346 H850 V300" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="892" y="520" transform="rotate(-90 892 520)">tool result</text>
+    <text class="fig-foot" x="32" y="944">Every box is a package in this repository; the arrows are the paths a request and its stream actually take.</text>
+</svg>
