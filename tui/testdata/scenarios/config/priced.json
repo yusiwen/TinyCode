@@ -1,0 +1,13 @@
+{
+  "providers": [
+    {
+      "name": "stub",
+      "type": "openai",
+      "model": "stub",
+      "cost_currency": "credits"
+    }
+  ],
+  "budget": {
+    "max_tokens_per_session": 100000
+  }
+}
