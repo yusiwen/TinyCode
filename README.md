@@ -165,9 +165,11 @@ Two failures that are the environment, not the code:
 
 ### CellGrid Rendering Pipeline
 
-```
-Component → []CellChunk → wordWrap → Grid.AppendChunk → Grid.Render() → viewport
-```
+<figure>
+  <img src="docs/images/cellgrid-pipeline.svg" width="480"
+       alt="The CellGrid rendering pipeline: a component produces CellChunk values, wordWrap splits them at the width, Grid.AppendChunk writes them into the grid, Grid.Render() produces the lines, and the viewport shows them in the terminal.">
+  <figcaption><em>Figure 2 — the five steps from a rendered component to the terminal. Figure 1 holds the wider view.</em></figcaption>
+</figure>
 
 - `CellGrid` — flat array of `Cell{ Rune, Style, Width }`, auto-grows as content is added
 - `CellChunk` — struct with `Text string` and `Style CellStyle` (Bold, Italic, Underline, Fg, Bg)

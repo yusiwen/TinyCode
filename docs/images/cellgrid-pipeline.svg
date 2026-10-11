@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 248" width="480" height="248" role="img" aria-label="The CellGrid rendering pipeline: a component produces CellChunk values, wordWrap splits them at the width, Grid.AppendChunk writes them into the grid, Grid.Render() produces the lines, and the viewport shows them in the terminal.">
+  <defs>
+    <marker id="fig-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="fig-mk" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+  <style>
+    .fig-bg   { fill: #ffffff; }
+    .fig-box  { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
+    .fig-flow { stroke: #59636e; stroke-width: 1.5; fill: none; }
+    .fig-mk   { fill: #59636e; }
+    .fig-cap  { fill: #59636e; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; }
+    .fig-t    { fill: #1f2328; font-size: 12.5px; font-weight: 600; }
+    .fig-mono { fill: #0a7ea4; font-size: 11px; }
+    @media (prefers-color-scheme: dark) {
+      .fig-bg   { fill: #0d1117; }
+      .fig-box  { fill: #0d1117; stroke: #30363d; }
+      .fig-flow { stroke: #9198a1; }
+      .fig-mk   { fill: #9198a1; }
+      .fig-cap  { fill: #e6edf3; }
+      .fig-t    { fill: #e6edf3; }
+      .fig-mono { fill: #39c5cf; }
+    }
+  </style>
+  <rect class="fig-bg" x="0" y="0" width="480" height="248"/>
+    <text class="fig-t" x="20" y="56">Component</text>
+    <rect class="fig-box" x="146" y="32" width="322" height="38" rx="7"/>
+    <text class="fig-mono" x="158" y="56">[ ] CellChunk</text>
+    <line class="fig-flow" x1="186" y1="71" x2="186" y2="74" marker-end="url(#fig-arrow)"/>
+    <text class="fig-t" x="20" y="100">wordWrap</text>
+    <rect class="fig-box" x="146" y="76" width="322" height="38" rx="7"/>
+    <text class="fig-mono" x="158" y="100">splits text at width</text>
+    <line class="fig-flow" x1="186" y1="115" x2="186" y2="118" marker-end="url(#fig-arrow)"/>
+    <text class="fig-t" x="20" y="144">Grid.AppendChunk</text>
+    <rect class="fig-box" x="146" y="120" width="322" height="38" rx="7"/>
+    <text class="fig-mono" x="158" y="144">writes into the grid</text>
+    <line class="fig-flow" x1="186" y1="159" x2="186" y2="162" marker-end="url(#fig-arrow)"/>
+    <text class="fig-t" x="20" y="188">Grid.Render()</text>
+    <rect class="fig-box" x="146" y="164" width="322" height="38" rx="7"/>
+    <text class="fig-mono" x="158" y="188">one row per line</text>
+    <line class="fig-flow" x1="186" y1="203" x2="186" y2="206" marker-end="url(#fig-arrow)"/>
+    <text class="fig-t" x="20" y="232">viewport</text>
+    <rect class="fig-box" x="146" y="208" width="322" height="38" rx="7"/>
+    <text class="fig-mono" x="158" y="232">terminal display</text>
+    <text class="fig-cap" x="12" y="17">CELLGRID RENDERING PIPELINE</text>
+</svg>
