@@ -446,6 +446,12 @@ working directory only — it never walks upward and never merges nested files (
 
 ### F3 — Tool calls are not validated against their schema
 
+- **Picked up**: [#200](https://github.com/yusiwen/TinyCode/issues/200) — S1 (`ValidateArgs` in
+  `agent/toolcall.go`, implementing the five keywords the built-in schemas actually use), S2 (wired in
+  before `Execute`, so a call that breaks its schema is not executed and the model is told every problem
+  at once), S3 (the repeat circuit breaker: per-run, keyed on call identity, counting failures only),
+  S4 (tests and docs). The evidence below is the `9ff62fc` baseline and still holds; picking it up added
+  the keyword census that scopes S1, which is the part the entry did not have.
 - **Gap**: arguments are parsed but never checked against the tool's JSON Schema, so a missing
   required field, a wrong type or a bad enum reaches `Execute` and is reported as a tool error for
   the model to guess its way out of. There is also no dedup or circuit breaker for a model that
