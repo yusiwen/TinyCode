@@ -118,7 +118,7 @@
     <text class="fig-label" x="32" y="836">CONTEXT</text>
     <text class="fig-mut" x="32" y="854">providers +</text>
     <text class="fig-mut" x="32" y="869">persistence</text>
-    <rect class="fig-dash" x="150" y="344" width="560" height="452" rx="10"/>
+    <rect class="fig-dash" x="166" y="344" width="574" height="452" rx="10"/>
     <rect class="fig-bound" x="152" y="334" width="132" height="20" rx="6"/>
     <text class="fig-cap" x="160" y="348">sandbox boundary</text>
     <rect class="fig-box" x="760" y="104" width="180" height="44" rx="8"/>
