@@ -248,8 +248,13 @@ func TestCancelledRunMakesNoFurtherRequest(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("error = %v, want errors.Is(err, context.Canceled)", err)
+		// Which error comes back is a race, and both answers are correct: a cancel
+		// that lands during the backoff wraps context.Canceled, and one that lands
+		// before the retry decision leaves the 503 that ended the first attempt.
+		// Asserting one of them made this test fail on a loaded runner (issue
+		// #193); what must hold either way is below.
+		if !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "503") {
+			t.Errorf("error = %v, want either the caller's cancellation or the 503 that ended the first attempt", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the cancelled call did not return")
