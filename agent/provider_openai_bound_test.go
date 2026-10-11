@@ -52,6 +52,9 @@ func TestOpenAIRequestErrorClassifiesCallerCancellation(t *testing.T) {
 // waits for openAIRequestTimeout — two minutes — while the run looks like it is
 // still streaming an answer that is already complete.
 func TestOpenAIStreamIdleBound(t *testing.T) {
+	// The idle bound is retryable (issue #192), so shrink the schedule: this test
+	// is about when one attempt gives up, not about how many are made.
+	fastRetries(t)
 	previous := openAIIdleTimeout
 	openAIIdleTimeout = 400 * time.Millisecond
 	t.Cleanup(func() { openAIIdleTimeout = previous })

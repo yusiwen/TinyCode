@@ -181,6 +181,9 @@ func TestOllamaBatchTimesOutOnSilentEndpoint(t *testing.T) {
 // directions: silence between tokens fails the call, while a stream that keeps
 // producing is not killed by a total limit.
 func TestOllamaStreamIdleBound(t *testing.T) {
+	// The idle bound is retryable (issue #192), so shrink the schedule: this test
+	// is about when one attempt gives up, not about how many are made.
+	fastRetries(t)
 	previous := ollamaIdleTimeout
 	ollamaIdleTimeout = 400 * time.Millisecond
 	t.Cleanup(func() { ollamaIdleTimeout = previous })

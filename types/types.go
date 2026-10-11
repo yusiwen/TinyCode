@@ -52,11 +52,12 @@ type ChatRequest struct {
 type StreamCallbacks struct {
 	OnReasoningDelta func(text string)
 	OnTextDelta      func(text string)
-	OnToolCall       func(name string, arg string) // called before each tool execution
-	OnToolResult     func(name string)             // called after each tool result
-	OnStepDone       func()                        // called after all tools complete for one step
-	OnUsage          func(usage Usage)             // called once per LLM call that reported token usage
-	OnCost           func(event CostEvent)         // called once per LLM call, including one whose cost is unknown
+	OnToolCall       func(name string, arg string)             // called before each tool execution
+	OnToolResult     func(name string)                         // called after each tool result
+	OnStepDone       func()                                    // called after all tools complete for one step
+	OnUsage          func(usage Usage)                         // called once per LLM call that reported token usage
+	OnCost           func(event CostEvent)                     // called once per LLM call, including one whose cost is unknown
+	OnRetry          func(attempt, maxAttempts int, err error) // called before a provider request is re-sent after a transient failure
 }
 
 // Usage is the token accounting a provider reported for one request.

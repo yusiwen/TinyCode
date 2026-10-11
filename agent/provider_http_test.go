@@ -175,6 +175,9 @@ func TestOpenAIChatStream(t *testing.T) {
 // TestOpenAIErrors covers the failure paths that must surface an error instead
 // of an empty response.
 func TestOpenAIErrors(t *testing.T) {
+	// A 500 is retryable now (issue #192), so shrink the schedule: this test is
+	// about the status reaching the caller, not about how long the pause is.
+	fastRetries(t)
 	status := stubProviderServer(t, http.StatusInternalServerError, "upstream exploded")
 	p := NewOpenAIProvider("k", status.URL, "m")
 	if _, err := p.Chat(context.Background(), types.ChatRequest{}); err == nil || !strings.Contains(err.Error(), "500") {

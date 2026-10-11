@@ -199,12 +199,47 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 
 	tlog.Trace("llm.provider", "request", "model", model, "body", string(body))
 
-	// Bound the stream (issue #176). The cancel cause carries the bound that
-	// fired into the error message; a streaming request starts its clock at the
-	// request, so an endpoint that never sends even the response headers fails on
-	// the same idle bound as one that goes quiet mid-answer. The batch path keeps
-	// the whole-request bound on the client, because it has no interim progress
-	// to watch.
+	// Retry a transient failure (issue #192). The attempt is repeated only when
+	// nothing has reached the caller yet: a stream the user has already seen
+	// cannot be replayed without drawing it twice (see deliveryTracker).
+	maxAttempts := retryMaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	var lastErr error
+	attempts := 0
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attempts = attempt
+		tracker := trackedCallbacks(req.StreamCallbacks)
+		resp, err := p.attempt(ctx, body, tracker.callbacks())
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !shouldRetry(ctx, err, tracker.deliveredSomething(), attempt) {
+			break
+		}
+		delay := backoffDelay(attempt, retryAfterOf(err))
+		tlog.Warn("llm.provider", "retrying", "attempt", attempt+1, "of", maxAttempts,
+			"in", delay.Round(time.Millisecond).String(), "error", err.Error())
+		notifyRetry(req.StreamCallbacks, attempt+1, maxAttempts, err)
+		if serr := sleepCtx(ctx, delay); serr != nil {
+			return nil, fmt.Errorf("openai retry wait: %w", serr)
+		}
+	}
+	return nil, attemptsError(attempts, lastErr)
+}
+
+// attempt makes one HTTP request and reads its answer.
+//
+// Bound (issue #176): the cancel cause carries the bound that fired into the
+// error message; a streaming request starts its clock at the request, so an
+// endpoint that never sends even the response headers fails on the same idle
+// bound as one that goes quiet mid-answer. The batch path keeps the whole-request
+// bound on the client, because it has no interim progress to watch. Both are
+// per-attempt: a retry deserves a fresh clock rather than the remainder of the
+// one its predecessor spent.
+func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
 	reqCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
@@ -238,7 +273,11 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	if httpResp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(httpResp.Body)
 		tlog.Error("llm.provider", "api error", "status", httpResp.StatusCode)
-		return nil, fmt.Errorf("openai api: status %d: %s", httpResp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("openai api: %w", &statusError{
+			status:     httpResp.StatusCode,
+			body:       string(respBody),
+			retryAfter: parseRetryAfter(httpResp.Header.Get("Retry-After")),
+		})
 	}
 
 	// Branch: streaming SSE or batch
