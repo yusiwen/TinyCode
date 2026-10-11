@@ -208,4 +208,107 @@ func TestOpenAIBatchTimesOutOnSilentEndpoint(t *testing.T) {
 	if elapsed > 5*time.Second {
 		t.Errorf("Chat took %s to report the timeout", elapsed)
 	}
+	// Issue #186: the batch bound used to be the client's timer, whose message
+	// named the transport rather than the bound. It is a watchdog on the request
+	// context now, so the error says which bound fired and how long it was.
+	if !strings.Contains(err.Error(), "no answer within") {
+		t.Errorf("error = %v, want it to name the bound", err)
+	}
+	if !strings.Contains(err.Error(), openAIRequestTimeout.String()) {
+		t.Errorf("error = %v, want it to name %s", err, openAIRequestTimeout)
+	}
+}
+
+// TestOpenAILiveStreamOutlivesTheRequestBound is issue #185. A generation that is
+// working fine must not be cut because it took longer than the batch bound: the
+// server delivers a line every few milliseconds, so the idle bound is never close,
+// and the answer has to survive on its own traffic alone.
+//
+// The control matters as much as the assertion: the stream is measured to outlast
+// openAIRequestTimeout, or the test would pass without exercising the bug.
+func TestOpenAILiveStreamOutlivesTheRequestBound(t *testing.T) {
+	fastRetries(t)
+	prevRequest, prevIdle := openAIRequestTimeout, openAIIdleTimeout
+	openAIRequestTimeout = 100 * time.Millisecond
+	openAIIdleTimeout = 10 * time.Second
+	t.Cleanup(func() { openAIRequestTimeout, openAIIdleTimeout = prevRequest, prevIdle })
+
+	const (
+		chunks   = 10
+		interval = 30 * time.Millisecond // 300ms of generation, 3x the request bound
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		f := w.(http.Flusher)
+		for i := 0; i < chunks; i++ {
+			io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\n")
+			f.Flush()
+			time.Sleep(interval)
+		}
+		io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":10,\"total_tokens\":14}}\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+		f.Flush()
+	}))
+	defer srv.Close()
+
+	start := time.Now()
+	resp, err := NewOpenAIProvider("k", srv.URL, "m").Chat(context.Background(), types.ChatRequest{
+		StreamCallbacks: &types.StreamCallbacks{},
+	})
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("a healthy stream delivering a line every %s was cut after %s by a %s request bound: %v",
+			interval, elapsed, openAIRequestTimeout, err)
+	}
+	if want := strings.Repeat("x", chunks); resp.Content != want {
+		t.Errorf("content = %q, want %q", resp.Content, want)
+	}
+	if resp.Usage == nil || resp.Usage.TotalTokens != 14 {
+		t.Errorf("usage = %+v, want the reported total 14 (the read must reach the usage chunk)", resp.Usage)
+	}
+	if elapsed <= openAIRequestTimeout {
+		t.Errorf("the stream finished in %s, not longer than the %s bound: the test would not catch the regression",
+			elapsed, openAIRequestTimeout)
+	}
+}
+
+// TestOpenAIIdleBoundWinsWhenBothBoundsAreEqual is issue #186, at the shipped
+// defaults' shape: the two bounds are equal (120s in production), and a line has
+// already been delivered. The idle watchdog rebases on that line while a client
+// timer would not, so a client timer always won the race — the idle bound's
+// diagnosis was unreachable in every real deployment while its tests shrank only
+// the idle side.
+func TestOpenAIIdleBoundWinsWhenBothBoundsAreEqual(t *testing.T) {
+	fastRetries(t)
+	prevRequest, prevIdle := openAIRequestTimeout, openAIIdleTimeout
+	openAIRequestTimeout = 400 * time.Millisecond
+	openAIIdleTimeout = 400 * time.Millisecond // equal, as shipped
+	t.Cleanup(func() { openAIRequestTimeout, openAIIdleTimeout = prevRequest, prevIdle })
+
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		f := w.(http.Flusher)
+		// One delivered line, so the idle watchdog has rebased on it.
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n")
+		f.Flush()
+		<-release // then silence
+	}))
+	t.Cleanup(func() { close(release); srv.Close() })
+
+	start := time.Now()
+	resp, err := NewOpenAIProvider("k", srv.URL, "m").Chat(context.Background(), types.ChatRequest{
+		StreamCallbacks: &types.StreamCallbacks{},
+	})
+
+	if err == nil {
+		t.Fatalf("a stream that went silent after one line returned success with %q", resp.Content)
+	}
+	if !strings.Contains(err.Error(), "went silent") {
+		t.Errorf("error = %v, want the idle bound's message even though both bounds are %s", err, openAIIdleTimeout)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("the idle bound took %s to fire", elapsed)
+	}
 }

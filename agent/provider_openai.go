@@ -235,10 +235,11 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 // Bound (issue #176): the cancel cause carries the bound that fired into the
 // error message; a streaming request starts its clock at the request, so an
 // endpoint that never sends even the response headers fails on the same idle
-// bound as one that goes quiet mid-answer. The batch path keeps the whole-request
-// bound on the client, because it has no interim progress to watch. Both are
-// per-attempt: a retry deserves a fresh clock rather than the remainder of the
-// one its predecessor spent.
+// bound as one that goes quiet mid-answer. The batch path has no interim progress
+// to watch, so its whole-request bound is a watchdog on the same request context,
+// and no bound lives on the client (issues #185, #186). Both are per-attempt: a
+// retry deserves a fresh clock rather than the remainder of the one its
+// predecessor spent.
 func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
 	reqCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -248,8 +249,20 @@ func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.Str
 		watchdog = time.AfterFunc(openAIIdleTimeout, func() {
 			cancel(fmt.Errorf("%w for %s", errOpenAISilent, openAIIdleTimeout))
 		})
-		defer watchdog.Stop()
+	} else {
+		// The batch path has no interim progress to watch, so its bound covers the
+		// whole request — headers and body. It is armed here, on the request
+		// context, rather than on the client: an http.Client.Timeout also covers
+		// reading the body of a *streaming* answer, where it is a total limit on
+		// the generation (issue #185) and, because its clock starts at the request
+		// while the idle watchdog's restarts at every line, it always fired first
+		// once a line had arrived (issue #186). The message names the bound, the
+		// way the Ollama provider's does.
+		watchdog = time.AfterFunc(openAIRequestTimeout, func() {
+			cancel(fmt.Errorf("no answer within %s: %w", openAIRequestTimeout, context.DeadlineExceeded))
+		})
 	}
+	defer watchdog.Stop()
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost,
 		p.baseURL+"/chat/completions",
@@ -261,7 +274,10 @@ func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.Str
 	authVal := fmt.Sprintf("Bearer %s", p.apiKey)
 	httpReq.Header.Set("Authorization", authVal)
 
-	client := &http.Client{Timeout: openAIRequestTimeout}
+	// No http.Client.Timeout: it would bound the streaming path's whole
+	// generation too. The request context above bounds both shapes, and the
+	// transport keeps its own phase limits (dial, TLS) from http.DefaultTransport.
+	client := &http.Client{}
 	httpResp, err := client.Do(httpReq)
 	start := time.Now()
 	if err != nil {
