@@ -139,6 +139,12 @@ against the range the geometry allows (`cols*9 .. cols*9+24` px) rather than an 
 number. The layout is absolute per cell, because a browser only behaves like a
 terminal grid when every cell is told where it is.
 
+The two renderers on the same screen differ by exactly that: font coverage and CSS.
+
+| `--renderer font` (default) | `--renderer chromium` |
+| :--- | :--- |
+| ![A TUI screen rendered with the embedded Go Mono face](docs/images/tp-demo.png) | ![The same screen rendered through a browser](docs/images/tp-demo-browser.png) |
+
 The trade-off is glyph coverage: Go Mono has no box-drawing, braille or icon
 glyphs, and a rune the face lacks is drawn as a visible placeholder rather than
 dropped. Point `--font /path/to/JetBrainsMono.ttf` (or any monospace TTF) at a font
