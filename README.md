@@ -140,30 +140,11 @@ Two failures that are the environment, not the code:
 
 ### System Overview
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                      TinyCode                              │
-├──────────────────────┬───────────────────┬────────────────┤
-│   TUI (Bubble Tea)   │   Agent Layer      │   Tool Layer   │
-│                      │   (ReAct Loop)     │   (24 tools + MCP)│
-│  CellGrid            │                    │                │
-│  Viewport            │  Plan (primary)    │  bash          │
-│  Input Area          │  Build (primary)   │  read_file     │
-│  Status Bar          │  Explore (sub)     │  write_file    │
-│  Command Palette     │  General (sub)     │  edit          │
-│  Todo Display        │  Compact (hidden)  │  apply_patch   │
-│  Reasoning Fold      │  Title (hidden)    │  search_files  │
-│                      │                    │  task          │
-│                      │  Registry:         │  todo          │
-│                      │  Get/Set/Switch    │  memory        │
-│                      │  ToolAllowedFor    │  load_skill    │
-│                      │  Subagent→task     │  skill_manage  │
-│                      │                    │  lsp_* (4)     │
-│                      │                    │  sandbox_allow │
-│                      │                    │  web_search    │
-│                      │                    │  web_extract   │
-└──────────────────────┴───────────────────┴────────────────┘
-```
+<figure>
+  <img src="docs/images/system-overview.svg" width="800"
+       alt="TinyCode architecture: the TUI or one-shot CLI hands a prompt to the agent ReAct loop, which streams deltas from an LLM provider and runs tool calls under a sandbox policy; stream messages return to the CellGrid frame buffer for rendering.">
+  <figcaption><em>Figure 1 — the request path runs down the left; the stream path returns on the right. The figure follows the page theme.</em></figcaption>
+</figure>
 
 ### Multi-Agent System
 
