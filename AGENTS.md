@@ -64,7 +64,8 @@ renderer (pure Go by default, Chromium optional), the PTY session with named and
 bounded stages, and the browser discovery. `tui/` keeps the fixtures and the
 judgments: which screens matter, at which geometries, and what they should look like.
 
-- `tui/scenarios_test.go` — one scenario table and the ten builders. Adding a screen is
+- `tui/scenarios_test.go` — one scenario table and eleven `frame*` functions (the model
+  helper plus one builder per screen). Adding a screen is
   an entry here plus an intended layout change.
 - `tui/verification_test.go` — the assertions, each a few lines: `golden.Assert` for
   frames (byte for byte, `-update` aware), `golden.Assert` for the ANSI frame,
@@ -113,9 +114,11 @@ go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run \
 ```
 
 The `go run` line takes the version from `go.mod` (no `@version`): one place to bump.
-There are three files today: `startup` (80x24, geometry, exit code), `narrow` (40x12)
-and `palette` (`/` opens the command palette, typing filters it, Esc closes it — note
-that Ctrl+C while the palette is open *closes the palette*, so Esc comes first).
+There are 33 files today (`ls tui/testdata/scenarios/*.scenario | wc -l`); the ones to read
+first are `startup` (80x24, geometry, exit code), `narrow` (40x12), `palette` (`/` opens the
+command palette, typing filters it, Esc closes it — note that Ctrl+C while the palette is
+open *closes the palette*, so Esc comes first) and `status-cost` (the status bar's budget
+fraction and reported charge, which is why issue #195 exists).
 
 Steps are `open`, `send`, `wait`, `mark`, `stable`, `sleep`, `golden`, `diff`, `fit`,
 `screenshot`, `shot`, `close`, `wait-exit`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
