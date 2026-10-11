@@ -59,6 +59,10 @@ type Agent struct {
 	// runUsage is UsageTotal restricted to the run in flight, reset by each Run.
 	runUsage types.Usage
 
+	// runFailures counts, per exact tool call, how many times it has failed in the
+	// run in flight. See callRefused: a fresh prompt is a fresh start.
+	runFailures map[string]int
+
 	// PriceTable prices a call whose route reported no charge. Nil prices
 	// nothing, which is reported as an unknown cost rather than as zero.
 	PriceTable *PriceTable
@@ -302,6 +306,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	// The run's own spend is measured from here, whatever the session has already
 	// spent. A nested run (a sub-agent) has its own Agent and so its own totals.
 	a.runUsage = types.Usage{}
+	// So is the record of which calls have already failed this run.
+	a.runFailures = nil
 
 	for step < maxSteps {
 		tlog.Info("agent.loop", "llm call", "step", step, "mode", a.agentPrefix())
@@ -507,11 +513,34 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 							found = true
 							var args map[string]any
 							if err := json.Unmarshal([]byte(tc.Arguments), &args); err != nil {
-								result = fmt.Sprintf("error parsing args: %v", err)
+								// Unparseable arguments can loop as surely as a failing
+								// call, so they are counted under the raw text.
+								key := rawCallKey(t.Name, tc.Arguments)
+								if a.callRefused(key) {
+									result = repeatMessage(t.Name, a.runFailures[key])
+								} else {
+									a.noteCallFailure(key)
+									result = fmt.Sprintf("error parsing args: %v", err)
+								}
+								break
+							}
+							// One identity per call, so a model repeating a failing call
+							// is recognised even when the JSON key order differs.
+							key := toolCallKey(t.Name, args)
+							if a.callRefused(key) {
+								result = repeatMessage(t.Name, a.runFailures[key])
+							} else if problems := ValidateArgs(t.Parameters, args); len(problems) > 0 {
+								// Not executed: the schema the model was shown is the
+								// contract, and a call that breaks it is answered with
+								// what is wrong rather than with whatever the tool's own
+								// parsing happened to say.
+								a.noteCallFailure(key)
+								result = InvalidArgsMessage(t.Name, problems)
 							} else {
 								var execErr error
 								result, execErr = t.Execute(ctx, args)
 								if execErr != nil {
+									a.noteCallFailure(key)
 									result = fmt.Sprintf("error: %v", execErr)
 								}
 							}
