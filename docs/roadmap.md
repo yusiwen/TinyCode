@@ -543,7 +543,8 @@ by certainty of return rather than by size:
 
 1. **Certainties, days not weeks** — A1 (retry and backoff), A2 (usage), D5 (notification),
    F3 (tool-call validation). Each is independently shippable and removes a random failure or a
-   wasted step.
+   wasted step. **Delivered** (their entries carry the **Picked up** lines), together with A3's token
+   and cost halves, so this tier is empty: start at item 2 or 3 rather than here.
 2. **Existing code waiting for a wire** — B1 and B2 (memory), which need a privacy decision before
    an implementation: pointing a default at a remote service is a design choice, not a plumbing
    task.

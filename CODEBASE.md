@@ -185,13 +185,14 @@
   - `Providers []ProviderRecordConfig`
   - `Truncation *TruncationConfig`
   - `Budget *BudgetConfig`
+  - `Pricing *PricingConfig`
   - `Agents map[string]AgentOverride`
   - `Sandbox *SandboxConfig`
   - `Theme string`, `SessionDir string`
   - `LSP *LSPConfig`, `LogLevel string`
   - `ContextLength int` (default 1M), `CompressionThreshold int` (default 500K)
   - `SearXNGURL string`, `MCPServers []MCPServerConfig`
-- **`ProviderRecordConfig`**: `Name`, `Type` ("openai"|"ollama"), `Model`, `BaseURL`, `APIKeyEnv`
+- **`ProviderRecordConfig`**: `Name`, `Type` ("openai"|"ollama"), `Model`, `BaseURL`, `APIKeyEnv`, `CostCurrency` (the unit this route bills a *reported* charge in, e.g. `credits`; empty means the amount is displayed without a unit rather than labelled with a guessed one)
   - `APIKey()` method: priority → `api_key_env` → `UPPER(NAME)_API_KEY` → `OPENAI_API_KEY`
 - **`AgentOverride`**: `MaxSteps`, `AllowedTools`, `DeniedTools`, `SystemPrompt`, `Model`, `Permissions []AgentRule` (an explicit ruleset that replaces the agent's built-in one and wins over the tool lists)
 - **`AgentRule`**: `Action`, `Resource`, `Effect` (`"allow"`/`"deny"`) — a config-local mirror of `agent.Rule`
@@ -201,6 +202,9 @@
 - **`TruncationConfig`**: `MaxLines`, `MaxBytes`, `OutputDir`
 - **`NotifyConfig`**: `Channel` (`terminal` | `desktop` | `both` | `off`) and `MinDurationSeconds` — the D5 policy; an absent section yields internal/notify's own default (terminal, 30 s) rather than silence, and a `0` means announce everything
 - **`(cfg Config) NotifyPolicy() (channel string, minDuration time.Duration)`** — nil-safe accessor; `main.go` passes it to `notify.Configure`
+- **`PricingConfig`**: `Currency` and `Prices map[string]PriceEntry` — what a route charges, keyed by `"<route>/<model>"` with `"*"` allowed in either position. The route is part of the key because a price belongs to a billing endpoint, not to a model name: the same model costs differently through a reseller, a gateway and the vendor's own API
+- **`PriceEntry`**: `InputPerMillion`, `OutputPerMillion`, `CacheReadPerMillion`, `CacheWritePerMillion`, `ReasoningPerMillion` — a zero detail rate falls back to the lane it is carved out of (cached and written input to the input rate, reasoning to the output rate)
+- **`priceTable(cfg)`** (in `main.go`) — reads `Pricing` and builds the agent's `PriceTable`; an empty section prices nothing, which the agent reports as an unknown cost rather than as zero
 - **`BudgetConfig`**: `MaxTokensPerRun`, `MaxTokensPerSession` — both default to 0 = unlimited; a negative value in a file is ignored rather than read as "no limit", so only zero switches a limit off
 - **`(cfg Config) TokenBudgets() (perRun, perSession int)`** — nil-safe accessor used by `main.go` to set the agent's limits
 - **`DefaultConfig() Config`** — DeepSeek V4 Flash, `https://api.deepseek.com`, 1M context
