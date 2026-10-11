@@ -10,6 +10,7 @@
 | `agent/` | ReAct loop, LLM providers, context compression, agent registry, permissions |
 | `config/` | JSON config loading (defaults → user global → project local → env/CLI) |
 | `docs/` | Reference documents — `tui-verification.md` covers TUI verification |
+| `internal/notify/` | Completion announcements (roadmap D5): OSC 9 + OSC 777 by default, the platform notifier (osascript/notify-send) when asked, one duration gate, and no sound or Windows path |
 | `internal/netsafe/` | Shared SSRF policy: blocked-IP table, resolve-once + pinned-IP HTTP client, redirect re-validation, validated raw dialing (`DialValidatedContext`), optional loopback allowance |
 | `internal/browserproxy/` | Loopback filtering HTTP proxy for Chromium: validates and pins every hostname the browser contacts (CONNECT tunnels and plain HTTP) |
 | `lsp/` | LSP client (JSON-RPC over stdio), 4 tool wrappers, diagnostics |
@@ -198,6 +199,8 @@
 - **`MCPServerConfig`**: `Name`, `Transport` ("stdio"|"http"), `Command`, `Args`, `Env`, `URL`, `Headers`
 - **`LSPConfig`**: `Enabled bool`
 - **`TruncationConfig`**: `MaxLines`, `MaxBytes`, `OutputDir`
+- **`NotifyConfig`**: `Channel` (`terminal` | `desktop` | `both` | `off`) and `MinDurationSeconds` — the D5 policy; an absent section yields internal/notify's own default (terminal, 30 s) rather than silence, and a `0` means announce everything
+- **`(cfg Config) NotifyPolicy() (channel string, minDuration time.Duration)`** — nil-safe accessor; `main.go` passes it to `notify.Configure`
 - **`BudgetConfig`**: `MaxTokensPerRun`, `MaxTokensPerSession` — both default to 0 = unlimited; a negative value in a file is ignored rather than read as "no limit", so only zero switches a limit off
 - **`(cfg Config) TokenBudgets() (perRun, perSession int)`** — nil-safe accessor used by `main.go` to set the agent's limits
 - **`DefaultConfig() Config`** — DeepSeek V4 Flash, `https://api.deepseek.com`, 1M context
@@ -283,7 +286,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 
 - **`TaskState`** (int): `TaskRunning`, `TaskDone`, `TaskFailed`, `TaskTimedOut`
 - **`BgTask`**: `ID`, `Agent`, `Goal`, `State`, `Result`, `Error`, `Done chan`
-- **`BackgroundTaskManager`**: `NewBackgroundTaskManager()`, `Start(deps, name, goal) string`, `Collect(taskID) (string, error)`, `CollectContext(ctx, taskID)`, `Status(taskID) string`; all state writes go through a locked `finalize` (idempotent, `sync.Once` for `Done`) and a watchdog settles `TaskTimedOut` at the deadline so `Collect` cannot hang
+- **`BackgroundTaskManager`**: `NewBackgroundTaskManager()`, `Start(deps, name, goal) string`, `Collect(taskID) (string, error)`, `CollectContext(ctx, taskID)`, `Status(taskID) string`; all state writes go through a locked `finalize` — idempotent, the whole transition under one `sync.Once`, so the worker and the watchdog cannot settle a task twice — and a watchdog settles `TaskTimedOut` at the deadline so `Collect` cannot hang. The completion is announced by `internal/notify` from *outside* the lock (a terminal write, and on the desktop channel a spawned process, are not work to hold the manager for) and exactly once, because the once-guard covers the announcement too
 
 ---
 
@@ -454,6 +457,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 - Handles: mouse (scroll, click, char-level selection), key presses, window resize, stream messages, tool calls, LSP diagnostics, todo updates, permission dialogs
 - `tea.WindowSizeMsg` clamps every dimension to at least one cell (`minTerminalWidth`/`minTerminalHeight`) and never lets the viewport height or the input width go negative. A pty that was never given a window size reports `0 0`, and a zero-area `CellGrid` used to panic on its first `Append`; for a real terminal the clamp is a no-op, and the floor is one cell rather than a comfortable layout size so a genuinely narrow terminal is not laid out wider than the renderer's truncation width.
 - 15+ slash commands: `/exit`, `/compress`, `/help`, `/verbose`, `/fork`, `/session`, `/thinking`, `/model`, `/sessions`, `/theme`, `/diagnostics`, `/skill`, `/plan`, `/build`, `/dialog`
+- `notifyFinishedCmd(elapsed, what)` — a `tea.Cmd` (never an inline call: the desktop channel spawns a process) that announces a run which outlived `notify`'s threshold; `runStart` is stamped in `beginRun` and is what the elapsed time is measured from
 - `beginRun()`/`finishRun(id)`/`cancelRun()` — one run at a time; Ctrl+C cancels the run's context (and any pending permission) while the status stays streaming until that run's terminal message; every stream message carries a `RunID` and superseded runs are dropped
 - `runAgent(ctx, id, prompt)` — sets StreamCallbacks, runs agent in goroutine, stamps all messages with the run id
 - `persistSession()` — the single save path for `/exit`, `/quit` and double-Ctrl+C; reuses `currentBranch` (preserving `AllowedPaths`) instead of minting a duplicate id
