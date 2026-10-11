@@ -255,22 +255,16 @@ History threshold: 50% of context window
 
 ### Data Flow
 
-```
-User Input (textarea)
-  ↓
-ChatMsg → agent.Run() → ReAct Loop
-  │                        ├── LLM provider (streaming SSE)
-  │                        ├── Tool execution (permissions checked)
-  │                        └── No tool call → return final answer
-  ↓
-streamCh (buffered 200)
-  ↓
-TUI Update() → ToolCallMsg / StreamMsg / StreamDone
-  ↓
-TUI View() → Component.Render() → CellChunks → CellGrid
-  ↓
-viewport.SetContent() → terminal display
-```
+<figure>
+  <img src="docs/images/data-flow.svg" width="720"
+       alt="TinyCode data flow: the textarea turns one line into a ChatMsg, agent.Run() runs one ReAct step whose three exits are an LLM provider call, tool execution and termination, the result feeds the next step, the six stream messages cross a chan tea.Msg buffered at 200, and Update() then View() render CellChunks into a CellGrid shown by the viewport.">
+  <figcaption><em>Figure 3 — one step and the pass through the channel. The loop on the left is the revision path: a step's result is the next step's input.</em></figcaption>
+</figure>
+
+The channel is the decoupling point: the agent goroutine sends the six message types
+(`StreamMsg`, `ToolCallMsg`, `ToolResultMsg`, `StreamDone`, `UsageMsg`, `CostMsg`) into a
+`chan tea.Msg` buffered at 200 while the event loop keeps rendering, so a slow provider
+delta does not block a repaint.
 
 ### Project Structure
 
