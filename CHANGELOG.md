@@ -130,6 +130,27 @@ outlived a threshold.
 
 Roadmap entry D5.
 
+### A tool call is checked before it runs, and a loop is broken
+
+A model's tool call went straight from "the JSON parsed" to the tool. A missing required field, a wrong
+type or a value outside an enum reached `Execute` and came back as whatever that tool's own parsing
+happened to say — or, worse, as a result that looked fine for a call that did something else.
+
+Arguments are now validated against the same schema the model was shown, and a call that breaks it is
+**not executed**: the model is told every problem with it at once (field, what the schema wants, what
+arrived), so one step can fix three typos instead of three steps fixing one each. The validator
+implements exactly the keywords the 24 built-in schemas use — `type`, `properties`, `required`, `enum`,
+`items`, counted by a command rather than guessed — and ignores every other keyword, because refusing an
+argument over a rule it cannot evaluate would be worse than not checking it.
+
+A model that repeats the *same failing call* is now refused instead of being handed the same failure
+until the step budget runs out: the call's identity is its tool and its arguments (key order does not
+matter), it is counted per run, and after `repeatFailureLimit` failures the answer says so and says to
+change the approach. A repeated **successful** call is never counted — polling a build is work, not a
+loop — and a fresh prompt is a fresh start.
+
+Roadmap entry F3.
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration

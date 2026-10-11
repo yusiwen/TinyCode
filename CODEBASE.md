@@ -60,7 +60,7 @@
      - Call `Provider.Chat()` with streaming callbacks
      - No tool calls → save to history + session, return content
      - Empty response (no content, no tool calls) → append placeholder, retry
-     - Has tool calls → append assistant message with all calls, execute concurrently via goroutines, collect results in index order
+     - Has tool calls → append assistant message with all calls, execute concurrently via goroutines, collect results in index order. Each call goes through `toolcall.go` first: its arguments are checked against the tool's own schema (`ValidateArgs` — type/properties/required/enum/items, the five keywords the built-in schemas use, everything else ignored), and a call that breaks it is **not executed** but answered with every problem at once. A call whose exact identity (`toolCallKey`, key-order independent) has already failed `repeatFailureLimit` times in this run is refused as a loop instead of being tried again; successes are never counted, and the count resets with each run
      - Security block detection: result starting with `[SECURITY BLOCKED]` bypasses LLM
      - Fire `OnStepDone` callback after all tools complete
   3. Max steps reached: inject forced summary user message, one final LLM call with no tools
