@@ -9,6 +9,27 @@ back to its change and tests.
 
 ## Unreleased
 
+### A long generation is no longer cut, and the idle bound can fire
+
+Two defects with one root cause: `agent/provider_openai.go` armed a single
+`http.Client{Timeout: openAIRequestTimeout}` for both request shapes. Go's
+`http.Client.Timeout` covers *reading the body*, so on a streaming call it was a total limit on the
+generation — the opposite of what the file's own comment promises. Measured against a server delivering
+a line every 30 ms: a healthy 300 ms answer was cut at 102 ms with `Client.Timeout or context
+cancellation while reading body` (#185).
+
+The same timer made the idle bound unreachable at the shipped defaults: both bounds are 120 s, and a
+client timer starts at the request while the idle watchdog rebases on every line, so once a line had
+arrived the client timer always won. The idle bound's diagnosis was therefore correct only in the tests,
+which shrank the idle side and left the request side at 120 s (#186).
+
+Both are fixed by taking the timer off the client. The streaming path's only bound is the idle
+watchdog, which also covers the wait for response headers. The batch path — no interim progress to
+watch — gets a watchdog on the same request context, naming its bound the way the Ollama provider does
+(`no answer within 120s`). The transport keeps its own phase limits (dial, TLS) from the default
+transport, and no bound is armed on the client itself, so neither defect can be reintroduced by
+lowering a client timer.
+
 ### TUI verification moved to `tuiprobe`
 
 The TUI visual harness's mechanism — terminal emulator, PTY scaffolding, golden
