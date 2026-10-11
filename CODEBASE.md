@@ -475,7 +475,7 @@ Design reference and usage: [docs/tui-verification.md](docs/tui-verification.md)
 mechanism lives in the nested `tuiprobe` module, pinned in `go.mod`. The recipe for
 adding a scenario — frame, black-box scenario file, or tool release — is in
 [AGENTS.md](AGENTS.md).
-- `scenarios_test.go` — the ten frame builders and **one** scenario table (`name`,
+- `scenarios_test.go` — eleven `frame*` functions and **one** scenario table (`name`,
   golden sizes, shot specs, builder) that drives frames, the ANSI frame, determinism,
   geometry, images and the live-stream rendering. The builders leave `sessionStart` at
   the zero time, so the status bar's session clock renders a constant (saturated)
@@ -485,7 +485,7 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
   (geometry, mirroring what bubbletea truncates before writing), `tuiprobe/render/font`
   for PNGs, `tuiprobe/session` for `bin/tinycode` on a real 80x24 PTY, a second run on
   a size-less one, and a replay of the live stream into `tuiprobe/screen`.
-- `tui/testdata/golden/frames/*.txt` — 27 plain-text frames (9 scenarios at 80x24 and
+- `tui/testdata/golden/frames/*.txt` — 29 plain-text frames (10 scenarios at 80x24 and
   120x40, plus 100x30 or 200x50 where a wider layout adds something, and 40x12 for the
   narrow end). `frames/ansi/markdown_80x24.ansi` — one raw ANSI frame, so colour, bold,
   underline and OSC 8 links stay diffable. Regenerate with
@@ -585,7 +585,7 @@ User Input (textarea / CLI arg)
 - LSP: 36 tests — `io.Pipe`-based mock (no real server needed), single-reader correlation tests, server selection/error branches, baseline deltas, and `LSP_TEST=1` integration tests against real gopls
 - MCP: 33 tests
 - TUI: CellGrid roundtrip, keyboard, mouse, streaming, selection, todo rendering — plus, since the frame work landed, three layers that can actually see the frame:
-  - `TestGoldenFrames` (27 plain-text frames: 9 scenarios at 80x24/120x40, plus 100x30/200x50 for wide layouts and 40x12 for the narrow end) and `TestGoldenFrameANSI` (one raw ANSI frame) in `tui/frame_golden_test.go`, regenerated with `go test ./tui -run Golden -update`. Rendering is pinned to a TrueColor profile for the duration of a frame render and the `CellStyle` → lipgloss style cache is emptied, because without that lipgloss sees a non-TTY stdout and every style silently disappears. Each frame asserts it still carries SGR sequences, and every scenario is rendered twice and compared so the incremental grid path cannot drift.
+  - `TestGoldenFrames` (29 plain-text frames: 10 scenarios at 80x24/120x40, plus 100x30/200x50 for wide layouts and 40x12 for the narrow end) and `TestGoldenFrameANSI` (one raw ANSI frame) in `tui/scenarios_test.go` + `tui/verification_test.go`, regenerated with `go test ./tui -run Golden -update`. Rendering is pinned to a TrueColor profile for the duration of a frame render and the `CellStyle` → lipgloss style cache is emptied, because without that lipgloss sees a non-TTY stdout and every style silently disappears. Each frame asserts it still carries SGR sequences, and every scenario is rendered twice and compared so the incremental grid path cannot drift.
   - `tui/program_driver_test.go` drives the real `tea.Program` with `tea.WithInput(io.Pipe)` / `tea.WithOutput(buffer)`: typing, the double Ctrl+C quit, 25 resizes and a typed `/exit`, with model fields read only after `Run()` returns.
   - `tui/frame_shot_test.go` (gated) renders the scenarios to PNG and smokes the built binary on a PTY — twice: at 80x24 and on a PTY whose window size was never set (`0 0`), which is the regression guard for `tui/geometry_test.go`'s clamp; `tui/pty_screen_test.go` replays the live 80x24 stream into a screen buffer and screenshots *that*, so one PNG comes from the running renderer rather than from `View()`. The status bar's session clock is pinned by a zero `sessionStart` in the scenario builders — `time.Since(zero)` saturates — so goldens and screenshots show a constant duration instead of the wall clock.
 - Edit: 14 tests covering 7 fuzzy strategies
@@ -611,7 +611,7 @@ Counts in this document are produced by these commands at the commit they descri
 ```bash
 grep -rn '^func Test' --include=*_test.go . | wc -l    # 710 test functions
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
-ls tui/testdata/golden/frames/*.txt | wc -l            # 27 plain-text frames
+ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
 ```
 
