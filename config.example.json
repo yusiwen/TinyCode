@@ -73,6 +73,12 @@
     }
   },
 
+  "notify": {
+    "$comment": "Optional. When a background task or a long run finishes, say so. channel: terminal (default; an escape iTerm2/WezTerm/kitty/Ghostty/rxvt render as a notification, and a terminal that does not know it ignores it), desktop (the platform's own notifier: osascript on macOS, notify-send on Linux), both, or off. min_duration_seconds defaults to 30 and gates everything, so a two-second task stays quiet; 0 announces every completion. There is no sound, and no Windows notifier.",
+    "channel": "terminal",
+    "min_duration_seconds": 30
+  },
+
   "budget": {
     "$comment": "Optional cumulative token budgets, as the provider reports them. Both default to 0 = unlimited. max_tokens_per_run bounds one prompt's ReAct loop; max_tokens_per_session bounds every run on this session together. A run stops before its next provider call once either is reached.",
     "max_tokens_per_run": 0,

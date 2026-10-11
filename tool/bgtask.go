@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/tlog"
 )
 
@@ -146,14 +147,51 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 // A task that already reached a terminal state (e.g. via the watchdog) is left
 // untouched, so a late-completing sub-agent cannot overwrite it.
 func (mgr *BackgroundTaskManager) finalize(task *BgTask, state TaskState, errMsg, result string) {
+	// The whole transition is once-guarded, not only the channel close: the worker
+	// and the watchdog can both call this, and exactly one of them settles the task
+	// (and therefore announces it).
+	var settled bool
+	var elapsed time.Duration
+	var agent, goal string
+
 	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
-	if task.State == TaskRunning {
-		task.State = state
-		task.Error = errMsg
-		task.Result = result
+	task.doneOnce.Do(func() {
+		if task.State == TaskRunning {
+			task.State = state
+			task.Error = errMsg
+			task.Result = result
+		}
+		close(task.Done)
+		settled = true
+		elapsed = time.Since(task.started)
+		agent, goal = task.Agent, task.Goal
+	})
+	mgr.mu.Unlock()
+
+	// Announced outside the lock: the terminal write and, on the desktop channel, a
+	// spawned notifier are not work to hold the manager for — a Collect waiting on
+	// the mutex would be waiting on a notification.
+	if settled {
+		notify.Finished(elapsed, "TinyCode", taskFinishedMessage(agent, state, goal))
 	}
-	task.doneOnce.Do(func() { close(task.Done) })
+}
+
+// taskFinishedMessage is what a finished background task says: what ended and how,
+// with the goal the user wrote so the announcement is recognisable without
+// looking at the interface.
+func taskFinishedMessage(agent string, state TaskState, goal string) string {
+	how := map[TaskState]string{
+		TaskDone:     "finished",
+		TaskFailed:   "failed",
+		TaskTimedOut: "timed out",
+	}[state]
+	if how == "" {
+		how = "ended"
+	}
+	if agent == "" {
+		agent = "sub-agent"
+	}
+	return fmt.Sprintf("background %s task %s: %s", agent, how, goal)
 }
 
 // Collect waits for a background task to complete and returns its result.

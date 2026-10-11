@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
@@ -152,6 +153,14 @@ func newRootCmd() *cobra.Command {
 			if cfg.SearXNGURL != "" {
 				tool.SetSearXNG(cfg.SearXNGURL)
 			}
+			// A finished background task announces itself, unless the user said
+			// off. The absent section is not silence: see internal/notify for why
+			// the default is on and terminal-only.
+			channel, minDuration := cfg.NotifyPolicy()
+			notify.Configure(notify.Config{
+				Channel:     notify.Channel(channel),
+				MinDuration: minDuration,
+			})
 
 			// Load project context files (AGENTS.md, CLAUDE.md, .tinycode.md)
 			if ctx := loadProjectContext(); ctx != "" {

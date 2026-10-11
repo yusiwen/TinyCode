@@ -82,6 +82,21 @@ type BudgetConfig struct {
 	MaxTokensPerSession int `json:"max_tokens_per_session,omitempty"`
 }
 
+// NotifyConfig declares when a finished task should announce itself (roadmap D5).
+//
+// Channel is one of "terminal" (the default: an escape the terminal may render as
+// a notification, invisible if it does not), "desktop" (the platform's own
+// notifier, opt-in because a notification-centre entry per long run is a
+// different kind of intrusion), "both", or "off".
+//
+// MinDurationSeconds is how long something has to take first. It defaults to 30
+// when unset; an explicit 0 announces everything. A threshold rather than a focus
+// check, because there is no portable way to ask a terminal whether it has focus.
+type NotifyConfig struct {
+	Channel            string `json:"channel,omitempty"`
+	MinDurationSeconds int    `json:"min_duration_seconds,omitempty"`
+}
+
 // AgentRule mirrors agent.Rule for configuration files. Keeping a local copy
 // avoids a config → agent dependency; main.go translates it.
 type AgentRule struct {
@@ -161,6 +176,7 @@ type Config struct {
 	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
 	Truncation   *TruncationConfig        `json:"truncation,omitempty"`
 	Budget       *BudgetConfig            `json:"budget,omitempty"`
+	Notify       *NotifyConfig            `json:"notify,omitempty"`
 	Pricing      *PricingConfig           `json:"pricing,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox      *SandboxConfig           `json:"sandbox,omitempty"`
@@ -188,6 +204,16 @@ func (c Config) TokenBudgets() (perRun, perSession int) {
 		return 0, 0
 	}
 	return c.Budget.MaxTokensPerRun, c.Budget.MaxTokensPerSession
+}
+
+// NotifyPolicy returns the notification channel and the shortest thing worth
+// announcing. An absent section yields the built-in policy rather than silence:
+// see internal/notify for why the default is on and terminal-only.
+func (c Config) NotifyPolicy() (channel string, minDuration time.Duration) {
+	if c.Notify == nil {
+		return "", 0
+	}
+	return c.Notify.Channel, time.Duration(c.Notify.MinDurationSeconds) * time.Second
 }
 
 // DefaultConfig returns the hardcoded default configuration.
@@ -302,6 +328,19 @@ func merge(dst, src Config) Config {
 			for key, entry := range src.Pricing.Prices {
 				dst.Pricing.Prices[key] = entry
 			}
+		}
+	}
+	if src.Notify != nil {
+		if dst.Notify == nil {
+			dst.Notify = &NotifyConfig{}
+		}
+		if src.Notify.Channel != "" {
+			dst.Notify.Channel = src.Notify.Channel
+		}
+		// A negative duration is not a way to switch the threshold off; only zero
+		// is "announce everything".
+		if src.Notify.MinDurationSeconds >= 0 {
+			dst.Notify.MinDurationSeconds = src.Notify.MinDurationSeconds
 		}
 	}
 	if src.SessionDir != "" {
