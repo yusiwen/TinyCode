@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 780" width="720" height="638" role="img" aria-label="TinyCode data flow: the textarea turns one line into a ChatMsg, agent.Run() runs one ReAct step whose three exits are an LLM provider call, tool execution and termination, the result feeds the next step, the stream messages cross a buffer into the TUI, and Update() then View() render CellChunks into a CellGrid shown by the viewport.">
+  <defs>
+    <marker id="fig-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="fig-mk" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+  <style>
+    .fig-bg   { fill: #ffffff; }
+    .fig-card { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
+    .fig-alt  { fill: #eaeef2; stroke: #d0d7de; stroke-width: 1; }
+    .fig-box  { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
+    .fig-acc  { fill: #ddf4ff; stroke: #0969da; stroke-width: 1; }
+    .fig-flow { stroke: #59636e; stroke-width: 1.5; fill: none; }
+    .fig-mk   { fill: #59636e; }
+    .fig-title { fill: #1f2328; font-size: 19px; font-weight: 600; }
+    .fig-sub   { fill: #59636e; font-size: 12px; }
+    .fig-cap   { fill: #1f2328; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; }
+    .fig-t     { fill: #1f2328; font-size: 12.5px; font-weight: 600; }
+    .fig-mut   { fill: #59636e; font-size: 11px; }
+    .fig-mono  { fill: #0a7ea4; font-size: 10.5px; }
+    @media (prefers-color-scheme: dark) {
+      .fig-bg   { fill: #0d1117; }
+      .fig-card { fill: #161b22; stroke: #30363d; }
+      .fig-alt  { fill: #1c2430; stroke: #30363d; }
+      .fig-box  { fill: #0d1117; stroke: #30363d; }
+      .fig-acc  { fill: #121d2f; stroke: #4493f8; }
+      .fig-flow { stroke: #9198a1; }
+      .fig-mk   { fill: #9198a1; }
+      .fig-title { fill: #e6edf3; }
+      .fig-sub   { fill: #9198a1; }
+      .fig-cap   { fill: #e6edf3; }
+      .fig-t     { fill: #e6edf3; }
+      .fig-mut   { fill: #9198a1; }
+      .fig-mono  { fill: #39c5cf; }
+    }
+  </style>
+  <rect class="fig-bg" x="0" y="0" width="880" height="780"/>
+    <text class="fig-title" x="32" y="30">TinyCode - Data Flow</text>
+    <text class="fig-sub" x="32" y="48">one agent step, the pass through the channel, and the TUI that renders it</text>
+    <rect class="fig-card" x="32" y="64" width="478" height="56" rx="8"/>
+    <text class="fig-t" x="48" y="88">User Input</text>
+    <text class="fig-mut" x="48" y="106">textarea: one line, then Enter</text>
+    <text class="fig-mono" x="494" y="88" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">ChatMsg</text>
+    <text class="fig-mut" x="494" y="106" text-anchor="end">tea.Cmd</text>
+    <rect class="fig-acc" x="32" y="152" width="478" height="70" rx="10"/>
+    <rect class="fig-card" x="38" y="158" width="466" height="58" rx="8"/>
+    <text class="fig-t" x="50" y="182">agent.Run() - one ReAct step</text>
+    <text class="fig-mut" x="50" y="201">own context, own step budget, frozen file-effect policy</text>
+    <text class="fig-mono" x="492" y="182" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">ReAct</text>
+    <text class="fig-cap" x="848" y="228" text-anchor="end">3 exits of one step</text>
+    <rect class="fig-box" x="592" y="256" width="256" height="46" rx="8"/>
+    <text class="fig-t" x="606" y="276">LLM provider call</text>
+    <text class="fig-mut" x="606" y="294">streaming SSE: reasoning + text deltas</text>
+    <rect class="fig-box" x="592" y="316" width="256" height="46" rx="8"/>
+    <text class="fig-t" x="606" y="336">tool execution</text>
+    <text class="fig-mut" x="606" y="354">permissions checked before the call</text>
+    <rect class="fig-box" x="592" y="376" width="256" height="46" rx="8"/>
+    <text class="fig-t" x="606" y="396">no tool call left</text>
+    <text class="fig-mut" x="606" y="414">loop ends: the final answer is returned</text>
+    <line class="fig-flow" x1="566" y1="279" x2="586" y2="279" marker-end="url(#fig-arrow)"/>
+    <line class="fig-flow" x1="566" y1="339" x2="586" y2="339" marker-end="url(#fig-arrow)"/>
+    <path class="fig-flow" d="M566 399 V398 H24 V142 H54" marker-end="url(#fig-arrow)"/>
+    <line class="fig-flow" x1="150" y1="124" x2="150" y2="148" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="140" y="140" text-anchor="end">prompt</text>
+    <line class="fig-flow" x1="150" y1="226" x2="150" y2="266" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="128" y="250" text-anchor="end">stream messages</text>
+    <rect class="fig-alt" x="32" y="272" width="478" height="84" rx="8"/>
+    <text class="fig-t" x="48" y="298">streamCh</text>
+    <text class="fig-mut" x="48" y="318">chan tea.Msg, buffered at 200</text>
+    <text class="fig-mono" x="494" y="318" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">cap 200</text>
+    <text class="fig-mut" x="48" y="336">decouples the agent goroutine from the event loop</text>
+    <line class="fig-flow" x1="150" y1="360" x2="150" y2="384" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="132" y="376" text-anchor="end">tea.Msg</text>
+    <rect class="fig-card" x="32" y="390" width="478" height="62" rx="8"/>
+    <text class="fig-t" x="48" y="404">TUI Update()</text>
+    <text class="fig-mut" x="48" y="428">dispatches one message</text>
+    <text class="fig-mut" x="494" y="408" text-anchor="end">StreamMsg</text>
+    <text class="fig-mut" x="494" y="422" text-anchor="end">ToolCallMsg  ToolResultMsg</text>
+    <text class="fig-mut" x="494" y="436" text-anchor="end">StreamDone  UsageMsg  CostMsg</text>
+    <line class="fig-flow" x1="150" y1="456" x2="150" y2="480" marker-end="url(#fig-arrow)"/>
+    <rect class="fig-card" x="32" y="486" width="478" height="62" rx="8"/>
+    <text class="fig-t" x="48" y="510">TUI View()</text>
+    <text class="fig-mut" x="48" y="530">Component.Render() -&gt; CellChunks</text>
+    <line class="fig-flow" x1="150" y1="552" x2="150" y2="576" marker-end="url(#fig-arrow)"/>
+    <rect class="fig-card" x="32" y="582" width="478" height="56" rx="8"/>
+    <text class="fig-t" x="48" y="606">CellGrid -&gt; viewport.SetContent()</text>
+    <text class="fig-mut" x="48" y="624">terminal</text>
+    <text class="fig-mut" x="494" y="606" text-anchor="end">one frame</text>
+</svg>
