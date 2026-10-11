@@ -88,6 +88,25 @@ and then shows the count of calls the total does not include beside it; a sessio
 the bar it has always had. Whether this project should ship a price table of its own is a separate,
 undecided question (#182).
 
+### Transient provider failures are retried
+
+A rate limit, a model still loading or a connection reset used to end the step. Both providers now
+retry a failure that a second attempt could fix — 408, 429 and any 5xx, plus a transport error that
+produced no response — with exponential backoff, equal jitter, and a floor at the `Retry-After` an
+endpoint sends (its HTTP-date form is ignored rather than mis-parsed). The pause is capped, and the
+call is bounded by the caller's own context, so Ctrl+C during a backoff stops the sequence instead of
+being noticed after the next request.
+
+The rule that keeps this honest is the **safe-replay** rule: a streaming attempt is repeated only when
+nothing has reached the caller yet. Text already drawn cannot be drawn twice, and a duplicated answer
+is worse than the failure, which at least says what happened. A batch call has nothing on screen, so it
+is safe to repeat whole. A retry announces itself (`retrying (2/3): …` in the status bar, a line in
+one-shot mode), because a pause with nothing on screen is indistinguishable from a hang, and a final
+failure names how many attempts it took.
+
+Not retried, deliberately: a context error, a body we cannot parse, and any other 4xx — a rejected key
+or a missing model answers the same way however many times it is asked.
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration

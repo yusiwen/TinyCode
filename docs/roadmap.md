@@ -49,13 +49,23 @@ current tree.
 
 ### A1 — No retry, backoff or rate-limit handling for provider calls
 
+- **Picked up**: [#192](https://github.com/yusiwen/TinyCode/issues/192) — S1 (the policy:
+  classification, exponential backoff with jitter, `Retry-After`), S2 (the OpenAI-compatible provider
+  retries a *safe* attempt), S3 (the Ollama provider gets the same policy), S4 (visibility, tests,
+  docs). Picking it up also corrected the **Already present** line below.
 - **Gap**: one 429 or 5xx, or a stream that breaks mid-response, fails the whole step. No
   exponential backoff with jitter, no classification of retryable statuses, no safe replay.
 - **Evidence**: any non-200 becomes an error (`agent/provider_openai.go:142-145`,
   `agent/provider_ollama.go:204-206`) and the loop returns on a provider error
   (`agent/agent.go:238`). `rg -in 'retry|backoff' agent/ -g '!*_test.go'` → 3 hits, all comments.
-- **Already present**: retry/backoff exists for browser probing (`tool/web_browser.go:297`) and web
-  extraction (`tool/web_extract.go:44`) — never for provider HTTP calls.
+- **Already present**: **corrected** — this line used to point at `tool/web_browser.go:297` and
+  `tool/web_extract.go:44` as an existing retry/backoff idiom. Neither is one. The first is
+  `browserProbeRetryAfter`, the cooldown that decides when a timed-out browser-*probe verdict*
+  expires, and the second is a sentence inside the `web_extract` tool's own description ("Fallback
+  chain: direct HTTP → Cloudflare retry → …"). The only retry-shaped loop in the repository is
+  `tool/sandboxio.go:100`, which picks a different temp-file name after a collision. Nothing retried a
+  failed operation, so A1 was new code with no existing mechanism to reuse — which is why the entry's
+  estimate is the honest one and the correction matters.
 - **Effort**: ~1–2 d (source report estimate, unverified).
 
 ### A2 — Provider-reported usage is discarded; no cost accounting
