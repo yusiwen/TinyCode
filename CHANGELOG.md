@@ -81,9 +81,11 @@ which a single input price cannot express. `Usage` now carries `cached_prompt_to
 `*` wildcards, because a price belongs to a billing endpoint rather than to a model name. A call is
 priced from a declaration only when its tokens were *reported*: multiplying a declared rate by a
 guessed token count would dress a second estimate as a measurement. Everything else is counted as
-**unknown**, which the status bar shows as an unknown rather than as zero — `Ollama` and subscription
-plans have no per-token price at all, and "0" would read as free in exactly the decisions the number
-is there to inform. Whether this project should ship a price table of its own is a separate,
+**unknown**, and never folded into a total as zero — `Ollama` and subscription plans have no per-token
+price at all, and "0" would read as free in exactly the decisions the number is there to inform. The
+status bar shows money only once cost accounting is in play (a rate declared, or a charge reported),
+and then shows the count of calls the total does not include beside it; a session with neither keeps
+the bar it has always had. Whether this project should ship a price table of its own is a separate,
 undecided question (#182).
 
 ## v0.0.7 — 2026-10-01

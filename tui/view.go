@@ -436,20 +436,26 @@ func (m *TuiModel) renderStatusBar() string {
 		}
 	}
 
-	// Money appears only once there is something to say about it, so a session
-	// with no cost information renders exactly the bar it always has. A total is
-	// shown together with the count of calls it does not include: "0.40 USD" and
-	// "0.40 USD, and three calls nobody priced" are different statements, and the
-	// second is the one that is true.
+	// Money appears only when cost accounting is in play — a rate the user
+	// declared, or a route that reported a charge. A session with neither is not
+	// doing cost accounting at all, and announcing "unknown" on every run would
+	// spend the bar's width on a statement nobody asked for; silence there is not
+	// the same as zero. Once it is in play, the calls nobody could price are shown
+	// beside the total, because "0.40 USD" and "0.40 USD, and three calls nobody
+	// priced" are different claims and the second is the true one.
+	costInPlay := len(m.sessionCost) > 0
+	if !costInPlay && m.config != nil && m.config.Pricing != nil && len(m.config.Pricing.Prices) > 0 {
+		costInPlay = true
+	}
 	costStr := ""
-	switch {
-	case len(m.sessionCost) == 0 && m.unpricedCalls == 0:
-	case len(m.sessionCost) == 0:
-		costStr = fmt.Sprintf("  cost: unknown (%d unpriced)", m.unpricedCalls)
-	default:
-		costStr = "  cost: " + m.sessionCost.String()
-		if m.unpricedCalls > 0 {
-			costStr += fmt.Sprintf(" (+%d unpriced)", m.unpricedCalls)
+	if costInPlay {
+		if len(m.sessionCost) == 0 {
+			costStr = fmt.Sprintf("  cost: unknown (%d unpriced)", m.unpricedCalls)
+		} else {
+			costStr = "  cost: " + m.sessionCost.String()
+			if m.unpricedCalls > 0 {
+				costStr += fmt.Sprintf(" (+%d unpriced)", m.unpricedCalls)
+			}
 		}
 	}
 
