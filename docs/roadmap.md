@@ -358,6 +358,12 @@ current tree.
 
 ### D5 — No notification when a long task finishes
 
+- **Picked up**: [#198](https://github.com/yusiwen/TinyCode/issues/198) — S1 (`internal/notify`: the
+  terminal escapes, the platform notifier, the threshold gate, and the two seams a test asserts
+  through), S2 (the `notify` config section), S3 (the triggers: a background task's completion, and a
+  foreground run that outlived the threshold), S4 (tests and docs). The evidence below is the
+  `31a34e0` baseline and its counts still hold; what it does not say, and what the pick-up had to
+  decide, is the policy — channel, threshold, and whether the feature is on by default.
 - **Gap**: a finished background run does not announce itself; the user has to watch the interface.
 - **Evidence**: `osascript`, `notify-send`, `terminal-notifier` → all 0.
 - **Effort**: ~0.5 d. The cheapest item in this document.

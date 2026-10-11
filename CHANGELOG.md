@@ -107,6 +107,29 @@ failure names how many attempts it took.
 Not retried, deliberately: a context error, a body we cannot parse, and any other 4xx — a rejected key
 or a missing model answers the same way however many times it is asked.
 
+### A long task announces itself when it finishes
+
+A background `task` used to end in silence — the user found out by asking `task_collect` or by noticing
+the interface. A finished background task now announces itself, and so does a foreground run that
+outlived a threshold.
+
+- **terminal** (the default) writes `OSC 9` and `OSC 777`, which iTerm2, WezTerm, kitty, Ghostty and
+  rxvt-unicode render as notifications; a terminal that knows neither ignores them, so this is safe to
+  have on. **desktop** (opt-in: `channel: desktop` or `both`) runs the platform's notifier —
+  `osascript` on macOS, `notify-send` on Linux — with the text passed as arguments rather than
+  interpolated into a script, so a goal containing a quote cannot change what runs.
+- `notify.min_duration_seconds` (default **30**) gates everything, so a two-second task stays quiet;
+  `0` announces every completion. A threshold rather than a focus check, because there is no portable
+  way to ask a terminal whether it has focus. `channel: off` turns the feature off.
+- Nothing makes a sound, and there is no Windows notifier (`channel: desktop` is macOS/Linux). A
+  machine without the binary is silent rather than noisy: the run it was announcing has already
+  finished.
+- The announcement text is sanitized: a title or body containing ESC, BEL or a line break has those
+  bytes stripped, because that is how a task's own goal text could otherwise end the escape and write
+  to the terminal.
+
+Roadmap entry D5.
+
 ## v0.0.7 — 2026-10-01
 
 ### Language server integration
