@@ -75,9 +75,13 @@ type TuiModel struct {
 	// generation counter stamped on every stream message so output from a
 	// superseded run can be ignored. All fields are guarded by runMu because
 	// the agent goroutine and Update may both touch them.
-	runMu          sync.Mutex
-	runID          uint64
-	runActive      bool
+	runMu     sync.Mutex
+	runID     uint64
+	runActive bool
+	// runStart is when the active run began. It is what the finish notification
+	// measures: a run has to outlive the threshold before it is worth announcing,
+	// because interrupting someone for a two-second answer is noise.
+	runStart       time.Time
 	runCancel      context.CancelFunc
 	runInterrupted bool
 

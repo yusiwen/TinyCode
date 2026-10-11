@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
@@ -618,13 +619,14 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.finishRun(msg.RunID)
 		m.status = StatusIdle
 		m.curAssistant = nil
+		elapsed := time.Since(m.runStart)
 		if msg.Error != nil {
 			// Do not spend an LLM call on a title after a failed or
 			// interrupted run.
-			return m, nil
+			return m, notifyFinishedCmd(elapsed, "run failed")
 		}
 		// Generate the session title off the event loop (async + timeout).
-		return m, m.generateSessionTitleCmd()
+		return m, tea.Batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, "run finished"))
 
 	case sessionTitleMsg:
 		if msg.Title != "" && m.sessionTitle == "" {
@@ -815,6 +817,7 @@ func (m *TuiModel) beginRun() (context.Context, uint64, bool) {
 	m.runActive = true
 	m.runCancel = cancel
 	m.runInterrupted = false
+	m.runStart = time.Now()
 	return ctx, m.runID, true
 }
 
@@ -997,6 +1000,21 @@ func (m *TuiModel) autoScroll() {
 // sessionTitleTimeout bounds the background title-generation LLM call.
 // It is a variable so tests can shorten it.
 var sessionTitleTimeout = 15 * time.Second
+
+// notifyFinishedCmd announces a run that outlived the notification threshold. It
+// is a tea.Cmd rather than an inline call because the desktop channel spawns a
+// notifier: a process must never run on the event loop, where it would freeze the
+// interface for as long as the notifier takes.
+//
+// Whether anything is emitted is internal/notify's decision — the threshold, the
+// channel and "off" all live there, so this only supplies the elapsed time and the
+// words.
+func notifyFinishedCmd(elapsed time.Duration, what string) tea.Cmd {
+	return func() tea.Msg {
+		notify.Finished(elapsed, "TinyCode", what)
+		return nil
+	}
+}
 
 // generateSessionTitleCmd returns a command that derives a session title with
 // the hidden "title" agent. The LLM call runs off the event loop with a

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestMergeKeepsAllSections guards against sections that used to be parsed and
@@ -555,5 +556,49 @@ func TestPricingRoundTripsThroughJSON(t *testing.T) {
 	}
 	if entry.CacheReadPerMillion != 0.3 {
 		t.Errorf("cache_read_per_million = %v, want 0.3", entry.CacheReadPerMillion)
+	}
+}
+
+// TestNotifyPolicy covers the D5 notification surface: the section is optional,
+// an absent one yields the built-in policy (channel empty, zero duration, which
+// internal/notify reads as "use your default"), and a merge lets a later layer set
+// the channel or the threshold without clearing the other.
+func TestNotifyPolicy(t *testing.T) {
+	if ch, d := DefaultConfig().NotifyPolicy(); ch != "" || d != 0 {
+		t.Errorf("the default config declares %q/%v, want an absent section", ch, d)
+	}
+
+	got := merge(DefaultConfig(), Config{Notify: &NotifyConfig{Channel: "both"}})
+	if ch, _ := got.NotifyPolicy(); ch != "both" {
+		t.Errorf("channel = %q, want both", ch)
+	}
+
+	// An explicit zero is a real choice ("announce everything"), and a later layer
+	// that only names the channel must not reset it.
+	got = merge(got, Config{Notify: &NotifyConfig{MinDurationSeconds: 0}})
+	if _, d := got.NotifyPolicy(); d != 0 {
+		t.Errorf("min duration = %v, want the explicit zero kept", d)
+	}
+	got = merge(got, Config{Notify: &NotifyConfig{Channel: "terminal"}})
+	if ch, d := got.NotifyPolicy(); ch != "terminal" || d != 0 {
+		t.Errorf("merge = %q/%v, want the channel replaced and the zero kept", ch, d)
+	}
+
+	got = merge(got, Config{Notify: &NotifyConfig{MinDurationSeconds: 90}})
+	if _, d := got.NotifyPolicy(); d != 90*time.Second {
+		t.Errorf("min duration = %v, want 90s", d)
+	}
+}
+
+// TestNotifyRoundTripsThroughJSON pins the keys a user types.
+func TestNotifyRoundTripsThroughJSON(t *testing.T) {
+	raw := []byte(`{"notify":{"channel":"desktop","min_duration_seconds":5}}`)
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	ch, d := cfg.NotifyPolicy()
+	if ch != "desktop" || d != 5*time.Second {
+		t.Errorf("NotifyPolicy = %q/%v, want desktop/5s", ch, d)
 	}
 }
