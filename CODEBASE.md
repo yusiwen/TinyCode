@@ -104,6 +104,18 @@
 
 ### `provider_openai.go` — OpenAI-Compatible Provider
 
+- **`retry.go`** — the policy for one provider call, shared by both providers:
+  - `retryMaxAttempts` (3, the first attempt included), `retryBaseDelay` (500 ms) and `retryMaxDelay`
+    (10 s) are package variables so a test shrinks the schedule instead of waiting for it;
+    `retryJitter` is the injectable randomness source
+  - `statusError{status, body, retryAfter}` with `Retryable()` (408, 429, any 5xx), `parseRetryAfter`
+    (delta-seconds honoured, the HTTP-date form ignored on purpose), `backoffDelay` (exponential with
+    equal jitter, floored at `Retry-After`, capped), `retryableError` (also refuses a context error and
+    a protocol/parse error), `shouldRetry` (the whole decision: retryable **and** the budget has room
+    **and** the context is alive **and** nothing was delivered), `sleepCtx`, `attemptsError` (names the
+    count) and `notifyRetry`
+  - `deliveryTracker` wraps a caller's callbacks to record whether any delta reached it — the
+    **safe-replay** rule: text already drawn may not be drawn twice
 - **`OpenAIProvider`** struct (unexported fields: client, model, apiKey, baseURL)
 - **`NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider`**
 - `Chat()` — SSE streaming via `net/http` (not go-openai SDK's streaming); accumulates reasoning/content deltas and tool calls by index; 64KB→256KB scanner buffer; `stream_options: {include_usage: true}`. The parse runs to `data: [DONE]` rather than stopping at `finish_reason`, because the usage chunk that answers that option comes *after* the finish chunk with an empty `choices` array; both it and the batch body's `usage` object land in `ChatResponse.Usage` (a pointer: "not reported" is not "zero"), and a `total_tokens` the endpoint omits is derived from the two halves
@@ -111,7 +123,10 @@
 
 ### `provider_ollama.go` — Ollama Provider
 
-- **`OllamaProvider`** struct (unexported: baseURL, model, http client)
+- **`OllamaProvider`** struct (unexported: baseURL, model, http client, route)
+- `Chat()` retries through the same policy as the OpenAI-compatible provider (`retry.go`); each attempt
+  builds its own cancel-cause context and idle watchdog, so a retry gets a fresh clock rather than the
+  remainder of the one its predecessor spent
 - **`NewOllamaProvider(baseURL, model string) *OllamaProvider`** — default baseURL: `http://localhost:11434`
 - `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call. A local route reports no charge, so `CostCurrency()` is empty and its calls are priced from the declared table or counted as unknown
 - `SetRouteInfo(route, model, _)` names the configuration route, so a price lookup keys on the route rather than on a model name several routes share; the cost currency is ignored because this route bills in none
@@ -423,7 +438,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 
 ### `messages.go`
 - **`TuiStatus`** (int): `StatusIdle=0`, `StatusStreaming`, `StatusError`
-- TUI messages: `StreamMsg`, `UsageMsg`, `StreamDone`, `ChatMsg`, `ToolCallMsg`, `ToolResultMsg`, `LSPDiagMsg`, `modeSwitchMsg`
+- TUI messages: `StreamMsg`, `UsageMsg`, `CostMsg`, `RetryMsg`, `StreamDone`, `ChatMsg`, `ToolCallMsg`, `ToolResultMsg`, `LSPDiagMsg`, `modeSwitchMsg`
 - **`chatMessage`** (internal): `Role`, `Content`, `ReasoningContent`, `ReasoningFolded`, `ToolCalls []ToolCallInfo`, `Streaming`, `Blocks []ContentBlock`, `TodoSnapshot []tool.TodoItem`, `Banner *welcomeInfo`
 
 ### `welcome.go` — Startup Banner
@@ -499,7 +514,7 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 - **`ChatRequest`** struct: `Messages []Message`, `Tools []ToolDef`, `MaxTokens int`, `Model string`, `StreamCallbacks *StreamCallbacks`
 - **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage`, `Cost *Cost` (both nil when the endpoint reported none)
 - **`Usage`** struct: `PromptTokens`, `CompletionTokens`, `TotalTokens`; `Add(v Usage) Usage` sums two records
-- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown)
+- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown), `OnRetry` (fired before a request is re-sent, carrying the attempt and its cap so a caller renders `2/3` without knowing the policy)
 - **`Usage`** detail fields: `CachedPromptTokens`, `CacheWriteTokens`, `ReasoningTokens` — one per *billing lane*, so OpenAI's `prompt_tokens_details` shape and DeepSeek's `prompt_cache_hit_tokens` land in the same field. They are subsets of the counts beside them, not extra tokens
 - **`Cost`** struct: `Amount`, `Currency`; **`CostSource`** (`unknown`/`reported`/`declared`); **`CostEvent`**; **`CostTotals map[string]float64`** with `Add` and a `String()` ordered case-insensitively by unit — two routes billing in different units are accumulated apart, never added together
 - **`Memory`** struct: `Key`, `Value`
