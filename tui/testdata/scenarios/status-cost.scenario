@@ -1,0 +1,51 @@
+# What the status bar shows when the numbers are the provider's rather than an estimate.
+#
+# Two surfaces landed together and neither had ever been rendered by a real binary: the
+# session token budget as a fraction (issue #179) and the money a route reported (issue
+# #181). The unit test asserts renderStatusBar's string, which cannot see the two things
+# this bar actually fails at — width and wrapping. Issue #195 is the gap, and this is the
+# PTY half of it.
+#
+# The stub's "priced" mode reports a usage object whose `cost` is 0.0042 and whose
+# prompt has 800 cached tokens, in the chunk order every OpenAI-compatible endpoint uses
+# (deltas, finish_reason, then a usage-only chunk, then [DONE]). The charge is displayed
+# as reported, never recomputed, and its unit comes from the provider's `cost_currency`
+# in the seeded config — which is also where the session budget lives, because a budget
+# is a configuration surface and nothing else. That config is a committed file
+# (tui/testdata/scenarios/config/priced.json) rather than inline JSON in this line, so
+# there is no quoting to get wrong; the directory is named `config` and not `fixtures`
+# because `make test-tui-scenarios` copies `fixtures/*.json` into the session directory,
+# where a config-shaped file would show up as a session.
+#
+# Why 200 columns: this bar is long *by design* — a fraction, a charge and a unit — and the
+# scenario is about its content, not about how a narrow terminal copes. At 120 the bar's
+# own length pushes the trailing status message past the wrap (measured: the screen ends
+# with "Press Ctrl+C again" and `quit` lands on the next line), which is filed separately
+# as its own finding. The narrow end is still pinned, by the committed frame at 80x24.
+#
+# Why the token pattern is loose (`15[0-9][0-9]`): the TUI asks the model for a session
+# title after a run's last answer, asynchronously, and that call contributes its own
+# estimate. Whether it lands before the screen settles is a race, so the assertion pins
+# the *fraction* and the reported thousands instead of a number the title call can move by
+# a few tokens. The committed frame (tui/testdata/golden/frames/statusbar_*.txt) is where
+# the exact text is pinned.
+open --dir . --size 200x50 --env HOME=/tmp/tinyscen-home-price --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-price && mkdir -p /tmp/tinyscen-home-price/sessions /tmp/tinyscen-home-price/.tinycode; cp tui/testdata/scenarios/config/priced.json /tmp/tinyscen-home-price/.tinycode/config.json; python3 tui/testdata/stub/openai_stub.py 18496 priced 1 /tmp/tinyscen-home-price/stub-count.txt & count=/tmp/tinyscen-home-price/stub-count.txt; i=0; while [ ! -s "$count" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done; ./bin/tinycode --base-url=http://127.0.0.1:18496/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-price/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Type your request" --timeout 20s
+send --text "price this call"
+send --key enter
+# The answer proves the priced stream was parsed through its usage tail.
+wait --text "stub-answer-ok" --timeout 30s
+# The charge the route reported, with the unit the config gave that route.
+wait --text "cost: 0.0042 credits" --timeout 15s
+# And the counter as a fraction of the configured session budget.
+wait --text "tokens: 15[0-9][0-9]/100000" --timeout 15s
+screenshot /tmp/tinyscen-shots/status-cost-200x50.png --scale 2
+# Exit the way the other TUI scenarios do: wait for the screen to settle first (the
+# spinner animates while a run streams), then two Ctrl+C presses with the confirmation
+# prompt between them, so a wrong state is a named assertion instead of a hang.
+stable 200ms --timeout 15s
+send --key ctrl+c
+wait --text "Press Ctrl\+C again to quit" --timeout 15s
+send --key ctrl+c
+wait-exit 30s
+expect-exit 0

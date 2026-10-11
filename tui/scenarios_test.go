@@ -16,7 +16,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 
 	"github.com/yusiwen/TinyCode/tuiprobe/golden"
+	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/tool"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // frameModel builds a ready, sized model without any dependency on the real
@@ -213,6 +215,37 @@ func frameLongOutput(w, h int) *TuiModel {
 	return m
 }
 
+// frameStatusBar is the bar with everything a session can report on it: a session
+// token budget, a spend, money in two units and the calls nobody could price
+// (issues #174, #179, #181). It is here because those three surfaces were asserted
+// only against renderStatusBar's string, which cannot see the two things this bar
+// actually fails at — width and wrapping. The clock stays the builders' zero
+// sessionStart, so the frame is deterministic.
+func frameStatusBar(w, h int) *TuiModel {
+	m := frameModel(w, h)
+	// A budget makes the counter a fraction, and a declared rate is what puts cost
+	// accounting "in play" — without either, the bar is deliberately silent.
+	m.config = &config.Config{
+		Budget: &config.BudgetConfig{MaxTokensPerSession: 20000},
+		Pricing: &config.PricingConfig{
+			Currency: "USD",
+			Prices:   map[string]config.PriceEntry{"stub/*": {InputPerMillion: 1}},
+		},
+	}
+	m.sessionTokens = 12840
+	m.sessionToolCalls = 7
+	// Two units, because an account's credits and an invoice's currency are
+	// accumulated apart and never added together.
+	m.sessionCost = types.CostTotals{"credits": 0.95, "USD": 2.4}
+	m.unpricedCalls = 3
+	m.messages = []chatMessage{
+		{Role: "user", Content: "summarise the diff"},
+		{Role: "assistant", Content: "Two files changed, nothing else.",
+			Blocks: parseMarkdown("Two files changed, nothing else.")},
+	}
+	return m
+}
+
 // frameScenario pairs a builder with the geometries it is captured at. Adding a
 // tier is a one-line change: append a frameSize and regenerate with
 // `go test ./tui -run Golden -update`. Not every scenario needs every terminal:
@@ -269,6 +302,14 @@ var frameScenarios = []struct {
 		}, frameCompressing},
 	{"longoutput", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 200, H: 50}, {W: 100, H: 30}},
 		[]shotSpec{{"longoutput", golden.Size{W: 120, H: 40}}}, frameLongOutput},
+	// Two widths, because the bar is 126 characters today and the model does not clip
+	// it: the terminal does, and the harness's Clip step is what models that (the suite
+	// requires at least one frame wider than its geometry, and this is one). Both sizes
+	// therefore commit the same bar text — what they pin is the bar's content and the
+	// layout around it, not the terminal's view. What the terminal actually shows, and
+	// how much of a trailing status message survives it, is its own finding (issue #196).
+	{"statusbar", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}},
+		[]shotSpec{{"statusbar", golden.Size{W: 120, H: 40}}}, frameStatusBar},
 }
 
 // shotSpec names one image: the scenario name it is filed under and the geometry.

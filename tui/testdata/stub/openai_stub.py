@@ -19,6 +19,21 @@ import sys
 
 ANSWER = "stub-answer-ok"       # keep in sync with prompt-answer.scenario
 FINAL = "stub-final-ok"         # keep in sync with tool-call.scenario
+# "retry" answers the first scripted request with a 429 and the next one with this, so
+# the scenario can count what the client drew (see retry-counted.scenario, issue #192).
+RETRY_OK = "stub-retry-ok"
+# "priced" reports usage and a charge on its final answer, in the chunk order an
+# OpenAI-compatible endpoint uses: deltas, finish_reason, then a usage-only chunk whose
+# `choices` is empty, then [DONE]. That chunk is why the client reads past finish_reason,
+# and the `cost` is what a route reports instead of leaving the client to price it
+# (issues #174, #181).
+# The finish_reason chunk comes first and the usage chunk after it, which is the order that
+# makes a client read past finish_reason at all (issue #174).
+PRICED_FINISH = 'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+PRICED_USAGE = (
+    'data: {"choices":[],"usage":{"prompt_tokens":1200,"completion_tokens":300,'
+    '"total_tokens":1500,"prompt_tokens_details":{"cached_tokens":800},"cost":0.0042}}\n\n'
+)
 # The first request in tool mode asks for one bash call; every later request answers with
 # FINAL, so the agent loop terminates after one tool round instead of calling the tool
 # forever (which is what a stub returning the same call every time does).
@@ -139,11 +154,28 @@ SCRIPT = {
 }
 
 
-def final_payload():
-    """The streaming answer that ends the loop: FINAL text in a mode, ANSWER otherwise."""
-    parts = [FINAL if MODE else ANSWER]
+def final_payload(with_usage=False):
+    """The streaming answer that ends the loop.
+
+    "retry" and the plain mode answer with ANSWER; a tool mode answers with FINAL.
+    with_usage appends the priced usage object, and is passed only for a scripted
+    request: the session-title call is answered with the same text but must not report
+    tokens or a charge, or the scenario would be racing a call it cannot see.
+    """
+    if MODE == "retry":
+        parts = [RETRY_OK]
+    elif MODE in SCRIPT:
+        # A tool-asking mode ends its cycle with FINAL; every other mode answers with
+        # ANSWER. "priced" is not a tool mode, and answering it with FINAL would make a
+        # scenario wait for a marker this mode does not send.
+        parts = [FINAL]
+    else:
+        parts = [ANSWER]
     chunks = [('data: {"choices":[{"delta":{"content":"%s"}}]}\n\n' % part).encode()
               for part in parts]
+    if with_usage:
+        chunks.append(PRICED_FINISH.encode())
+        chunks.append(PRICED_USAGE.encode())
     chunks.append(b"data: [DONE]\n\n")
     return b"".join(chunks)
 
@@ -167,21 +199,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
 
         _served["requests"] += 1
+        if MODE == "retry" and _served["requests"] == 1:
+            # The transient failure the client is expected to retry: a rate limit with no
+            # Retry-After, so the scenario pays one backoff rather than a second.
+            self.answer(b"rate limited", status=429)
+            return
         # Which position of which cycle this request is. "requests" counts only the
         # requests that belong to the script, so the number a scenario checks is stable
         # whatever the title call does.
         position = (_served["requests"] - 1) % CYCLE
         serving = _served["cycles"] < CYCLES
-        if MODE and serving and position < TOOL_CALLS:
+        if MODE in SCRIPT and serving and position < TOOL_CALLS:
             # The script constants are SSE text; the final answer is built the same way.
             self.answer(SCRIPT[MODE].encode())
             return
         if MODE and serving and position == CYCLE - 1:
             _served["cycles"] += 1
-        self.answer(final_payload())
+        self.answer(final_payload(with_usage=MODE == "priced"))
 
-    def answer(self, payload):
-        self.send_response(200)
+    def answer(self, payload, status=200):
+        self.send_response(status)
         self.send_header("content-type", "text/event-stream")
         self.send_header("content-length", str(len(payload)))
         self.end_headers()

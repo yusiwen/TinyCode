@@ -1,0 +1,28 @@
+# A retried provider call draws its answer exactly once.
+#
+# The safe-replay rule (issue #192) says a streaming attempt may be repeated only while
+# nothing has reached the caller, and the Go tests pin that at the provider boundary. What
+# they cannot see is the end-to-end consequence: if the rule were wrong, the same answer
+# would be written to the terminal twice.
+#
+# Counting that in a TUI screen is not possible — a TUI repaints, so the same text appears
+# in the output many times for legitimate reasons — and a whole-screen golden is not
+# available either, because the status bar carries a wall-clock session duration. So the
+# assertion is made where the output is written once: **one-shot mode**, whose streamed
+# answer is printed exactly once and not re-printed (agent.ContentStreamed exists for
+# exactly that).
+#
+# The stub's "retry" mode answers the first scripted request with a 429 and the next with
+# stub-retry-ok, so the client's own retry policy is what turns one answer into a success.
+# The wrapper shell counts *occurrences* (grep -o, not grep -c: a duplicated answer would
+# land on the same line as the first and a line count would miss it), counts the retry
+# notice, and prints the stub's own tally. All three have to hold:
+#
+#   hits=1     the answer was drawn once — the failure this scenario exists for
+#   notices=1  the retry was announced rather than silently waited out
+#   requests=2 the client really did retry (one 429, one answer), not the stub answering
+#              200 on the first try
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-retry --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-retry && mkdir -p /tmp/tinyscen-home-retry/sessions; python3 tui/testdata/stub/openai_stub.py 18498 retry 1 /tmp/tinyscen-home-retry/stub-count.txt & count=/tmp/tinyscen-home-retry/stub-count.txt; i=0; while [ ! -s "$count" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done; ./bin/tinycode "ask once" --base-url=http://127.0.0.1:18498/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-retry/sessions --log-level=error > /tmp/tinyscen-home-retry/out.txt 2>&1; status=$?; kill %1 2>/dev/null; hits=$(grep -o "stub-retry-ok" /tmp/tinyscen-home-retry/out.txt | wc -l | tr -d " "); notices=$(grep -o "retrying" /tmp/tinyscen-home-retry/out.txt | wc -l | tr -d " "); served=$(tr -d "\n" < "$count" 2>/dev/null); echo "RETRY hits=$hits notices=$notices served=[$served]"; exit $status'
+wait --text "RETRY hits=1 notices=1 served=\[cycles=1 requests=2 title=0\]" --timeout 40s
+wait-exit 20s
+expect-exit 0
