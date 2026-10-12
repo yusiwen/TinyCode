@@ -71,7 +71,6 @@
     <text class="fig-mut" x="32" y="256">CellGrid, not a</text>
     <text class="fig-mut" x="32" y="271">stock renderer</text>
     <line class="fig-flow" x1="96" y1="356" x2="96" y2="376" marker-end="url(#fig-arrow)"/>
-    <text class="fig-mut" x="104" y="374">agent.Run(prompt)</text>
     <rect class="fig-acc" x="176" y="380" width="554" height="200" rx="10"/>
     <rect class="fig-card" x="182" y="386" width="542" height="188" rx="8"/>
     <text class="fig-t" x="192" y="410">ReAct step loop</text>
@@ -118,9 +117,9 @@
     <text class="fig-label" x="32" y="836">CONTEXT</text>
     <text class="fig-mut" x="32" y="854">providers +</text>
     <text class="fig-mut" x="32" y="869">persistence</text>
-    <rect class="fig-dash" x="166" y="344" width="574" height="452" rx="10"/>
-    <rect class="fig-bound" x="152" y="334" width="132" height="20" rx="6"/>
-    <text class="fig-cap" x="160" y="348">sandbox boundary</text>
+    <rect class="fig-dash" x="166" y="370" width="574" height="424" rx="10"/>
+    <rect class="fig-bound" x="152" y="360" width="132" height="20" rx="6"/>
+    <text class="fig-cap" x="160" y="374">sandbox boundary</text>
     <rect class="fig-box" x="760" y="104" width="180" height="44" rx="8"/>
     <text class="fig-t" x="770" y="122">one CellGrid</text>
     <text class="fig-mut" x="770" y="139">incremental render</text>
