@@ -600,6 +600,12 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 	confined := config.ResolveConfineCommands(cfg, tool.CommandConfinementAvailable())
 	tool.SetConfineCommands(confined)
 	if confined {
+		// Create the installed toolchains' caches before reading the roots: a
+		// *cold* module cache is a directory the confined command cannot create
+		// for itself, and the Linux applier refuses a root it cannot open, so
+		// granting a path that does not exist would break every command rather
+		// than widen the boundary (issue #166).
+		tool.EnsurePlatformCacheRoots()
 		tool.DefaultSandbox.CacheRoots = tool.PlatformCacheRoots()
 	}
 	// Let a run freeze its policy from this configuration. Installed here and

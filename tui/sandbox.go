@@ -72,5 +72,14 @@ func sandboxReport() string {
 			b.WriteString("    " + r + "\n")
 		}
 	}
+
+	// The cache roots are the part of the writable set nobody chose by hand, so
+	// the report says what grants them and what grants more. Without this line the
+	// only way to learn why a toolchain's cache is writable — or why `go mod
+	// download` failed on a cold one — is to read the source (issue #166).
+	b.WriteString("  toolchain caches: granted for the toolchains installed on this host (go, cargo, npm, pnpm), " +
+		"and never a directory on PATH; grant another path in your own ~/.tinycode/config.json, " +
+		"under \"sandbox.allowed_path_grants\"\n")
+
 	return b.String()
 }
