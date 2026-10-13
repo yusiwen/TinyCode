@@ -65,16 +65,61 @@ Two properties follow, and both have tests:
 the fence and the command boundary both consume: the project root, the
 auto-allowed paths (the working directory), and the granted cache roots.
 
-The cache root is the **platform user cache directory** (`os.UserCacheDir()`),
-granted only when command confinement is on (the composition sets
-`CacheRoots`). It exists because a confined toolchain writes its own caches —
-`GOCACHE` and most build tools live under it — and a boundary that forbids them
-breaks `go build`/`go test`. It is acceptable to grant because it is not source
-(a lost cache costs a rebuild, not data) and it is already the user's own
-writable, per-user area. Because the fence and the command boundary share this
-one list, granting it to a command also states that the agent's `write_file` may
-touch it; that is the deliberate cost of the shared-list rule, not a second
-policy.
+The cache roots are granted only when command confinement is on (the composition
+sets `CacheRoots`), and they are what makes a real toolchain work inside the
+boundary: a confined `go build` writes `GOCACHE`, and a confined `go mod
+download` writes a module cache. They are acceptable to grant because none of
+them is source — a lost cache costs a rebuild, not data — and each is already the
+user's own writable, per-user area. Because the fence and the command boundary
+share this one list, granting a cache to a command also states that the agent's
+`write_file` may touch it; that is the deliberate cost of the shared-list rule,
+not a second policy.
+
+The granted set is:
+
+| Root | Granted when | Environment that moves it |
+| :--- | :--- | :--- |
+| the platform user cache directory (`os.UserCacheDir()`: `~/.cache` on Linux, `~/Library/Caches` on macOS) | always | `XDG_CACHE_HOME` (Linux) |
+| the Go module cache | `go` is on `PATH` | `GOMODCACHE`, else the first `GOPATH` entry's `pkg/mod`, else `~/go/pkg/mod` |
+| cargo's download cache | `cargo` is on `PATH` | `CARGO_HOME`'s `registry` subtree, else `~/.cargo/registry` |
+| npm's cache | `npm` is on `PATH` | `npm_config_cache`, else `~/.npm` |
+| pnpm's store | `pnpm` is on `PATH` | `~/Library/pnpm/store` on macOS, else `$XDG_DATA_HOME/pnpm/store` or `~/.local/share/pnpm/store` |
+
+pip needs no entry: its cache (`$XDG_CACHE_HOME/pip`, `~/.cache/pip`) is under the
+platform user cache directory that is granted anyway.
+
+Two rules decide this set, and both are deliberate:
+
+- **A cache subtree only, never a directory on `PATH`.** `GOPATH` holds `go/bin`
+  beside `go/pkg/mod`, and `CARGO_HOME` holds `bin` beside `registry`. Granting
+  either home would let a confined command leave a program behind that the user
+  later runs *outside* the boundary — the sandbox escaping by persistence rather
+  than by a write. `PNPM_HOME` is refused for the same reason: it names the
+  directory whose `bin` holds pnpm itself.
+- **Only a toolchain that is installed, and only a cache that exists.** The second
+  half is not pedantry: the Linux applier refuses to run with a root it cannot
+  open, so granting a path that does not exist would break every confined command
+  rather than widen the boundary. The composition therefore creates the installed
+  toolchains' caches before it reads the roots — a *cold* module cache is exactly
+  the case issue #166 measured, where a confined `go mod download` failed because
+  the directory it needed did not exist yet and a confined command cannot create
+  it.
+
+A toolchain whose cache this list does not name fails with a permission error from
+the command itself. The answer is a grant for that one path, in the **user** config
+(`~/.tinycode/config.json`) — a project-local file may not extend a grant, because it
+arrives with the repository being opened:
+
+```json
+{ "sandbox": { "allowed_path_grants": [ { "path": "/path/to/that/toolchains/cache" } ] } }
+```
+
+The older `sandbox.allowed_paths` list is still read and is what the permission
+dialog's "Always allow" writes; either form puts the path on the allow-list for
+later runs.
+
+`/sandbox` prints both the effective writable roots and this policy, so the answer
+is one command away rather than one source file away.
 
 Deliberate facts:
 
@@ -392,7 +437,7 @@ working boundary.
 | `tool/pathbeneath_*.go` | `openat2` containment and the `O_NOFOLLOW` component walk |
 | `tool/containment_*.go` | the capability probes and the degraded-result note |
 | `tool/sandboxexec.go` | the launcher contract, argv, and classification |
-| `tool/cacheroots.go` | the granted cache root, the per-user `TMPDIR`, and the confined command's env |
+| `tool/cacheroots.go` | the granted cache roots (the platform user cache directory, plus each installed toolchain's download cache as a subtree and never a directory on `PATH`), the per-user `TMPDIR`, and the confined command's env |
 | `tool/confinement_linux.go` | the Landlock ruleset and the launcher entry point |
 | `tool/confinement_other.go` | the honest failure where there is no mechanism |
 | `config/config.go` | the sandbox keys and the persistent-grant store |
