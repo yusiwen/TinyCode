@@ -9,6 +9,37 @@ back to its change and tests.
 
 ## Unreleased
 
+### A cold toolchain can fetch inside the boundary
+
+`confine_commands` granted one root beyond the project — the platform user cache
+directory — which is enough for `go build` and `go test` on a warm checkout and not
+enough for a cold one: a module that is not already in the module cache could not be
+downloaded by a confined command, because `GOMODCACHE` (`~/go/pkg/mod`) was not a
+granted root and a confined command cannot create a directory it was never granted
+(issue #166).
+
+The granted set is now the user cache directory plus the download cache of every
+toolchain installed on the host (Go's module cache, cargo's registry, npm's cache,
+pnpm's store — each honouring its own environment variable). Two rules keep the
+widening defensible, and both are tested:
+
+- **A cache subtree only, never a directory on `PATH`.** `GOPATH` holds `go/bin`
+  beside `go/pkg/mod` and `CARGO_HOME` holds `bin` beside `registry`; granting either
+  home would let a confined command leave a program behind that the user later runs
+  outside the boundary — the sandbox escaping by persistence. `PNPM_HOME` is refused
+  for the same reason.
+- **Only an installed toolchain, and only a cache that exists.** The second half is
+  not pedantry: the Linux applier refuses to run with a root it cannot open, so
+  granting a phantom path would break every confined command rather than widen the
+  boundary. The composition therefore creates the installed toolchains' caches at
+  startup, before it reads the roots — which is exactly what a cold checkout needs.
+
+The set still lands through the one shared list (`WritableRoots`), so the file fence
+and the command boundary cannot drift, and the drift guard stays green. `/sandbox`
+now states the cache policy and the key that grants one more path, and
+`docs/sandbox.md` names the whole set, both rules, and where to add a toolchain this
+list does not know.
+
 ### A long generation is no longer cut, and the idle bound can fire
 
 Two defects with one root cause: `agent/provider_openai.go` armed a single
