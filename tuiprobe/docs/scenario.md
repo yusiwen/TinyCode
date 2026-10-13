@@ -41,6 +41,7 @@ depends on no other repository — and `make test-tuiprobe-examples` runs it.
 | `screenshot <file> [--scale N] [--font FILE] [--format png\|html] [--renderer font\|chromium] [--browser PATH]` | write the screen to a PNG (default) or HTML and **read it back**: the pixel size is asserted against this session's geometry, so the image is evidence of that geometry |
 | `shot <file> [flags]` | the same step as `screenshot`; both names are accepted |
 | `fit --size WxH` | assert the session really is that size and the screen fits it |
+| `resize --size WxH` (or `resize WxH`) | change the terminal's size while the program runs; the kernel delivers `SIGWINCH` to the foreground process group, so a program that listens sees the new geometry, and the next frame is drawn into it |
 | `wait-exit [duration]` | wait for the program to end **on its own** and remember its code (default 10s) — use this before `expect-exit` when the program leaves by itself |
 | `close` | end the session and remember its exit code |
 | `expect-exit N` | fail unless the program exited with `N` (closes first if needed) |

@@ -49,7 +49,7 @@ var DefaultTimeout = 10 * time.Second
 // `screenshot` until issue #142 — because each one was written by hand.
 var verbs = []string{
 	"open", "send", "wait", "mark", "stable", "sleep",
-	"golden", "diff", "fit", "screenshot", "shot",
+	"golden", "diff", "fit", "resize", "screenshot", "shot",
 	"close", "wait-exit", "expect-exit",
 }
 
@@ -262,6 +262,8 @@ func (r *runner) step(s Step) error {
 		return r.stepGolden(s)
 	case "fit":
 		return r.stepFit(s)
+	case "resize":
+		return r.stepResize(s)
 	case "screenshot", "shot":
 		return r.stepScreenshot(s)
 	case "wait-exit":
@@ -437,6 +439,34 @@ func (r *runner) stepGolden(s Step) error {
 // The second half is nearly free — the emulator wraps at its own width — but the
 // first half is not: it is what catches a scenario whose committed goldens were
 // captured at a different terminal than the one it now runs with.
+// stepResize changes the terminal's size while the program keeps running. The
+// kernel delivers SIGWINCH to the foreground process group, so a program that
+// listens for it sees the new size; for one that does not, this is at least the
+// size the next frame is drawn into.
+//
+// It is the step the suite was missing: the pty, the session, the daemon and the
+// CLI all supported resizing, and nothing in a scenario file could reach it, so a
+// running program's reflow was asserted nowhere (issue #214).
+func (r *runner) stepResize(s Step) error {
+	values, _, rest, err := parseStep(s, stepFlags{values: map[string]bool{"--size": true}})
+	if err != nil {
+		return err
+	}
+	size := values["--size"]
+	if size == "" && len(rest) > 0 {
+		size = rest[0] // a bare positional, the way `stable 200ms` takes its duration
+	}
+	if size == "" {
+		return errors.New("resize needs a size: resize --size 100x30")
+	}
+	cols, rows, err := parseSize(size)
+	if err != nil {
+		return err
+	}
+	_, err = r.call(daemon.Request{Cmd: "resize", Cols: cols, Rows: rows})
+	return err
+}
+
 func (r *runner) stepFit(s Step) error {
 	resp, err := r.call(daemon.Request{Cmd: "text"})
 	if err != nil {

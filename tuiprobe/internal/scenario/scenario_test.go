@@ -187,6 +187,55 @@ func TestRunReportsUnknownStepsAndBadArguments(t *testing.T) {
 // TestFitCatchesAWrongGeometryClaim is the geometry assertion as a scenario step:
 // a scenario whose goldens were captured at one terminal size must not quietly
 // pass when it runs at another.
+// TestResizeChangesTheSizeAProgramSees is issue #214: the step layer was the only
+// part of resizing that did not exist. The assertion is not that the daemon
+// updated its bookkeeping — `fit` checks the session's size — but that the program
+// *inside* the terminal saw the new geometry, which it reports itself through
+// `stty size` from a SIGWINCH trap.
+func TestResizeChangesTheSizeAProgramSees(t *testing.T) {
+	socket := startDaemon(t)
+	dir := t.TempDir()
+
+	script := `
+open --size 90x20 -- /bin/sh -c 'trap "stty size" WINCH; echo ready; while :; do sleep 0.1; done'
+wait --text "ready" --timeout 5s
+fit --size 90x20
+resize --size 40x12
+wait --text "12 40" --timeout 10s
+fit --size 40x12
+close
+`
+	steps, err := Parse(strings.NewReader(script))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var progress strings.Builder
+	result, err := Run(steps, Options{Socket: socket, Dir: dir, Stdout: &progress})
+	if err != nil {
+		t.Fatalf("Run: %v\n%s", err, progress.String())
+	}
+	if result.Skipped || result.Steps != 7 {
+		t.Errorf("result = %+v, want 7 steps and no skip", result)
+	}
+}
+
+// TestResizeRejectsAMissingSize pins the failure a scenario author meets: a typo
+// in the step should name the step, not resize to something arbitrary.
+func TestResizeRejectsAMissingSize(t *testing.T) {
+	socket := startDaemon(t)
+	steps := []Step{
+		{Verb: "open", Args: []string{"/bin/sh", "-c", "echo ready; sleep 5"}, Line: 1},
+		{Verb: "resize", Args: nil, Line: 2},
+	}
+	_, err := Run(steps, Options{Socket: socket, Dir: t.TempDir(), Name: "resize-missing"})
+	if err == nil {
+		t.Fatal("a resize with no size succeeded")
+	}
+	if !strings.Contains(err.Error(), "resize needs a size") {
+		t.Errorf("error = %v, want it to name the step and the fix", err)
+	}
+}
+
 func TestFitCatchesAWrongGeometryClaim(t *testing.T) {
 	socket := startDaemon(t)
 
