@@ -2,6 +2,15 @@
 
 The tool's own history. TinyCode's changelog lives at the repository root.
 
+## v0.1.5 — 2026-10-11
+
+- **The `resize` scenario step** (issue #214). The pty layer, `Session.Resize`, the daemon's `resize`
+  command and the `tuiprobe resize` CLI all existed; a scenario file could not reach any of them, so a
+  *running* program's reflow was asserted nowhere. The step takes `--size 100x30` or a bare
+  `100x30`, and the kernel delivers `SIGWINCH` to the foreground process group, which is what makes it
+  testable from the inside: the new test drives `sh -c 'trap "stty size" WINCH; …'` and waits for the
+  program itself to report the new geometry, rather than checking the daemon's bookkeeping.
+
 ## v0.1.4 — 2026-10-09
 
 - **`mark` and `wait --since`: a scenario can tell a second run of a program from the first**

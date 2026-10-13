@@ -120,7 +120,7 @@ command palette, typing filters it, Esc closes it — note that Ctrl+C while the
 open *closes the palette*, so Esc comes first) and `status-cost` (the status bar's budget
 fraction and reported charge, which is why issue #195 exists).
 
-Steps are `open`, `send`, `wait`, `mark`, `stable`, `sleep`, `golden`, `diff`, `fit`,
+Steps are `open`, `send`, `wait`, `mark`, `stable`, `sleep`, `golden`, `diff`, `fit`, `resize`,
 `screenshot`, `shot`, `close`, `wait-exit`, `expect-exit`; [tuiprobe/docs/scenario.md](tuiprobe/docs/scenario.md)
 is the reference. The runner is a CLI feature (its package is internal), so scenario
 files run through `make test-tui-scenarios` — which is also the CI step in the

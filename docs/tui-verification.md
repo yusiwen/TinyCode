@@ -74,7 +74,7 @@ The command takes its version from `go.mod` (no `@version`), so bumping the pin 
 only place a tool version appears.
 
 The steps are `open`, `send`, `wait`, `mark`, `stable`, `sleep`, `golden`, `diff`, `fit`,
-`screenshot`, `shot`, `close`, `wait-exit`, `expect-exit`, and a failure names the line and the
+`resize`, `screenshot`, `shot`, `close`, `wait-exit`, `expect-exit`, and a failure names the line and the
 step; see [tuiprobe/docs/scenario.md](../tuiprobe/docs/scenario.md). The runner lives in
 `tuiprobe/internal/scenario`, so it is reachable as a command, not as a library — run
 the files with `make test-tui-scenarios`, which is what the `tui-visual` job does.
