@@ -9,6 +9,23 @@ back to its change and tests.
 
 ## Unreleased
 
+### Resizing a running program is covered again
+
+The TUI's in-process program-driver test was deleted when the harness moved into the `tuiprobe`
+module, and it was the only thing in the repository that resized a *running* program: the scenario
+runner had no `resize` step, so nothing drove a terminal resize into the real binary (issue #214).
+`tui/geometry_test.go` still covered the model's answer to a `tea.WindowSizeMsg`, which made the
+loss a narrowed property rather than an open hole — but the terminal's half was untested.
+
+`tuiprobe v0.1.5` adds the step (the pty, session, daemon and CLI layers could all resize already;
+only a scenario file could not reach them), and `tui/testdata/scenarios/resize-running.scenario` is
+the guard: it opens the binary at 80x24, `mark`s the screen, resizes to 40x12, and then waits for the
+input row with `--since` — text that can only match if the program redrew after the resize — followed
+by `fit --size 40x12` and a screenshot whose pixel size is asserted against the new geometry. Deleting
+the `resize` line makes the scenario fail, which is the control that keeps the assertion meaningful.
+
+The `tuiprobe` pin moves to `v0.1.5`.
+
 ### A cold toolchain can fetch inside the boundary
 
 `confine_commands` granted one root beyond the project — the platform user cache
