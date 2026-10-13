@@ -36,19 +36,195 @@ func overrideUserCache(t *testing.T, dir string) string {
 	return got
 }
 
-// TestPlatformCacheRootsUseTheUserCacheDir pins the one root the product grants
-// so a confined toolchain can write its caches: the platform user cache
-// directory, and nothing else.
+// TestPlatformCacheRootsUseTheUserCacheDir pins the root every host gets so a
+// confined toolchain can write its caches: the platform user cache directory,
+// first — PlatformTempDir puts the per-user scratch inside it — followed only by
+// existing toolchain caches.
 func TestPlatformCacheRootsUseTheUserCacheDir(t *testing.T) {
 	want := overrideUserCache(t, t.TempDir())
 
 	roots := PlatformCacheRoots()
-	if len(roots) != 1 {
-		t.Fatalf("PlatformCacheRoots() = %v, want exactly the user cache directory", roots)
+	if len(roots) == 0 {
+		t.Fatal("PlatformCacheRoots() is empty")
 	}
 	if roots[0] != want {
-		t.Fatalf("PlatformCacheRoots()[0] = %q, want the user cache directory %q", roots[0], want)
+		t.Fatalf("PlatformCacheRoots()[0] = %q, want the user cache directory %q (first: TMPDIR lives under it)", roots[0], want)
 	}
+	for _, root := range roots[1:] {
+		if info, err := os.Stat(root); err != nil || !info.IsDir() {
+			t.Errorf("PlatformCacheRoots() granted %q, which does not exist: the Linux applier refuses a root it cannot open, so this would break every confined command", root)
+		}
+	}
+}
+
+// installedToolchain makes command appear on PATH for the duration of the test,
+// with the user's home redirected so the conventional cache location is the
+// test's own temporary directory rather than the developer's.
+//
+// It is the two facts a toolchain's grant depends on: the command is installed,
+// and the cache is where this product expects it.
+func installedToolchain(t *testing.T, command string, cachePath ...string) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
+	bin := t.TempDir()
+	exe := filepath.Join(bin, command)
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	// A test that asserts a cache for one toolchain must not inherit another's.
+	for _, name := range []string{"GOMODCACHE", "GOPATH", "CARGO_HOME", "npm_config_cache", "NPM_CONFIG_CACHE", "XDG_DATA_HOME"} {
+		t.Setenv(name, "")
+	}
+	return filepath.Join(append([]string{home}, cachePath...)...)
+}
+
+// TestToolchainCacheIsGrantedOnlyWhenInstalledAndExisting is the cold/warm pair
+// from issue #166: an installed toolchain whose cache directory exists is
+// granted, and the same toolchain before its cache exists is not — because a
+// granted root that cannot be opened would make the Linux applier refuse to run
+// the command at all.
+func TestToolchainCacheIsGrantedOnlyWhenInstalledAndExisting(t *testing.T) {
+	overrideUserCache(t, t.TempDir())
+	cache := installedToolchain(t, "go", "go", "pkg", "mod")
+
+	if got := PlatformCacheRoots(); contains(got, cache) {
+		t.Errorf("PlatformCacheRoots() granted %q before it existed: %v", cache, got)
+	}
+
+	EnsurePlatformCacheRoots()
+	if got := PlatformCacheRoots(); !contains(got, cache) {
+		t.Errorf("PlatformCacheRoots() = %v, want it to include the installed toolchain's cache %q", got, cache)
+	}
+	if info, err := os.Stat(cache); err != nil || !info.IsDir() {
+		t.Errorf("EnsurePlatformCacheRoots did not create %q: %v %v", cache, info, err)
+	}
+}
+
+// TestToolchainCacheIsNotGrantedWhenTheToolchainIsAbsent keeps a machine from
+// growing caches it never asked for, and keeps the grant honest: a directory
+// that merely looks like a toolchain's cache is not evidence that the toolchain
+// is installed.
+func TestToolchainCacheIsNotGrantedWhenTheToolchainIsAbsent(t *testing.T) {
+	overrideUserCache(t, t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // no toolchain on PATH at all
+	if err := os.MkdirAll(filepath.Join(home, "go", "pkg", "mod"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, root := range PlatformCacheRoots() {
+		if strings.Contains(root, filepath.Join("go", "pkg", "mod")) {
+			t.Fatalf("PlatformCacheRoots() granted %q for a toolchain that is not on PATH", root)
+		}
+	}
+}
+
+// TestToolchainCacheGrantsTheSubtreeNotTheHome is the security rule that makes
+// the widening in #166 acceptable: GOPATH holds go/bin beside the module cache
+// and CARGO_HOME holds bin beside registry, so granting either home would let a
+// confined command leave a program behind that the user later runs — the sandbox
+// escaping by persistence.
+func TestToolchainCacheGrantsTheSubtreeNotTheHome(t *testing.T) {
+	overrideUserCache(t, t.TempDir())
+
+	t.Run("go", func(t *testing.T) {
+		moduleCache := installedToolchain(t, "go", "go", "pkg", "mod")
+		EnsurePlatformCacheRoots()
+		got := PlatformCacheRoots()
+		if !contains(got, moduleCache) {
+			t.Fatalf("PlatformCacheRoots() = %v, want the module cache %q", got, moduleCache)
+		}
+		// The two directories a Go install puts on PATH must not be granted. They
+		// are checked as paths, not as a substring of the home: granting the home
+		// itself is what this rules out.
+		gopath := filepath.Dir(filepath.Dir(moduleCache)) // <home>/go
+		if contains(got, gopath) {
+			t.Errorf("PlatformCacheRoots() granted GOPATH %q, whose bin is on PATH", gopath)
+		}
+		if contains(got, filepath.Join(gopath, "bin")) {
+			t.Errorf("PlatformCacheRoots() granted go's bin directory: %v", got)
+		}
+	})
+
+	t.Run("cargo", func(t *testing.T) {
+		registry := installedToolchain(t, "cargo", ".cargo", "registry")
+		EnsurePlatformCacheRoots()
+		got := PlatformCacheRoots()
+		if !contains(got, registry) {
+			t.Fatalf("PlatformCacheRoots() = %v, want the registry cache %q", got, registry)
+		}
+		cargoHome := filepath.Dir(registry) // <home>/.cargo
+		if contains(got, cargoHome) {
+			t.Errorf("PlatformCacheRoots() granted CARGO_HOME %q, whose bin is on PATH", cargoHome)
+		}
+		if contains(got, filepath.Join(cargoHome, "bin")) {
+			t.Errorf("PlatformCacheRoots() granted cargo's bin directory: %v", got)
+		}
+	})
+}
+
+// TestToolchainCacheHonoursTheEnvironmentVariables covers the locations a user
+// moved deliberately: the cache is where the variable says, and CARGO_HOME's
+// registry subtree is still the thing granted.
+func TestToolchainCacheHonoursTheEnvironmentVariables(t *testing.T) {
+	overrideUserCache(t, t.TempDir())
+	installedToolchain(t, "go", "go", "pkg", "mod") // PATH has go
+
+	moduleCache := filepath.Join(t.TempDir(), "gomodcache")
+	cargoRegistry := filepath.Join(t.TempDir(), "cargohome", "registry")
+	t.Setenv("GOMODCACHE", moduleCache)
+	t.Setenv("CARGO_HOME", filepath.Dir(cargoRegistry))
+	// cargo has to be installed for its variable to be consulted at all.
+	bin := t.TempDir()
+	for _, command := range []string{"go", "cargo"} {
+		if err := os.WriteFile(filepath.Join(bin, command), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+
+	EnsurePlatformCacheRoots()
+	got := PlatformCacheRoots()
+	if !contains(got, moduleCache) {
+		t.Errorf("PlatformCacheRoots() = %v, want $GOMODCACHE %q", got, moduleCache)
+	}
+	if !contains(got, cargoRegistry) {
+		t.Errorf("PlatformCacheRoots() = %v, want $CARGO_HOME/registry %q", got, cargoRegistry)
+	}
+	if contains(got, filepath.Dir(cargoRegistry)) {
+		t.Errorf("PlatformCacheRoots() granted CARGO_HOME itself: %v", got)
+	}
+}
+
+// TestToolchainCacheIgnoresRelativeEnvironmentVariables: a relative GOMODCACHE is
+// resolved against whatever directory a command runs in, so granting it would
+// grant a different path in every project.
+func TestToolchainCacheIgnoresRelativeEnvironmentVariables(t *testing.T) {
+	overrideUserCache(t, t.TempDir())
+	installedToolchain(t, "go", "go", "pkg", "mod")
+	t.Setenv("GOMODCACHE", "relative/modcache")
+	t.Setenv("CARGO_HOME", "relative/cargohome")
+
+	EnsurePlatformCacheRoots()
+	for _, root := range PlatformCacheRoots() {
+		if strings.HasPrefix(root, "relative") || strings.Contains(root, "relative/") {
+			t.Fatalf("PlatformCacheRoots() granted the relative path %q", root)
+		}
+	}
+}
+
+// contains reports whether the slice holds the exact path.
+func contains(paths []string, want string) bool {
+	for _, p := range paths {
+		if p == want {
+			return true
+		}
+	}
+	return false
 }
 
 // TestConfinedEnvPointsTmpdirUnderTheCacheRoot covers the other half of making
