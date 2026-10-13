@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 771 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 857 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -582,7 +582,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **771 test functions + 10 fuzz targets** across all packages (`go test ./... -count=1`); the README badge carries the test count and is part of the same measurement discipline
+- **857 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -603,7 +603,15 @@ User Input (textarea / CLI arg)
 
 ### Harness rules (tests that drive an external process)
 
-The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `tui/pty_screen_test.go` or any new gated harness; `AGENTS.md` carries the short form, this is the design record they were derived from (the 5-minute `tui-visual` hang on `master`, run `36731349829`). The full reference, including the recipes these rules apply to, is [docs/tui-visual-harness.md](docs/tui-visual-harness.md):
+The rules an agent or reviewer needs before touching a test that drives an external process — a PNG
+render, a PTY session, the real binary. `AGENTS.md` carries the short form, this is the design record
+they were derived from (the 5-minute `tui-visual` hang on `master`, run `36731349829`); the machinery
+they constrain now lives in the `tuiprobe` module, whose own references are
+[tuiprobe/README.md](tuiprobe/README.md) and [tuiprobe/docs/parity.md](tuiprobe/docs/parity.md), with
+this repository's side in [docs/tui-verification.md](docs/tui-verification.md).
+
+The rules survived the move even though the identifiers below did not, and they are what any new gated
+harness has to satisfy:
 
 - **One budget per stage, named in the failure.** `runStage` runs a stage in its own goroutine with `shotTimeout` and returns an error the caller labels (`screenshot todo: …`). Without it a wedged CDP (Chrome DevTools Protocol) call reports nothing until `go test -timeout` kills the package, and the goroutine dump is the only evidence. `TestRunStageReportsTimeout` pins this and needs no browser, so it also runs in the `ci` job.
 - **No panicking helpers inside a stage.** `capturePNG` uses rod's error-returning API (`Page`/`SetViewport`/`Navigate`/`WaitLoad`/`Screenshot`), never `Must*`: a panic in a subtest goroutine skips the deferred `browser.Close()`, and the deferred `t.Cleanup` that follows then blocks.
@@ -617,15 +625,19 @@ The rules an agent or reviewer needs before touching `tui/frame_shot_test.go`, `
 Counts in this document are produced by these commands at the commit they describe; if one changes, change the command's output here in the same PR:
 
 ```bash
-grep -rn '^func Test' --include=*_test.go . | wc -l    # 710 test functions
+find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
+  | xargs -0 grep -h '^func Test' | wc -l              # 857 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
 ```
 
-The **README badge** (`badge/tests-710`) is part of the same set: it is a static shields.io
-badge with no code path keeping it honest, and it had drifted to 564 while this document said
-667 — both were wrong by the time anyone looked. Update it in the same PR as the count.
+A **test-count badge** used to be part of this set, and it was removed in issue #170 rather than
+updated once more. It was a static shields.io number with no code path keeping it honest: it read 564
+while this document said 667, then 710 while the tree had 857. The lesson is not "update it too" —
+it is that a figure nothing can check will drift, so the measurement lives in the command above and
+in whatever the badge would have duplicated. A badge that is computed from the tree at build time
+would be a different thing, and nobody is building one.
 
 These drifted by eight (654 documented, 662 actual) before the rule existed, which is why the
 command sits next to the number rather than in a reviewer's head.
