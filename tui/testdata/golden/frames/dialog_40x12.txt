@@ -13,4 +13,4 @@
   [2] Allow for this session
   [3] Deny
 ↑↓ navigate · Enter select · 1-9 shortcut · Esc cancel
-⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m
+⚡ plan  ■ unknown  tokens: 0  tools: 0
