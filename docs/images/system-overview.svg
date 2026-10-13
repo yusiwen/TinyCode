@@ -128,14 +128,12 @@
     <text class="fig-mut" x="770" y="262">buffered 200</text>
     <text class="fig-mut" x="770" y="278" style="font-size:9px">StreamMsg  ToolCallMsg</text>
     <text class="fig-mut" x="770" y="292" style="font-size:9px">StreamDone</text>
-    <path class="fig-flow" d="M730 66 H832 V100" marker-end="url(#fig-arrow)"/>
-    <text class="fig-mut" x="838" y="60">prompt</text>
-    <path class="fig-flow" d="M832 148 V222" marker-end="url(#fig-arrow)"/>
-    <text class="fig-mut" x="788" y="190" text-anchor="end">delta</text>
-    <path class="fig-flow" d="M730 226 H848 V148" marker-end="url(#fig-arrow)"/>
-    <text class="fig-mut" x="796" y="220" text-anchor="end">Update()</text>
-    <path class="fig-flow" d="M730 695 H880 V346"/>
-    <path class="fig-flow" d="M880 346 H850 V300" marker-end="url(#fig-arrow)"/>
-    <text class="fig-mut" x="892" y="520" transform="rotate(-90 892 520)">tool result</text>
+    <path class="fig-flow" d="M730 66 H800 V100" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="806" y="60">prompt</text>
+    <path class="fig-flow" d="M800 148 V222" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="788" y="175" text-anchor="end">delta</text>
+    <text class="fig-mut" x="788" y="205" text-anchor="end">Update()</text>
+    <path class="fig-flow" d="M730 752 H950 V163 H756" marker-end="url(#fig-arrow)"/>
+    <text class="fig-mut" x="942" y="600" transform="rotate(-90 942 600)">tool result</text>
     <text class="fig-foot" x="32" y="944">Every box is a package in this repository; the arrows are the paths a request and its stream actually take.</text>
 </svg>
