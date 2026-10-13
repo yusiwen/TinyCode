@@ -9,4 +9,4 @@
     Three steps left.
     [ Copy ]
 ┃   1 Type your request (Ctrl+J for
-⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m
+⚡ plan  ■ unknown  tokens: 0  tools: 0

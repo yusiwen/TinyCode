@@ -29,7 +29,12 @@
 # the *fraction* and the reported thousands instead of a number the title call can move by
 # a few tokens. The committed frame (tui/testdata/golden/frames/statusbar_*.txt) is where
 # the exact text is pinned.
-open --dir . --size 200x50 --env HOME=/tmp/tinyscen-home-price --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-price && mkdir -p /tmp/tinyscen-home-price/sessions /tmp/tinyscen-home-price/.tinycode; cp tui/testdata/scenarios/config/priced.json /tmp/tinyscen-home-price/.tinycode/config.json; python3 tui/testdata/stub/openai_stub.py 18496 priced 1 /tmp/tinyscen-home-price/stub-count.txt & count=/tmp/tinyscen-home-price/stub-count.txt; i=0; while [ ! -s "$count" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done; ./bin/tinycode --base-url=http://127.0.0.1:18496/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-price/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+# 120x30 is an ordinary terminal, and this bar is long: a budget fraction and a reported
+# charge both present. That is the width at which issue #196 used to fail — the bar's own
+# length pushed the exit confirmation past the wrap, so the `wait --text` for the whole
+# sentence could not match. The exit sequence below is therefore the assertion that S1
+# (a message budgeted before the segments) keeps a long bar's message readable.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-price --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-price && mkdir -p /tmp/tinyscen-home-price/sessions /tmp/tinyscen-home-price/.tinycode; cp tui/testdata/scenarios/config/priced.json /tmp/tinyscen-home-price/.tinycode/config.json; python3 tui/testdata/stub/openai_stub.py 18496 priced 1 /tmp/tinyscen-home-price/stub-count.txt & count=/tmp/tinyscen-home-price/stub-count.txt; i=0; while [ ! -s "$count" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done; ./bin/tinycode --base-url=http://127.0.0.1:18496/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-price/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
 wait --text "Type your request" --timeout 20s
 send --text "price this call"
 send --key enter
@@ -39,7 +44,7 @@ wait --text "stub-answer-ok" --timeout 30s
 wait --text "cost: 0.0042 credits" --timeout 15s
 # And the counter as a fraction of the configured session budget.
 wait --text "tokens: 15[0-9][0-9]/100000" --timeout 15s
-screenshot /tmp/tinyscen-shots/status-cost-200x50.png --scale 2
+screenshot /tmp/tinyscen-shots/status-cost-120x30.png --scale 2
 # Exit the way the other TUI scenarios do: wait for the screen to settle first (the
 # spinner animates while a run streams), then two Ctrl+C presses with the confirmation
 # prompt between them, so a wrong state is a named assertion instead of a hang.

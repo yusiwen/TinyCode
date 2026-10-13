@@ -459,14 +459,88 @@ func (m *TuiModel) renderStatusBar() string {
 		}
 	}
 
-	status := fmt.Sprintf("%s %s%s%s  ■ %s  %s%s  tools: %d  msgs: %d%s  session: %s%s%s",
-		modeIcon, modelName, spinnerStr, procStr,
-		provName,
-		tokensStr, costStr, m.sessionToolCalls, len(m.messages),
+	// The bar is a list of segments in priority order — an earlier one survives a
+	// narrow terminal — plus the status message, which is budgeted first because it
+	// is the part that must be readable: `Press Ctrl+C again to quit` is the only
+	// signal that a first Ctrl+C was taken as a quit rather than as an interrupt,
+	// and a half sentence there is not cosmetic (issue #196).
+	segments := []string{
+		fmt.Sprintf("%s %s%s%s", modeIcon, modelName, spinnerStr, procStr),
+		fmt.Sprintf("  ■ %s", provName),
+		"  " + tokensStr,
+		costStr,
+		fmt.Sprintf("  tools: %d", m.sessionToolCalls),
+		fmt.Sprintf("  msgs: %d", len(m.messages)),
 		diagStr,
-		durStr, histStr, statusMsg)
+		fmt.Sprintf("  session: %s", durStr),
+		histStr,
+	}
 
-	return statusBarStyle.Render(status)
+	return statusBarStyle.Render(fitStatusBar(segments, statusMsg, m.width))
+}
+
+// fitStatusBar joins the segments that fit beside a status message, measuring in
+// cells rather than characters: the bar carries wide glyphs (⚡, ■), and the
+// terminal clips by cells.
+//
+// Two rules, both from issue #196 and both asserted:
+//
+//   - The message is budgeted first and kept whole. Everything else is added left
+//     to right while it fits, so the segments nearest the message are the ones a
+//     narrow terminal costs the user.
+//   - A segment that does not fit is left out *whole*. A segment cut in half can be
+//     misread — `0.95 credits` rendering as `0.95 credit`, or a fraction losing its
+//     limit — and an absent segment cannot. When nothing can make the message fit,
+//     it is clipped with a visible ellipsis rather than silently truncated.
+//
+// A width of zero means the terminal size is not known yet; the bar is then built
+// in full, which is what it did before this existed.
+func fitStatusBar(segments []string, message string, width int) string {
+	if width <= 0 {
+		return strings.Join(segments, "") + message
+	}
+	if lipgloss.Width(message) > width {
+		return clipStatusText(message, width)
+	}
+
+	used := lipgloss.Width(message)
+	kept := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		w := lipgloss.Width(segment)
+		if used+w > width {
+			break
+		}
+		kept = append(kept, segment)
+		used += w
+	}
+	return strings.Join(kept, "") + message
+}
+
+// clipStatusText cuts text to width cells and marks the cut. The marker matters:
+// without it a clipped message reads as a shorter one.
+func clipStatusText(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(text) <= width {
+		return text
+	}
+	const marker = "…"
+	limit := width - lipgloss.Width(marker)
+	if limit <= 0 {
+		return marker
+	}
+	var b strings.Builder
+	used := 0
+	for _, r := range text {
+		w := runewidth.RuneWidth(r)
+		if used+w > limit {
+			break
+		}
+		b.WriteRune(r)
+		used += w
+	}
+	return b.String() + marker
 }
 
 // formatDuration formats a duration like "4h31m" or "32s".

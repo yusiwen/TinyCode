@@ -40,10 +40,15 @@ const goldenDir = "testdata/golden"
 
 // TestGoldenFrames pins every scenario's text frame.
 //
-// The frame must fit the terminal it claims (after clipping: a frame may be taller
-// and wider than its terminal, because the status bar is drawn outside the cell grid
-// — issue #25), it must carry styling, and it must match the committed file byte for
-// byte.
+// The frame must fit the terminal it claims (after clipping), it must carry styling,
+// and it must match the committed file byte for byte.
+//
+// A frame may still be wider than its geometry, and one is on purpose: the clip below
+// has to be exercised by something, or it silently stops being tested. That case is the
+// permission dialog's hint row, which is laid out inside the grid and is clipped by the
+// terminal at 40 columns (issue #218). The status bar used to be the reason — it is
+// drawn outside the cell grid (issue #25) — and since #196 it is budgeted against the
+// width like the rest, which is why it no longer overruns.
 func TestGoldenFrames(t *testing.T) {
 	overlong := 0
 	for _, sc := range frameScenarios {
@@ -120,7 +125,6 @@ func TestFrameScenariosRenderTwice(t *testing.T) {
 // claim: each row, clipped the way the renderer clips it, must fit the terminal's
 // width, and the clip must be idempotent.
 func TestShotScenariosFitTheirGeometry(t *testing.T) {
-	overlong := 0
 	for _, sc := range frameScenarios {
 		if len(sc.shots) == 0 {
 			continue
@@ -137,15 +141,16 @@ func TestShotScenariosFitTheirGeometry(t *testing.T) {
 				if again := golden.Clip(shot.size.W, clipped); again != clipped {
 					t.Errorf("%s: the clip is not idempotent", shot.name)
 				}
-				if err := golden.FitsWidth(shot.size.W, frame); err != nil {
-					overlong++
-				}
 			}
 		})
 	}
-	if overlong == 0 {
-		t.Error("no scenario is wider than its geometry any more, so the clip is untested")
-	}
+	// This test used to require one of its own shots to be wider than its geometry, so
+	// that the clip above was exercised by something. It no longer has such a case and
+	// does not need one: the status bar was the last, and since #196 it is budgeted
+	// against the width like the rest. The clip is still exercised, by
+	// TestGoldenFrames — the dialog at 40x12 has a row 54 cells wide, which is the
+	// subject of #218 — and it is the same golden.Clip on the same View() string, so
+	// the coverage did not move with the fixture.
 }
 
 // TestFrameScreenshots renders each scenario to a PNG with the tool's font renderer

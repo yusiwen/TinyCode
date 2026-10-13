@@ -9,6 +9,28 @@ back to its change and tests.
 
 ## Unreleased
 
+### A long status bar keeps its status message
+
+The status bar is one line: the session facts, then `│ <status message>`. The model rendered it in full
+and the **terminal** clipped it at the window width, so as the segments grew — a budget fraction
+(#179), a reported charge (#181) — the message at the end was what got cut. At 120 columns
+`Press Ctrl+C again to quit` arrived as `Press Ctrl+C again`, and that phrase is the only signal that a
+first Ctrl+C was taken as a quit rather than as an interrupt (issue #196).
+
+`fitStatusBar` now budgets the line before it is rendered: the message is measured first and kept whole,
+the remaining segments are added left to right while they fit, and a segment that does not fit is left
+out **whole** — a segment cut in half can be misread (`0.95 credits` as `0.95 credit`, a fraction losing
+its limit) where an absent one cannot. When no width can make the message fit, it is clipped with a
+visible ellipsis rather than silently truncated. An unknown terminal width still builds the bar in full,
+as before.
+
+This also makes the committed frames honest for the status bar: they used to carry the same
+126-character line at every geometry, because the *test* clipped and the model did not, so the goldens
+pinned the text while the screen showed a cut sentence.
+
+`status-cost.scenario` comes back from 200x50 to **120x30** — the width at which it used to fail — and
+its exit sequence, which waits for the whole confirmation, is the assertion that the message survives.
+
 ### Resizing a running program is covered again
 
 The TUI's in-process program-driver test was deleted when the harness moved into the `tuiprobe`
