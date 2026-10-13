@@ -1,0 +1,28 @@
+# Resizing a *running* program: the one property the deleted in-process program
+# driver covered and nothing covered afterwards (issue #214). It is the reason the
+# `resize` step exists in the tool — the pty, session, daemon and CLI could all
+# resize, and a scenario file could not reach any of them.
+#
+# The assertions are chosen so that a resize which never reached the terminal
+# would fail:
+#   * `wait --text … --since` after a `mark` only matches text the program drew
+#     *after* that mark, so the input row has to be redrawn following the resize;
+#   * `fit --size 40x12` asserts the session really is that size and the frame
+#     fits it;
+#   * `screenshot` asserts the image's pixel size against this session's geometry,
+#     so the artifact is evidence of the geometry rather than of the code path.
+#
+# 40x12 is the narrow end: the banner art is dropped and rows re-flow there, so a
+# program that ignored the resize would still be drawing the 80x24 layout.
+open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 30s
+fit --size 80x24
+mark
+resize --size 40x12
+# Drawn after the mark, so it can only come from the redraw the resize caused.
+wait --text "Type your request" --since --timeout 30s
+fit --size 40x12
+screenshot /tmp/tinyscen-shots/resize-running-40x12.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

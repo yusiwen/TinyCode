@@ -87,6 +87,10 @@ Three files today:
   (`wait-exit`) rather than from having to kill it;
 - `narrow.scenario` — the same at 40x12, where the banner is dropped and the status bar
   is wider than the terminal, plus a screenshot;
+- `resize-running.scenario` — the binary started at 80x24, then resized to 40x12 while running: a
+  `mark` before the resize, a `wait --text … --since` that can only match the redraw the resize
+  caused, `fit` at the new geometry, and a screenshot whose pixel size is asserted against it (issue
+  #214);
 - `palette.scenario` — `/` opens the command palette, typing filters it, Esc closes it,
   and the double Ctrl+C leaves (Esc first: Ctrl+C with the palette open closes the
   palette instead of quitting).
