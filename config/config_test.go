@@ -306,7 +306,10 @@ func TestAddAllowedPathPreservesFile(t *testing.T) {
 	if strings.Count(text, "/new/path") != 1 {
 		t.Errorf("path should appear exactly once: %s", text)
 	}
-	if strings.Contains(text, "context_length") || strings.Contains(text, "deepseek-v4-flash") {
+	// The model name is the default's, not the retired alias's: the check has to
+	// name what DefaultConfig would materialise today, or it would pass on a file
+	// that had grown the default model while looking for the wrong string.
+	if strings.Contains(text, "context_length") || strings.Contains(text, "deepseek-flash") {
 		t.Errorf("defaults were materialised into the user config: %s", text)
 	}
 

@@ -9,6 +9,31 @@ back to its change and tests.
 
 ## Unreleased
 
+### The default model name is the one DeepSeek publishes
+
+`config.DefaultConfig()` sent `deepseek-v4-flash`, which DeepSeek's pricing page footnotes as a **retired**
+name: still accepted, served by DeepSeek-V4.1-Flash, billed at the Flash price. Nothing was broken by it —
+which is why this was a chore and not a bug — but the model name is also the key a declared rate is looked
+up by (`<route>/<model>`), so a retired alias is a second name for one route that can drift, and a price
+table naming only one of the two silently fails to price the other. The default, the shipped example and
+the example's price key now all name `deepseek-flash` (issue #226); the alias keeps working for a user who
+typed it into their own config.
+
+`TestDefaultConfigSendsTheCanonicalDeepSeekModel` asserts the name in the **request body** a default
+configuration actually builds — not only in the struct field, which is what a provider may still override —
+so the assertion covers the path `DefaultConfig` → `buildProviderRegistry` → the wire. `config_test.go`'s
+check that `AddAllowedPath` never materialises defaults now names the model the defaults carry today;
+naming the retired alias would have kept passing while looking for the wrong string.
+
+The example's declared DeepSeek rates are its **peak** rates, and the `pricing` block's `$comment` now says
+so: one price per lane cannot express the off-peak half, so a declared estimate is 2× too high for about
+79% of the week until the schema can hold both
+([#225](https://github.com/yusiwen/TinyCode/issues/225)). The note has to sit at that level rather than
+beside the rates, because `prices` is a map and a `$comment` inside it is read as data — the same defect
+that already keeps the whole shipped example from loading, filed as
+[#229](https://github.com/yusiwen/TinyCode/issues/229) because it is pre-existing, it affects every section
+of the file rather than this rename, and it leaves the choice of fix shape open.
+
 ### Model pricing: the decision not to ship a price table
 
 [docs/pricing-decision.md](docs/pricing-decision.md) records what this repository will and will not do

@@ -112,12 +112,13 @@ Two properties keep this honest for data that may not exist:
   bill is in; totals are kept per unit and never added across units, because a route may bill in credits
   rather than a currency (issue #181).
 
-Filling the key is where a table would meet reality, and the awkwardness is already visible: this
-repository's **default** sends the retired alias `deepseek-v4-flash`, while the canonical name is
-`deepseek-flash`, and LiteLLM lists `deepseek/deepseek-v4-flash` and `deepseek/deepseek-flash` as separate
-entries at the same rates. A table that names only one of them silently fails to price the other — so
-alias resolution would be part of any vendored table's coverage, not an edge case. The default's stale
-name is filed as [#226](https://github.com/yusiwen/TinyCode/issues/226).
+Filling the key is where a table would meet reality, and the awkwardness is already visible: until
+[#226](https://github.com/yusiwen/TinyCode/issues/226) this repository's **default** sent the retired alias
+`deepseek-v4-flash`, while the canonical name is `deepseek-flash`, and LiteLLM lists
+`deepseek/deepseek-v4-flash` and `deepseek/deepseek-flash` as separate entries at the same rates. The
+default, the shipped example and its price key all name `deepseek-flash` now. The alias still resolves for
+a user who typed it into their own config, so alias resolution would be part of any vendored table's
+coverage, not an edge case: a table that names only one of the two silently fails to price the other.
 
 ## 6. Tiering
 
@@ -150,12 +151,12 @@ weekdays plus all weekend — the complement of the vendor's peak rule, which is
 not encode Chinese public holidays, so it prices those as peak, and it would inherit that approximation
 along with everything else a vendored table costs to maintain.
 
-**The consequence is already shipped.** `config.example.json` declares `deepseek/deepseek-v4-flash` at
+**The consequence is already shipped.** `config.example.json` declares `deepseek/deepseek-flash` at
 `0.30 / 1.20 / 0.006` — the *peak* rates — and `Price` has nowhere to put a second set. So the example's
-estimate is **2× too high for about 79% of the week**, and nothing in the display says so. Declaring the
-off-peak rates instead is 2× too low during peak. There is no correct single number, which is precisely
-why the answer to "should we vendor a table" cannot be "yes" before the schema can hold what the table
-would say.
+estimate is **2× too high for about 79% of the week**, and nothing in the display says so; the example's
+own `$comment` says so after #226, and the number still cannot be right. Declaring the off-peak rates
+instead is 2× too low during peak. There is no correct single number, which is precisely why the answer to
+"should we vendor a table" cannot be "yes" before the schema can hold what the table would say.
 
 The choice is therefore between extending the schema and refusing to price such routes. This repository
 extends the schema — [#225](https://github.com/yusiwen/TinyCode/issues/225) — because the user-declared

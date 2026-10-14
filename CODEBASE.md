@@ -218,7 +218,7 @@ nil for every key.
 - **`priceTable(cfg)`** (in `main.go`) — reads `Pricing` and builds the agent's `PriceTable`; an empty section prices nothing, which the agent reports as an unknown cost rather than as zero
 - **`BudgetConfig`**: `MaxTokensPerRun`, `MaxTokensPerSession` — both default to 0 = unlimited; a negative value in a file is ignored rather than read as "no limit", so only zero switches a limit off
 - **`(cfg Config) TokenBudgets() (perRun, perSession int)`** — nil-safe accessor used by `main.go` to set the agent's limits
-- **`DefaultConfig() Config`** — DeepSeek V4 Flash, `https://api.deepseek.com`, 1M context
+- **`DefaultConfig() Config`** — `deepseek-flash` (model version DeepSeek-V4.1-Flash, the name DeepSeek publishes; the `deepseek-v4-flash` alias is retired, issue #226), `https://api.deepseek.com`, 1M context
 - **`LoadConfig() Config`** — merge order: defaults → `~/.tinycode/config.json` → `./.tinycode/config.json`; `merge` covers every section (providers, agents, sandbox, mcp_servers, theme, searxng_url, truncation, LSP, context limits); a malformed file is reported on stderr and the defaults are used
 - **`AddAllowedPath(path) error`** — patches only `sandbox.allowed_paths` in the *user* config (preserving unknown keys and never materialising defaults); used by "Always allow"
 - **`LoadUserConfig() Config`** — defaults + user-global file only (no project layer); used when persisting settings so repo-controlled providers/system prompts are never promoted to the global config

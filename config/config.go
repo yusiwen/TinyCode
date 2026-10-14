@@ -225,9 +225,14 @@ func DefaultConfig() Config {
 		ShowThinking: &showThinking,
 		Providers: []ProviderRecordConfig{
 			{
+				// Issue #226: DeepSeek publishes `deepseek-flash`; the older
+				// "deepseek-v4-flash" is a retired alias the vendor still accepts
+				// and bills at this price. The model name is also the key a
+				// declared rate is looked up by, so the default sends the name the
+				// vendor documents.
 				Name:    "deepseek",
 				Type:    "openai",
-				Model:   "deepseek-v4-flash",
+				Model:   "deepseek-flash",
 				BaseURL: "https://api.deepseek.com",
 			},
 		},
@@ -249,7 +254,7 @@ func DefaultConfig() Config {
 			},
 		},
 		SessionDir:           filepath.Join(home, ".tinycode", "sessions"),
-		ContextLength:        1000000, // 1M for DeepSeek V4 Flash
+		ContextLength:        1000000, // 1M on deepseek-flash (model version DeepSeek-V4.1-Flash)
 		CompressionThreshold: 500000,  // 50% of context
 	}
 }
