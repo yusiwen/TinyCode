@@ -1,16 +1,22 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/tool"
+	"github.com/yusiwen/tinycode/types"
 )
 
 func TestLoadProjectContextNoFile(t *testing.T) {
@@ -557,5 +563,63 @@ func TestApplyAgentOverrides(t *testing.T) {
 	}}
 	if err := applyAgentOverrides(agent.NewRegistry(), bad); err == nil {
 		t.Fatal("expected an error for an unknown permission effect")
+	}
+}
+
+// TestDefaultConfigSendsTheCanonicalDeepSeekModel is the acceptance check for
+// issue #226. DeepSeek publishes `deepseek-flash` and footnotes
+// `deepseek-v4-flash` as a retired alias: still accepted, served by
+// DeepSeek-V4.1-Flash, billed at the same price. The alias is nevertheless a
+// second name for one route, and the model name is also the key a declared rate
+// is looked up by, so what this repository *sends* by default has to be the name
+// the vendor documents.
+//
+// It asserts the request body rather than the config field: the field is what a
+// provider may still override, the body is what the server bills on.
+//
+// The obvious companion assertion — that the shipped example declares a rate for
+// the default route it ships — is deliberately not here yet: the example does
+// not load at all, because a `$comment` inside the `agents` map is decoded as
+// data (`json: cannot unmarshal string into Go struct field Config.agents.$comment
+// of type config.AgentOverride`). Until that is fixed nothing in the file applies
+// to a running program, so a gate over its contents would assert something no
+// user ever sees. Filed as issue #229, which also records the two shapes that fix
+// can take.
+func TestDefaultConfigSendsTheCanonicalDeepSeekModel(t *testing.T) {
+	var mu sync.Mutex
+	var sent map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Errorf("request body is not JSON: %v (%s)", err, body)
+		}
+		mu.Lock()
+		sent = decoded
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer srv.Close()
+
+	cfg := config.DefaultConfig()
+	registry := buildProviderRegistry(&cfg, "sk-test", "", srv.URL)
+	// An empty request model is what the agent loop sends when no per-agent
+	// override is configured, so this is the default path end to end.
+	if _, err := registry.Current().Chat(context.Background(), types.ChatRequest{}); err != nil {
+		t.Fatalf("Chat against the test server: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if sent == nil {
+		t.Fatal("no request reached the test server")
+	}
+	if got := sent["model"]; got != "deepseek-flash" {
+		t.Errorf(`request "model" = %v, want "deepseek-flash" (the published name; "deepseek-v4-flash" is a retired alias)`, got)
 	}
 }

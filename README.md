@@ -61,7 +61,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Streaming reasoning + text deltas
 - Tool call lifecycle displayed in real-time
 - Multi-turn history compression: Hermes-style head/tail/middle summarization
-- 1M token context (DeepSeek V4 Flash) with automatic threshold lowering on `context_length_exceeded` errors
+- 1M token context (`deepseek-flash`, model version DeepSeek-V4.1-Flash) with automatic threshold lowering on `context_length_exceeded` errors
 
 ### LSP Integration
 - **Config**: `"lsp": { "enabled": true }` in config.json (default: disabled). 7 supported languages with auto-detection: Go (`gopls`), Python (`pyright`), TypeScript/JS (`typescript-language-server`), Rust (`rust-analyzer`), C++ (`clangd`), Java (Eclipse JDT).
@@ -237,7 +237,7 @@ type LLMProvider interface {
 }
 ```
 
-- **DeepSeek** (default): streaming SSE support, `deepseek-v4-flash`
+- **DeepSeek** (default): streaming SSE support, `deepseek-flash`
 - **MockLLM**: step-by-step scripted responses for agent loop testing
 - **ProviderRegistry**: switch providers at runtime via Tab
 
