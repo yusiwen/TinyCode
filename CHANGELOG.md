@@ -9,6 +9,29 @@ back to its change and tests.
 
 ## Unreleased
 
+### Model pricing: the decision not to ship a price table
+
+[docs/pricing-decision.md](docs/pricing-decision.md) records what this repository will and will not do
+about knowing what a call cost (issue #182). The verdict is **no vendored price table**: the route's own
+reported charge (OpenRouter states `usage.cost` per request) and rates the user declares stay the only
+two mechanisms, and a call neither can price is counted as unknown rather than as zero.
+
+The measurement behind that is that the two leading open datasets disagree about this repository's own
+default route. For `deepseek-flash` input, LiteLLM's base entry says $0.30/M and models.dev says
+$0.15/M — and both are right, because LiteLLM carries DeepSeek's peak rate with an `off_peak_pricing`
+block holding the other half, while models.dev carries the off-peak rate as its only number. A vendored
+single value is therefore ambiguous rather than merely stale: which one is correct depends on the hour.
+DeepSeek bills peak at 01:00–04:00 and 06:00–10:00 UTC, Monday to Friday, which is 20.8% of the week.
+
+The same measurement exposes what has to happen instead. `agent.Price` has five lanes and no time
+dimension, so the user's *own* declaration cannot be right either: `config.example.json` declares the
+peak rates, which makes its estimate 2× too high for about 79% of the week with nothing saying so. That
+schema work is [#225](https://github.com/yusiwen/TinyCode/issues/225), and the retired legacy model name
+the default still sends is [#226](https://github.com/yusiwen/TinyCode/issues/226). `docs/roadmap.md` A3
+now points at the verdict rather than at the open question.
+
+No application code lands from #182; this document and those two issues are its deliverable.
+
 ### The tool registry lists the tools that exist
 
 `CODEBASE.md`'s table of built-in tools is titled "Complete Tool Name Registry" and is written by hand.
