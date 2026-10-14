@@ -9,6 +9,28 @@ back to its change and tests.
 
 ## Unreleased
 
+### The command palette and provider picker fit a narrow terminal
+
+The input area's rows are drawn below the cell grid like the dialog's, so a row wider than the window is
+cut by the terminal itself. The command palette's rows are `  <name>  <description>`; the widest is 36
+cells, so a 30-column terminal showed `Toggle thinking display` as `Toggle thinking` and lost the rest.
+The provider picker's labels are built from the user's own provider names —
+`openrouter-anthropic-claude-sonnet (mock)` is 41 cells — so the picker could lose the end of the very
+name the user is choosing (issue #221).
+
+Both are now budgeted against the width. A description that fits beside its name in full stays there; one
+that does not takes a line of its own under the row, where it gets the whole width, because splitting it
+into the narrow column beside the name leaves fragments like `LSP` / `diagnostics`. A picker label is
+wrapped like the dialog's heading, with the selected row's header style budgeted with it, and the row
+marker stays on the first line so a wrapped label continues under its own text. The `Commands:` and
+`Select provider:` headings are budgeted too — the second is 16 cells before its padding, wider than a
+narrow terminal. A long token with no space in it is now split after a hyphen, slash or dot where one
+fits (`openrouter-anthropic-` / `claude-sonnet`) and at the cell limit only when there is none
+(`openrouter-anthropic-claud` / `e-sonnet`).
+
+The suite gained a `provider` frame set (80x24 and 30x12) and a 30x12 palette, both with narrow
+screenshots; no committed frame changes above 30 columns.
+
 ### The permission dialog fits a narrow terminal
 
 The input area is drawn below the cell grid, so it is never trimmed against the terminal: a line wider

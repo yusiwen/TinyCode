@@ -258,13 +258,14 @@ does not fit, delete it and find the flow's own string — do not adjust it unti
 - **The builders** (`frameModel`, `frameWelcome`, …): they construct `*TuiModel` with
   the project's own API and content. A general tool cannot know how to build this
   application's screens.
-- **The expectations**: the 29 text frames and the ANSI frame are what *this* product
+- **The expectations**: the 32 text frames and the ANSI frame are what *this* product
   considers correct. The tool offers `-update`, normalization and a first-difference
   diff; it cannot know what the welcome banner should say.
 - **The judgments**: that the status bar's mode label is `plan`, that the banner art is
-  dropped at 40 columns, that every committed frame fits the geometry it claims, and
-  that the clip keeps an over-wide fixture of its own rather than borrowing a screen
-  that happens to overrun.
+  dropped at 40 columns, that every committed frame fits the geometry it claims, that a
+  command description too long for the column beside its name takes a line of its own
+  (issue #221), and that the clip keeps an over-wide fixture of its own rather than
+  borrowing a screen that happens to overrun.
 - **The gating and CI wiring**: which checks need a PTY or a browser, and what the
   annotation baseline is.
 

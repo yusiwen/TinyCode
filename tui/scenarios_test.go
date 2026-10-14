@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 
 	"github.com/yusiwen/TinyCode/tuiprobe/golden"
+	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
@@ -176,6 +177,22 @@ func framePalette(w, h int) *TuiModel {
 	return m
 }
 
+// frameProvider is the provider picker. Its labels are built from the user's own
+// provider names, so one of them is deliberately longer than a narrow terminal: the
+// picker is where the input area can be asked to draw the widest text, and the
+// selection sits on that row so the styled case is the one captured.
+func frameProvider(w, h int) *TuiModel {
+	m := frameModel(w, h)
+	m.provReg = agent.NewProviderRegistry([]agent.ProviderRecord{
+		{Name: "openai", Provider: &agent.MockProvider{}},
+		{Name: "openrouter-anthropic-claude-sonnet", Provider: &agent.MockProvider{}},
+		{Name: "ollama", Provider: &agent.MockProvider{}},
+	})
+	m.selectingProvider = true
+	m.providerCursor = 1
+	return m
+}
+
 // frameDiagnostics shows the status bar carrying LSP errors next to a normal
 // turn.
 func frameDiagnostics(w, h int) *TuiModel {
@@ -276,7 +293,7 @@ func init() {
 // frameScenarios is the single table the suite drives: goldens, the ANSI golden,
 // determinism, geometry, PNGs and the stream screenshot all read it.
 //
-// golden.Sizes lists the geometries whose *text* is committed (29 files today);
+// golden.Sizes lists the geometries whose *text* is committed (32 files today);
 // shots lists the images worth looking at, which is a smaller set at geometries the
 // goldens may not cover (the narrow end of a table, a 112-column status line).
 // Adding a screen is one entry here plus an intended layout change.
@@ -306,7 +323,15 @@ var frameScenarios = []struct {
 			// the widths, the image is what shows the wrapped dialog still reads.
 			{"dialog-narrow", golden.Size{W: 40, H: 12}},
 		}, frameDialog},
-	{"palette", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}}, nil, framePalette},
+	{"palette", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}, {W: 30, H: 12}},
+		[]shotSpec{
+			// 30 columns is narrower than the widest command row (36 cells), so this
+			// is where the palette's description column has to be laid out again
+			// (issue #221).
+			{"palette-narrow", golden.Size{W: 30, H: 12}},
+		}, framePalette},
+	{"provider", []golden.Size{{W: 80, H: 24}, {W: 30, H: 12}},
+		[]shotSpec{{"provider-narrow", golden.Size{W: 30, H: 12}}}, frameProvider},
 	{"diagnostics", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}}, nil, frameDiagnostics},
 	{"compressing", []golden.Size{{W: 80, H: 24}, {W: 40, H: 12}},
 		[]shotSpec{

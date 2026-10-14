@@ -321,14 +321,8 @@ func (m *TuiModel) View() string {
 
 	// Input area — dialog, provider, command palette are mutually exclusive
 	if m.dialogMode {
-		// The heading is drawn outside the cell grid and styled with horizontal
-		// padding, so the text gets the room the style leaves. The sandbox's own
-		// permission title — `🔒 Write to <path>?` — is wider than a narrow
-		// terminal, and the terminal's cut lands mid-word (issue #218).
-		for _, line := range wrapInputText(m.dialogMsg, m.width, headerStyle.GetHorizontalFrameSize(), headerStyle.GetHorizontalFrameSize()) {
-			b.WriteString(headerStyle.Render(line))
-			b.WriteString("\n")
-		}
+		b.WriteString(renderHeading(m.dialogMsg, m.width))
+		b.WriteString("\n")
 		for i, item := range m.dialogItems {
 			// The always-allow answer names the file it writes; that label is
 			// wider than 40 columns before its `[3] ` marker is added, so it
@@ -351,35 +345,69 @@ func (m *TuiModel) View() string {
 		}
 		b.WriteString(renderHintRow(dialogHintAlternatives, m.width))
 	} else if m.selectingProvider {
-		b.WriteString(headerStyle.Render("Select provider:"))
+		b.WriteString(renderHeading("Select provider:", m.width))
 		b.WriteString("\n")
 		for i, rec := range m.provReg.List() {
-			label := fmt.Sprintf("%s (%s)", rec.Name, rec.Provider.Name())
+			// The picker's label is built from the user's own provider names, so it
+			// can be any length; it is budgeted like the dialog's heading, and the
+			// selected row's header style is budgeted with it. The marker stays
+			// outside the style so it keeps its column on every row, which is also
+			// what lets a wrapped label line up under itself.
+			marker := "  "
+			indent := len(marker)
 			if i == m.providerCursor {
-				b.WriteString(headerStyle.Render("> " + label))
-			} else {
-				b.WriteString("  " + label)
+				marker = "> "
+				indent += headerStyle.GetHorizontalFrameSize()
 			}
-			b.WriteString("\n")
+			label := fmt.Sprintf("%s (%s)", rec.Name, rec.Provider.Name())
+			for j, line := range wrapInputText(label, m.width, indent, indent) {
+				if i == m.providerCursor {
+					line = headerStyle.Render(line)
+				}
+				// The marker belongs to the row, not to each of its lines: a wrapped
+				// label continues under its own text.
+				if j == 0 {
+					b.WriteString(marker + line)
+				} else {
+					b.WriteString(strings.Repeat(" ", len(marker)) + line)
+				}
+				b.WriteString("\n")
+			}
 		}
 		b.WriteString(renderHintRow(providerHintAlternatives, m.width))
 	} else if m.cmdPalette {
 		cmds := m.filteredCmds()
-		b.WriteString(headerStyle.Render("Commands:"))
+		b.WriteString(renderHeading("Commands:", m.width))
 		b.WriteString("\n")
 		for i, c := range cmds {
+			marker, name := "  ", c.Name
 			if i == m.cmdPaletteSel {
-				b.WriteString("> ")
-				b.WriteString(headerStyle.Render(c.Name))
-				b.WriteString("  ")
-				b.WriteString(dimStyle.Render(c.Desc))
-			} else {
-				b.WriteString("  ")
-				b.WriteString(c.Name)
-				b.WriteString("  ")
-				b.WriteString(dimStyle.Render(c.Desc))
+				marker, name = "> ", headerStyle.Render(c.Name)
 			}
+			head := marker + name
+			if c.Desc == "" {
+				b.WriteString(head)
+				b.WriteString("\n")
+				continue
+			}
+			// The description sits beside the name when it fits there in full, and
+			// takes lines of its own under the row when it does not, where it gets the
+			// whole width. Splitting it into the narrow column beside the name leaves
+			// fragments like `LSP` / `diagnostics`, which is not a description
+			// (issue #221).
+			column := lipgloss.Width(head) + len(paletteGap)
+			if lines := wrapInputText(c.Desc, m.width, column, column); len(lines) == 1 {
+				b.WriteString(head + paletteGap + dimStyle.Render(lines[0]))
+				b.WriteString("\n")
+				continue
+			}
+			b.WriteString(head)
 			b.WriteString("\n")
+			column = len(marker) + len(paletteGap)
+			for _, line := range wrapInputText(c.Desc, m.width, column, column) {
+				b.WriteString(strings.Repeat(" ", column) + dimStyle.Render(line))
+				b.WriteString("\n")
+			}
 		}
 		b.WriteString(renderHintRow(paletteHintAlternatives, m.width))
 	} else {
@@ -577,6 +605,25 @@ const (
 	hintTrailer   = " ·"
 )
 
+// paletteGap separates a command's name from its description.
+const paletteGap = "  "
+
+// renderHeading lays an input-area heading out for a terminal width cells wide and
+// styles it, with the style's own horizontal padding reserved.
+//
+// A heading is drawn below the cell grid like the rest of the input area, so nothing
+// else trims it. The permission title — `🔒 Write to <path>?` — is the long one
+// (issue #218), but `Select provider:` is 16 cells before its padding, which is
+// already wider than a narrow terminal (issue #221).
+func renderHeading(text string, width int) string {
+	pad := headerStyle.GetHorizontalFrameSize()
+	lines := wrapInputText(text, width, pad, pad)
+	for i, line := range lines {
+		lines[i] = headerStyle.Render(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // renderHintRow lays a key-hint row out for a terminal width cells wide and styles
 // it. A non-positive width means the terminal size is not known yet.
 func renderHintRow(alternatives []string, width int) string {
@@ -693,19 +740,34 @@ func wrapInputText(text string, width, firstIndent, restIndent int) []string {
 	return lines
 }
 
+// wordBreakPoints are the characters a long token is split after when the line has
+// no space to break at. A provider name or a path reads better as
+// `openrouter-anthropic-` / `claude-sonnet` than as `openrouter-anthropic-claud` /
+// `e-sonnet`, and this is where the split is decided.
+const wordBreakPoints = "-_./:"
+
 // splitAtCells cuts a word into the longest prefix that fits limit cells and the
-// rest, keeping at least one rune in the prefix so that a two-cell glyph at a
-// one-cell limit cannot loop forever.
+// rest. The prefix ends at the last break point that fits when there is one, so a
+// hyphenated name or a path is split where a reader expects it, and otherwise it is
+// cut at the cell limit. At least one rune stays in the prefix, so a two-cell glyph
+// at a one-cell limit cannot loop forever.
 func splitAtCells(word string, limit int) (head, tail string) {
-	used := 0
+	used, cut, lastBreak := 0, 0, 0
 	for i, r := range word {
 		w := runewidth.RuneWidth(r)
 		if i > 0 && used+w > limit {
-			return word[:i], word[i:]
+			break
 		}
 		used += w
+		cut = i + len(string(r))
+		if i > 0 && strings.ContainsRune(wordBreakPoints, r) {
+			lastBreak = cut
+		}
 	}
-	return word, ""
+	if lastBreak > 0 {
+		cut = lastBreak
+	}
+	return word[:cut], word[cut:]
 }
 
 // formatDuration formats a duration like "4h31m" or "32s".

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -214,6 +215,121 @@ func TestPermissionDialogTakesTheRealAnswersAtFortyColumns(t *testing.T) {
 	if !strings.Contains(stripANSI(frame), "config.json)") {
 		t.Errorf("the always-allow answer lost its target file:\n%s", stripANSI(frame))
 	}
+}
+
+// TestPaletteRowsFitANarrowTerminal is issue #221's first acceptance clause: at 30
+// columns — narrower than the widest command row, 36 cells — every line of the
+// palette fits, and below that too. Nothing is lost on the way: each command's
+// description is still on screen in full, and the test at 16 columns is a
+// description longer than the terminal.
+func TestPaletteRowsFitANarrowTerminal(t *testing.T) {
+	for _, width := range []int{30, 20, 16} {
+		var frame string
+		withTrueColor(t, func() { frame = framePalette(width, 12).View() })
+
+		if widest, line := widestCellLine(frame); widest > width {
+			t.Errorf("at %d columns the palette's widest line is %d cells: %q", width, widest, line)
+		}
+		// Whitespace is removed before the comparison, so a description that was
+		// wrapped or split across lines still counts as present — and one that was
+		// clipped does not.
+		packed := strings.Join(strings.Fields(stripANSI(frame)), "")
+		for _, c := range commandList() {
+			if want := strings.ReplaceAll(c.Desc, " ", ""); !strings.Contains(packed, want) {
+				t.Errorf("at %d columns %s lost its description %q", width, c.Name, c.Desc)
+			}
+		}
+	}
+}
+
+// TestPaletteRowsKeepTheDescriptionWhole: a description that fits beside its name
+// sits there, and one that does not takes a line of its own rather than being split
+// into the narrow column beside the name — `LSP` / `diagnostics` on the row above is
+// what that looks like, and it is not a description (issue #221).
+func TestPaletteRowsKeepTheDescriptionWhole(t *testing.T) {
+	var frame string
+	withTrueColor(t, func() { frame = framePalette(30, 12).View() })
+
+	for _, want := range []string{
+		"  /plan  Plan mode",                  // fits beside the name, so it stays there
+		"  /diagnostics\n    LSP diagnostics", // does not fit, so it moves below
+		"  /thinking\n    Toggle thinking display",
+	} {
+		if !strings.Contains(stripANSI(frame), want) {
+			t.Errorf("the palette does not contain %q:\n%s", want, stripANSI(frame))
+		}
+	}
+}
+
+// TestProviderRowsFitANarrowTerminal is the picker's half of the acceptance: its
+// labels come from the user's own provider names, so one here is longer than the
+// terminal it is drawn in. The label is wrapped, never cut, and the row marker stays
+// on the first line.
+func TestProviderRowsFitANarrowTerminal(t *testing.T) {
+	m := frameProvider(0, 12)
+	records := m.provReg.List()
+
+	for _, width := range []int{80, 30, 16} {
+		var frame string
+		withTrueColor(t, func() { frame = frameProvider(width, 12).View() })
+
+		if widest, line := widestCellLine(frame); widest > width {
+			t.Errorf("at %d columns the picker's widest line is %d cells: %q", width, widest, line)
+		}
+		packed := strings.Join(strings.Fields(stripANSI(frame)), "")
+		for _, rec := range records {
+			label := fmt.Sprintf("%s (%s)", rec.Name, rec.Provider.Name())
+			if want := strings.ReplaceAll(label, " ", ""); !strings.Contains(packed, want) {
+				t.Errorf("at %d columns the picker lost the label %q", width, label)
+			}
+		}
+	}
+
+	// The marker belongs to the row: a wrapped label continues under its own text,
+	// not under a second `>`.
+	plain := stripANSI(mustView(t, frameProvider(30, 12)))
+	if got := strings.Count(plain, ">"); got != 1 {
+		t.Errorf("the picker drew %d row markers, want 1 on the selected row:\n%s", got, plain)
+	}
+}
+
+// TestSplitAtCellsPrefersABreakPoint: a long token with no space in it is split
+// where a reader expects — after a hyphen or a slash — and at the cell limit only
+// when it has neither. `openrouter-anthropic-claud` / `e-sonnet` is what the cell
+// limit alone produces.
+func TestSplitAtCellsPrefersABreakPoint(t *testing.T) {
+	for _, tc := range []struct {
+		word     string
+		limit    int
+		wantHead string
+		wantTail string
+	}{
+		{"openrouter-anthropic-claude-sonnet", 26, "openrouter-anthropic-", "claude-sonnet"},
+		{"/Users/someone/.tinycode/config.json", 26, "/Users/someone/.tinycode/", "config.json"},
+		{"abcdefgh", 3, "abc", "defgh"},
+		{"-abc", 1, "-", "abc"},
+		{"日本語", 4, "日本", "語"},
+	} {
+		head, tail := splitAtCells(tc.word, tc.limit)
+		if head != tc.wantHead || tail != tc.wantTail {
+			t.Errorf("splitAtCells(%q, %d) = %q, %q; want %q, %q",
+				tc.word, tc.limit, head, tail, tc.wantHead, tc.wantTail)
+		}
+		if head == "" || tail == "" {
+			t.Errorf("splitAtCells(%q, %d) did not make progress", tc.word, tc.limit)
+		}
+		if w := lipgloss.Width(head); w > tc.limit {
+			t.Errorf("splitAtCells(%q, %d) returned a %d-cell head", tc.word, tc.limit, w)
+		}
+	}
+}
+
+// mustView renders a model with the colour profile pinned.
+func mustView(t *testing.T, m *TuiModel) string {
+	t.Helper()
+	var frame string
+	withTrueColor(t, func() { frame = m.View() })
+	return frame
 }
 
 // widestCellLine returns the width of the widest line of a rendered frame, in cells,
