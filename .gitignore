@@ -37,6 +37,9 @@ go.work.sum
 tinycode
 bin/
 
+# Nested agent worktrees, one per scope (never staged as embedded repositories)
+.worktrees/
+
 # Nix / direnv
 .direnv/
 result
