@@ -94,12 +94,15 @@ current tree.
   followed in [#181](https://github.com/yusiwen/TinyCode/issues/181) — a provider-reported charge
   carried verbatim, user-declared rates keyed by route and model, and the cache-tier usage detail that
   money has to be computed from, with a call nobody could price counted as unknown rather than as
-  zero. Its price-table question stays open in
-  [#182](https://github.com/yusiwen/TinyCode/issues/182), a data-governance decision whose deliverable
-  is a written verdict rather than code. That split narrows this entry's original wording: a price list is *not* the only way to know what a call cost, because a provider
+  zero. Its price-table question was decided in
+  [#182](https://github.com/yusiwen/TinyCode/issues/182) — **no vendored table**, with the rejected
+  options and the verified inputs recorded in [pricing-decision.md](pricing-decision.md) — and the piece
+  that verdict hands over is the schema's missing time dimension,
+  [#225](https://github.com/yusiwen/TinyCode/issues/225). That split narrows this entry's original wording: a price list is *not* the only way to know what a call cost, because a provider
   may report the cost itself, and because a table carrying one input price and one output price is
-  wrong for the provider this repository ships by default — DeepSeek prices four input lanes times a
-  peak/off-peak rule. The evidence below is the `7e6b017` baseline, so its `rg` exit code describes
+  wrong for the provider this repository ships by default — DeepSeek prices two input lanes (cache hit
+  and cache miss) at a peak rate and an off-peak rate, and one output lane the same way. The evidence
+  below is the `7e6b017` baseline, so its `rg` exit code describes
   that tree rather than the current one.
 - **Gap**: nothing bounds a run or a session by tokens or money, and nothing stops a run that is
   burning either.

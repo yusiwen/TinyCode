@@ -274,7 +274,7 @@ delta does not block a repaint.
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
-docs/           Reference documents (sandbox design, TUI visual harness)
+docs/           Reference documents (sandbox design, TUI visual harness, pricing decision)
 internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
@@ -345,6 +345,11 @@ The sandbox — modes, the frozen per-run policy, the path fence, the command
 boundary and its launch protocol, grant lifetimes, the refusal vocabulary, and
 what is deliberately not promised — has its own reference:
 [docs/sandbox.md](docs/sandbox.md).
+
+What a call costs, and what this repository deliberately does **not** ship to
+answer that — a vendored model price table, with the rejected options, the
+licence and staleness facts, and the tiering measurement behind the decision —
+is recorded in [docs/pricing-decision.md](docs/pricing-decision.md).
 
 What TinyCode does **not** have yet, verified entry by entry against the source
 and recorded once so it does not have to be re-derived, is inventoried in
