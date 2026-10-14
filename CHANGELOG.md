@@ -9,6 +9,17 @@ back to its change and tests.
 
 ## Unreleased
 
+### Nested agent worktrees are ignored by git
+
+An agent session keeps its scratch worktree inside the workspace root (`.worktrees/<scope>`) because
+the session's file policy may allow writes only there. Nothing ignored those directories: after
+`git worktree add .worktrees/probe …` the outer tree reported `?? .worktrees/`, and a plain
+`git add -A` there staged the worktree as an *embedded repository* — a gitlink in place of the files,
+which git warns about but records anyway in a commit that is easy to miss (issue #167).
+
+`.worktrees/` is now in `.gitignore`, so a worktree created there is invisible to the outer tree's
+status and staging, and `git worktree remove` is the cleanup path without a second step.
+
 ### The command palette and provider picker fit a narrow terminal
 
 The input area's rows are drawn below the cell grid like the dialog's, so a row wider than the window is

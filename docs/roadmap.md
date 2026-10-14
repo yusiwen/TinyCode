@@ -256,8 +256,8 @@ current tree.
 - **Evidence**: sub-agents are in-process goroutines (`tool/task.go`, `tool/bgtask.go`) sharing the
   process working directory; no `flock`, `FileLock` or `TryLock`; no `os.Chdir` outside tests; the
   only directory control is the per-call `workdir` argument (`tool/bash.go:306-307`).
-- **Note**: the empty, untracked `.worktrees/` directory at the repository root is an artefact of the
-  agent workflow, not a product location waiting to be implemented — issue #167 tracks ignoring it.
+- **Note**: the empty `.worktrees/` directory at the repository root is an artefact of the agent
+  workflow, not a product location waiting to be implemented — it is git-ignored (issue #167).
 - **Effort**: ~5–8 d.
 
 ### C4 — No user-configurable hooks and no session lifecycle events
