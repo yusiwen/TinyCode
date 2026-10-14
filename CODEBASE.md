@@ -32,8 +32,8 @@
   - `Config *AgentConfig` — mode config (plan/build/subagent)
   - `Provider LLMProvider`
   - `Tools []Tool`
-  - `Memory types.MemoryStore`
-  - `MemoryMode int` — 0=none, 1=auto, 2=on-demand
+  - `Memory types.MemoryStore` — **never assigned**: no caller sets it, so the recall step below is inert; `memory.go` is internal and unwired
+  - `MemoryMode int` — 0=none, 1=auto, 2=on-demand; `MemoryModeNone` is the only value ever in effect today
   - `SessionStore` — interface `{Append(msg types.Message) error; Flush() error}`
   - `History []types.Message` — multi-turn conversation
   - `CompressionThreshold int` (default 500000)
@@ -54,7 +54,7 @@
 - **`New(provider LLMProvider) *Agent`** — defaults: MaxSteps=20, MaxTokens=4096
 - **`(*Agent) AddTool(t Tool)`** — registers a tool
 - **`(*Agent) Run(ctx context.Context, prompt string) (string, error)`** — core ReAct loop:
-  1. Build messages: system prompt + compressed history + memory (if auto) + user prompt
+  1. Build messages: system prompt + compressed history + memory (only when `Memory != nil && MemoryMode == MemoryModeAuto`, which no caller sets — see `memory.go`) + user prompt
   2. Loop up to `maxSteps`:
      - Filter tools by `ToolAllowedFor`
      - Call `Provider.Chat()` with streaming callbacks
@@ -160,7 +160,18 @@
 - **`TranslateToolLists(base Ruleset, allowed, denied []string) Ruleset`** — converts config `allowed_tools` (whitelist) / `denied_tools` (additive) into rules, since the ruleset takes precedence
 - `wildcardMatch(pattern, value string) bool` — `*` (any sequence) and `?` (single char) glob
 
-### `memory.go` — Long-term Memory
+### `memory.go` — Long-term Memory *(internal, unwired)*
+
+This is **not a tool and not a shipped feature**. `HTTPMemoryClient` is the only `MemoryStore`
+implementation, `NewHTTPMemoryClient` has no non-test caller, and `Agent.Memory` is never assigned —
+so nothing recalls anything in a build from this tree. Recall is an agent-layer step
+(`MemoryModeAuto`, at the top of `Run`), never a model-callable function, which is why `memory` is
+absent from the Complete Tool Name Registry above and from every permission whitelist.
+
+It is unwired deliberately rather than forgotten: wiring it (B1) and choosing a local backend (B2)
+are tracked in `docs/roadmap.md` and are waiting on a privacy decision, so read this section as the
+shape of a capability on the shelf, not as behaviour to rely on. `Forget` is a no-op that returns
+nil for every key.
 
 - **`HTTPMemoryClient`** struct: `BaseURL string`
 - **`NewHTTPMemoryClient(baseURL string) *HTTPMemoryClient`**
@@ -222,6 +233,14 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 
 ### Complete Tool Name Registry
 
+`main.go` registers the 24 tools below with `ag.AddTool`, and the `tool` package defines exactly these
+(`Name: "…"` literals, plus the four `lsp` tool types). The last row is not one of them: MCP servers
+discovered at startup are registered at runtime as `mcp_<server>_<tool>`, so `mcp_*` stands for a family
+rather than for a tool. The table and the code are held together by
+`TestDocumentedToolRegistryMatchesTheCode`, which reads both.
+
+`memory` is **not** in this table and is not a tool — see the `memory.go` section above.
+
 | Tool Name | Category | Source File |
 |-----------|----------|-------------|
 | `bash` | shell | `bash.go` |
@@ -237,6 +256,7 @@ Each tool exports a factory function returning `agent.Tool` with `Name`, `Descri
 | `git_log` | git | `git.go` |
 | `web_search` | web | `web_search.go` |
 | `web_extract` | web | `web_extract.go` |
+| `web_extract_browser` | web | `web_browser.go` |
 | `task` | sub-agent | `task.go` |
 | `task_collect` | sub-agent | `task.go` |
 | `todo` | task mgmt | `todo.go` |
@@ -526,7 +546,7 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 - **`Usage`** detail fields: `CachedPromptTokens`, `CacheWriteTokens`, `ReasoningTokens` — one per *billing lane*, so OpenAI's `prompt_tokens_details` shape and DeepSeek's `prompt_cache_hit_tokens` land in the same field. They are subsets of the counts beside them, not extra tokens
 - **`Cost`** struct: `Amount`, `Currency`; **`CostSource`** (`unknown`/`reported`/`declared`); **`CostEvent`**; **`CostTotals map[string]float64`** with `Add` and a `String()` ordered case-insensitively by unit — two routes billing in different units are accumulated apart, never added together
 - **`Memory`** struct: `Key`, `Value`
-- **`MemoryStore`** interface: `Remember`, `Recall`, `Forget`, `List`
+- **`MemoryStore`** interface: `Remember`, `Recall`, `Forget`, `List` — internal; the only implementation (`agent.HTTPMemoryClient`) is unwired, so nothing in a shipped build holds one (see `agent/memory.go`)
 - **`WithPlanWriteRestriction(ctx, bool)` / `PlanWriteRestricted(ctx)`** — plan-mode write restriction travels on the run context, so concurrent sub-agents cannot flip it for each other
 
 ---

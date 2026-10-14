@@ -574,8 +574,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			if ca != nil {
 				ca.Streaming = false
-				// Mute if all tool calls are housekeeping (todo, memory, etc.)
-				housekeeping := map[string]bool{"todo": true, "memory": true}
+				// Mute if all tool calls are housekeeping. `todo` is the only
+				// registered tool that qualifies: `memory` used to be listed here
+				// but is not a tool (internal and unwired — see CODEBASE.md).
+				housekeeping := map[string]bool{"todo": true}
 				if len(ca.ToolCalls) > 0 {
 					allHousekeeping := true
 					for _, tc := range ca.ToolCalls {

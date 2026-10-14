@@ -153,10 +153,15 @@ current tree.
 
 - **Gap**: no cross-session memory in practice. The client is dead code: not registered as a tool,
   not instantiated on any path.
+- **Decision (issue #188)**: `memory` is not a tool and is not meant to become one. Recall is an
+  agent-layer step — `Agent.Memory` + `MemoryModeAuto`, at the top of `Run`, never a model-callable
+  function — so no diagram, table or whitelist may list it among the tools. What is missing here is a
+  caller, not a tool definition, and this entry is the record of that gap.
 - **Evidence**: `HTTPMemoryClient` is referenced only by its own file, its own test and `CODEBASE.md`;
-  `Agent.Memory` (declared `agent/agent.go:21`, read `agent/agent.go:148-149`) is never assigned; the
-  string `"memory"` appears exactly once outside tests — the TUI housekeeping whitelist at
-  `tui/update.go:536`, naming a tool that is not registered anywhere.
+  `Agent.Memory` (declared `agent/agent.go:21`, read at `agent/agent.go:264-265`) is never assigned
+  outside that declaration, and `NewHTTPMemoryClient` has no non-test caller; no `memory` key exists in
+  `config.example.json` or `config/`. The last artefact that named a `memory` tool — the TUI
+  housekeeping whitelist at `tui/update.go:578` — was removed by #188, so no tool list names it now.
 - **Already present**: `agent/memory.go` implements `Remember`, `Recall`, `Forget` and `List` against
   a remote HTTP service. Wiring is cheap; the design question below is not.
 - **Effort**: ~1–2 d to wire.

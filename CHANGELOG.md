@@ -9,6 +9,30 @@ back to its change and tests.
 
 ## Unreleased
 
+### The tool registry lists the tools that exist
+
+`CODEBASE.md`'s table of built-in tools is titled "Complete Tool Name Registry" and is written by hand.
+It was not complete: `web_extract_browser` is registered in `main.go` and the table had no row for it —
+an omission its row count hid, because the table has 24 rows once the dynamic `mcp_*` row is counted as
+one of the tools, so the number a reader checks agreed with the documented "24 tools" while one real
+tool was missing (issue #188). The table is complete again, and
+`TestDocumentedToolRegistryMatchesTheCode` now reads both sides — the `Name: "…"` literals in `tool/`
+plus the four `lsp` tool types, against that table's rows — so a tool the package gains without a row,
+or a row without a tool behind it, fails the build.
+
+The other half of the issue was a tool that never existed. `memory` was listed among the tools in the
+README's System Overview and, long after #187's figure replaced that diagram, still sat in the TUI's
+housekeeping whitelist as `{"todo": true, "memory": true}` — a name no registry has ever held. It is not
+a tool: `agent/memory.go` implements `HTTPMemoryClient` against a remote service and nothing constructs
+it, `Agent.Memory` is never assigned outside its own declaration, and recall is an agent-layer step
+(`MemoryModeAuto`) that no caller enables. `CODEBASE.md` now says so where it describes the client and
+the `MemoryStore` fields, the whitelist holds only `todo`, and `docs/roadmap.md` records the decision —
+`memory` is a capability waiting for a caller (B1/B2, on a privacy decision), not a tool waiting to be
+written.
+
+Two stale line references in that roadmap entry were corrected in the same pass: `Agent.Memory`'s read
+is at `agent/agent.go:264-265`, not 148-149, and the whitelist is at `tui/update.go:578`, not 536.
+
 ### Nested agent worktrees are ignored by git
 
 An agent session keeps its scratch worktree inside the workspace root (`.worktrees/<scope>`) because
