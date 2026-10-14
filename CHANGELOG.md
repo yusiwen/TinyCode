@@ -9,6 +9,34 @@ back to its change and tests.
 
 ## Unreleased
 
+### The shipped example loads, and `$`-prefixed keys are documentation
+
+`config.example.json` opens with "Copy to config.json" and could not survive that copy: its `agents` block
+carries a `$comment`, `agents` decodes into a **map**, so the note was read as an entry and `json.Unmarshal`
+failed with `cannot unmarshal string into Go struct field Config.agents.$comment of type
+config.AgentOverride`. `loadFile` reported that on stderr and both callers read the error as "no file", so
+a user who followed the instruction silently lost every section at once — five providers, `pricing`,
+`sandbox`, `notify`, `budget` — and ran on the built-in defaults. Pre-existing, and invisible because no
+test had ever read the template (issue #229).
+
+`loadFile` now drops every object key whose name begins with `$` before decoding, at any depth, so the
+convention the file teaches holds where it is written rather than only where the container happens to be a
+struct. The four map positions are `agents`, `pricing.prices` and an MCP server's `env` and `headers`. The
+walk carries values as `json.RawMessage`, so a number wider than a float64, and an escape such as the
+`\u003cPROJECT_ROOT\u003e` that `json.Marshal` writes for an angle-bracket placeholder, survive it
+unchanged.
+
+Four tests in `config/shipped_example_test.go` hold the property: the template copied into a redirected
+`HOME` loads through `LoadConfig()` with nothing on stderr and yields the file's own values; a `$comment`
+inside `agents`, `prices`, `sandbox` and an MCP server's two maps is ignored rather than becoming an entry;
+the walk is recursive on a document deeper than any section; and the raw round trip `AddAllowedPath`
+performs keeps the user's notes in the file and leaves it loadable. Mutations — stripping nothing, and
+stripping only the top level — fail these tests, and the first reproduces the original error verbatim.
+
+The rejected alternative was to leave the loader alone and move `agents.$comment` up to a struct level: a
+smaller diff, but it repairs one file rather than the convention, and a user who copies the example and
+adds a note beside their own `agents` would still lose the whole configuration.
+
 ### The default model name is the one DeepSeek publishes
 
 `config.DefaultConfig()` sent `deepseek-v4-flash`, which DeepSeek's pricing page footnotes as a **retired**
