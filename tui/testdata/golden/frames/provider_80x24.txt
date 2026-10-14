@@ -1,0 +1,28 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ Select provider:
+  openai (mock)
+>  openrouter-anthropic-claude-sonnet (mock)
+  ollama (mock)
+↑↓ navigate · Enter select · Esc cancel
+⚡ plan  ■ mock  tokens: 0  tools: 0  msgs: 0  session: 2562047h47m
