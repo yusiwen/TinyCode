@@ -128,7 +128,7 @@ func TestResetSessionStatsClearsTheCallShare(t *testing.T) {
 
 // TestStatusBarPairsTheCounterWithAConfiguredBudget covers the visibility half of
 // the token budget. With no budget the bar must carry exactly the text it always
-// has (which is what keeps the 27 frame goldens byte-identical); with a session
+// has (which is what keeps the 29 frame goldens byte-identical); with a session
 // budget it shows the spend against that limit.
 //
 // A per-run budget deliberately does not appear here: this counter is a session

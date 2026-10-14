@@ -147,7 +147,17 @@ func frameDialog(w, h int) *TuiModel {
 	}
 	m.dialogMode = true
 	m.dialogMsg = "Allow write outside the project root? ../build"
-	m.dialogItems = []string{"Allow once", "Allow for this session", "Deny"}
+	// The four answers the sandbox really offers, with the always-allow label
+	// shaped like the real one: it names the file the choice writes, and that is
+	// wider than 40 columns before its marker is added. The real label carries an
+	// absolute path — machine-dependent, so a byte-exact golden cannot hold it —
+	// and `~` is the same length class the banner advertises.
+	m.dialogItems = []string{
+		allowOnceLabel,
+		allowSessionLabel,
+		"Always allow (saves to " + welcomeConfigPath + ")",
+		"Deny",
+	}
 	m.dialogSel = 0
 	return m
 }
@@ -266,7 +276,7 @@ func init() {
 // frameScenarios is the single table the suite drives: goldens, the ANSI golden,
 // determinism, geometry, PNGs and the stream screenshot all read it.
 //
-// golden.Sizes lists the geometries whose *text* is committed (27 files today);
+// golden.Sizes lists the geometries whose *text* is committed (29 files today);
 // shots lists the images worth looking at, which is a smaller set at geometries the
 // goldens may not cover (the narrow end of a table, a 112-column status line).
 // Adding a screen is one entry here plus an intended layout change.
@@ -289,7 +299,13 @@ var frameScenarios = []struct {
 	{"todo", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}},
 		[]shotSpec{{"todo", golden.Size{W: 80, H: 24}}}, frameTodo},
 	{"dialog", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}},
-		[]shotSpec{{"dialog", golden.Size{W: 80, H: 24}}}, frameDialog},
+		[]shotSpec{
+			{"dialog", golden.Size{W: 80, H: 24}},
+			// The narrow end is where the heading, the always-allow answer and the
+			// hint row are all laid out again (issue #218): the text golden asserts
+			// the widths, the image is what shows the wrapped dialog still reads.
+			{"dialog-narrow", golden.Size{W: 40, H: 12}},
+		}, frameDialog},
 	{"palette", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 40, H: 12}}, nil, framePalette},
 	{"diagnostics", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}}, nil, frameDiagnostics},
 	{"compressing", []golden.Size{{W: 80, H: 24}, {W: 40, H: 12}},
@@ -302,12 +318,12 @@ var frameScenarios = []struct {
 		}, frameCompressing},
 	{"longoutput", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}, {W: 200, H: 50}, {W: 100, H: 30}},
 		[]shotSpec{{"longoutput", golden.Size{W: 120, H: 40}}}, frameLongOutput},
-	// Two widths, because the bar is 126 characters today and the model does not clip
-	// it: the terminal does, and the harness's Clip step is what models that (the suite
-	// requires at least one frame wider than its geometry, and this is one). Both sizes
-	// therefore commit the same bar text — what they pin is the bar's content and the
-	// layout around it, not the terminal's view. What the terminal actually shows, and
-	// how much of a trailing status message survives it, is its own finding (issue #196).
+	// Two widths, because both pin the bar's content and the layout around it. The
+	// bar used to be 126 characters and wider than either terminal — the model did
+	// not clip it, the terminal did, and the harness's Clip step modelled that
+	// (issue #25). Since #196 the bar is budgeted against the width, so a segment
+	// that does not fit is left out whole; what a trailing status message survives
+	// at 80 columns was its own finding (issues #195, #196).
 	{"statusbar", []golden.Size{{W: 80, H: 24}, {W: 120, H: 40}},
 		[]shotSpec{{"statusbar", golden.Size{W: 120, H: 40}}}, frameStatusBar},
 }

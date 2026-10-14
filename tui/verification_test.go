@@ -40,17 +40,29 @@ const goldenDir = "testdata/golden"
 
 // TestGoldenFrames pins every scenario's text frame.
 //
-// The frame must fit the terminal it claims (after clipping), it must carry styling,
-// and it must match the committed file byte for byte.
+// The frame must fit the terminal it claims, it must carry styling, and it must match
+// the committed file byte for byte.
 //
-// A frame may still be wider than its geometry, and one is on purpose: the clip below
-// has to be exercised by something, or it silently stops being tested. That case is the
-// permission dialog's hint row, which is laid out inside the grid and is clipped by the
-// terminal at 40 columns (issue #218). The status bar used to be the reason — it is
-// drawn outside the cell grid (issue #25) — and since #196 it is budgeted against the
-// width like the rest, which is why it no longer overruns.
+// Nothing is wider than its terminal any more, and that is asserted per frame: the
+// status bar is budgeted against the width (issue #196) and so is the input area
+// (issue #218). The clip therefore has its own fixture — a line built to overrun 40
+// columns — instead of borrowing a screen that happened to overrun; the fixture's own
+// width is asserted first, so the clip cannot quietly stop being exercised.
 func TestGoldenFrames(t *testing.T) {
-	overlong := 0
+	const clipWidth = 40
+	clipFixture := "\x1b[1m" + strings.Repeat("wide ", 20) + "\x1b[0m"
+	if err := golden.FitsWidth(clipWidth, clipFixture); err == nil {
+		t.Fatalf("the clip fixture fits %d columns, so the clip below is untested: %q",
+			clipWidth, clipFixture)
+	}
+	clippedFixture := golden.Clip(clipWidth, clipFixture)
+	if err := golden.FitsWidth(clipWidth, clippedFixture); err != nil {
+		t.Errorf("the clip does not make the fixture fit: %v", err)
+	}
+	if again := golden.Clip(clipWidth, clippedFixture); again != clippedFixture {
+		t.Error("the clip is not idempotent")
+	}
+
 	for _, sc := range frameScenarios {
 		for _, size := range sc.sizes {
 			t.Run(fmt.Sprintf("%s_%s", sc.name, size), func(t *testing.T) {
@@ -71,8 +83,12 @@ func TestGoldenFrames(t *testing.T) {
 				if again := golden.Clip(size.W, clipped); again != clipped {
 					t.Error("the clip is not idempotent")
 				}
+				// The screen itself must fit: a line wider than its terminal is cut
+				// mid-word by the terminal, and the golden would keep a frame no user
+				// can see. Both subjects of that rule — the status bar and the input
+				// area — are budgeted now (issues #196, #218).
 				if err := golden.FitsWidth(size.W, ansi); err != nil {
-					overlong++
+					t.Errorf("the frame is wider than the terminal it claims: %v", err)
 				}
 
 				// Assert reports the first differing line itself, and rewrites the file
@@ -81,10 +97,6 @@ func TestGoldenFrames(t *testing.T) {
 					fmt.Sprintf("%s_%s.txt", sc.name, size), golden.Normalize(ansi))
 			})
 		}
-	}
-	// If nothing is wider than its terminal any more, the clip above is untested.
-	if overlong == 0 {
-		t.Error("no scenario is wider than its geometry any more, so the clip is untested")
 	}
 }
 
@@ -147,9 +159,9 @@ func TestShotScenariosFitTheirGeometry(t *testing.T) {
 	// This test used to require one of its own shots to be wider than its geometry, so
 	// that the clip above was exercised by something. It no longer has such a case and
 	// does not need one: the status bar was the last, and since #196 it is budgeted
-	// against the width like the rest. The clip is still exercised, by
-	// TestGoldenFrames — the dialog at 40x12 has a row 54 cells wide, which is the
-	// subject of #218 — and it is the same golden.Clip on the same View() string, so
+	// against the width like the rest, and the dialog's 54-cell row at 40x12 — the
+	// subject of #218 — is wrapped by the input area. The clip keeps a fixture of its
+	// own in TestGoldenFrames, on the same golden.Clip over the same View() string, so
 	// the coverage did not move with the fixture.
 }
 
