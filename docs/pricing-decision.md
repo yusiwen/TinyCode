@@ -6,9 +6,15 @@ Inputs are dated where they were read, because a pricing question ages faster th
 
 ## The verdict
 
-**This repository does not ship a model price table.** The answer is *no*, not *not yet*: no dataset is
-embedded, nothing is fetched at runtime, and there is no regeneration script to run. A call is priced by
-exactly two mechanisms, both from #181:
+**This repository does not ship a model price table, and whether it ever should is left open on a named
+condition rather than answered.** No dataset is embedded, nothing is fetched at runtime, and there is no
+regeneration script to run; what ships is the two mechanisms below. The condition is the schema: a table
+cannot be right for our own default route until `Price` can hold what it would say, which is
+[#225](https://github.com/yusiwen/TinyCode/issues/225). So this is a deferred question with its blocker
+named — not an unrecorded maybe — and sections 1–7 keep the work already done so the next person re-costs
+the options instead of re-deriving them.
+
+A call is priced by exactly two mechanisms, both from #181:
 
 1. **The route's own reported charge**, carried verbatim. OpenRouter states `usage.cost` per request
    (`agent/provider_openai.go:535`), which is the exact number rather than an estimate.
@@ -18,7 +24,7 @@ exactly two mechanisms, both from #181:
 A call that neither mechanism can price is counted as **unknown, never as zero** (`CostUnknown`), so the
 absence of a table is visible in the status bar instead of being silently absorbed into the total.
 
-The second half of the verdict matters more than the first: **the declared-price schema cannot express
+The second half matters more than the first: **the declared-price schema cannot express
 what the provider this repository ships by default charges.** `Price` has five lanes and no time
 dimension, while DeepSeek bills by hour. Until the schema can hold a time window, *any* number for our
 own default route is wrong most of the time — vendored and declared alike. That work is
@@ -164,20 +170,22 @@ between the two rates", and #225's job is to make that sentence unnecessary rath
   but it needs a schema that can hold the tier (section 6), a generator and licence review (sections 2–3),
   and it would still be stale by construction for every other vendor. Reversing this needs #225 first;
   with #225 in place the remaining cost is the pipeline, and that is a decision to take on its own merits.
-- **Fetch at runtime** from a catalogue. Rejected outright. It adds a network dependency to *local
+- **Fetch at runtime** from a catalogue. Rejected as a mechanism. It adds a network dependency to *local
   accounting* — a feature whose whole job is to report what this machine did — and it buys a question
   that has no good answer: which catalogue wins, what happens when it is unreachable, and how a feed is
   treated as untrusted input. A run that cannot reach the network must still be able to price itself.
 - **Stop at #181** — declared rates plus reported charges, with no schema work. Rejected, and this is the
   half of the issue that the shipped example settles: the default provider's price is time-dependent, so
-  "no table" is not the same as "nothing to do". Leaving `Price` without a time dimension means the
-  user's *own* declaration cannot be right either. The recorded *no* is to vendoring, not to accuracy.
+  "no table for now" is not the same as "nothing to do". Leaving `Price` without a time dimension means
+  the user's *own* declaration cannot be right either. What is settled is that a table is not the next
+  step; accuracy is.
 - **Vendor nothing and warn in the UI** that a declared rate may be tiered. Rejected as insufficient: a
   warning on every line is noise, and the example's 2× error would remain for anyone who never reads it.
 
-## What would reopen this
+## What would settle this
 
-This is a record, not a commitment. It is worth revisiting when any of these becomes true:
+The question is left open deliberately, and it is documented rather than unanswered: it is worth taking
+up again when any of these becomes true:
 
 1. #225 lands, so a declared rate can express an hour — then re-cost the embed option, which is the only
    one whose blocker was the schema.
