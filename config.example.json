@@ -1,5 +1,5 @@
 {
-  "$comment": "Copy to config.json. API keys are read from env vars, not stored here.",
+  "$comment": "Copy to config.json. API keys are read from env vars, not stored here. A key beginning with $ is documentation, not configuration: it is ignored wherever it appears, at any depth, so notes like this one can sit next to the values they describe (including inside agents and prices, which decode into maps).",
 
   "default_mode": "plan",
   "show_thinking": true,

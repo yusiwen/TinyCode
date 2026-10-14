@@ -7,6 +7,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -260,19 +261,87 @@ func DefaultConfig() Config {
 }
 
 // loadFile reads and parses a JSON config file, returning the partial config.
+//
+// A key beginning with "$" is documentation rather than data — the "$comment"
+// blocks config.example.json is written with — and is dropped before decoding, at
+// any depth. That has to happen here rather than in each section: the sections
+// that decode into a map (agents, pricing.prices, an MCP server's env and
+// headers) are exactly the ones where a note would be read as an entry, and a
+// single note in the wrong place used to make the whole file fail to load, which
+// both callers report as "no file at all" (issue #229).
 func loadFile(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
+
+	// Invalid JSON is left for the decode below to report instead, so a malformed
+	// file still produces one message from one place rather than two.
+	document, err := stripDocumentationKeys(data)
+	if err != nil {
+		document = data
+	}
+
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal(document, &cfg); err != nil {
 		// A malformed config must not silently fall back to the defaults: say so
 		// on stderr so the user can fix it.
 		fmt.Fprintf(os.Stderr, "tinycode: ignoring %s: %v\n", path, err)
 		return Config{}, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// stripDocumentationKeys removes every object key whose name begins with "$",
+// recursively, and returns the JSON that is left.
+//
+// Values travel as json.RawMessage, so their text is preserved rather than
+// re-encoded: a number wider than a float64, and an escape such as
+// "\u003cPROJECT_ROOT\u003e", both survive the walk unchanged.
+//
+// It returns an error only when data is not valid JSON at the top level; the
+// caller reports that through the same path as any other parse failure.
+func stripDocumentationKeys(data []byte) ([]byte, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return data, nil
+	}
+
+	switch trimmed[0] {
+	case '{':
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &object); err != nil {
+			return nil, err
+		}
+		kept := make(map[string]json.RawMessage, len(object))
+		for key, value := range object {
+			if strings.HasPrefix(key, "$") {
+				continue
+			}
+			cleaned, err := stripDocumentationKeys(value)
+			if err != nil {
+				return nil, err
+			}
+			kept[key] = cleaned
+		}
+		return json.Marshal(kept)
+	case '[':
+		var items []json.RawMessage
+		if err := json.Unmarshal(trimmed, &items); err != nil {
+			return nil, err
+		}
+		kept := make([]json.RawMessage, 0, len(items))
+		for _, item := range items {
+			cleaned, err := stripDocumentationKeys(item)
+			if err != nil {
+				return nil, err
+			}
+			kept = append(kept, cleaned)
+		}
+		return json.Marshal(kept)
+	default:
+		return trimmed, nil
+	}
 }
 
 // merge applies overrides from src into dst (non-zero fields override).
