@@ -12,9 +12,11 @@ back to its change and tests.
 ### Model pricing: the decision not to ship a price table
 
 [docs/pricing-decision.md](docs/pricing-decision.md) records what this repository will and will not do
-about knowing what a call cost (issue #182). The verdict is **no vendored price table**: the route's own
-reported charge (OpenRouter states `usage.cost` per request) and rates the user declares stay the only
-two mechanisms, and a call neither can price is counted as unknown rather than as zero.
+about knowing what a call cost (issue #182). The verdict ships **no vendored price table** and leaves that
+question open on a named condition: the route's own reported charge (OpenRouter states `usage.cost` per
+request) and rates the user declares stay the only two mechanisms, a call neither can price is counted as
+unknown rather than as zero, and a table cannot be right for our own default route until the schema can
+hold what it would say ([#225](https://github.com/yusiwen/TinyCode/issues/225)).
 
 The measurement behind that is that the two leading open datasets disagree about this repository's own
 default route. For `deepseek-flash` input, LiteLLM's base entry says $0.30/M and models.dev says
