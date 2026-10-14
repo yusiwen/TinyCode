@@ -321,18 +321,35 @@ func (m *TuiModel) View() string {
 
 	// Input area — dialog, provider, command palette are mutually exclusive
 	if m.dialogMode {
-		b.WriteString(headerStyle.Render(m.dialogMsg))
-		b.WriteString("\n")
-		for i, item := range m.dialogItems {
-			label := fmt.Sprintf("[%d] %s", i+1, item)
-			if i == m.dialogSel {
-				b.WriteString("> " + label)
-			} else {
-				b.WriteString("  " + label)
-			}
+		// The heading is drawn outside the cell grid and styled with horizontal
+		// padding, so the text gets the room the style leaves. The sandbox's own
+		// permission title — `🔒 Write to <path>?` — is wider than a narrow
+		// terminal, and the terminal's cut lands mid-word (issue #218).
+		for _, line := range wrapInputText(m.dialogMsg, m.width, headerStyle.GetHorizontalFrameSize(), headerStyle.GetHorizontalFrameSize()) {
+			b.WriteString(headerStyle.Render(line))
 			b.WriteString("\n")
 		}
-		b.WriteString(dimStyle.Render("↑↓ navigate · Enter select · 1-9 shortcut · Esc cancel"))
+		for i, item := range m.dialogItems {
+			// The always-allow answer names the file it writes; that label is
+			// wider than 40 columns before its `[3] ` marker is added, so it
+			// wraps under the marker instead of running off the screen.
+			marker := fmt.Sprintf("[%d] ", i+1)
+			prefix := "  "
+			if i == m.dialogSel {
+				prefix = "> "
+			}
+			markerIndent := len(prefix) + len(marker) // ASCII, so cells == bytes
+			restIndent := len(prefix)                 // a wrapped answer lines up under its marker
+			for j, line := range wrapInputText(item, m.width, markerIndent, restIndent) {
+				if j == 0 {
+					b.WriteString(prefix + marker + line)
+				} else {
+					b.WriteString(strings.Repeat(" ", restIndent) + line)
+				}
+				b.WriteString("\n")
+			}
+		}
+		b.WriteString(renderHintRow(dialogHintAlternatives, m.width))
 	} else if m.selectingProvider {
 		b.WriteString(headerStyle.Render("Select provider:"))
 		b.WriteString("\n")
@@ -345,7 +362,7 @@ func (m *TuiModel) View() string {
 			}
 			b.WriteString("\n")
 		}
-		b.WriteString(dimStyle.Render("↑↓ navigate · Enter select · Esc cancel"))
+		b.WriteString(renderHintRow(providerHintAlternatives, m.width))
 	} else if m.cmdPalette {
 		cmds := m.filteredCmds()
 		b.WriteString(headerStyle.Render("Commands:"))
@@ -364,7 +381,7 @@ func (m *TuiModel) View() string {
 			}
 			b.WriteString("\n")
 		}
-		b.WriteString(dimStyle.Render("↑↓ navigate · Enter execute · Esc cancel"))
+		b.WriteString(renderHintRow(paletteHintAlternatives, m.width))
 	} else {
 		b.WriteString(m.input.View())
 	}
@@ -541,6 +558,154 @@ func clipStatusText(text string, width int) string {
 		used += w
 	}
 	return b.String() + marker
+}
+
+// The key hints drawn under the input area. Each is a list of alternatives rather
+// than one finished string: at a narrow width a hint row has to be laid out again,
+// not handed to a terminal that would cut it mid-alternative (issue #218).
+var (
+	dialogHintAlternatives   = []string{"↑↓ navigate", "Enter select", "1-9 shortcut", "Esc cancel"}
+	providerHintAlternatives = []string{"↑↓ navigate", "Enter select", "Esc cancel"}
+	paletteHintAlternatives  = []string{"↑↓ navigate", "Enter execute", "Esc cancel"}
+)
+
+// hintSeparator joins the alternatives of a key-hint row. hintTrailer is the same
+// separator without its trailing space: it marks the end of a wrapped line, so the
+// lines still read as one list and no cell is spent on the space.
+const (
+	hintSeparator = " · "
+	hintTrailer   = " ·"
+)
+
+// renderHintRow lays a key-hint row out for a terminal width cells wide and styles
+// it. A non-positive width means the terminal size is not known yet.
+func renderHintRow(alternatives []string, width int) string {
+	lines := fitHintRow(alternatives, width)
+	for i, line := range lines {
+		lines[i] = dimStyle.Render(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// fitHintRow packs the alternatives of a key-hint row into lines that fit a
+// terminal width cells wide, measuring in cells rather than characters: the row
+// carries wide glyphs (↑↓).
+//
+// Nothing is dropped to make room. `Esc cancel` is the only way out of the
+// permission dialog, and a row of alternatives cut by the terminal loses exactly
+// the tail a reader needs — the dialog at 40 columns was 54 cells wide and the
+// user saw a sentence with no end (issue #218). Wrapping keeps every alternative
+// on screen; the separator trails the wrapped line so it does not read as a second
+// list. An alternative wider than the whole line is clipped with the visible
+// marker rather than cut where the terminal would cut it.
+//
+// A width of zero means the terminal size is not known yet: the row is then built
+// in full on one line, which is what it did before this existed.
+func fitHintRow(alternatives []string, width int) []string {
+	if width <= 0 {
+		return []string{strings.Join(alternatives, hintSeparator)}
+	}
+	sepW := lipgloss.Width(hintSeparator)
+
+	var rows [][]string
+	row := []string{}
+	used := 0
+	for _, alt := range alternatives {
+		w := lipgloss.Width(alt)
+		if len(row) > 0 && used+sepW+w > width {
+			rows = append(rows, row)
+			row, used = nil, 0
+		}
+		if len(row) > 0 {
+			used += sepW
+		}
+		row = append(row, alt)
+		used += w
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+
+	lines := make([]string, 0, len(rows))
+	trailerW := lipgloss.Width(hintTrailer)
+	for i, r := range rows {
+		line := strings.Join(r, hintSeparator)
+		// The separator only trails a line when there is a next one and when it
+		// still fits: a line that is already full stays whole.
+		if i < len(rows)-1 && lipgloss.Width(line)+trailerW <= width {
+			line += hintTrailer
+		}
+		if lipgloss.Width(line) > width {
+			line = clipStatusText(line, width)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// wrapInputText breaks text into lines of at most width cells. The first line
+// reserves firstIndent cells for the caller's own prefix (`> [3] `, or a style's
+// horizontal padding); the lines after it reserve restIndent, which is normally
+// smaller: a wrapped path is worth more cells than the marker above it.
+//
+// The input area is drawn outside the cell grid, so nothing else trims it: a line
+// wider than the terminal is cut by the terminal itself, mid-word and without a
+// mark. The permission dialog's heading and its always-allow answer are both wider
+// than 40 columns (issue #218), so they are wrapped here, at word boundaries.
+//
+// A word that does not fit a line of its own is split across lines rather than
+// clipped: the answer names the file a permanent permission will be written to, and
+// a reader cannot consent to a path they can only half see. A width of zero means
+// the terminal size is not known yet: the text is then left on one line, which is
+// what it did before this existed.
+func wrapInputText(text string, width, firstIndent, restIndent int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	if text == "" {
+		return []string{""}
+	}
+
+	limit := max(width-firstIndent, 1)
+	var lines []string
+	line := ""
+	for _, word := range strings.Fields(text) {
+		if line != "" && lipgloss.Width(line)+1+lipgloss.Width(word) <= limit {
+			line += " " + word
+			continue
+		}
+		if line != "" {
+			lines = append(lines, line)
+			line = ""
+			limit = max(width-restIndent, 1)
+		}
+		for lipgloss.Width(word) > limit {
+			head, tail := splitAtCells(word, limit)
+			lines = append(lines, head)
+			word = tail
+			limit = max(width-restIndent, 1)
+		}
+		line = word
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// splitAtCells cuts a word into the longest prefix that fits limit cells and the
+// rest, keeping at least one rune in the prefix so that a two-cell glyph at a
+// one-cell limit cannot loop forever.
+func splitAtCells(word string, limit int) (head, tail string) {
+	used := 0
+	for i, r := range word {
+		w := runewidth.RuneWidth(r)
+		if i > 0 && used+w > limit {
+			return word[:i], word[i:]
+		}
+		used += w
+	}
+	return word, ""
 }
 
 // formatDuration formats a duration like "4h31m" or "32s".

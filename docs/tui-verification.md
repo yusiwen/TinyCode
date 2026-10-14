@@ -258,12 +258,13 @@ does not fit, delete it and find the flow's own string — do not adjust it unti
 - **The builders** (`frameModel`, `frameWelcome`, …): they construct `*TuiModel` with
   the project's own API and content. A general tool cannot know how to build this
   application's screens.
-- **The expectations**: the 27 text frames and the ANSI frame are what *this* product
+- **The expectations**: the 29 text frames and the ANSI frame are what *this* product
   considers correct. The tool offers `-update`, normalization and a first-difference
   diff; it cannot know what the welcome banner should say.
 - **The judgments**: that the status bar's mode label is `plan`, that the banner art is
-  dropped at 40 columns, that at least one scenario must be wider than its terminal so
-  the clip stays tested.
+  dropped at 40 columns, that every committed frame fits the geometry it claims, and
+  that the clip keeps an over-wide fixture of its own rather than borrowing a screen
+  that happens to overrun.
 - **The gating and CI wiring**: which checks need a PTY or a browser, and what the
   annotation baseline is.
 
@@ -274,10 +275,12 @@ does not fit, delete it and find the flow's own string — do not adjust it unti
   to `tuiprobe shot` with a face that has them.
 - The Chromium renderer's screenshot size is a range (`cols*9 .. cols*9+24` px), not a
   number; the default font renderer is exact.
-- A frame may be wider *and* taller than its terminal — the status bar is drawn outside
-  the cell grid, and bubbletea truncates each line to the window before writing it. The
-  golden stores the frame as `View()` returns it; the geometry assertion applies the
-  same clip the renderer does (issue #25).
+- A frame may be taller than its terminal: the input area and the status bar are drawn
+  outside the cell grid, and bubbletea truncates each line to the window before writing
+  it. The golden stores the frame as `View()` returns it; the geometry assertion applies
+  the same clip the renderer does (issue #25), and asserts that nothing needs it — a line
+  wider than its terminal is cut mid-word by the terminal, which is why the status bar
+  (issue #196) and the input area (issue #218) budget themselves against the width.
 
 ## History
 

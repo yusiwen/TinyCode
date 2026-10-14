@@ -9,6 +9,28 @@ back to its change and tests.
 
 ## Unreleased
 
+### The permission dialog fits a narrow terminal
+
+The input area is drawn below the cell grid, so it is never trimmed against the terminal: a line wider
+than the window is cut by the terminal itself, mid-word and without a mark. At 40 columns the permission
+dialog's hint row was 54 cells — `↑↓ navigate · Enter select · 1-9 shortcut · Esc cancel` — and the user
+read a sentence with no end, `Esc cancel` being the part that went missing; the heading was 47 cells, and
+the always-allow answer names the config file it writes, so it is 60 cells before its `[3] ` marker is
+added (issue #218).
+
+The three hints are now lists of alternatives rather than finished strings, and the input area lays
+itself out for the width it has: the heading and the answers wrap at word boundaries, an alternative is
+never dropped to make room, and a wrapped hint line ends with its `·` so it still reads as one list — at
+40 columns the shortcut row becomes two lines and `Esc cancel` survives. A word that cannot fit a line
+even alone is split across lines rather than clipped, because the always-allow answer names the file a
+permanent permission will be written to and a reader cannot consent to a path they can only half see. An
+unknown terminal width still draws every line in full, as before.
+
+The committed frames follow: `dialog_40x12` is regenerated, no committed frame is wider than the geometry
+it claims any more, and `TestGoldenFrames` now asserts that per frame instead of requiring one frame to
+overrun. The clip keeps an over-wide fixture of its own, since borrowing a screen that happens to
+overflow would mean keeping a defect to test the clip.
+
 ### A long status bar keeps its status message
 
 The status bar is one line: the session facts, then `│ <status message>`. The model rendered it in full
