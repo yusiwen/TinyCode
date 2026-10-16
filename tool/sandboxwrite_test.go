@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func TestWriteSandboxedKeepsTheTargetOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := writeSandboxed(target, []byte("replacement bytes that must not land\n"), 0644)
+	err := writeSandboxed(context.Background(), target, []byte("replacement bytes that must not land\n"), 0644)
 	if err == nil {
 		t.Fatal("the injected failure must surface")
 	}
@@ -75,7 +76,7 @@ func TestWriteSandboxedReplacesAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := writeSandboxed(target, []byte("after\n"), 0644); err != nil {
+	if err := writeSandboxed(context.Background(), target, []byte("after\n"), 0644); err != nil {
 		t.Fatalf("writeSandboxed: %v", err)
 	}
 	got, err := os.ReadFile(target)
@@ -116,7 +117,7 @@ func TestWriteSandboxedCreatesOutsideTheRootToo(t *testing.T) {
 	t.Cleanup(func() { DefaultSandbox.ProjectRoot = previousRoot })
 
 	outside := DefaultSandbox.ResolvePath(filepath.Join(t.TempDir(), "outside.txt"))
-	if err := writeSandboxed(outside, []byte("outside\n"), 0644); err != nil {
+	if err := writeSandboxed(context.Background(), outside, []byte("outside\n"), 0644); err != nil {
 		t.Fatalf("writeSandboxed outside the root: %v", err)
 	}
 	if got, err := os.ReadFile(outside); err != nil || string(got) != "outside\n" {

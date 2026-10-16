@@ -183,8 +183,12 @@ type Config struct {
 	Sandbox      *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme        string                   `json:"theme,omitempty"`
 	SessionDir   string                   `json:"session_dir,omitempty"`
-	LSP          *LSPConfig               `json:"lsp,omitempty"`
-	LogLevel     string                   `json:"log_level,omitempty"`
+	// CheckpointDir is where the pre-images of tool writes are kept, so a write
+	// can be undone. It is deliberately outside the project root: the fence that
+	// confines every tool write then confines the store as well.
+	CheckpointDir string     `json:"checkpoint_dir,omitempty"`
+	LSP           *LSPConfig `json:"lsp,omitempty"`
+	LogLevel      string     `json:"log_level,omitempty"`
 
 	// Context window and compression
 	ContextLength        int `json:"context_length,omitempty"`
@@ -255,6 +259,7 @@ func DefaultConfig() Config {
 			},
 		},
 		SessionDir:           filepath.Join(home, ".tinycode", "sessions"),
+		CheckpointDir:        filepath.Join(home, ".tinycode", "checkpoints"),
 		ContextLength:        1000000, // 1M on deepseek-flash (model version DeepSeek-V4.1-Flash)
 		CompressionThreshold: 500000,  // 50% of context
 	}
@@ -445,6 +450,9 @@ func merge(dst, src Config) Config {
 	}
 	if src.SessionDir != "" {
 		dst.SessionDir = src.SessionDir
+	}
+	if src.CheckpointDir != "" {
+		dst.CheckpointDir = src.CheckpointDir
 	}
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel

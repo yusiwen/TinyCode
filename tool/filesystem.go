@@ -170,7 +170,7 @@ func WriteFile() Tool {
 				return "", fmt.Errorf("mkdir: %w", err)
 			}
 
-			if err := writeSandboxed(safePath, []byte(content), 0644); err != nil {
+			if err := writeSandboxed(ctx, safePath, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 

@@ -178,7 +178,7 @@ func ApplyPatch() Tool {
 						content = strings.Replace(content, chunk.oldLine, chunk.newLine, 1)
 						lines += strings.Count(chunk.newLine, "\n") + 1
 					}
-					if err := writeSandboxed(op.path, []byte(content), 0644); err != nil {
+					if err := writeSandboxed(ctx, op.path, []byte(content), 0644); err != nil {
 						// Partial failure — report what succeeded so far
 						return fmt.Sprintf("Partial failure after updating %d file(s): %v",
 							len(results), err), nil
@@ -189,13 +189,16 @@ func ApplyPatch() Tool {
 					if err := os.MkdirAll(filepath.Dir(op.path), 0755); err != nil {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
-					if err := writeSandboxed(op.path, []byte(op.newSrc), 0644); err != nil {
+					if err := writeSandboxed(ctx, op.path, []byte(op.newSrc), 0644); err != nil {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
 					results = append(results, opResult{path: op.path, applied: "created", lines: strings.Count(op.newSrc, "\n") + 1})
 
 				case opDelete:
-					if err := os.Remove(op.path); err != nil {
+					// Through removeSandboxed, not os.Remove: a deletion is a
+					// content change, so it records the bytes it destroys and the
+					// call can be undone (issue #234).
+					if err := removeSandboxed(ctx, op.path); err != nil {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
 					results = append(results, opResult{path: op.path, applied: "deleted", lines: 0})

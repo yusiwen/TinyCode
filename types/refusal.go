@@ -30,6 +30,10 @@ const (
 	AskPolicy = "policy"
 	// AskMode: another mode would allow it.
 	AskMode = "mode"
+	// AskReserved: the path is not a tool path at all. Nothing can be granted,
+	// because the caller is the tool layer's own recovery store — the bytes a
+	// write replaced, without which the write cannot be undone.
+	AskReserved = "reserved"
 )
 
 // refusalHints is the one hint per ask value. Naming the narrowest option first
@@ -41,6 +45,7 @@ var refusalHints = map[string]string{
 	AskCapability:  "do not retry; this is a capability of the machine, not a permission that can be granted",
 	AskPolicy:      "do not retry this command; the rule is configuration (sandbox.deny_commands), not something the dialog or the model can grant",
 	AskMode:        "switch to build mode (/build) to run commands that modify files",
+	AskReserved:    "do not retry; this path is the tool layer's own recovery store, and no permission grants access to it",
 }
 
 // Refusal is one refused operation, in the shape every refusal path emits.
