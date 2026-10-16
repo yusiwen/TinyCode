@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -47,6 +48,24 @@ var (
 	checkpointMu   sync.Mutex
 	checkpointRoot string                        // explicit override; "" = the default under the user's home
 	checkpointRuns = map[string]*checkpointRun{} // key: store + pid + run
+)
+
+// The store is a recovery cache with a bound, not an archive.
+//
+// Two limits, both checked after a call is recorded: the number of calls kept
+// for a project, and the store's total size. Only calls that have *already* been
+// undone are ever dropped, oldest first — dropping a call that can still be
+// undone would destroy the one thing the store exists for, so a project with
+// more live calls than the limit keeps every one of them and the bound is
+// deliberately not met. That trade is stated here because it is the surprising
+// half: the size bound loses to undo-ability, always.
+//
+// They are not configuration keys. A knob nobody asked for is worse than a
+// documented number, and the numbers are generous for the shape of the data: a
+// pre-image is one file's previous bytes, not the whole tree.
+var (
+	checkpointMaxCalls = 50
+	checkpointMaxBytes = int64(64 << 20)
 )
 
 // checkpointRun groups the calls of one run, so their manifests sort in call
@@ -172,7 +191,168 @@ func recordPreImage(ctx context.Context, path string) error {
 	if err := appendManifest(store, scope, entry); err != nil {
 		return fmt.Errorf("checkpoint %s: %w", path, err)
 	}
+	// Bounded here, after the call is recorded, so the store cannot grow without
+	// limit. A failed prune is reported and not fatal: the pre-image this write
+	// needs is already durable, and failing the write because housekeeping failed
+	// would trade a real edit for a cache policy.
+	if dropped, err := pruneCheckpoints(store); err != nil {
+		tlog.Warn("checkpoint", "prune_failed", "store", store, "err", err)
+	} else if dropped > 0 {
+		tlog.Info("checkpoint", "pruned", "store", store, "calls", dropped)
+	}
 	return nil
+}
+
+// pruneCheckpoints brings the store back within its bounds and returns how many
+// calls it dropped. Only calls that have already been undone are candidates,
+// oldest first (see the limit's comment): a live call is kept even when that
+// leaves the store over its bound.
+func pruneCheckpoints(store string) (int, error) {
+	calls, err := ListCalls(0)
+	if err != nil {
+		return 0, err
+	}
+	if len(calls) <= checkpointMaxCalls && checkpointStoreBytes(store, calls) <= checkpointMaxBytes {
+		return 0, nil
+	}
+
+	// Mark the droppable calls (oldest first) and work out how many have to go.
+	droppable := make([]int, 0, len(calls))
+	for i, call := range calls {
+		if call.Restored() {
+			droppable = append(droppable, i)
+		}
+	}
+	drop := map[string]bool{}
+	kept := len(calls)
+	size := checkpointStoreBytes(store, calls)
+	for _, i := range droppable {
+		if kept <= checkpointMaxCalls && size <= checkpointMaxBytes {
+			break
+		}
+		drop[calls[i].File] = true
+		kept--
+		size -= checkpointReclaimableBytes(store, calls[i])
+	}
+	if len(drop) == 0 {
+		// Every call left can still be undone: the bound is not met, on purpose.
+		return 0, nil
+	}
+
+	for file := range drop {
+		if err := os.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return 0, fmt.Errorf("drop %s: %w", file, err)
+		}
+	}
+	if err := collectUnreferencedObjects(store); err != nil {
+		return 0, err
+	}
+	return len(drop), nil
+}
+
+// checkpointStoreBytes is what the kept calls cost: their manifests plus the
+// pre-images they reference. Pre-images are content-addressed, so one shared by
+// two calls is counted once.
+func checkpointStoreBytes(store string, calls []CheckpointCall) int64 {
+	seen := map[string]bool{}
+	var total int64
+	for _, call := range calls {
+		if info, err := os.Stat(call.File); err == nil {
+			total += info.Size()
+		}
+		for _, entry := range call.Entries {
+			if entry.SHA256 == "" || seen[entry.SHA256] {
+				continue
+			}
+			seen[entry.SHA256] = true
+			if info, err := os.Stat(objectPath(store, entry.SHA256)); err == nil {
+				total += info.Size()
+			}
+		}
+	}
+	return total
+}
+
+// checkpointReclaimableBytes is what dropping one call frees: its manifest, plus
+// the pre-images no other call references. Objects are removed by
+// collectUnreferencedObjects, so this is a measure, not an action.
+func checkpointReclaimableBytes(store string, call CheckpointCall) int64 {
+	var total int64
+	if info, err := os.Stat(call.File); err == nil {
+		total += info.Size()
+	}
+	for _, entry := range call.Entries {
+		if entry.SHA256 == "" {
+			continue
+		}
+		if info, err := os.Stat(objectPath(store, entry.SHA256)); err == nil {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+// collectUnreferencedObjects removes every object no remaining manifest names.
+// An undo that lost its pre-image is a failed restore, so this runs only after
+// manifests have been dropped and always against the manifests on disk now.
+func collectUnreferencedObjects(store string) error {
+	calls, err := ListCalls(0)
+	if err != nil {
+		return err
+	}
+	referenced := map[string]bool{}
+	for _, call := range calls {
+		for _, entry := range call.Entries {
+			if entry.SHA256 != "" {
+				referenced[entry.SHA256] = true
+			}
+		}
+	}
+
+	root := filepath.Join(store, checkpointObjectsDir)
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		// Objects are named by their digest; a file that is not one (a stray temp
+		// file from an interrupted write) is removed with them rather than kept.
+		if !referenced[d.Name()] {
+			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// CheckpointReport describes the store for the /sandbox command: where it is,
+// how much is in it, and — the part a user has to know to trust it — what it
+// does not capture.
+func CheckpointReport() string {
+	dir := CheckpointRoot()
+	if dir == "" {
+		return "checkpoints: unavailable (no home directory, so no write can be recorded)\n"
+	}
+	calls, err := ListCalls(0)
+	if err != nil {
+		return fmt.Sprintf("checkpoints: %s (unreadable: %v)\n", dir, err)
+	}
+	undoable := 0
+	for _, call := range calls {
+		if !call.Restored() {
+			undoable++
+		}
+	}
+	return fmt.Sprintf("checkpoints: %s\n"+
+		"  %d call(s) kept, %d still undoable; the newest %d calls and %d MiB are kept, oldest undone calls first\n"+
+		"  not captured: files changed by a bash command or any other subprocess — only the file tools' writes are recorded\n",
+		dir, len(calls), undoable, checkpointMaxCalls, checkpointMaxBytes>>20)
 }
 
 // checkpointStoreDir resolves the store for the project in flight. The key
