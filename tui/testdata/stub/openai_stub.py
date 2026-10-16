@@ -106,6 +106,17 @@ WRITE_CALL = (
     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
     'data: [DONE]\n\n'
 )
+# "undo" overwrites a file *inside* the workspace (see undo-command.scenario): the path is
+# relative, so it lands in the directory the binary was started in, which the fence
+# auto-allows — no approval dialog between the write and the /undo that follows it. The
+# content is what the scenario asserts was restored, so it must differ from the bytes the
+# wrapper shell seeds.
+UNDO_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_u","type":"function",'
+    '"function":{"name":"write_file","arguments":"{\\"path\\":\\".stub-undo.txt\\",\\"content\\":\\"stub-undo-after\\"}"}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+)
 TOOL_CALL = (
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_stub","type":"function",'
     '"function":{"name":"bash","arguments":"{\\"command\\":\\"echo stub-tool-marker\\"}"}}]}}]}\n\n'
@@ -145,6 +156,7 @@ _served = {"requests": 0, "cycles": 0, "title": 0}
 SCRIPT = {
     "tool": TOOL_CALL,
     "write": WRITE_CALL,
+    "undo": UNDO_CALL,
     "multi": MULTI_CALL,
     "fail": FAIL_CALL,
     "todo": TODO_CALL,

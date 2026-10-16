@@ -102,16 +102,37 @@ type CheckpointCall struct {
 	// File is the manifest's path. It is not serialized: it is where the call
 	// was found, not part of what it records.
 	File string `json:"-"`
-	// Tool, Run, Step and Call are the attribution the agent loop stamped.
-	Tool string    `json:"tool"`
-	Run  int       `json:"run"`
-	Step int       `json:"step"`
-	Call int       `json:"call"`
-	Time time.Time `json:"time"`
+	// Tool, Session, Run, Step and Call are the attribution carried with the
+	// call: the tool name and the per-call numbering come from the agent loop,
+	// the session from whoever started the run when it knew one.
+	Tool    string    `json:"tool"`
+	Session string    `json:"session,omitempty"`
+	Run     int       `json:"run"`
+	Step    int       `json:"step"`
+	Call    int       `json:"call"`
+	Time    time.Time `json:"time"`
+	// RestoredAt is when an undo returned this call's files to their pre-call
+	// state. A non-zero value takes the call out of LastCall's reach, which is
+	// what makes a second /undo reach the call before it rather than repeat this
+	// one. The manifest stays: it is the record that the undo happened.
+	RestoredAt time.Time `json:"restored_at,omitempty"`
 	// Entries keeps the write order of the call. Restore reads the *first*
 	// entry per path, which is the true pre-call state when one call wrote the
 	// same file twice.
 	Entries []CheckpointEntry `json:"entries"`
+}
+
+// Restored reports whether this call has already been undone.
+func (c CheckpointCall) Restored() bool { return !c.RestoredAt.IsZero() }
+
+// Paths lists the files the call wrote, in the order they were written — what an
+// undo is about to change, for a caller that shows it before asking.
+func (c CheckpointCall) Paths() []string {
+	paths := make([]string, 0, len(c.Entries))
+	for _, e := range c.Entries {
+		paths = append(paths, e.Path)
+	}
+	return paths
 }
 
 // recordPreImage stores path's current bytes under the call recorded in ctx.
@@ -204,7 +225,10 @@ func appendManifest(store string, scope types.ToolCallScope, entry CheckpointEnt
 	manifest := manifestFor(store, scope)
 	checkpointMu.Unlock()
 
-	call := CheckpointCall{Tool: scope.Tool, Run: scope.Run, Step: scope.Step, Call: scope.Call, Time: time.Now()}
+	call := CheckpointCall{
+		Tool: scope.Tool, Session: scope.Session,
+		Run: scope.Run, Step: scope.Step, Call: scope.Call, Time: time.Now(),
+	}
 	if data, err := os.ReadFile(manifest); err == nil {
 		if err := json.Unmarshal(data, &call); err != nil {
 			return fmt.Errorf("manifest %s is unreadable: %w", manifest, err)
@@ -257,6 +281,30 @@ func ListCalls(limit int) ([]CheckpointCall, error) {
 	return calls, nil
 }
 
+// LastCall returns the newest call that has not been undone yet, so a second
+// undo reaches the call before it instead of repeating the first. When a session
+// is named, a call attributed to a *different* session is skipped; a call with no
+// session recorded is still a candidate, because it was written by a process that
+// had not named its session yet — the TUI mints its id on the first save, which
+// happens after the first tool call it records.
+func LastCall(session string) (CheckpointCall, bool, error) {
+	calls, err := ListCalls(0)
+	if err != nil {
+		return CheckpointCall{}, false, err
+	}
+	for i := len(calls) - 1; i >= 0; i-- {
+		call := calls[i]
+		if call.Restored() {
+			continue
+		}
+		if session != "" && call.Session != "" && call.Session != session {
+			continue
+		}
+		return call, true, nil
+	}
+	return CheckpointCall{}, false, nil
+}
+
 // RestoreCall returns the files call wrote to their pre-call state and reports
 // which paths it touched, in the order it touched them.
 //
@@ -267,8 +315,11 @@ func ListCalls(limit int) ([]CheckpointCall, error) {
 // (see writeFileThroughFence), so containment is enforced by the same call that
 // produces the bytes.
 //
-// A restore that fails partway returns the paths already restored with the
-// error, so a caller can say what changed rather than reporting a bare failure.
+// On success the call is marked undone in its own manifest, which is what keeps
+// LastCall moving backwards. A restore that fails partway returns the paths
+// already restored with the error, so a caller can say what changed rather than
+// reporting a bare failure; the call is left unmarked, and a retry is safe
+// because the pre-images are the state before the call, not before the retry.
 func RestoreCall(ctx context.Context, call CheckpointCall) ([]string, error) {
 	if call.File == "" {
 		return nil, errors.New("checkpoint restore: the call has no manifest path")
@@ -303,6 +354,14 @@ func RestoreCall(ctx context.Context, call CheckpointCall) ([]string, error) {
 			return restored, fmt.Errorf("checkpoint restore %s: %w", path, err)
 		}
 		restored = append(restored, path)
+	}
+
+	call.RestoredAt = time.Now()
+	if err := writeFileAtomic(call.File, mustJSON(call), 0644); err != nil {
+		// The files are back where they were; only the record of it failed. The
+		// message says so, because a caller that reported a bare error would leave
+		// the reader unsure whether anything changed.
+		return restored, fmt.Errorf("checkpoint restore: the files were restored, but marking %s as undone failed: %w", call.File, err)
 	}
 	return restored, nil
 }

@@ -17,6 +17,8 @@
   /theme  Switch theme
   /skill  Load a skill
   /diagnostics  LSP diagnostics
+  /undo
+    Restore the last tool call's files
   /sandbox  Sandbox status
   /model  Switch model
   /fork  Create session branch

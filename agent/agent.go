@@ -550,10 +550,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 								// store) needs to attribute it to this call, and two
 								// runs in one process reuse step 1, so the run
 								// counter is what keeps them apart.
-								callCtx := types.WithToolCallScope(ctx, types.ToolCallScope{
-									Tool: t.Name, Run: a.runSerial, Step: step, Call: idx,
-								})
-								result, execErr = t.Execute(callCtx, args)
+								//
+								// The scope is extended rather than replaced: the
+								// caller seeds the session (the TUI mints it on its
+								// first save, so the loop cannot know it), and the
+								// fields below are the ones only the loop can fill.
+								scope, _ := types.ToolCallScopeFrom(ctx)
+								scope.Tool, scope.Run, scope.Step, scope.Call = t.Name, a.runSerial, step, idx
+								result, execErr = t.Execute(types.WithToolCallScope(ctx, scope), args)
 								if execErr != nil {
 									a.noteCallFailure(key)
 									result = fmt.Sprintf("error: %v", execErr)
