@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -603,5 +604,162 @@ func TestNotifyRoundTripsThroughJSON(t *testing.T) {
 	ch, d := cfg.NotifyPolicy()
 	if ch != "desktop" || d != 5*time.Second {
 		t.Errorf("NotifyPolicy = %q/%v, want desktop/5s", ch, d)
+	}
+}
+
+// stderrWhile runs fn with os.Stderr redirected into a pipe and returns what was
+// written, so a test can count the diagnostics the loader prints directly.
+func stderrWhile(t *testing.T, fn func()) string {
+	t.Helper()
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stderr
+	os.Stderr = write
+	defer func() { os.Stderr = previous }()
+	fn()
+	os.Stderr = previous
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	message, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(message)
+}
+
+// TestLoadLayersOpensEachFileOnce is issue #231's "the user file is opened once
+// per start" acceptance, counted rather than inferred: the counter sits on the
+// read every layer goes through, so a reader that opened a layer again would show
+// up here.
+func TestLoadLayersOpensEachFileOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	if err := os.MkdirAll(filepath.Join(home, ".tinycode"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	userFile := filepath.Join(home, ".tinycode", "config.json")
+	if err := os.WriteFile(userFile, []byte(`{"theme":"nord"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(".tinycode", 0755); err != nil {
+		t.Fatal(err)
+	}
+	projectFile := filepath.Join(".tinycode", "config.json")
+	if err := os.WriteFile(projectFile, []byte(`{"log_level":"debug"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	opens := map[string]int{}
+	previous := readConfigFile
+	readConfigFile = func(path string) ([]byte, error) {
+		opens[path]++
+		return previous(path)
+	}
+	t.Cleanup(func() { readConfigFile = previous })
+
+	layers := LoadLayers()
+	if got := layers.Config().Theme; got != "nord" {
+		t.Fatalf("merged theme = %q, want nord", got)
+	}
+	if got := layers.Config().LogLevel; got != "debug" {
+		t.Fatalf("merged log level = %q, want debug", got)
+	}
+	if got := opens[userFile]; got != 1 {
+		t.Errorf("user config opened %d times, want 1", got)
+	}
+	if got := opens[projectFile]; got != 1 {
+		t.Errorf("project config opened %d times, want 1", got)
+	}
+}
+
+// TestUserLayerAnswersAfterTheFileIsGone is the other half of issue #231's
+// acceptance: everything a reader needs is captured with the layer, so removing
+// the file once it has been read changes nothing — nothing is read again.
+func TestUserLayerAnswersAfterTheFileIsGone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	dir := filepath.Join(home, ".tinycode")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.json")
+	body := `{"theme":"nord","sandbox":{"project_root":"/srv/user","allowed_paths":["/srv/cache"],` +
+		`"confine_commands":false,"allowed_path_grants":[{"path":"/srv/granted","project":"/repo"}]}}`
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	layer := LoadUserLayer()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := layer.Config().Theme; got != "nord" {
+		t.Errorf("theme = %q after the file was removed, want nord", got)
+	}
+	if boundary := layer.SandboxBoundary(); boundary.ProjectRoot != "/srv/user" || len(boundary.AllowedPaths) != 1 {
+		t.Errorf("boundary = %+v after the file was removed, want the file's own values", boundary)
+	}
+	if value, set := layer.ConfineCommands(); !set || value {
+		t.Errorf("confine_commands = (%v, %v) after the file was removed, want (false, true)", value, set)
+	}
+	grants, err := layer.AllowedPathGrants()
+	if err != nil {
+		t.Fatalf("AllowedPathGrants: %v", err)
+	}
+	// Both storage forms live in that file: the legacy allowed_paths entry and
+	// the record, which is what a caller reads the raw object for.
+	if len(grants) != 2 {
+		t.Fatalf("grants = %+v after the file was removed, want the legacy path and the record", grants)
+	}
+	recorded := false
+	for _, grant := range grants {
+		if grant.Path == "/srv/granted" && grant.Project == "/repo" {
+			recorded = true
+		}
+	}
+	if !recorded {
+		t.Errorf("grants = %+v after the file was removed, want /srv/granted", grants)
+	}
+}
+
+// TestLoadUserLayerReportsAMalformedFileOnce is the package-level half of issue
+// #231: one read means one diagnostic, not one per reader, and the defaults
+// stand rather than a partial parse.
+func TestLoadUserLayerReportsAMalformedFileOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	dir := filepath.Join(home, ".tinycode")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"providers": `), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var layer UserLayer
+	message := stderrWhile(t, func() { layer = LoadUserLayer() })
+
+	if got := strings.Count(message, "ignoring"); got != 1 {
+		t.Errorf("the malformed file was reported %d times, want 1: %s", got, message)
+	}
+	if !strings.Contains(message, path) {
+		t.Errorf("the diagnostic does not name %s: %s", path, message)
+	}
+	if got, want := layer.Config().Theme, DefaultConfig().Theme; got != want {
+		t.Errorf("theme = %q after a malformed file, want the default %q", got, want)
 	}
 }
