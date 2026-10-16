@@ -81,5 +81,11 @@ func sandboxReport() string {
 		"and never a directory on PATH; grant another path in your own ~/.tinycode/config.json, " +
 		"under \"sandbox.allowed_path_grants\"\n")
 
+	// What can be undone is part of the safety posture this command reports, and
+	// the line that matters is the one naming what is *not* captured: a user who
+	// reads "checkpoints" and assumes their bash edits are recoverable has been
+	// misled by omission (issue #234).
+	b.WriteString("  " + tool.CheckpointReport())
+
 	return b.String()
 }
