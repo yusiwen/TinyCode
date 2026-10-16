@@ -17,6 +17,8 @@ func TestSandboxReportStatesTheCachePolicy(t *testing.T) {
 		"toolchain caches:",           // what grants the caches inside it
 		"sandbox.allowed_path_grants", // the key that grants one more
 		"~/.tinycode/config.json",     // and the file a project may not extend it from
+		"checkpoints:",                // what can be undone, and where it lives (issue #234)
+		"not captured:",               // and the half a user would otherwise assume
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("the /sandbox report does not mention %q:\n%s", want, report)
