@@ -539,36 +539,153 @@ func merge(dst, src Config) Config {
 	return dst
 }
 
+// UserLayer is the user-global config file, read once.
+//
+// Every consumer in one process start takes this value instead of opening the
+// file again: one read per reader reported a malformed file once per reader
+// (issue #231) and let two readers of one start disagree when the file changed in
+// between. Startup builds this once and passes it down; the standalone loaders
+// below read the file afresh for the paths that write it and reload.
+//
+// The raw object travels with the decoded Config because merge() cannot express
+// every key the file carries: an explicit `confine_commands: false` survives no
+// merged Config (issue #162).
+type UserLayer struct {
+	cfg    Config
+	raw    map[string]any
+	rawErr error
+}
+
+// LoadUserLayer reads ~/.tinycode/config.json once.
+//
+// A missing file is the defaults and no diagnostic; a malformed one is reported
+// exactly once, here, and the defaults are used rather than a partial parse.
+func LoadUserLayer() UserLayer {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return UserLayer{cfg: DefaultConfig(), raw: map[string]any{}}
+	}
+	path := filepath.Join(home, ".tinycode", "config.json")
+
+	data, err := readConfigFile(path)
+	if err != nil {
+		layer := UserLayer{cfg: DefaultConfig(), raw: map[string]any{}}
+		if !os.IsNotExist(err) {
+			// A missing file is normal; an unreadable one is not, and the raw
+			// half keeps the error for the callers that report it (the grant
+			// loader logs it, --list-grants turns it into an exit code).
+			layer.rawErr = err
+		}
+		return layer
+	}
+
+	cfg := DefaultConfig()
+	if userCfg, err := decodeConfig(data); err == nil {
+		cfg = merge(cfg, userCfg)
+	} else {
+		reportIgnoredConfig(path, err)
+	}
+
+	// The raw form comes from the same bytes. Its own failure is not reported a
+	// second time — reportIgnoredConfig above already named the file — but it is
+	// kept, because the write paths fail loudly on a file they cannot parse.
+	raw := map[string]any{}
+	rawErr := error(nil)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		raw, rawErr = map[string]any{}, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return UserLayer{cfg: cfg, raw: raw, rawErr: rawErr}
+}
+
+// Config is the code defaults merged with the user file.
+func (l UserLayer) Config() Config { return l.cfg }
+
+// SandboxBoundary is this layer's view of the two keys that can widen the fence.
+func (l UserLayer) SandboxBoundary() SandboxBoundary { return sandboxBoundaryOf(l.cfg) }
+
+// ConfineCommands is the raw confine_commands value and whether the file set it.
+//
+// It reads the raw object rather than the merged Config because merge() keeps
+// only the narrowing direction of this key: an explicit false survives no merged
+// Config, so the layer is the only place it can be read.
+func (l UserLayer) ConfineCommands() (value bool, set bool) {
+	sandbox, _ := l.raw["sandbox"].(map[string]any)
+	if sandbox == nil {
+		return false, false
+	}
+	value, ok := sandbox["confine_commands"].(bool)
+	return value, ok
+}
+
+// AllowedPathGrants is the grants this layer carries, with the raw file's own
+// read or decode failure so a caller can keep reporting it.
+func (l UserLayer) AllowedPathGrants() ([]AllowedPathGrant, error) {
+	if l.rawErr != nil {
+		return nil, l.rawErr
+	}
+	return grantsFromRaw(l.raw), nil
+}
+
+// ProjectLayer is the project-local ./.tinycode/config.json, read once for the
+// same reason as UserLayer. A parse failure is reported by loadFile and leaves
+// the layer empty, which is what the merged loader does with it.
+type ProjectLayer struct {
+	cfg Config
+}
+
+// LoadProjectLayer reads the project-local file once.
+func LoadProjectLayer() ProjectLayer {
+	cfg, err := loadFile(filepath.Join(".tinycode", "config.json"))
+	if err != nil {
+		return ProjectLayer{}
+	}
+	return ProjectLayer{cfg: cfg}
+}
+
+// Config is the project-local file as written, or the zero Config when it is
+// missing or malformed.
+func (l ProjectLayer) Config() Config { return l.cfg }
+
+// SandboxBoundary is this layer's view of the widening keys, so a caller can
+// report what it ignored rather than dropping it in silence.
+func (l ProjectLayer) SandboxBoundary() SandboxBoundary { return sandboxBoundaryOf(l.cfg) }
+
+// Layers is one process start's read of both configuration files.
+//
+// Startup reads this once and passes it down, so every reader of a layer takes
+// the value instead of opening the file again (issue #231).
+type Layers struct {
+	User    UserLayer
+	Project ProjectLayer
+}
+
+// LoadLayers reads the user and project layers, one open each.
+func LoadLayers() Layers {
+	return Layers{User: LoadUserLayer(), Project: LoadProjectLayer()}
+}
+
+// Config is the merged configuration: code defaults, then the user file, then
+// the project-local file.
+func (l Layers) Config() Config {
+	return merge(l.User.Config(), l.Project.Config())
+}
+
 // LoadUserConfig loads only the code defaults and the user-global config file,
 // skipping the project-local layer. Use it when persisting settings back to
 // disk: a repository's ./.tinycode/config.json is attacker-controlled, so its
 // providers or system prompts must never be promoted into the user's global
 // config by an unrelated action such as "Always allow".
+//
+// It reads the file for this call. Startup wiring builds a UserLayer once
+// instead, so a malformed file is not reported once per reader (issue #231).
 func LoadUserConfig() Config {
-	cfg := DefaultConfig()
-
-	home, err := os.UserHomeDir()
-	if err == nil {
-		userCfg, err := loadFile(filepath.Join(home, ".tinycode", "config.json"))
-		if err == nil {
-			cfg = merge(cfg, userCfg)
-		}
-	}
-
-	return cfg
+	return LoadUserLayer().Config()
 }
 
 // LoadConfig loads the configuration from all sources and returns the merged result.
 // Load order: defaults → ~/.tinycode/config.json → ./.tinycode/config.json
 func LoadConfig() Config {
-	cfg := LoadUserConfig()
-
-	projCfg, err := loadFile(filepath.Join(".tinycode", "config.json"))
-	if err == nil {
-		cfg = merge(cfg, projCfg)
-	}
-
-	return cfg
+	return LoadLayers().Config()
 }
 
 // SandboxBoundary is the part of the sandbox configuration that can widen the
@@ -591,19 +708,19 @@ type SandboxBoundary struct {
 // The keys that can only narrow behaviour are a different question, and merge()
 // already treats them that way: deny rules accumulate, and the two hardening
 // booleans can be turned on by any layer but never off.
+//
+// It reads the file for this call; the startup path takes the UserLayer it
+// already read instead (see UserLayer.SandboxBoundary).
 func UserSandboxBoundary() SandboxBoundary {
-	return sandboxBoundaryOf(LoadUserConfig())
+	return LoadUserLayer().SandboxBoundary()
 }
 
 // ProjectSandboxBoundary returns the same keys as the project-local file spells
 // them, so a caller can report what it ignored rather than dropping it in
-// silence.
+// silence. It reads the file for this call; the startup path takes the
+// ProjectLayer it already read instead.
 func ProjectSandboxBoundary() SandboxBoundary {
-	cfg, err := loadFile(filepath.Join(".tinycode", "config.json"))
-	if err != nil {
-		return SandboxBoundary{}
-	}
-	return sandboxBoundaryOf(cfg)
+	return LoadProjectLayer().SandboxBoundary()
 }
 
 func sandboxBoundaryOf(cfg Config) SandboxBoundary {
@@ -623,22 +740,11 @@ func sandboxBoundaryOf(cfg Config) SandboxBoundary {
 //
 // It reads the raw user file rather than the merged one because merge() keeps
 // only the narrowing direction of this key: an explicit false survives no
-// merged Config, so the layer is the only place it can be read.
+// merged Config, so the layer is the only place it can be read. It reads the
+// file for this call; the startup path asks the UserLayer it already read
+// instead (see UserLayer.ConfineCommands).
 func UserConfineCommands() (value bool, set bool) {
-	file, err := userConfigPath()
-	if err != nil {
-		return false, false
-	}
-	raw, err := readConfigObject(file)
-	if err != nil {
-		return false, false
-	}
-	sandbox, _ := raw["sandbox"].(map[string]any)
-	if sandbox == nil {
-		return false, false
-	}
-	value, ok := sandbox["confine_commands"].(bool)
-	return value, ok
+	return LoadUserLayer().ConfineCommands()
 }
 
 // sandboxAsksForConfinement reports whether a merged configuration carries an
@@ -667,8 +773,17 @@ func sandboxAsksForConfinement(cfg *Config) bool {
 // apply it and refuse every command in a session that merely cloned it (macOS).
 // Narrowing is still allowed where it can actually be applied, which is what
 // the platform default already gives.
+//
+// It reads the user file for this call; the startup path passes the UserLayer it
+// already read instead (see UserLayer.ResolveConfineCommands).
 func ResolveConfineCommands(cfg *Config, hostHasMechanism bool) bool {
-	if value, set := UserConfineCommands(); set {
+	return LoadUserLayer().ResolveConfineCommands(cfg, hostHasMechanism)
+}
+
+// ResolveConfineCommands is the same decision with the user's answer taken from
+// this layer, so one start reads the file once however many readers ask.
+func (l UserLayer) ResolveConfineCommands(cfg *Config, hostHasMechanism bool) bool {
+	if value, set := l.ConfineCommands(); set {
 		return value
 	}
 	// Vetoed: the request came from the project-local file and this host cannot

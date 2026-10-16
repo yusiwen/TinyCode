@@ -178,7 +178,7 @@ func TestPersistedGrantIsHonouredOnTheNextStart(t *testing.T) {
 	if err := tool.DefaultSandbox.CheckPath(granted); err == nil {
 		t.Fatalf("%s is allowed before any grant was loaded; this test would prove nothing", granted)
 	}
-	if err := loadPersistentGrants(); err != nil {
+	if err := loadPersistentGrants(config.LoadLayers().User); err != nil {
 		t.Fatalf("loadPersistentGrants: %v", err)
 	}
 	if err := tool.DefaultSandbox.CheckPath(granted); err != nil {
@@ -218,7 +218,7 @@ func TestProjectLocalConfigCannotGrantAPath(t *testing.T) {
 		tool.DefaultSandbox.ProjectRoot = previousRoot
 	})
 
-	if err := loadPersistentGrants(); err != nil {
+	if err := loadPersistentGrants(config.LoadLayers().User); err != nil {
 		t.Fatalf("loadPersistentGrants: %v", err)
 	}
 	if err := tool.DefaultSandbox.CheckPath(granted); err == nil {
@@ -270,7 +270,7 @@ func TestProjectLocalConfigCannotWidenTheFence(t *testing.T) {
 	}
 
 	restoreSandbox(t)
-	installSandboxBoundary()
+	installSandboxBoundary(config.LoadLayers())
 
 	if got := tool.DefaultSandbox.ProjectRoot; got == "/" || got == "" {
 		t.Errorf("boundary root = %q; the project-local config moved it", got)
@@ -307,10 +307,112 @@ func TestUserConfigMayWidenTheFence(t *testing.T) {
 
 	t.Chdir(t.TempDir())
 	restoreSandbox(t)
-	installSandboxBoundary()
+	installSandboxBoundary(config.LoadLayers())
 
 	if err := tool.DefaultSandbox.CheckPath(allowed); err != nil {
 		t.Errorf("a path the user's own config allowed is refused: %v", err)
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected into a pipe and returns what
+// was written to it.
+//
+// The config loaders report a malformed file with fmt.Fprintf on os.Stderr
+// rather than through the cobra command, so a pipe is the only place the
+// diagnostic can be counted (issue #231).
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stderr
+	os.Stderr = write
+	defer func() { os.Stderr = previous }()
+	fn()
+	os.Stderr = previous
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	message, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(message)
+}
+
+// TestMalformedUserConfigIsReportedOnce is issue #231's acceptance at the CLI
+// level: a broken ~/.tinycode/config.json costs one line naming the path, and the
+// command still succeeds on the defaults.
+func TestMalformedUserConfigIsReportedOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	dir := filepath.Join(home, ".tinycode")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"providers": `), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var runErr error
+	message := captureStderr(t, func() {
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"--list-sessions", "--session-dir", t.TempDir()})
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		runErr = cmd.Execute()
+	})
+	if runErr != nil {
+		t.Fatalf("a malformed user config must not fail the command: %v", runErr)
+	}
+	if got := strings.Count(message, "ignoring"); got != 1 {
+		t.Errorf("the malformed user config was reported %d times, want 1: %s", got, message)
+	}
+	if !strings.Contains(message, path) {
+		t.Errorf("the diagnostic does not name %s: %s", path, message)
+	}
+}
+
+// TestMalformedProjectConfigIsReportedOnce is the same property for the
+// project-local layer, which is read once per start too (issue #231).
+func TestMalformedProjectConfigIsReportedOnce(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // no user file, so only the project line can appear
+	project := t.TempDir()
+	t.Chdir(project)
+
+	if err := os.MkdirAll(filepath.Join(project, ".tinycode"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	projectFile := filepath.Join(project, ".tinycode", "config.json")
+	if err := os.WriteFile(projectFile, []byte(`{"providers": `), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var runErr error
+	message := captureStderr(t, func() {
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"--list-sessions", "--session-dir", t.TempDir()})
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		runErr = cmd.Execute()
+	})
+	if runErr != nil {
+		t.Fatalf("a malformed project config must not fail the command: %v", runErr)
+	}
+	if got := strings.Count(message, "ignoring"); got != 1 {
+		t.Errorf("the malformed project config was reported %d times, want 1: %s", got, message)
+	}
+	// The loader names the file the way it opened it: relative to the working
+	// directory, which is the project root here.
+	if named := filepath.Join(".tinycode", "config.json"); !strings.Contains(message, named) {
+		t.Errorf("the diagnostic does not name %s: %s", named, message)
 	}
 }
 

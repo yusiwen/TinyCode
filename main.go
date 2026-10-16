@@ -71,7 +71,12 @@ func newRootCmd() *cobra.Command {
 		Short:   "TinyCode - AI coding agent in Go",
 		Version: fmt.Sprintf("%s (commit %s, built %s)", Version, CommitSHA, BuildTime),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := config.LoadConfig()
+			// Both configuration files are read once, here, and the value is
+			// passed to every reader below. A reader that opened a layer again
+			// reported a malformed file a second time, and two readers of one
+			// start could disagree if the file changed in between (issue #231).
+			layers := config.LoadLayers()
+			cfg := layers.Config()
 
 			// Initialize logger
 			logDir := filepath.Join(expandPath(cfg.SessionDir), "..", "log")
@@ -101,12 +106,12 @@ func newRootCmd() *cobra.Command {
 			// allowed_paths would let that repository widen — or remove — the
 			// boundary it is meant to run inside (issue #162). Deny rules a
 			// project adds are kept: they only narrow.
-			installSandboxBoundary()
+			installSandboxBoundary(layers)
 			if cfg.Sandbox != nil && len(cfg.Sandbox.DenyCommands) > 0 {
 				tool.DefaultSandbox.DenyCommands = append(
 					tool.DefaultSandbox.DenyCommands, cfg.Sandbox.DenyCommands...)
 			}
-			applySandboxCapabilityPolicy(&cfg)
+			applySandboxCapabilityPolicy(&cfg, layers.User)
 
 			// The language server workspace is the project, not the directory that
 			// stores sessions — and it is the same root the fence was just built
@@ -404,7 +409,7 @@ func newRootCmd() *cobra.Command {
 			// until someone reads the config file by hand — and a permission
 			// that cannot be audited is one that gets left on.
 			if listGrants {
-				grants, err := config.ListAllowedPathGrants()
+				grants, err := layers.User.AllowedPathGrants()
 				if err != nil {
 					return err
 				}
@@ -477,10 +482,10 @@ func newRootCmd() *cobra.Command {
 			// read that form back before issue #155: the dialog appended a record
 			// and the next start ignored it, so a permanent answer lasted exactly
 			// as long as the process that made it.
-			if err := loadPersistentGrants(); err != nil {
+			if err := loadPersistentGrants(layers.User); err != nil {
 				tlog.Warn("sandbox", "grants_unreadable", "err", err)
 			}
-			applySandboxCapabilityPolicy(&cfg)
+			applySandboxCapabilityPolicy(&cfg, layers.User)
 
 			// The session is created last: an informational command must never
 			// create or flush a session file.
@@ -552,9 +557,13 @@ func newRootCmd() *cobra.Command {
 // allowed (issue #162). What such a file asked for is logged and dropped rather
 // than ignored in silence, because a person who wrote that key deserves to know
 // it did not take effect.
-func installSandboxBoundary() {
-	boundary := config.UserSandboxBoundary()
-	if project := config.ProjectSandboxBoundary(); project.ProjectRoot != "" || len(project.AllowedPaths) > 0 {
+//
+// Both layers come from the one read the startup path made, so a malformed file
+// is reported once (issue #231) and the boundary is built from the same bytes
+// the merged configuration was.
+func installSandboxBoundary(layers config.Layers) {
+	boundary := layers.User.SandboxBoundary()
+	if project := layers.Project.SandboxBoundary(); project.ProjectRoot != "" || len(project.AllowedPaths) > 0 {
 		tlog.Warn("sandbox", "project_local_boundary_keys_ignored",
 			"project_root", project.ProjectRoot,
 			"allowed_paths", len(project.AllowedPaths),
@@ -587,7 +596,7 @@ func installSandboxBoundary() {
 // the requirement is on and no kernel mechanism exists, the warning says what
 // will happen next — every fenced operation refuses — so a refusal later in the
 // run is not a surprise.
-func applySandboxCapabilityPolicy(cfg *config.Config) {
+func applySandboxCapabilityPolicy(cfg *config.Config, user config.UserLayer) {
 	if cfg.Sandbox != nil && cfg.Sandbox.RequireHardBoundary {
 		tool.SetRequireHardBoundary(true)
 	}
@@ -597,7 +606,7 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 	// the platform user cache root so a confined toolchain can write GOCACHE
 	// and friends — the fence consumes the same list, which is the shared-root
 	// rule — and the command's TMPDIR is pointed inside it (tool.confinedEnv).
-	confined := config.ResolveConfineCommands(cfg, tool.CommandConfinementAvailable())
+	confined := user.ResolveConfineCommands(cfg, tool.CommandConfinementAvailable())
 	tool.SetConfineCommands(confined)
 	if confined {
 		// Create the installed toolchains' caches before reading the roots: a
@@ -658,8 +667,8 @@ func applySandboxCapabilityPolicy(cfg *config.Config) {
 // The project recorded with a grant stays audit context (--list-grants shows
 // it); the grant applies wherever the path is requested, which is what "always
 // allow this path" says and what the older sandbox.allowed_paths list did.
-func loadPersistentGrants() error {
-	grants, err := config.ListAllowedPathGrants()
+func loadPersistentGrants(user config.UserLayer) error {
+	grants, err := user.AllowedPathGrants()
 	if err != nil {
 		return err
 	}
