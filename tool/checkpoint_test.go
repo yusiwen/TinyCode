@@ -394,3 +394,140 @@ func TestRestoreReportsWhatItRestoredWhenItFailsPartway(t *testing.T) {
 		t.Error("a partway restore must leave the call un-undone, so it can be retried")
 	}
 }
+
+// TestRetentionKeepsUndoableCallsAndDropsOldUndoneOnes pins the surprising half of
+// the store's bound: a call that can still be undone is never dropped, even when
+// that leaves the store over its limit, and the calls that are dropped are the
+// oldest ones that have already been undone.
+func TestRetentionKeepsUndoableCallsAndDropsOldUndoneOnes(t *testing.T) {
+	project, _ := checkpointTestSetup(t)
+	previousCalls, previousBytes := checkpointMaxCalls, checkpointMaxBytes
+	checkpointMaxCalls, checkpointMaxBytes = 2, int64(1<<30)
+	t.Cleanup(func() { checkpointMaxCalls, checkpointMaxBytes = previousCalls, previousBytes })
+
+	ctx := context.Background()
+	target := DefaultSandbox.ResolvePath(filepath.Join(project, "pruned.txt"))
+	writeFileForTest(t, target, "v0\n", 0644)
+	for i := 0; i < 4; i++ {
+		if err := writeSandboxed(callScope(ctx, "write_file", 1, i), target, []byte(fmt.Sprintf("v%d\n", i+1)), 0644); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+
+	calls, err := ListCalls(0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(calls) != 4 {
+		t.Fatalf("%d calls kept, want 4: a limit of 2 must not drop a call that can still be undone", len(calls))
+	}
+	// The object store is per project, so its directory is the manifest's parent's
+	// parent — not the root the test installed.
+	storeDir := filepath.Dir(filepath.Dir(calls[0].File))
+	droppedObject := objectPath(storeDir, calls[0].Entries[0].SHA256)
+
+	// Undo the two oldest, then record one more call: that write is what runs the
+	// prune, and the two undone calls are its only candidates.
+	for _, call := range calls[:2] {
+		if _, err := RestoreCall(ctx, call); err != nil {
+			t.Fatalf("restore: %v", err)
+		}
+	}
+	if err := writeSandboxed(callScope(ctx, "write_file", 1, 4), target, []byte("v5\n"), 0644); err != nil {
+		t.Fatalf("triggering write: %v", err)
+	}
+
+	calls, err = ListCalls(0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(calls) != 3 {
+		t.Fatalf("%d calls kept, want 3 (the two undone ones dropped, the three live ones kept)", len(calls))
+	}
+	for i, want := range []int{2, 3, 4} {
+		if calls[i].Call != want {
+			t.Errorf("kept call %d is #%d, want #%d (dropping is oldest first)", i, calls[i].Call, want)
+		}
+	}
+	if _, err := os.Stat(droppedObject); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the dropped call's pre-image is still in the store: %v", err)
+	}
+	if _, err := os.Stat(objectPath(storeDir, calls[2].Entries[0].SHA256)); err != nil {
+		t.Errorf("a kept call lost the pre-image its undo still needs: %v", err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "v5\n" {
+		t.Errorf("pruning touched the file it is only supposed to have a record of: %q", got)
+	}
+}
+
+// TestRetentionDropsAnUndoneCallToMeetTheSizeBound covers the second limit: a
+// store far under the call limit is still pruned when it is over its byte bound,
+// and only the undone call goes.
+func TestRetentionDropsAnUndoneCallToMeetTheSizeBound(t *testing.T) {
+	project, _ := checkpointTestSetup(t)
+	previousCalls, previousBytes := checkpointMaxCalls, checkpointMaxBytes
+	checkpointMaxCalls, checkpointMaxBytes = 1000, int64(1)
+	t.Cleanup(func() { checkpointMaxCalls, checkpointMaxBytes = previousCalls, previousBytes })
+
+	ctx := context.Background()
+	target := DefaultSandbox.ResolvePath(filepath.Join(project, "sized.txt"))
+	writeFileForTest(t, target, "s0\n", 0644)
+	for i := 0; i < 3; i++ {
+		if err := writeSandboxed(callScope(ctx, "write_file", 1, i), target, []byte(fmt.Sprintf("s%d\n", i+1)), 0644); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+	calls, _ := ListCalls(0)
+	if len(calls) != 3 {
+		t.Fatalf("%d calls, want 3 before the undo", len(calls))
+	}
+	if _, err := RestoreCall(ctx, calls[0]); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	// Somebody edits the file between the undo and the next tool call — without
+	// this, the triggering write's own pre-image would be the restored content,
+	// which is the *same* object the dropped call holds, and the object store
+	// would be right to keep it.
+	if err := os.WriteFile(target, []byte("edited by hand\n"), 0644); err != nil {
+		t.Fatalf("out-of-band edit: %v", err)
+	}
+	// The next write sees a store over its byte bound and one undone call to drop.
+	if err := writeSandboxed(callScope(ctx, "write_file", 1, 3), target, []byte("s4\n"), 0644); err != nil {
+		t.Fatalf("triggering write: %v", err)
+	}
+
+	droppedObject := objectPath(filepath.Dir(filepath.Dir(calls[0].File)), calls[0].Entries[0].SHA256)
+	calls, _ = ListCalls(0)
+	if len(calls) != 3 {
+		t.Fatalf("%d calls kept, want 3 (the undone one dropped, the three live ones kept)", len(calls))
+	}
+	if calls[0].Call != 1 {
+		t.Errorf("the oldest kept call is #%d, want #1: the undone call #0 should be the one dropped", calls[0].Call)
+	}
+	if _, err := os.Stat(droppedObject); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the dropped call's pre-image survived a byte-bound prune: %v", err)
+	}
+	storeDir := filepath.Dir(filepath.Dir(calls[0].File))
+	if _, err := os.Stat(objectPath(storeDir, calls[1].Entries[0].SHA256)); err != nil {
+		t.Errorf("a kept call lost its pre-image: %v", err)
+	}
+}
+
+// TestCheckpointReportStatesTheBoundary pins the sentence a user has to be able to
+// read: what is captured, and — the half that would otherwise be assumed — what is
+// not.
+func TestCheckpointReportStatesTheBoundary(t *testing.T) {
+	project, _ := checkpointTestSetup(t)
+	ctx := context.Background()
+	target := DefaultSandbox.ResolvePath(filepath.Join(project, "reported.txt"))
+	if err := writeSandboxed(callScope(ctx, "write_file", 1, 0), target, []byte("x\n"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	report := CheckpointReport()
+	for _, want := range []string{"checkpoints:", CheckpointRoot(), "still undoable", "not captured:", "bash"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("the report does not mention %q:\n%s", want, report)
+		}
+	}
+}
