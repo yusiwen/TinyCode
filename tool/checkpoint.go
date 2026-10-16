@@ -114,15 +114,6 @@ type CheckpointCall struct {
 	Entries []CheckpointEntry `json:"entries"`
 }
 
-// Paths lists the files the call wrote, in the order they were written.
-func (c CheckpointCall) Paths() []string {
-	paths := make([]string, 0, len(c.Entries))
-	for _, e := range c.Entries {
-		paths = append(paths, e.Path)
-	}
-	return paths
-}
-
 // recordPreImage stores path's current bytes under the call recorded in ctx.
 //
 // It is called by writeSandboxed before the replacement, and every failure is
