@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -250,5 +251,146 @@ func TestCheckpointStoreIsNotAToolPath(t *testing.T) {
 	})
 	if _, fullDenied, err := CheckPathAccess(full, target); err != nil || fullDenied != "" {
 		t.Errorf("full access must not fence the store: denied=%q err=%v", fullDenied, err)
+	}
+}
+
+// TestLastCallWalksBackwardsAsCallsAreUndone pins the S2 property that makes a
+// second undo useful: an undone call is marked in its own manifest, so the next
+// undo reaches the call before it rather than restoring the same bytes again.
+// The manifests stay on disk — they are the record that an undo happened.
+func TestLastCallWalksBackwardsAsCallsAreUndone(t *testing.T) {
+	project, _ := checkpointTestSetup(t)
+	ctx := context.Background()
+	target := DefaultSandbox.ResolvePath(filepath.Join(project, "walk.txt"))
+	writeFileForTest(t, target, "v0\n", 0644)
+
+	for i := 0; i < 3; i++ {
+		if err := writeSandboxed(callScope(ctx, "write_file", 1, i), target, []byte(fmt.Sprintf("v%d\n", i+1)), 0644); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+
+	for want := 2; want >= 0; want-- {
+		call, ok, err := LastCall("")
+		if err != nil {
+			t.Fatalf("last call: %v", err)
+		}
+		if !ok {
+			t.Fatalf("no call to undo while call %d is still un-undone", want)
+		}
+		if call.Call != want {
+			t.Fatalf("last call is %d, want %d (the newest un-undone call)", call.Call, want)
+		}
+		if _, err := RestoreCall(ctx, call); err != nil {
+			t.Fatalf("restore %d: %v", want, err)
+		}
+	}
+
+	if _, ok, _ := LastCall(""); ok {
+		t.Error("every call has been undone, so there is nothing left to undo")
+	}
+	if calls, _ := ListCalls(0); len(calls) != 3 {
+		t.Errorf("%d manifests on disk, want 3: an undo marks a call, it does not delete the record", len(calls))
+	}
+	if got, _ := os.ReadFile(target); string(got) != "v0\n" {
+		t.Errorf("after undoing every call the file is %q, want its state before the first one", got)
+	}
+}
+
+// TestLastCallSkipsAnotherSessionsCalls covers the session filter: a call
+// attributed to a different session is skipped, while a call with no session
+// recorded stays a candidate for any session — it was written by a process that
+// had not minted its session id yet, which is the normal case for the first tool
+// call of a TUI run.
+func TestLastCallSkipsAnotherSessionsCalls(t *testing.T) {
+	project, _ := checkpointTestSetup(t)
+	ctx := context.Background()
+	theirs := DefaultSandbox.ResolvePath(filepath.Join(project, "theirs.txt"))
+	unnamed := DefaultSandbox.ResolvePath(filepath.Join(project, "unnamed.txt"))
+
+	if err := writeSandboxed(types.WithToolCallScope(ctx, types.ToolCallScope{
+		Tool: "write_file", Session: "session-b", Run: 1, Step: 1, Call: 0,
+	}), theirs, []byte("theirs\n"), 0644); err != nil {
+		t.Fatalf("write for session-b: %v", err)
+	}
+	if err := writeSandboxed(types.WithToolCallScope(ctx, types.ToolCallScope{
+		Tool: "write_file", Run: 2, Step: 1, Call: 0,
+	}), unnamed, []byte("unnamed\n"), 0644); err != nil {
+		t.Fatalf("write without a session: %v", err)
+	}
+
+	call, ok, err := LastCall("session-a")
+	if err != nil || !ok {
+		t.Fatalf("session-a: last call = %+v, %v, %v (the unattributed call is a candidate)", call, ok, err)
+	}
+	if call.Session != "" {
+		t.Errorf("session-a picked up %q, want the unattributed call", call.Session)
+	}
+	if _, err := RestoreCall(ctx, call); err != nil {
+		t.Fatalf("restore the unattributed call: %v", err)
+	}
+
+	if _, ok, _ := LastCall("session-a"); ok {
+		t.Error("session-a must not reach session-b's call")
+	}
+	call, ok, _ = LastCall("session-b")
+	if !ok || call.Session != "session-b" {
+		t.Errorf("session-b's own call is missing: %+v (ok=%v)", call, ok)
+	}
+	if _, ok, _ := LastCall(""); !ok {
+		t.Error("the CLI's unscoped lookup must still find it")
+	}
+}
+
+// TestRestoreReportsWhatItRestoredWhenItFailsPartway covers the failure shape a
+// caller has to describe: the files already restored come back with the error,
+// and the call stays un-undone so a retry is possible (the pre-images are the
+// state before the call, not before the retry, so retrying is safe).
+func TestRestoreReportsWhatItRestoredWhenItFailsPartway(t *testing.T) {
+	project, _ := checkpointTestSetup(t)
+	ctx := context.Background()
+	first := DefaultSandbox.ResolvePath(filepath.Join(project, "first.txt"))
+	second := DefaultSandbox.ResolvePath(filepath.Join(project, "second.txt"))
+	writeFileForTest(t, first, "first-before\n", 0644)
+	writeFileForTest(t, second, "second-before\n", 0644)
+
+	// One call, two writes: the second pre-image will be removed before the
+	// restore, which is the one failure a restore cannot work around.
+	callCtx := callScope(ctx, "apply_patch", 1, 0)
+	if err := writeSandboxed(callCtx, first, []byte("first-after\n"), 0644); err != nil {
+		t.Fatalf("write first: %v", err)
+	}
+	if err := writeSandboxed(callCtx, second, []byte("second-after\n"), 0644); err != nil {
+		t.Fatalf("write second: %v", err)
+	}
+
+	call, ok, err := LastCall("")
+	if err != nil || !ok {
+		t.Fatalf("last call: %+v, %v", ok, err)
+	}
+	if len(call.Entries) != 2 {
+		t.Fatalf("the call has %d entries, want 2", len(call.Entries))
+	}
+	store := filepath.Dir(filepath.Dir(call.File))
+	if err := os.Remove(objectPath(store, call.Entries[1].SHA256)); err != nil {
+		t.Fatalf("remove the second pre-image: %v", err)
+	}
+
+	restored, err := RestoreCall(ctx, call)
+	if err == nil {
+		t.Fatal("a restore with a missing pre-image must fail")
+	}
+	if len(restored) != 1 || restored[0] != first {
+		t.Errorf("restored = %v, want exactly the first path", restored)
+	}
+	if got, _ := os.ReadFile(first); string(got) != "first-before\n" {
+		t.Errorf("first.txt is %q, want its pre-call bytes", got)
+	}
+	if got, _ := os.ReadFile(second); string(got) != "second-after\n" {
+		t.Errorf("second.txt is %q, want it untouched by the failed restore", got)
+	}
+	calls, _ := ListCalls(0)
+	if len(calls) != 1 || calls[0].Restored() {
+		t.Error("a partway restore must leave the call un-undone, so it can be retried")
 	}
 }

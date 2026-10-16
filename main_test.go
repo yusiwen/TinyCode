@@ -725,3 +725,100 @@ func TestDefaultConfigSendsTheCanonicalDeepSeekModel(t *testing.T) {
 		t.Errorf(`request "model" = %v, want "deepseek-flash" (the published name; "deepseek-v4-flash" is a retired alias)`, got)
 	}
 }
+
+// captureStdout is captureStderr for the informational commands, which print with
+// fmt.Printf and therefore write to os.Stdout rather than to the cobra command's
+// own writer.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdout
+	os.Stdout = write
+	defer func() { os.Stdout = previous }()
+	fn()
+	os.Stdout = previous
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	message, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(message)
+}
+
+// TestUndoCommandRestoresTheLastToolCall covers the --undo path (issue #234, S2):
+// one real tool call is recorded through the store, the flag returns the file to
+// its pre-call bytes, and a second run says there is nothing left to undo without
+// failing.
+func TestUndoCommandRestoresTheLastToolCall(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	project := t.TempDir()
+	t.Chdir(project)
+	restoreSandbox(t)
+	tool.DefaultSandbox.ProjectRoot = project
+
+	// The store root is process state that the first CLI run in this package sets
+	// from the HOME it was given. This test writes a pre-image before any CLI run,
+	// so it points the store at the root its own --undo will compute — asking
+	// DefaultConfig rather than spelling the path, so a change to the default does
+	// not leave this test asserting the wrong directory.
+	previousRoot := tool.CheckpointRoot()
+	tool.SetCheckpointRoot(config.DefaultConfig().CheckpointDir)
+	t.Cleanup(func() { tool.SetCheckpointRoot(previousRoot) })
+
+	target := filepath.Join(project, "target.txt")
+	if err := os.WriteFile(target, []byte("before\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// The scope is what makes the write record a pre-image.
+	scope := types.WithToolCallScope(context.Background(), types.ToolCallScope{
+		Tool: "write_file", Session: "session-a", Run: 1, Step: 1, Call: 0,
+	})
+	if _, err := tool.WriteFile().Execute(scope, map[string]any{"path": target, "content": "after\n"}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "after\n" {
+		t.Fatalf("the write did not land: %q", got)
+	}
+
+	runUndo := func() string {
+		t.Helper()
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"--undo"})
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		return captureStdout(t, func() {
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("--undo failed: %v", err)
+			}
+		})
+	}
+
+	out := runUndo()
+	if got, _ := os.ReadFile(target); string(got) != "before\n" {
+		t.Fatalf("after --undo the file is %q, want its pre-call bytes", got)
+	}
+	// The store records the path the fence handed the tool — the OS-resolved form,
+	// which on macOS differs from the raw temp path (/var → /private/var).
+	resolved := tool.DefaultSandbox.ResolvePath(target)
+	if !strings.Contains(out, "Restored: "+resolved) {
+		t.Errorf("--undo must name the file it restored, got %q", out)
+	}
+
+	// The call it just restored is out of reach, so a second run has nothing to
+	// do — and that is not an error.
+	out = runUndo()
+	if !strings.Contains(out, "Nothing to undo") {
+		t.Errorf("a second --undo must say there is nothing to undo, got %q", out)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "before\n" {
+		t.Errorf("the second --undo changed the file to %q", got)
+	}
+}
