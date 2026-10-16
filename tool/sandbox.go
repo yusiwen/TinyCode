@@ -636,6 +636,16 @@ func (sc *SandboxConfig) ResolvePath(path string) string {
 // user-facing denial message when access is refused, and an error when the
 // request was cancelled or could not be evaluated. On success denied is empty.
 func CheckPathAccess(ctx context.Context, path string) (safePath, denied string, err error) {
+	// The checkpoint store is not a tool path, and this check comes before the
+	// fence decides. The store holds the bytes a tool write replaced — it is
+	// what makes an undo possible — so a model that can delete or rewrite it
+	// defeats the feature, and one that can read it can read every pre-image.
+	// The fence alone is not enough: the store sits outside the project root by
+	// default, but a user who allowed the directory around it (an "always
+	// allow" on `~/.tinycode`) would open the store with it.
+	if refusal := checkpointStoreRefusal(ctx, path); refusal != "" {
+		return "", refusal, nil
+	}
 	// The run's frozen policy decides this call. Nothing here consults the live
 	// configuration for a mode or a root, so a concurrent run with a different
 	// policy cannot change what this one is allowed to touch.

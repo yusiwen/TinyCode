@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,17 @@ func readSandboxed(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+// removeSandboxed deletes a file, recording its bytes first so the deletion can
+// be undone. A deletion is a content change like any other: `apply_patch`'s
+// delete operation used to call os.Remove directly, which made it the one
+// tool-mediated edit that left nothing to restore.
+func removeSandboxed(ctx context.Context, path string) error {
+	if err := recordPreImage(ctx, path); err != nil {
+		return err
+	}
+	return os.Remove(path)
+}
+
 // writeTempContents writes the payload into the temp file a replacement write
 // created. It is a variable so a test can make the write fail and prove the
 // target keeps its bytes (issue #36).
@@ -40,16 +52,33 @@ var writeTempContents = func(f *os.File, data []byte) error {
 // writeSandboxed replaces a file's contents through the sandbox root, creating it
 // with perm when it does not exist yet.
 //
-// The replacement is atomic: the bytes go into a temp file in the *target's own
-// directory* (so the rename stays on one filesystem) and are moved over the target
-// with one rename. Opening the target with O_TRUNC and writing into it — what this
-// used to do — destroyed the old content before the new bytes were durable, so an
-// interrupted write (a signal, a timeout, a full disk) left the file empty or half
-// written (issue #36). A reader now sees either the old file or the new one.
+// It first records the bytes it is about to replace, so the write can be undone
+// (see checkpoint.go). That recording is fail-closed: a write whose pre-image
+// cannot be stored is refused rather than performed unundoably. A context with no
+// tool-call scope records nothing, which is what keeps every caller that is not
+// the agent loop — tests, and the tools' own helpers — behaving as before.
+func writeSandboxed(ctx context.Context, path string, data []byte, perm os.FileMode) error {
+	if err := recordPreImage(ctx, path); err != nil {
+		return err
+	}
+	return writeFileThroughFence(path, data, perm)
+}
+
+// writeFileThroughFence is the replacement itself. The bytes go into a temp file
+// in the *target's own directory* (so the rename stays on one filesystem) and are
+// moved over the target with one rename. Opening the target with O_TRUNC and
+// writing into it — what this used to do — destroyed the old content before the
+// new bytes were durable, so an interrupted write (a signal, a timeout, a full
+// disk) left the file empty or half written (issue #36). A reader now sees either
+// the old file or the new one.
 //
 // The temp file is created through the same sandbox-aware open as the target, so
 // it cannot land outside the root, and it is removed on every failure path.
-func writeSandboxed(path string, data []byte, perm os.FileMode) error {
+//
+// A restore is a write too, and it comes through here rather than through
+// writeSandboxed: recording and replacing are separate so that undoing a write
+// does not record a pre-image of the undo.
+func writeFileThroughFence(path string, data []byte, perm os.FileMode) error {
 	dir, base := filepath.Split(path)
 	if base == "" || dir == "" {
 		return &os.PathError{Op: "write", Path: path, Err: errors.New("not a file path")}

@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	if err := writeSandboxed(inside, []byte("hello"), 0644); err != nil {
+	if err := writeSandboxed(context.Background(), inside, []byte("hello"), 0644); err != nil {
 		t.Fatalf("writeSandboxed: %v", err)
 	}
 	got, err := readSandboxed(inside)
@@ -46,7 +47,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 	}
 
 	// Writing replaces the content instead of appending to it.
-	if err := writeSandboxed(inside, []byte("x"), 0644); err != nil {
+	if err := writeSandboxed(context.Background(), inside, []byte("x"), 0644); err != nil {
 		t.Fatalf("overwrite: %v", err)
 	}
 	if got, _ := readSandboxed(inside); string(got) != "x" {
@@ -72,7 +73,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 	// decision belongs to the permission layer, this wrapper adds the containment
 	// it can (issue #7).
 	outside := resolve(filepath.Join(t.TempDir(), "outside.txt"))
-	if err := writeSandboxed(outside, []byte("out"), 0644); err != nil {
+	if err := writeSandboxed(context.Background(), outside, []byte("out"), 0644); err != nil {
 		t.Fatalf("writeSandboxed outside: %v", err)
 	}
 	if data, err := readSandboxed(outside); err != nil || string(data) != "out" {
@@ -81,7 +82,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 
 	// Creating a file that does not exist yet works through the walk too.
 	created := resolve(filepath.Join(t.TempDir(), "created.txt"))
-	if err := writeSandboxed(created, []byte("new"), 0644); err != nil {
+	if err := writeSandboxed(context.Background(), created, []byte("new"), 0644); err != nil {
 		t.Fatalf("writeSandboxed create: %v", err)
 	}
 	if data, err := readSandboxed(created); err != nil || string(data) != "new" {

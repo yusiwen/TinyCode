@@ -152,7 +152,7 @@ func Edit() Tool {
 				totalChanges += strings.Count(replacement, "\n") + 1
 			}
 
-			if err := writeSandboxed(safePath, []byte(content), 0644); err != nil {
+			if err := writeSandboxed(ctx, safePath, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("write %s: %w", path, err)
 			}
 

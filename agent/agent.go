@@ -63,6 +63,12 @@ type Agent struct {
 	// run in flight. See callRefused: a fresh prompt is a fresh start.
 	runFailures map[string]int
 
+	// runSerial counts the runs this Agent has started, from 1. It is the run's
+	// identity for anything that has to tell two runs apart: both begin at step
+	// 1, so step and call alone do not name a tool call. The checkpoint store
+	// groups one call's pre-images by (run, step, call).
+	runSerial int
+
 	// PriceTable prices a call whose route reported no charge. Nil prices
 	// nothing, which is reported as an unknown cost rather than as zero.
 	PriceTable *PriceTable
@@ -237,6 +243,7 @@ func (a *Agent) getModel() string {
 
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
+	a.runSerial++
 	// Resolve system prompt from config, falling back to Agent.SystemPrompt
 	sysPrompt := a.SystemPrompt
 	if a.Config != nil && a.Config.SystemPrompt != "" {
@@ -538,7 +545,15 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 								result = InvalidArgsMessage(t.Name, problems)
 							} else {
 								var execErr error
-								result, execErr = t.Execute(ctx, args)
+								// The call's own scope travels with it: a layer below
+								// that records what a tool touched (the checkpoint
+								// store) needs to attribute it to this call, and two
+								// runs in one process reuse step 1, so the run
+								// counter is what keeps them apart.
+								callCtx := types.WithToolCallScope(ctx, types.ToolCallScope{
+									Tool: t.Name, Run: a.runSerial, Step: step, Call: idx,
+								})
+								result, execErr = t.Execute(callCtx, args)
 								if execErr != nil {
 									a.noteCallFailure(key)
 									result = fmt.Sprintf("error: %v", execErr)

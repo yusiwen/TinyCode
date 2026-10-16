@@ -586,6 +586,15 @@ func installSandboxBoundary(layers config.Layers) {
 	for _, p := range boundary.AllowedPaths {
 		tool.DefaultSandbox.AllowAlways(p)
 	}
+
+	// Where the pre-images of tool writes are kept. It is wired here, beside the
+	// boundary, because the two answer one question between them: what a tool may
+	// write, and where the bytes it replaced are kept so that write can be undone
+	// (issue #234). The store is outside the project root on purpose — the fence
+	// above then confines it as well.
+	if dir := layers.Config().CheckpointDir; dir != "" {
+		tool.SetCheckpointRoot(expandPath(dir))
+	}
 }
 
 // applySandboxCapabilityPolicy turns the configured hard-boundary requirement

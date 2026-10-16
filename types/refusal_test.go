@@ -8,7 +8,7 @@ import (
 // TestRefusalShapeIsOneShape pins the vocabulary: every refusal carries the same
 // marker and the same fields, and what differs is a field, not a prefix.
 func TestRefusalShapeIsOneShape(t *testing.T) {
-	asks := []string{AskInteractive, AskUnavailable, AskCapability, AskPolicy, AskMode}
+	asks := []string{AskInteractive, AskUnavailable, AskCapability, AskPolicy, AskMode, AskReserved}
 	for _, ask := range asks {
 		t.Run(ask, func(t *testing.T) {
 			message := Refusal{
