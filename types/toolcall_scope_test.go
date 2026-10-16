@@ -25,8 +25,12 @@ func TestToolCallScopeRoundTrips(t *testing.T) {
 		t.Error("a plain context carries no scope")
 	}
 	// A nil context is what a careless caller passes; it must report "none"
-	// rather than panic inside a write path.
-	if _, ok := ToolCallScopeFrom(nil); ok {
+	// rather than panic inside a write path. The nil comes from a helper because
+	// staticcheck's SA1012 flags the literal — testing the guard must not be the
+	// thing that breaks the lint gate.
+	if _, ok := ToolCallScopeFrom(nilToolCallContext()); ok {
 		t.Error("a nil context carries no scope")
 	}
 }
+
+func nilToolCallContext() context.Context { return nil }
