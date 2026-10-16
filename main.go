@@ -65,6 +65,7 @@ func newRootCmd() *cobra.Command {
 	var searchSessions string
 	var listGrants bool
 	var revokeGrant string
+	var undoLast bool
 
 	rootCmd := &cobra.Command{
 		Use:     "tinycode",
@@ -380,6 +381,28 @@ func newRootCmd() *cobra.Command {
 				return nil
 			}
 
+			if undoLast {
+				// The undo is agnostic about sessions: a process started just to
+				// undo has no conversation, and the newest call that has not been
+				// undone is the one the user means (issue #234).
+				call, ok, err := tool.LastCall("")
+				if err != nil {
+					return fmt.Errorf("undo: %w", err)
+				}
+				if !ok {
+					fmt.Println("Nothing to undo: no tool call in this project has a recorded pre-image.")
+					return nil
+				}
+				restored, err := tool.RestoreCall(cmd.Context(), call)
+				for _, path := range restored {
+					fmt.Printf("Restored: %s\n", path)
+				}
+				if err != nil {
+					return fmt.Errorf("undo: %w", err)
+				}
+				return nil
+			}
+
 			if listSessions {
 				infos := store.List()
 				if len(infos) == 0 {
@@ -543,6 +566,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVar(&searchSessions, "search-sessions", "", "Search session content")
 	rootCmd.Flags().BoolVar(&listGrants, "list-grants", false, "List persistent path grants and exit")
 	rootCmd.Flags().StringVar(&revokeGrant, "revoke-grant", "", "Revoke a persistent path grant and exit")
+	rootCmd.Flags().BoolVar(&undoLast, "undo", false, "Restore the files the last tool call wrote, and exit")
 
 	return rootCmd
 }

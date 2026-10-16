@@ -8,9 +8,18 @@ import "context"
 // can attribute what it does to the call that asked for it. The checkpoint
 // store is the first consumer: one manifest per call is what makes "restore the
 // state before the last tool call" a statement with a subject.
+//
+// A caller may seed the scope before the loop runs — the TUI puts the session id
+// there, which the loop cannot know — and the loop fills in the per-call fields.
+// That is why the fields are split the way they are: Session belongs to whoever
+// started the run, the rest to the loop.
 type ToolCallScope struct {
 	// Tool is the tool's registered name (`edit`, `write_file`, `write`).
 	Tool string
+	// Session names the conversation the run belongs to, when the caller knows
+	// one. Empty is not an error: a run that has not been saved yet has no id,
+	// and a call recorded without one is treated as possibly any session's.
+	Session string
 	// Run counts the runs this process has started, from 1. It is what keeps
 	// two runs in one process from sharing a step number: both begin at step 1.
 	Run int

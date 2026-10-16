@@ -815,6 +815,12 @@ func (m *TuiModel) beginRun() (context.Context, uint64, bool) {
 		return nil, m.runID, false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	// The session id is seeded here, before the run, because only the TUI has
+	// it: the checkpoint store uses it so /undo can tell this conversation's
+	// last tool call from another one's in the same project. It may still be
+	// empty — the id is minted when the session is first saved — and a call
+	// recorded without one stays a candidate for any session (issue #234).
+	ctx = types.WithToolCallScope(ctx, types.ToolCallScope{Session: m.currentBranch})
 	m.runID++
 	m.runActive = true
 	m.runCancel = cancel
@@ -1170,6 +1176,7 @@ Commands:
   /skill         Load a skill's instructions (e.g. /skill code-review)
   /theme         Switch theme (nord, default)
   /diagnostics   Show LSP diagnostics
+  /undo          Restore the files the last tool call wrote
   /model         Switch provider/model
 
 Keyboard:
@@ -1357,6 +1364,43 @@ Mouse:
 	case "/sandbox":
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: sandboxReport()})
 		m.autoScroll()
+		return m, nil
+	case "/undo":
+		// The files are listed in the transcript rather than in the dialog: a
+		// dialog heading wraps but is meant to be one question, and a user
+		// deciding whether to undo wants to read the paths more than once.
+		call, ok, err := tool.LastCall(m.currentBranch)
+		if err != nil {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Undo: %v", err)})
+			m.autoScroll()
+			return m, nil
+		}
+		if !ok {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: "Nothing to undo: no tool call of this session has an un-undone pre-image."})
+			m.autoScroll()
+			return m, nil
+		}
+		paths := call.Paths()
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf(
+			"The last tool call (%s) wrote %d file(s):\n  %s", call.Tool, len(paths), strings.Join(paths, "\n  "))})
+		m.autoScroll()
+		m.showDialog(fmt.Sprintf("Undo it, restoring those %d file(s)?", len(paths)), []string{"Undo", "Cancel"}, func(sel string) {
+			if sel != "Undo" {
+				m.messages = append(m.messages, chatMessage{Role: "system", Content: "Undo cancelled."})
+				m.autoScroll()
+				return
+			}
+			restored, err := tool.RestoreCall(context.Background(), call)
+			content := fmt.Sprintf("Undid the last tool call (%s). Restored:\n  %s", call.Tool, strings.Join(restored, "\n  "))
+			if err != nil {
+				// A partial restore has already changed the files it names, so
+				// the error comes with the list rather than instead of it.
+				content = fmt.Sprintf("Undo of the last tool call (%s) failed after restoring %d file(s):\n  %s\n%v",
+					call.Tool, len(restored), strings.Join(restored, "\n  "), err)
+			}
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: content})
+			m.autoScroll()
+		})
 		return m, nil
 	case "/skill":
 		parts := strings.Fields(cmd)

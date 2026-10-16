@@ -1,0 +1,45 @@
+# The undo of a tool call (issue #234, S2): the stub asks for one `write_file` **inside** the
+# workspace, which the fence auto-allows, so no approval dialog stands between the write and
+# the `/undo` that follows. What is asserted is the bytes, not the message that claims they
+# were restored: the wrapper shell seeds `.stub-undo.txt` with one content before the binary
+# starts, and prints the file's content after it exits, so the scenario compares the file
+# against the bytes that were there before the call.
+#
+# The pre-images live under this HOME (~/.tinycode/checkpoints), which is why the scenario
+# uses its own and wipes it: a store left behind by an earlier scenario would give `/undo`
+# someone else's call to undo. Like the confine scenario, it removes the file it created so
+# the working tree is unchanged afterwards.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-undo --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'chmod -R u+w /tmp/tinyscen-home-undo 2>/dev/null; rm -rf /tmp/tinyscen-home-undo; mkdir -p /tmp/tinyscen-home-undo/.tinycode /tmp/tinyscen-home-undo/sessions && printf stub-undo-before > .stub-undo.txt && python3 tui/testdata/stub/openai_stub.py 18518 undo & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18518/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-undo/sessions --log-level=error; status=$?; kill %1 2>/dev/null; printf "UNDO-CONTENT=%s\n" "$(cat .stub-undo.txt 2>/dev/null || echo missing)"; rm -f .stub-undo.txt; exit $status'
+wait --text "Get started" --timeout 20s
+# Type only once the input row exists: the welcome heading appears first, and keys sent
+# before the input is ready can be lost (issue #102).
+wait --text "Type your request" --timeout 20s
+# Writes need build mode; plan mode refuses them without asking.
+send --text /build
+send --key enter
+wait --text "⚡ build" --timeout 10s
+send --text "write the stub file"
+send --key enter
+wait --text "stub-final-ok" --timeout 30s
+# The tool call is on screen and the store has it. Undo it: the transcript lists the file
+# first, then the dialog asks, and only the answer acts.
+send --text /undo
+send --key enter
+wait --text "The last tool call \(write_file\) wrote 1 file" --timeout 20s
+wait --text "Undo it, restoring those 1 file" --timeout 20s
+screenshot /tmp/tinyscen-shots/undo-120x30.png --scale 2
+send --text 1
+wait --text "Undid the last tool call" --timeout 20s
+# A second /undo has nothing left: the call it just restored is out of reach, and the
+# scenario says so rather than silently restoring it again.
+send --text /undo
+send --key enter
+wait --text "Nothing to undo" --timeout 20s
+stable 200ms --timeout 30s
+send --text /exit
+send --key enter
+# The verdict is printed by the wrapper shell after the program exits, so it has to be
+# waited for before waiting for the shell itself to end.
+wait --text "UNDO-CONTENT=stub-undo-before" --timeout 30s
+wait-exit 30s
+expect-exit 0
