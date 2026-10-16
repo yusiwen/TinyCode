@@ -9,6 +9,29 @@ back to its change and tests.
 
 ## Unreleased
 
+### Undo a tool call — and what that does not cover
+
+Roadmap entry C1 (issue #234): a tool-mediated edit used to land straight on disk. Every file tool's write
+now records the bytes it is about to replace, through the one function all of them pass through
+(`writeSandboxed`, and `removeSandboxed` for `apply_patch`'s delete operation, which previously left nothing
+to restore). `/undo` in the TUI lists the files and asks before restoring; `--undo` does the same without a
+TUI. Marking the call undone in its own manifest is what makes a second undo reach the call before it, and a
+restore that fails partway leaves the call unmarked so a retry is safe (`1a6c1d7`, `9795cb0`, `a21d9a0`,
+`845b35e`, `2d5fe7e`, `80921f0`).
+
+The store lives in `checkpoint_dir` (default `~/.tinycode/checkpoints`), deliberately outside the project
+root so the fence that confines a tool write confines the recovery store too, and it is not a tool path: a
+write to it is refused with `ask: reserved`, which no permission grants — only `sandbox_full_access`
+bypasses it, because that mode means no boundary at all. It is bounded to 50 calls or 64 MiB per project,
+dropping the oldest **already-undone** calls first and then collecting objects no remaining manifest
+references; a call that can still be undone is never dropped, so the bound loses to undo-ability on purpose.
+`config.example.json` documents the key, and `/sandbox` reports the store and its contents.
+
+What it does **not** cover is documented rather than implied ([docs/checkpoints.md](docs/checkpoints.md)):
+files changed by a `bash` command or any other subprocess are not captured, because nothing tells this layer
+what such a command will touch. The store takes a second producer for them; that producer is its own piece
+of work.
+
 ### The shipped example loads, and `$`-prefixed keys are documentation
 
 `config.example.json` opens with "Copy to config.json" and could not survive that copy: its `agents` block
