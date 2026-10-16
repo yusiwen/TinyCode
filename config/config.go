@@ -260,7 +260,35 @@ func DefaultConfig() Config {
 	}
 }
 
+// readConfigFile is the file read every layer goes through. It is a package
+// variable so a test can count how often a layer is opened; production always
+// uses os.ReadFile.
+var readConfigFile = os.ReadFile
+
 // loadFile reads and parses a JSON config file, returning the partial config.
+//
+// The read and the decode are separate steps so a layer that needs more than the
+// typed Config — the raw object, for the keys merge() cannot express — decodes
+// the same bytes again instead of opening the file again (issue #231).
+func loadFile(path string) (Config, error) {
+	data, err := readConfigFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg, err := decodeConfig(data)
+	if err != nil {
+		// A malformed config must not silently fall back to the defaults: say so
+		// on stderr so the user can fix it.
+		reportIgnoredConfig(path, err)
+		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// decodeConfig parses a document that has already been read. It neither reads
+// nor reports, so a caller holding the bytes decides how often they are decoded
+// and reports the outcome once.
 //
 // A key beginning with "$" is documentation rather than data — the "$comment"
 // blocks config.example.json is written with — and is dropped before decoding, at
@@ -269,12 +297,7 @@ func DefaultConfig() Config {
 // headers) are exactly the ones where a note would be read as an entry, and a
 // single note in the wrong place used to make the whole file fail to load, which
 // both callers report as "no file at all" (issue #229).
-func loadFile(path string) (Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, err
-	}
-
+func decodeConfig(data []byte) (Config, error) {
 	// Invalid JSON is left for the decode below to report instead, so a malformed
 	// file still produces one message from one place rather than two.
 	document, err := stripDocumentationKeys(data)
@@ -284,12 +307,15 @@ func loadFile(path string) (Config, error) {
 
 	var cfg Config
 	if err := json.Unmarshal(document, &cfg); err != nil {
-		// A malformed config must not silently fall back to the defaults: say so
-		// on stderr so the user can fix it.
-		fmt.Fprintf(os.Stderr, "tinycode: ignoring %s: %v\n", path, err)
-		return Config{}, fmt.Errorf("parse %s: %w", path, err)
+		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// reportIgnoredConfig is the one line a malformed file costs, wherever it was
+// read from.
+func reportIgnoredConfig(path string, err error) {
+	fmt.Fprintf(os.Stderr, "tinycode: ignoring %s: %v\n", path, err)
 }
 
 // stripDocumentationKeys removes every object key whose name begins with "$",
