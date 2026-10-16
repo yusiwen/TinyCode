@@ -107,6 +107,7 @@
   },
 
   "session_dir": "~/.tinycode/sessions",
+  "checkpoint_dir": "~/.tinycode/checkpoints",
 
   "lsp": {
     "enabled": false
@@ -153,6 +154,7 @@
     },
     "mcp_servers": "List of MCP servers. Supported transports: 'stdio' (local subprocess) and 'http' (remote endpoint).",
     "session_dir": "Where sessions are stored. A leading ~ is expanded to $HOME.",
+    "checkpoint_dir": "Where the bytes a file tool replaced are kept, so /undo and --undo can restore them. Deliberately outside the project root: the fence that confines a tool write then confines the recovery store. It is not a tool path — no permission grants a model access to it. Files changed by a bash command or any other subprocess are NOT recorded. See docs/checkpoints.md.",
     "truncation": "Tool-output truncation limits: max_lines, max_bytes, output_dir (used only when the output exceeds a limit).",
     "agents": "allowed_tools replaces the agent's ruleset with a whitelist; denied_tools is applied on top of the built-in rules."
   }

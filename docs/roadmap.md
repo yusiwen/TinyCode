@@ -236,11 +236,28 @@ current tree.
 - **Gap**: edits land straight on disk. There is no per-step snapshot and no way to return to the
   state before the last tool call — the single hardest gap in this document, because it is what a
   user must trust before letting the agent write.
+- **Picked up**: [#234](https://github.com/yusiwen/TinyCode/issues/234) — S1 (the store, the
+  pre-images and a restore), S2 (`/undo` and `--undo`), S3 (documents, retention and the boundary).
+  **Delivered.** Every file tool's write records the bytes it is about to replace, through the one
+  choke point all four write sites and the delete operation pass through, so no path can forget; a
+  context without a tool-call scope records nothing, and a pre-image that cannot be read refuses the
+  write rather than performing it unundoably. `/undo` lists the files and confirms before restoring,
+  `--undo` does the same without a TUI, and marking the call undone in its own manifest is what makes
+  the next undo reach the call before it. The store sits outside the project root (`checkpoint_dir`,
+  default `~/.tinycode/checkpoints`), is not a tool path — a write to it is refused with
+  `ask: reserved`, and only `sandbox_full_access` bypasses that — and is bounded to 50 calls or
+  64 MiB per project, dropping the oldest **already-undone** calls first and then collecting objects
+  nothing references. A call that can still be undone is never dropped, so the bound loses to
+  undo-ability on purpose. The boundary is stated where a user reads it,
+  [checkpoints.md](checkpoints.md): **files changed by a `bash` command or any other subprocess are
+  not captured** — the store takes a second producer for them, and that producer is its own piece of
+  work rather than something this entry claims.
 - **Evidence**: `rg -qi 'checkpoint' .` → exit 1; the 17 TUI slash commands (`tui/model.go:193-205`)
   contain no `/undo`; `edit` and `apply_patch` write through `writeSandboxed` (`tool/edit.go:156`,
   `tool/apply_patch.go:180` → `tool/sandboxio.go:52-93`), which renames a temp file over the target
   and removes the temp — the previous bytes are never retained, and the atomic replace is a
-  property of the write, not a recovery mechanism.
+  property of the write, not a recovery mechanism. The evidence below is the `7e6b017` baseline, so
+  its `rg` exit code describes that tree rather than the current one.
 - **Already present**: `SnapshotBaseline` (`lsp/touch.go:176-179`) snapshots *diagnostics* for
   delta reporting, not file content. Design note: `.tinycode/` is already in `.gitignore`, so a
   shadow repository under it would be invisible to the user's own git.
@@ -557,7 +574,8 @@ by certainty of return rather than by size:
    an implementation: pointing a default at a remote service is a design choice, not a plumbing
    task.
 3. **The trust gap** — C1 (checkpoint and undo), the one item whose absence is felt on the first
-   real mistake.
+   real mistake. **Delivered** (issue #234), with one boundary named rather than implied in
+   [checkpoints.md](checkpoints.md): files changed by a `bash` command are not captured.
 4. **Escalate C7 above C6.** The Linux fence is real (path fence, Landlock, cgroup v2 kill); a
    container backend is a different deployment story rather than more of the same. Meanwhile macOS
    command confinement is *off on this project's own development machine*, which is a cost paid

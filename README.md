@@ -32,6 +32,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - Auto-save conversations on exit (`~/.tinycode/sessions/TUI-*.json`), with title/preview/metadata
 - Resume with `--resume=TUI-20260607-235959`
 - List sessions with `--list-sessions` (shows title, message count, last active time)
+- **Undo a tool call**: every file-tool write records the bytes it replaced, so `/undo` in the TUI — or `--undo` on the command line — returns the last tool call's files to their previous state. Bounded per project (50 calls / 64 MiB, oldest undone first); files changed by a `bash` command are *not* captured. See [docs/checkpoints.md](docs/checkpoints.md).
 - **AI-generated session titles**: title hidden agent auto-names conversations via LLM. Falls back to first user message. (2deee5e)
 - Input history: Up/Down arrows to recall previous inputs, Esc to exit browse mode
 - Status bar shows `hist 3/5` during history browsing
