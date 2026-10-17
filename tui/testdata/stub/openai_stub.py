@@ -153,8 +153,20 @@ TITLE_MARKER = b"Conversation so far:"
 _served = {"requests": 0, "cycles": 0, "title": 0}
 
 # The answer a tool-asking mode gives at the start of each cycle.
+# "bashwrite" asks for one bash call that edits a file in place — the shape issue #238 is
+# about: /undo has to restore what a *command* changed, and the pre-image comes from the
+# snapshot the tool takes before it runs. `sed -i.bak` is the portable spelling (BSD sed
+# requires the backup suffix), and removing the backup keeps the command's net effect to
+# the one edit: the file the command creates and deletes again leaves no entry to undo.
+BASH_WRITE_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_bw","type":"function",'
+    '"function":{"name":"bash","arguments":"{\\"command\\":\\"sed -i.bak s/stub-bash-before/stub-bash-after/ .stub-bash-undo.txt && rm -f .stub-bash-undo.txt.bak\\"}"}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+)
 SCRIPT = {
     "tool": TOOL_CALL,
+    "bashwrite": BASH_WRITE_CALL,
     "write": WRITE_CALL,
     "undo": UNDO_CALL,
     "multi": MULTI_CALL,

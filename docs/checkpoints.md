@@ -131,4 +131,15 @@ The counts above are computable, which is the repository's rule for a number wri
 grep -n 'checkpointMaxCalls\|checkpointMaxBytes' tool/checkpoint.go   # the two bounds
 grep -rn 'writeSandboxed(' tool/*.go | grep -v _test.go               # the recording call sites
 go test ./tool/ -run 'Retention|Checkpoint' -count=1                  # the bounds, asserted
+go test ./tool -run XXX -bench CommandSnapshot -benchtime 5x          # the snapshot's cost, above
 ```
+
+And the claim a user cares about — that a *command's* change can be taken back — is a black-box
+gate, not a Go test: the stub asks the agent to run `sed -i` through its own bash tool, and the
+scenario undoes it and asserts the file's bytes.
+
+```bash
+TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run \
+  --gate TUI_SHOT --dir . tui/testdata/scenarios/bash-undo.scenario
+```
+
