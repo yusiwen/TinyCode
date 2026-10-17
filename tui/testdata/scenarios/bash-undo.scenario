@@ -1,0 +1,42 @@
+# The proof for issue #238: a **command's** change is undoable. The stub asks for one bash call
+# that edits a file in place (`sed -i.bak`), and the scenario undoes it. The assertion is on the
+# file's bytes: the wrapper shell seeds them before the binary starts and prints them after it
+# exits, so a message that claims a restore is not evidence.
+#
+# Before this, /undo only knew about the file tools (issue #234): a shell command never says what
+# it will touch, so the tool snapshots the project tree before the command and diffs after it.
+# That is why this scenario runs in the repository root with its own HOME — the snapshot walks the
+# tree, and the store it writes to lives under that HOME.
+#
+# The file it uses is created by the wrapper and removed by it again, so the working tree is
+# unchanged afterwards, and the command's own backup file is removed by the command itself (the
+# net effect is one edit, which is what one manifest entry should describe).
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-bash-undo --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'chmod -R u+w /tmp/tinyscen-home-bash-undo 2>/dev/null; rm -rf /tmp/tinyscen-home-bash-undo; mkdir -p /tmp/tinyscen-home-bash-undo/.tinycode /tmp/tinyscen-home-bash-undo/sessions && printf stub-bash-before > .stub-bash-undo.txt && python3 tui/testdata/stub/openai_stub.py 18519 bashwrite & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18519/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-home-bash-undo/sessions --log-level=error; status=$?; kill %1 2>/dev/null; printf "BASH-UNDO-CONTENT=%s\n" "$(cat .stub-bash-undo.txt 2>/dev/null || echo missing)"; rm -f .stub-bash-undo.txt .stub-bash-undo.txt.bak; exit $status'
+wait --text "Get started" --timeout 20s
+# Type only once the input row exists: the welcome heading appears first, and keys sent
+# before the input is ready can be lost (issue #102).
+wait --text "Type your request" --timeout 20s
+# A command that writes needs build mode; plan mode refuses it without asking.
+send --text /build
+send --key enter
+wait --text "⚡ build" --timeout 10s
+send --text "use sed to edit the stub file"
+send --key enter
+wait --text "stub-final-ok" --timeout 30s
+# The command changed the file; undo it. The transcript names the call the undo is about, which
+# also proves the record is attributed to bash rather than to a file tool.
+send --text /undo
+send --key enter
+wait --text "The last tool call \(bash\) wrote 1 file" --timeout 20s
+wait --text "Undo it, restoring those 1 file" --timeout 20s
+screenshot /tmp/tinyscen-shots/bash-undo-120x30.png --scale 2
+send --text 1
+wait --text "Undid the last tool call" --timeout 20s
+stable 200ms --timeout 30s
+send --text /exit
+send --key enter
+# The verdict is printed by the wrapper shell after the program exits, so it has to be waited
+# for before waiting for the shell itself to end.
+wait --text "BASH-UNDO-CONTENT=stub-bash-before" --timeout 30s
+wait-exit 30s
+expect-exit 0
