@@ -351,8 +351,10 @@ func CheckpointReport() string {
 	}
 	return fmt.Sprintf("checkpoints: %s\n"+
 		"  %d call(s) kept, %d still undoable; the newest %d calls and %d MiB are kept, oldest undone calls first\n"+
-		"  not captured: files changed by a bash command or any other subprocess — only the file tools' writes are recorded\n",
-		dir, len(calls), undoable, checkpointMaxCalls, checkpointMaxBytes>>20)
+		"  file tools: recorded before every write\n"+
+		"  bash commands: recorded from a snapshot of the project tree taken before the command\n"+
+		"  not captured: paths outside the project root, files over %d MiB, and effects outside the filesystem\n",
+		dir, len(calls), undoable, checkpointMaxCalls, checkpointMaxBytes>>20, checkpointSnapshotMaxFileBytes>>20)
 }
 
 // checkpointStoreDir resolves the store for the project in flight. The key
@@ -398,9 +400,11 @@ func manifestFor(store string, scope types.ToolCallScope) string {
 	return filepath.Join(store, checkpointCallsDir, name)
 }
 
-// appendManifest adds one entry to the call's manifest, writing it atomically so
-// a reader sees the manifest before or after the entry, never half of it.
-func appendManifest(store string, scope types.ToolCallScope, entry CheckpointEntry) error {
+// appendManifest adds entries to the call's manifest, writing it atomically so a
+// reader sees the manifest before or after the addition, never half of it. It
+// takes a slice because a command records everything it changed in one manifest
+// (issue #238): one rewrite, not one per file.
+func appendManifest(store string, scope types.ToolCallScope, entries ...CheckpointEntry) error {
 	checkpointMu.Lock()
 	manifest := manifestFor(store, scope)
 	checkpointMu.Unlock()
@@ -416,7 +420,7 @@ func appendManifest(store string, scope types.ToolCallScope, entry CheckpointEnt
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("manifest %s is unreadable: %w", manifest, err)
 	}
-	call.Entries = append(call.Entries, entry)
+	call.Entries = append(call.Entries, entries...)
 	return writeFileAtomic(manifest, mustJSON(call), 0644)
 }
 

@@ -233,6 +233,17 @@ func Bash() Tool {
 
 			tlog.Info("shell.bash", "exec", "command", cmdStr)
 
+			// The command's effects are recorded from a snapshot of the tree taken
+			// before it starts, because a shell command never says what it will
+			// touch (issue #238). It is taken before the command's own timeout
+			// clock, so our overhead is not spent out of the model's budget, and
+			// finished by a defer on every path: a killed command's changes are the
+			// ones an undo is most likely to be wanted for.
+			snap := beginCommandSnapshot(ctx)
+			if snap != nil {
+				defer snap.finish(ctx)
+			}
+
 			timeout := 30
 			if t, ok := args["timeout"].(float64); ok {
 				timeout = int(t)
@@ -360,6 +371,13 @@ func Bash() Tool {
 			}
 			if stdout.truncated || stderr.truncated {
 				sb.WriteString(fmt.Sprintf("[output truncated at %d bytes per stream]\n", maxOutputBytes))
+			}
+			// Only the negative facts are reported: a command whose changes were
+			// fully recorded says nothing extra, while one that could not be
+			// recorded says so here rather than leaving the reader to assume /undo
+			// covers it.
+			if note := snap.note(); note != "" {
+				sb.WriteString(note + "\n")
 			}
 
 			if err != nil {
