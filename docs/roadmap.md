@@ -249,9 +249,11 @@ current tree.
   64 MiB per project, dropping the oldest **already-undone** calls first and then collecting objects
   nothing references. A call that can still be undone is never dropped, so the bound loses to
   undo-ability on purpose. The boundary is stated where a user reads it,
-  [checkpoints.md](checkpoints.md): **files changed by a `bash` command or any other subprocess are
-  not captured** — the store takes a second producer for them, and that producer is its own piece of
-  work rather than something this entry claims.
+  [checkpoints.md](checkpoints.md). A `bash` command's writes were the boundary this entry named as
+  unfinished; [#238](https://github.com/yusiwen/TinyCode/issues/238) closed it by snapshotting the
+  project tree before a command and diffing after it, bounded per file and per snapshot, with the
+  skip reported in the tool result. What remains is named there: paths outside the project root, and
+  effects outside the filesystem.
 - **Evidence**: `rg -qi 'checkpoint' .` → exit 1; the 17 TUI slash commands (`tui/model.go:193-205`)
   contain no `/undo`; `edit` and `apply_patch` write through `writeSandboxed` (`tool/edit.go:156`,
   `tool/apply_patch.go:180` → `tool/sandboxio.go:52-93`), which renames a temp file over the target
@@ -574,8 +576,10 @@ by certainty of return rather than by size:
    an implementation: pointing a default at a remote service is a design choice, not a plumbing
    task.
 3. **The trust gap** — C1 (checkpoint and undo), the one item whose absence is felt on the first
-   real mistake. **Delivered** (issue #234), with one boundary named rather than implied in
-   [checkpoints.md](checkpoints.md): files changed by a `bash` command are not captured.
+   real mistake. **Delivered** (issue #234), and its last boundary — a `bash` command's writes —
+   closed by [#238](https://github.com/yusiwen/TinyCode/issues/238); the limits that remain (paths
+   outside the project root, effects outside the filesystem) are in
+   [checkpoints.md](checkpoints.md).
 4. **Escalate C7 above C6.** The Linux fence is real (path fence, Landlock, cgroup v2 kill); a
    container backend is a different deployment story rather than more of the same. Meanwhile macOS
    command confinement is *off on this project's own development machine*, which is a cost paid

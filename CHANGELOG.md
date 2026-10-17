@@ -9,6 +9,23 @@ back to its change and tests.
 
 ## Unreleased
 
+### Undo a `bash` command's changes too
+
+Roadmap entry C1's last boundary (issue #238): `/undo` covered the file tools' writes and nothing a
+command did, because a shell command never says what it will touch. Before a command runs, the project
+tree is now read, hashed and stored; after it, one stat walk (size, modification time, inode) finds the
+paths that moved and records them as ordinary manifest entries, so `/undo` reaches a command exactly
+like a file-tool call. A command that changed nothing writes no manifest.
+
+The bounds are measured rather than guessed: **42.9 ms and 379 files** on this repository with the
+2 MiB per-file cap (`go test ./tool -run XXX -bench CommandSnapshot`), which is what 32 MiB / 4000
+files leaves an order of magnitude of headroom for. Over a bound the command still runs and its result
+says the changes were not recorded. A file above the per-file cap that a command *creates* is still
+recorded, because undoing it means removing it; one it *modifies* is not, and the result says so.
+The bytes are copied rather than hard-linked on purpose: a link shares the inode, so `echo x > file`
+would make the "pre-image" the new bytes, and a wrong pre-image is worse than a missing one.
+`docs/checkpoints.md` carries the numbers, the limits, and the benchmark that reproduces them.
+
 ### Undo a tool call — and what that does not cover
 
 Roadmap entry C1 (issue #234): a tool-mediated edit used to land straight on disk. Every file tool's write
