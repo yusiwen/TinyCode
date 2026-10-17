@@ -41,13 +41,54 @@ Two properties are deliberate:
 
 ## What is NOT captured
 
-**Files changed by a `bash` command or by any other subprocess are not recorded.** Nothing tells
-this layer what such a command will touch, so `/undo` cannot return those files to their previous
-state. This is a boundary, not a bug: the store accepts a second producer that snapshots the
-workspace before a command, and that producer is its own piece of work.
+**A `bash` command's writes are captured, but from a snapshot with bounds** (issue #238). Before the
+command starts, the project tree is read and hashed; after it, the tree is walked again and only the
+paths whose size, modification time or inode moved become entries. A command that changed nothing
+writes no manifest at all. The bounds — and what falling outside them means — are:
 
-The same applies to anything else that writes without going through the file tools: the headless
-browser's own profile writes, `gopls`, and `git` operations run as commands.
+| Bound | Default | What happens |
+| :--- | :--- | :--- |
+| Per-file size | 2 MiB | The file is not read. If the command *modifies* it, the change is not recorded, and the tool result says how many such files there were. A file the command *creates* is still recorded even above the bound, because undoing it means removing it. |
+| Whole snapshot | 32 MiB / 4000 files | The snapshot is skipped, the command still runs, and the tool result says the changes were not recorded. |
+| Location | the project root | A path outside it — an allowed path, a toolchain cache — is not snapshotted: those are not the user's files, and the caches are large by nature. |
+
+Still not captured, by design:
+
+- **Effects outside the filesystem** — a command that pushes, deploys or calls an API.
+- **A same-size write that also restores the mtime**, which the size/mtime/inode change detector
+  would miss. An ordinary edit moves the mtime; reproducing it is a deliberate act.
+- **Symlinks, devices and other non-regular files**, which are counted and reported but not read.
+
+The file tools differ in one respect: their recording is **fail closed**, while a command's is best
+effort with the failure surfaced. The reason is what each is for — a file tool's whole purpose is the
+write it can refuse, whereas a command's purpose is whatever the model asked for, and a record that
+cannot be made is a fact to report rather than a reason to refuse the work.
+
+## How a command's changes are captured
+
+A shell command never says what it will touch, so the only way to have its pre-images is to take them
+before it runs. The pre-command tree is read, hashed and stored in the same content-addressed object
+store; after the command, one stat walk finds what moved.
+
+**The measured cost**, which is where the bounds come from — this repository, an Apple M4 Pro, with
+the 2 MiB per-file cap:
+
+```bash
+go test ./tool -run XXX -bench CommandSnapshot -benchtime 5x
+# BenchmarkCommandSnapshot-14   5   42853625 ns/op   379.0 files
+```
+
+**42.9 ms and 379 files** (2.4 MiB of source; the 2 MiB cap is what removes the five build artefacts
+that would otherwise dominate the reading). The 32 MiB / 4000-file bound is about an order of
+magnitude above that, so the skip path is for a tree an order of magnitude larger, not for this one.
+
+**Why the bytes are copied and not hard-linked**, which is the cheaper trick: a hard link shares the
+inode, so `echo x > file` — a truncate in place, the ordinary way a shell writes a file — changes the
+link's content too, and the "pre-image" would be the new bytes. A wrong pre-image is worse than a
+missing one, because an undo would silently apply it.
+
+A command's manifest is a normal one: `/undo` reaches it exactly like a file-tool call, it is subject
+to the same retention, and a call that can still be undone is still never dropped.
 
 ## Where the record lives
 
