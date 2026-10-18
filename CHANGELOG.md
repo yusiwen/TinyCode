@@ -9,6 +9,34 @@ back to its change and tests.
 
 ## Unreleased
 
+### A measurement before a framework
+
+Roadmap entry F1 (issue #252). "Did the agent get better?" had no signal: 998 test functions prove
+TinyCode's code works, never that the agent on top of it does anything useful. F1 is the largest lever in
+the roadmap and the roadmap's own rule for its class of work is that the first increment must answer **"is
+this worth it"** with a measurement — so this is the measurement, not the framework.
+
+`eval/` holds six self-contained tasks (a `go.mod`, a real defect, a failing test, a one-line prompt) and a
+runner that, for each (configuration × task × repetition), copies the task to a scratch directory, gives it
+its own `.tinycode/config.json` (the agent mode, a hard token budget, the attempt's record directory), runs
+the binary, and grades the attempt **by the task's own `go test ./...`** — no judge. Test files are hashed
+before and after, so an attempt that weakens a test is recorded as tampered and counts as a failure.
+Everything else comes from the attempt's trajectory, through `agent.ListRuns`, which makes the harness the
+record's second real consumer.
+
+The abandonment condition was written before the data and corrected once before any existed: the first
+version demanded the starved configuration strictly beat the read-only one, which is unsatisfiable when both
+solve nothing and the read-only agent cannot write by construction.
+
+Measured 2026-10-18, 36 runs on `deepseek-flash`: **build 6/6, limited 5/6, plan 0/6**, with the two ends
+agreeing with themselves on every task. The signal exists. But the task set is saturated — five of the six
+tasks are solved by step 3, so a 10 000-token budget only bites on the hardest one, which is also the only
+cell whose repetitions disagreed. **So the next increment is a task set with a difficulty spread, not a
+framework.** Two things the records made legible, and the reason the record was worth building first: one
+`build` attempt ended `stop: blocked` *and passed*, after trying a permission dialog a one-shot run cannot
+offer, at four times the median token cost; and the read-only configurations burned ~12 600 tokens each to
+fail, which is the number that decides whether such a pass is worth running (`d97c149`).
+
 ### Every run leaves a machine-readable record
 
 Roadmap entry E4 (issue #249). A run left nothing a program could measure. The callbacks that drive the
