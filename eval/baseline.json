@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-10-18T09:18:55Z",
+  "generated_at": "2026-10-18T10:16:57Z",
   "reps": 2,
-  "runs": 72,
+  "runs": 108,
   "models": {
-    "deepseek-flash": 72
+    "deepseek-flash": 108
   },
   "configurations": [
     {
@@ -18,16 +18,32 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 11,
-          "median_tokens": 59648,
+          "median_steps": 14,
+          "median_tokens": 82509,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 13,
-            "edit": 2,
-            "read_file": 1,
-            "sandbox_allow": 1
+            "bash": 18,
+            "edit": 2
+          }
+        },
+        {
+          "task": "breadth-fixes",
+          "tier": 3,
+          "passes": 2,
+          "reps": 2,
+          "solved": true,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 15,
+          "median_tokens": 124313,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "bash": 27,
+            "sandbox_allow": 2
           }
         },
         {
@@ -38,16 +54,35 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 17,
-          "median_tokens": 133666,
+          "median_steps": 5,
+          "median_tokens": 21981,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 18,
+            "bash": 8,
+            "edit": 2
+          }
+        },
+        {
+          "task": "coupled-api",
+          "tier": 3,
+          "passes": 2,
+          "reps": 2,
+          "solved": true,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 24,
+          "median_tokens": 314929,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "bash": 38,
             "edit": 2,
-            "read_file": 2,
-            "sandbox_allow": 1
+            "read_file": 5,
+            "sandbox_allow": 3,
+            "write_file": 1
           }
         },
         {
@@ -59,12 +94,71 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 5,
-          "median_tokens": 21949,
+          "median_tokens": 21946,
           "stops": {
             "final": 2
           },
           "tools": {
             "bash": 8,
+            "write_file": 2
+          }
+        },
+        {
+          "task": "duration-spec",
+          "tier": 3,
+          "passes": 2,
+          "reps": 2,
+          "solved": true,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 22,
+          "median_tokens": 430429,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "bash": 34,
+            "read_file": 3,
+            "write_file": 3
+          }
+        },
+        {
+          "task": "expr-eval",
+          "tier": 3,
+          "passes": 2,
+          "reps": 2,
+          "solved": true,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 28,
+          "median_tokens": 465719,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "bash": 40,
+            "read_file": 2,
+            "sandbox_allow": 3,
+            "write_file": 3
+          }
+        },
+        {
+          "task": "merge-inversions",
+          "tier": 3,
+          "passes": 2,
+          "reps": 2,
+          "solved": true,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 6,
+          "median_tokens": 32260,
+          "stops": {
+            "blocked": 1,
+            "final": 1
+          },
+          "tools": {
+            "bash": 8,
+            "read_file": 2,
             "write_file": 2
           }
         },
@@ -76,14 +170,14 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 6,
-          "median_tokens": 29484,
+          "median_steps": 5,
+          "median_tokens": 24389,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 8,
-            "read_file": 2,
+            "bash": 6,
+            "read_file": 4,
             "write_file": 2
           }
         },
@@ -96,14 +190,34 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 5,
-          "median_tokens": 22128,
+          "median_tokens": 21835,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 6,
-            "read_file": 4,
+            "bash": 8,
             "write_file": 2
+          }
+        },
+        {
+          "task": "rollback",
+          "tier": 3,
+          "passes": 2,
+          "reps": 2,
+          "solved": true,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 17,
+          "median_tokens": 149342,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "bash": 33,
+            "edit": 1,
+            "read_file": 5,
+            "sandbox_allow": 1,
+            "write_file": 1
           }
         },
         {
@@ -114,14 +228,14 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 6,
-          "median_tokens": 27290,
+          "median_steps": 5,
+          "median_tokens": 22502,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 8,
-            "edit": 1,
+            "bash": 6,
+            "read_file": 4,
             "write_file": 2
           }
         },
@@ -133,15 +247,15 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 22,
-          "median_tokens": 164207,
+          "median_steps": 21,
+          "median_tokens": 161647,
           "stops": {
-            "blocked": 1,
-            "final": 1
+            "final": 2
           },
           "tools": {
             "bash": 32,
             "edit": 1,
+            "read_file": 3,
             "sandbox_allow": 2,
             "write_file": 1
           }
@@ -155,15 +269,15 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 11,
-          "median_tokens": 66664,
+          "median_tokens": 73454,
           "stops": {
-            "blocked": 1,
-            "final": 1
+            "final": 2
           },
           "tools": {
-            "bash": 16,
-            "edit": 3,
-            "write_file": 1
+            "bash": 12,
+            "edit": 2,
+            "read_file": 6,
+            "write_file": 2
           }
         },
         {
@@ -174,14 +288,16 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 11,
-          "median_tokens": 66972,
+          "median_steps": 18,
+          "median_tokens": 125961,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 15,
-            "write_file": 2
+            "bash": 19,
+            "edit": 2,
+            "read_file": 3,
+            "sandbox_allow": 1
           }
         },
         {
@@ -192,15 +308,14 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 6,
-          "median_tokens": 30054,
+          "median_steps": 10,
+          "median_tokens": 55971,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 9,
-            "edit": 2,
-            "read_file": 3
+            "bash": 14,
+            "edit": 2
           }
         },
         {
@@ -211,14 +326,13 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 7,
-          "median_tokens": 41539,
+          "median_steps": 6,
+          "median_tokens": 32719,
           "stops": {
-            "blocked": 1,
-            "final": 1
+            "final": 2
           },
           "tools": {
-            "bash": 11,
+            "bash": 9,
             "write_file": 2
           }
         },
@@ -230,14 +344,15 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 5,
-          "median_tokens": 22712,
+          "median_steps": 8,
+          "median_tokens": 42826,
           "stops": {
             "final": 2
           },
           "tools": {
-            "bash": 8,
-            "write_file": 2
+            "bash": 14,
+            "edit": 1,
+            "write_file": 1
           }
         }
       ],
@@ -248,8 +363,8 @@
           "solved": 6,
           "passes": 12,
           "runs": 12,
-          "tokens_per_solved": 98055,
-          "median_tokens": 29484
+          "tokens_per_solved": 65054,
+          "median_tokens": 22502
         },
         {
           "tier": 2,
@@ -257,37 +372,37 @@
           "solved": 3,
           "passes": 6,
           "runs": 6,
-          "tokens_per_solved": 198562,
-          "median_tokens": 66972
+          "tokens_per_solved": 240708,
+          "median_tokens": 125961
         },
         {
           "tier": 3,
-          "tasks": 3,
-          "solved": 3,
-          "passes": 6,
-          "runs": 6,
-          "tokens_per_solved": 62870,
-          "median_tokens": 30054
+          "tasks": 9,
+          "solved": 9,
+          "passes": 18,
+          "runs": 18,
+          "tokens_per_solved": 366335,
+          "median_tokens": 124313
         }
       ],
-      "solved": 12,
-      "task_count": 12,
-      "passes": 24,
-      "runs": 24,
+      "solved": 18,
+      "task_count": 18,
+      "passes": 36,
+      "runs": 36,
       "agreement": 1,
-      "median_steps": 5,
-      "median_tokens": 27033,
-      "tokens_per_solved": 88091,
+      "median_steps": 6,
+      "median_tokens": 33616,
+      "tokens_per_solved": 184183,
       "stops": {
-        "blocked": 3,
-        "final": 21
+        "blocked": 1,
+        "final": 35
       },
       "tools": {
-        "bash": 152,
-        "edit": 11,
-        "read_file": 12,
-        "sandbox_allow": 4,
-        "write_file": 16
+        "bash": 334,
+        "edit": 15,
+        "read_file": 37,
+        "sandbox_allow": 12,
+        "write_file": 24
       },
       "missing_records": 0
     },
@@ -305,13 +420,31 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 12361,
+          "median_tokens": 12557,
           "stops": {
             "budget": 2
           },
           "tools": {
             "bash": 6,
-            "edit": 2
+            "edit": 2,
+            "read_file": 2
+          }
+        },
+        {
+          "task": "breadth-fixes",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 14348,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 9
           }
         },
         {
@@ -323,32 +456,104 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 12610,
+          "median_tokens": 12606,
           "stops": {
             "budget": 2
           },
           "tools": {
-            "bash": 4,
+            "bash": 5,
             "edit": 2,
+            "read_file": 2
+          }
+        },
+        {
+          "task": "coupled-api",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 13673,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 6,
             "read_file": 4
           }
         },
         {
           "task": "dedupe",
           "tier": 1,
-          "passes": 2,
+          "passes": 1,
           "reps": 2,
-          "solved": true,
-          "agreed": true,
+          "solved": false,
+          "agreed": false,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 13012,
+          "median_tokens": 12600,
           "stops": {
             "budget": 2
           },
           "tools": {
-            "bash": 5,
-            "edit": 1,
+            "bash": 6,
+            "read_file": 2,
+            "write_file": 1
+          }
+        },
+        {
+          "task": "duration-spec",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 13115,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 10,
+            "read_file": 2
+          }
+        },
+        {
+          "task": "expr-eval",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 13502,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 7,
+            "read_file": 2
+          }
+        },
+        {
+          "task": "merge-inversions",
+          "tier": 3,
+          "passes": 1,
+          "reps": 2,
+          "solved": false,
+          "agreed": false,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 13611,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 6,
             "read_file": 4,
             "write_file": 1
           }
@@ -362,7 +567,7 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 13007,
+          "median_tokens": 13118,
           "stops": {
             "budget": 2
           },
@@ -375,20 +580,37 @@
         {
           "task": "reverse-words",
           "tier": 1,
-          "passes": 1,
+          "passes": 2,
           "reps": 2,
-          "solved": false,
-          "agreed": false,
+          "solved": true,
+          "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 12533,
+          "median_tokens": 12421,
           "stops": {
             "budget": 2
           },
           "tools": {
-            "bash": 5,
-            "read_file": 4,
-            "write_file": 1
+            "bash": 6,
+            "write_file": 2
+          }
+        },
+        {
+          "task": "rollback",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 13214,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 8,
+            "read_file": 2
           }
         },
         {
@@ -400,13 +622,13 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 12809,
+          "median_tokens": 12913,
           "stops": {
             "budget": 2
           },
           "tools": {
-            "bash": 4,
-            "read_file": 4,
+            "bash": 5,
+            "read_file": 2,
             "write_file": 2
           }
         },
@@ -419,13 +641,12 @@
           "agreed": false,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 13081,
+          "median_tokens": 13218,
           "stops": {
             "budget": 2
           },
           "tools": {
-            "bash": 7,
-            "write_file": 1
+            "bash": 8
           }
         },
         {
@@ -437,29 +658,29 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 13176,
-          "stops": {
-            "budget": 2
-          },
-          "tools": {
-            "bash": 7
-          }
-        },
-        {
-          "task": "t2-report",
-          "tier": 2,
-          "passes": 2,
-          "reps": 2,
-          "solved": true,
-          "agreed": true,
-          "tampered": 0,
-          "median_steps": 3,
-          "median_tokens": 13078,
+          "median_tokens": 13914,
           "stops": {
             "budget": 2
           },
           "tools": {
             "bash": 8
+          }
+        },
+        {
+          "task": "t2-report",
+          "tier": 2,
+          "passes": 1,
+          "reps": 2,
+          "solved": false,
+          "agreed": false,
+          "tampered": 0,
+          "median_steps": 3,
+          "median_tokens": 13017,
+          "stops": {
+            "budget": 2
+          },
+          "tools": {
+            "bash": 9
           }
         },
         {
@@ -471,50 +692,49 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 13107,
+          "median_tokens": 12952,
           "stops": {
             "budget": 2
           },
           "tools": {
             "bash": 5,
-            "edit": 2,
-            "read_file": 3
+            "edit": 2
           }
         },
         {
           "task": "t3-cache",
           "tier": 3,
-          "passes": 2,
+          "passes": 1,
           "reps": 2,
-          "solved": true,
-          "agreed": true,
+          "solved": false,
+          "agreed": false,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 14309,
+          "median_tokens": 14664,
           "stops": {
             "budget": 2
           },
           "tools": {
             "bash": 7,
-            "write_file": 2
+            "read_file": 3,
+            "write_file": 1
           }
         },
         {
           "task": "t3-extension",
           "tier": 3,
-          "passes": 2,
+          "passes": 1,
           "reps": 2,
-          "solved": true,
-          "agreed": true,
+          "solved": false,
+          "agreed": false,
           "tampered": 0,
           "median_steps": 3,
-          "median_tokens": 12751,
+          "median_tokens": 12735,
           "stops": {
             "budget": 2
           },
           "tools": {
-            "bash": 7,
-            "write_file": 1
+            "bash": 8
           }
         }
       ],
@@ -525,44 +745,44 @@
           "solved": 5,
           "passes": 11,
           "runs": 12,
-          "tokens_per_solved": 30532,
-          "median_tokens": 12809
+          "tokens_per_solved": 30486,
+          "median_tokens": 12606
         },
         {
           "tier": 2,
           "tasks": 3,
-          "solved": 1,
-          "passes": 3,
+          "solved": 0,
+          "passes": 2,
           "runs": 6,
-          "tokens_per_solved": 78670,
-          "median_tokens": 13081
+          "tokens_per_solved": 0,
+          "median_tokens": 13218
         },
         {
           "tier": 3,
-          "tasks": 3,
-          "solved": 3,
-          "passes": 6,
-          "runs": 6,
-          "tokens_per_solved": 26778,
-          "median_tokens": 13107
+          "tasks": 9,
+          "solved": 1,
+          "passes": 5,
+          "runs": 18,
+          "tokens_per_solved": 243628,
+          "median_tokens": 13502
         }
       ],
-      "solved": 9,
-      "task_count": 12,
-      "passes": 20,
-      "runs": 24,
-      "agreement": 0.8333333333333334,
+      "solved": 6,
+      "task_count": 18,
+      "passes": 18,
+      "runs": 36,
+      "agreement": 0.6666666666666666,
       "median_steps": 3,
-      "median_tokens": 12829,
-      "tokens_per_solved": 34453,
+      "median_tokens": 12987,
+      "tokens_per_solved": 78292,
       "stops": {
-        "budget": 24
+        "budget": 36
       },
       "tools": {
-        "bash": 70,
-        "edit": 7,
-        "read_file": 21,
-        "write_file": 10
+        "bash": 124,
+        "edit": 6,
+        "read_file": 27,
+        "write_file": 9
       },
       "missing_records": 0
     },
@@ -578,15 +798,35 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 6,
-          "median_tokens": 17931,
+          "median_steps": 3,
+          "median_tokens": 8440,
           "stops": {
             "final": 2
           },
           "tools": {
             "git_status": 2,
-            "read_file": 5,
-            "search_files": 7
+            "read_file": 1,
+            "search_files": 4
+          }
+        },
+        {
+          "task": "breadth-fixes",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 6,
+          "median_tokens": 31341,
+          "stops": {
+            "error": 1,
+            "final": 1
+          },
+          "tools": {
+            "git_status": 2,
+            "read_file": 4,
+            "search_files": 10
           }
         },
         {
@@ -597,15 +837,35 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 5,
-          "median_tokens": 15239,
+          "median_steps": 7,
+          "median_tokens": 21271,
           "stops": {
             "final": 2
           },
           "tools": {
+            "git_log": 1,
             "git_status": 2,
-            "read_file": 4,
+            "read_file": 6,
             "search_files": 8
+          }
+        },
+        {
+          "task": "coupled-api",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 4,
+          "median_tokens": 19163,
+          "stops": {
+            "final": 1
+          },
+          "tools": {
+            "git_status": 2,
+            "read_file": 5,
+            "search_files": 14
           }
         },
         {
@@ -617,15 +877,71 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 4,
-          "median_tokens": 11969,
+          "median_tokens": 12088,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "git_status": 2,
+            "read_file": 5,
+            "search_files": 6
+          }
+        },
+        {
+          "task": "duration-spec",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 5,
+          "median_tokens": 28354,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "git_status": 1,
+            "read_file": 6,
+            "search_files": 9
+          }
+        },
+        {
+          "task": "expr-eval",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 7,
+          "median_tokens": 32724,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "git_status": 2,
+            "read_file": 6,
+            "search_files": 11
+          }
+        },
+        {
+          "task": "merge-inversions",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 4,
+          "median_tokens": 15290,
           "stops": {
             "final": 2
           },
           "tools": {
             "git_log": 1,
             "git_status": 2,
-            "read_file": 4,
-            "search_files": 4
+            "search_files": 6
           }
         },
         {
@@ -637,13 +953,13 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 4,
-          "median_tokens": 11904,
+          "median_tokens": 11947,
           "stops": {
             "final": 2
           },
           "tools": {
-            "git_status": 1,
-            "read_file": 4,
+            "git_status": 2,
+            "read_file": 2,
             "search_files": 4
           }
         },
@@ -656,14 +972,34 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 5,
-          "median_tokens": 13560,
+          "median_tokens": 14944,
           "stops": {
             "final": 2
           },
           "tools": {
-            "git_status": 1,
-            "read_file": 2,
-            "search_files": 6
+            "git_status": 2,
+            "read_file": 3,
+            "search_files": 8
+          }
+        },
+        {
+          "task": "rollback",
+          "tier": 3,
+          "passes": 0,
+          "reps": 2,
+          "solved": false,
+          "agreed": true,
+          "tampered": 0,
+          "median_steps": 8,
+          "median_tokens": 34670,
+          "stops": {
+            "final": 2
+          },
+          "tools": {
+            "git_log": 1,
+            "git_status": 2,
+            "read_file": 4,
+            "search_files": 11
           }
         },
         {
@@ -674,16 +1010,14 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 5,
-          "median_tokens": 15204,
+          "median_steps": 4,
+          "median_tokens": 10592,
           "stops": {
             "final": 2
           },
           "tools": {
-            "git_log": 1,
             "git_status": 2,
-            "read_file": 3,
-            "search_files": 8
+            "search_files": 5
           }
         },
         {
@@ -694,16 +1028,15 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 7,
-          "median_tokens": 31665,
+          "median_steps": 6,
+          "median_tokens": 23752,
           "stops": {
-            "error": 1,
-            "final": 1
+            "final": 2
           },
           "tools": {
             "git_status": 2,
-            "read_file": 5,
-            "search_files": 11
+            "read_file": 8,
+            "search_files": 9
           }
         },
         {
@@ -714,15 +1047,15 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 4,
-          "median_tokens": 15235,
+          "median_steps": 5,
+          "median_tokens": 19994,
           "stops": {
             "final": 2
           },
           "tools": {
             "git_status": 2,
-            "read_file": 2,
-            "search_files": 4
+            "read_file": 4,
+            "search_files": 8
           }
         },
         {
@@ -734,14 +1067,14 @@
           "agreed": true,
           "tampered": 0,
           "median_steps": 4,
-          "median_tokens": 12638,
+          "median_tokens": 13553,
           "stops": {
             "final": 2
           },
           "tools": {
             "git_status": 2,
             "read_file": 1,
-            "search_files": 5
+            "search_files": 6
           }
         },
         {
@@ -752,14 +1085,14 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 5,
-          "median_tokens": 17870,
+          "median_steps": 7,
+          "median_tokens": 25211,
           "stops": {
             "final": 2
           },
           "tools": {
             "git_status": 2,
-            "read_file": 2,
+            "read_file": 7,
             "search_files": 7
           }
         },
@@ -771,14 +1104,16 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 4,
-          "median_tokens": 14149,
+          "median_steps": 8,
+          "median_tokens": 32104,
           "stops": {
             "final": 2
           },
           "tools": {
+            "git_log": 1,
             "git_status": 2,
-            "search_files": 5
+            "read_file": 8,
+            "search_files": 7
           }
         },
         {
@@ -789,15 +1124,15 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
-          "median_steps": 6,
-          "median_tokens": 21637,
+          "median_steps": 5,
+          "median_tokens": 16493,
           "stops": {
             "final": 2
           },
           "tools": {
             "git_status": 2,
-            "read_file": 3,
-            "search_files": 6
+            "read_file": 4,
+            "search_files": 4
           }
         }
       ],
@@ -809,7 +1144,7 @@
           "passes": 0,
           "runs": 12,
           "tokens_per_solved": 0,
-          "median_tokens": 15204
+          "median_tokens": 12088
         },
         {
           "tier": 2,
@@ -818,35 +1153,35 @@
           "passes": 0,
           "runs": 6,
           "tokens_per_solved": 0,
-          "median_tokens": 15235
+          "median_tokens": 19994
         },
         {
           "tier": 3,
-          "tasks": 3,
+          "tasks": 9,
           "solved": 0,
           "passes": 0,
-          "runs": 6,
+          "runs": 18,
           "tokens_per_solved": 0,
-          "median_tokens": 17870
+          "median_tokens": 28354
         }
       ],
       "solved": 0,
-      "task_count": 12,
+      "task_count": 18,
       "passes": 0,
-      "runs": 24,
+      "runs": 36,
       "agreement": 1,
-      "median_steps": 4,
-      "median_tokens": 13560,
+      "median_steps": 5,
+      "median_tokens": 17932,
       "tokens_per_solved": 0,
       "stops": {
         "error": 1,
-        "final": 23
+        "final": 34
       },
       "tools": {
-        "git_log": 2,
-        "git_status": 22,
-        "read_file": 35,
-        "search_files": 75
+        "git_log": 4,
+        "git_status": 35,
+        "read_file": 74,
+        "search_files": 137
       },
       "missing_records": 0
     }
@@ -859,13 +1194,220 @@
       "limited",
       "plan"
     ],
-    "detail": "build 12/12, limited 9/12, plan 0/12"
+    "detail": "build 18/18, limited 6/18, plan 0/18"
   },
   "gradient": {
     "complete": true,
     "exist": false,
-    "detail": "tier 1 6/6 (100%), tier 3 3/3 (100%)"
+    "detail": "tier 1 6/6 (100%), tier 3 9/9 (100%)"
   },
+  "headroom": {
+    "complete": true,
+    "met": false,
+    "solved": [
+      "average-compile",
+      "breadth-fixes",
+      "count-off-by-one",
+      "coupled-api",
+      "dedupe",
+      "duration-spec",
+      "expr-eval",
+      "merge-inversions",
+      "parse-seconds",
+      "reverse-words",
+      "rollback",
+      "roman",
+      "t2-inventory",
+      "t2-ledger",
+      "t2-report",
+      "t3-boundary",
+      "t3-cache",
+      "t3-extension"
+    ],
+    "detail": "no task defeated the default configuration (18 solved)"
+  },
+  "difficulty": [
+    {
+      "task": "expr-eval",
+      "declared_tier": 3,
+      "measured_band": "expensive",
+      "median_tokens": 465719,
+      "median_steps": 28,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "duration-spec",
+      "declared_tier": 3,
+      "measured_band": "expensive",
+      "median_tokens": 430429,
+      "median_steps": 22,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "coupled-api",
+      "declared_tier": 3,
+      "measured_band": "expensive",
+      "median_tokens": 314929,
+      "median_steps": 24,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "t2-inventory",
+      "declared_tier": 2,
+      "measured_band": "expensive",
+      "median_tokens": 161647,
+      "median_steps": 21,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "rollback",
+      "declared_tier": 3,
+      "measured_band": "expensive",
+      "median_tokens": 149342,
+      "median_steps": 17,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "t2-report",
+      "declared_tier": 2,
+      "measured_band": "expensive",
+      "median_tokens": 125961,
+      "median_steps": 18,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "breadth-fixes",
+      "declared_tier": 3,
+      "measured_band": "middle",
+      "median_tokens": 124313,
+      "median_steps": 15,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "average-compile",
+      "declared_tier": 1,
+      "measured_band": "middle",
+      "median_tokens": 82509,
+      "median_steps": 14,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "t2-ledger",
+      "declared_tier": 2,
+      "measured_band": "middle",
+      "median_tokens": 73454,
+      "median_steps": 11,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "t3-boundary",
+      "declared_tier": 3,
+      "measured_band": "middle",
+      "median_tokens": 55971,
+      "median_steps": 10,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "t3-extension",
+      "declared_tier": 3,
+      "measured_band": "middle",
+      "median_tokens": 42826,
+      "median_steps": 8,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "t3-cache",
+      "declared_tier": 3,
+      "measured_band": "middle",
+      "median_tokens": 32719,
+      "median_steps": 6,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "merge-inversions",
+      "declared_tier": 3,
+      "measured_band": "cheap",
+      "median_tokens": 32260,
+      "median_steps": 6,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "parse-seconds",
+      "declared_tier": 1,
+      "measured_band": "cheap",
+      "median_tokens": 24389,
+      "median_steps": 5,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "roman",
+      "declared_tier": 1,
+      "measured_band": "cheap",
+      "median_tokens": 22502,
+      "median_steps": 5,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "count-off-by-one",
+      "declared_tier": 1,
+      "measured_band": "cheap",
+      "median_tokens": 21981,
+      "median_steps": 5,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "dedupe",
+      "declared_tier": 1,
+      "measured_band": "cheap",
+      "median_tokens": 21946,
+      "median_steps": 5,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    },
+    {
+      "task": "reverse-words",
+      "declared_tier": 1,
+      "measured_band": "cheap",
+      "median_tokens": 21835,
+      "median_steps": 5,
+      "median_duration_ms": 0,
+      "solved": 2,
+      "tasks": 2
+    }
+  ],
   "results": [
     {
       "configuration": "build",
@@ -874,22 +1416,20 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 24184,
+      "wall_ms": 29792,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
-      "steps": 11,
-      "tokens": 59648,
+      "steps": 14,
+      "tokens": 82509,
       "tools": {
-        "bash": 9,
-        "edit": 1,
-        "read_file": 1,
-        "sandbox_allow": 1
+        "bash": 14,
+        "edit": 1
       },
-      "trajectory_run": "20261018T090657Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/average-compile/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/average-compile/rep0/work",
-      "log": "/tmp/dsh-254-run/build/average-compile/rep0/run.log"
+      "trajectory_run": "20261018T094816Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/average-compile/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/average-compile/rep0/work",
+      "log": "/tmp/dsh-256-run/build/average-compile/rep0/run.log"
     },
     {
       "configuration": "build",
@@ -898,20 +1438,63 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6301,
+      "wall_ms": 5974,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 5,
-      "tokens": 21756,
+      "tokens": 21775,
       "tools": {
         "bash": 4,
         "edit": 1
       },
-      "trajectory_run": "20261018T090721Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/average-compile/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/average-compile/rep1/work",
-      "log": "/tmp/dsh-254-run/build/average-compile/rep1/run.log"
+      "trajectory_run": "20261018T094846Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/average-compile/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/average-compile/rep1/work",
+      "log": "/tmp/dsh-256-run/build/average-compile/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "breadth-fixes",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 34392,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 15,
+      "tokens": 112867,
+      "tools": {
+        "bash": 13,
+        "sandbox_allow": 2
+      },
+      "trajectory_run": "20261018T094852Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/breadth-fixes/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/breadth-fixes/rep0/work",
+      "log": "/tmp/dsh-256-run/build/breadth-fixes/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "breadth-fixes",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 36002,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 14,
+      "tokens": 124313,
+      "tools": {
+        "bash": 14
+      },
+      "trajectory_run": "20261018T094927Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/breadth-fixes/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/breadth-fixes/rep1/work",
+      "log": "/tmp/dsh-256-run/build/breadth-fixes/rep1/run.log"
     },
     {
       "configuration": "build",
@@ -920,21 +1503,20 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6276,
+      "wall_ms": 5837,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 5,
-      "tokens": 22367,
+      "tokens": 21981,
       "tools": {
-        "bash": 3,
-        "edit": 1,
-        "read_file": 2
+        "bash": 4,
+        "edit": 1
       },
-      "trajectory_run": "20261018T090728Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/count-off-by-one/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/count-off-by-one/rep0/work",
-      "log": "/tmp/dsh-254-run/build/count-off-by-one/rep0/run.log"
+      "trajectory_run": "20261018T095003Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/count-off-by-one/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/count-off-by-one/rep0/work",
+      "log": "/tmp/dsh-256-run/build/count-off-by-one/rep0/run.log"
     },
     {
       "configuration": "build",
@@ -943,21 +1525,69 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 46710,
+      "wall_ms": 7222,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
-      "steps": 17,
-      "tokens": 133666,
+      "steps": 5,
+      "tokens": 21719,
+      "tools": {
+        "bash": 4,
+        "edit": 1
+      },
+      "trajectory_run": "20261018T095010Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/count-off-by-one/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/count-off-by-one/rep1/work",
+      "log": "/tmp/dsh-256-run/build/count-off-by-one/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "coupled-api",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 58848,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 24,
+      "tokens": 314929,
+      "tools": {
+        "bash": 23,
+        "edit": 1,
+        "read_file": 3,
+        "sandbox_allow": 1,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095017Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/coupled-api/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/coupled-api/rep0/work",
+      "log": "/tmp/dsh-256-run/build/coupled-api/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "coupled-api",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 39511,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 18,
+      "tokens": 157576,
       "tools": {
         "bash": 15,
         "edit": 1,
-        "sandbox_allow": 1
+        "read_file": 2,
+        "sandbox_allow": 2
       },
-      "trajectory_run": "20261018T090735Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/count-off-by-one/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/count-off-by-one/rep1/work",
-      "log": "/tmp/dsh-254-run/build/count-off-by-one/rep1/run.log"
+      "trajectory_run": "20261018T095117Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/coupled-api/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/coupled-api/rep1/work",
+      "log": "/tmp/dsh-256-run/build/coupled-api/rep1/run.log"
     },
     {
       "configuration": "build",
@@ -966,20 +1596,20 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6889,
+      "wall_ms": 6420,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 5,
-      "tokens": 21949,
+      "tokens": 21946,
       "tools": {
         "bash": 4,
         "write_file": 1
       },
-      "trajectory_run": "20261018T090822Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/dedupe/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/dedupe/rep0/work",
-      "log": "/tmp/dsh-254-run/build/dedupe/rep0/run.log"
+      "trajectory_run": "20261018T095157Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/dedupe/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/dedupe/rep0/work",
+      "log": "/tmp/dsh-256-run/build/dedupe/rep0/run.log"
     },
     {
       "configuration": "build",
@@ -988,224 +1618,410 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6592,
+      "wall_ms": 6424,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 5,
-      "tokens": 21912,
+      "tokens": 21897,
       "tools": {
         "bash": 4,
         "write_file": 1
       },
-      "trajectory_run": "20261018T090829Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/dedupe/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/dedupe/rep1/work",
-      "log": "/tmp/dsh-254-run/build/dedupe/rep1/run.log"
+      "trajectory_run": "20261018T095203Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/dedupe/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/dedupe/rep1/work",
+      "log": "/tmp/dsh-256-run/build/dedupe/rep1/run.log"
     },
     {
       "configuration": "build",
-      "task": "parse-seconds",
+      "task": "duration-spec",
       "rep": 0,
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6644,
+      "wall_ms": 80904,
       "model": "deepseek-flash",
-      "tier": 1,
+      "tier": 3,
       "stop": "final",
-      "steps": 5,
-      "tokens": 23262,
-      "tools": {
-        "bash": 3,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T090836Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/parse-seconds/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/parse-seconds/rep0/work",
-      "log": "/tmp/dsh-254-run/build/parse-seconds/rep0/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "parse-seconds",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 9400,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 6,
-      "tokens": 29484,
-      "tools": {
-        "bash": 5,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T090844Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/parse-seconds/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/parse-seconds/rep1/work",
-      "log": "/tmp/dsh-254-run/build/parse-seconds/rep1/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "reverse-words",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 6903,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 22009,
-      "tools": {
-        "bash": 3,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T090853Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/reverse-words/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/reverse-words/rep0/work",
-      "log": "/tmp/dsh-254-run/build/reverse-words/rep0/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "reverse-words",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 7664,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 22128,
-      "tools": {
-        "bash": 3,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T090901Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/reverse-words/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/reverse-words/rep1/work",
-      "log": "/tmp/dsh-254-run/build/reverse-words/rep1/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "roman",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 7531,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 6,
-      "tokens": 27290,
-      "tools": {
-        "bash": 4,
-        "edit": 1,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T090909Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/roman/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/roman/rep0/work",
-      "log": "/tmp/dsh-254-run/build/roman/rep0/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "roman",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 5859,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 22444,
-      "tools": {
-        "bash": 4,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T090917Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/roman/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/roman/rep1/work",
-      "log": "/tmp/dsh-254-run/build/roman/rep1/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "t2-inventory",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 25716,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "blocked",
       "steps": 14,
-      "tokens": 86307,
+      "tokens": 142763,
       "tools": {
-        "bash": 13,
+        "bash": 12,
+        "read_file": 1,
         "write_file": 1
       },
-      "trajectory_run": "20261018T090923Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t2-inventory/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/t2-inventory/rep0/work",
-      "log": "/tmp/dsh-254-run/build/t2-inventory/rep0/run.log"
+      "trajectory_run": "20261018T095210Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/duration-spec/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/duration-spec/rep0/work",
+      "log": "/tmp/dsh-256-run/build/duration-spec/rep0/run.log"
     },
     {
       "configuration": "build",
-      "task": "t2-inventory",
+      "task": "duration-spec",
       "rep": 1,
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 43905,
+      "wall_ms": 68963,
       "model": "deepseek-flash",
-      "tier": 2,
+      "tier": 3,
       "stop": "final",
       "steps": 22,
-      "tokens": 164207,
+      "tokens": 430429,
+      "tools": {
+        "bash": 22,
+        "read_file": 2,
+        "write_file": 2
+      },
+      "trajectory_run": "20261018T095332Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/duration-spec/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/duration-spec/rep1/work",
+      "log": "/tmp/dsh-256-run/build/duration-spec/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "expr-eval",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 152727,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 28,
+      "tokens": 465719,
+      "tools": {
+        "bash": 25,
+        "read_file": 2,
+        "sandbox_allow": 3,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095441Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/expr-eval/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/expr-eval/rep0/work",
+      "log": "/tmp/dsh-256-run/build/expr-eval/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "expr-eval",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 58095,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 16,
+      "tokens": 181971,
+      "tools": {
+        "bash": 15,
+        "write_file": 2
+      },
+      "trajectory_run": "20261018T095714Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/expr-eval/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/expr-eval/rep1/work",
+      "log": "/tmp/dsh-256-run/build/expr-eval/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "merge-inversions",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 8586,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 24161,
+      "tools": {
+        "bash": 4,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095813Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/merge-inversions/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/merge-inversions/rep0/work",
+      "log": "/tmp/dsh-256-run/build/merge-inversions/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "merge-inversions",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 11286,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "blocked",
+      "steps": 6,
+      "tokens": 32260,
+      "tools": {
+        "bash": 4,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095822Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/merge-inversions/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/merge-inversions/rep1/work",
+      "log": "/tmp/dsh-256-run/build/merge-inversions/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "parse-seconds",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 6937,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 23242,
+      "tools": {
+        "bash": 3,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095834Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/parse-seconds/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/parse-seconds/rep0/work",
+      "log": "/tmp/dsh-256-run/build/parse-seconds/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "parse-seconds",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 8810,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 24389,
+      "tools": {
+        "bash": 3,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095841Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/parse-seconds/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/parse-seconds/rep1/work",
+      "log": "/tmp/dsh-256-run/build/parse-seconds/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "reverse-words",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 6048,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 21835,
+      "tools": {
+        "bash": 4,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095850Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/reverse-words/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/reverse-words/rep0/work",
+      "log": "/tmp/dsh-256-run/build/reverse-words/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "reverse-words",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 6170,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 21581,
+      "tools": {
+        "bash": 4,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095857Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/reverse-words/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/reverse-words/rep1/work",
+      "log": "/tmp/dsh-256-run/build/reverse-words/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "rollback",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 38580,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 12,
+      "tokens": 149342,
+      "tools": {
+        "bash": 15,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T095903Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/rollback/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/rollback/rep0/work",
+      "log": "/tmp/dsh-256-run/build/rollback/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "rollback",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 44191,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 17,
+      "tokens": 145168,
+      "tools": {
+        "bash": 18,
+        "edit": 1,
+        "read_file": 3,
+        "sandbox_allow": 1
+      },
+      "trajectory_run": "20261018T095942Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/rollback/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/rollback/rep1/work",
+      "log": "/tmp/dsh-256-run/build/rollback/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "roman",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7228,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 22478,
+      "tools": {
+        "bash": 3,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100027Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/roman/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/roman/rep0/work",
+      "log": "/tmp/dsh-256-run/build/roman/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "roman",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7356,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 22502,
+      "tools": {
+        "bash": 3,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100035Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/roman/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/roman/rep1/work",
+      "log": "/tmp/dsh-256-run/build/roman/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "t2-inventory",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 42530,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "final",
+      "steps": 21,
+      "tokens": 161647,
       "tools": {
         "bash": 19,
         "edit": 1,
         "sandbox_allow": 2
       },
-      "trajectory_run": "20261018T090949Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t2-inventory/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/t2-inventory/rep1/work",
-      "log": "/tmp/dsh-254-run/build/t2-inventory/rep1/run.log"
+      "trajectory_run": "20261018T100042Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t2-inventory/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/t2-inventory/rep0/work",
+      "log": "/tmp/dsh-256-run/build/t2-inventory/rep0/run.log"
     },
     {
       "configuration": "build",
-      "task": "t2-ledger",
-      "rep": 0,
+      "task": "t2-inventory",
+      "rep": 1,
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 18594,
+      "wall_ms": 28484,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
-      "steps": 9,
-      "tokens": 55209,
+      "steps": 12,
+      "tokens": 80049,
       "tools": {
-        "bash": 7,
-        "edit": 1,
+        "bash": 13,
+        "read_file": 3,
         "write_file": 1
       },
-      "trajectory_run": "20261018T091034Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t2-ledger/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/t2-ledger/rep0/work",
-      "log": "/tmp/dsh-254-run/build/t2-ledger/rep0/run.log"
+      "trajectory_run": "20261018T100125Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t2-inventory/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/t2-inventory/rep1/work",
+      "log": "/tmp/dsh-256-run/build/t2-inventory/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "t2-ledger",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 9865,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "final",
+      "steps": 6,
+      "tokens": 33616,
+      "tools": {
+        "bash": 4,
+        "edit": 1,
+        "read_file": 3,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100154Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t2-ledger/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/t2-ledger/rep0/work",
+      "log": "/tmp/dsh-256-run/build/t2-ledger/rep0/run.log"
     },
     {
       "configuration": "build",
@@ -1214,20 +2030,22 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 19359,
+      "wall_ms": 29848,
       "model": "deepseek-flash",
       "tier": 2,
-      "stop": "blocked",
+      "stop": "final",
       "steps": 11,
-      "tokens": 66664,
+      "tokens": 73454,
       "tools": {
-        "bash": 9,
-        "edit": 2
+        "bash": 8,
+        "edit": 1,
+        "read_file": 3,
+        "write_file": 1
       },
-      "trajectory_run": "20261018T091053Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t2-ledger/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/t2-ledger/rep1/work",
-      "log": "/tmp/dsh-254-run/build/t2-ledger/rep1/run.log"
+      "trajectory_run": "20261018T100205Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t2-ledger/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/t2-ledger/rep1/work",
+      "log": "/tmp/dsh-256-run/build/t2-ledger/rep1/run.log"
     },
     {
       "configuration": "build",
@@ -1236,20 +2054,19 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6426,
+      "wall_ms": 7228,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
-      "steps": 5,
-      "tokens": 23270,
+      "steps": 4,
+      "tokens": 18440,
       "tools": {
-        "bash": 4,
-        "write_file": 2
+        "bash": 4
       },
-      "trajectory_run": "20261018T091113Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t2-report/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/t2-report/rep0/work",
-      "log": "/tmp/dsh-254-run/build/t2-report/rep0/run.log"
+      "trajectory_run": "20261018T100235Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t2-report/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/t2-report/rep0/work",
+      "log": "/tmp/dsh-256-run/build/t2-report/rep0/run.log"
     },
     {
       "configuration": "build",
@@ -1258,19 +2075,22 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 22465,
+      "wall_ms": 35868,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
-      "steps": 11,
-      "tokens": 66972,
+      "steps": 18,
+      "tokens": 125961,
       "tools": {
-        "bash": 11
+        "bash": 15,
+        "edit": 2,
+        "read_file": 3,
+        "sandbox_allow": 1
       },
-      "trajectory_run": "20261018T091119Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t2-report/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/t2-report/rep1/work",
-      "log": "/tmp/dsh-254-run/build/t2-report/rep1/run.log"
+      "trajectory_run": "20261018T100243Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t2-report/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/t2-report/rep1/work",
+      "log": "/tmp/dsh-256-run/build/t2-report/rep1/run.log"
     },
     {
       "configuration": "build",
@@ -1279,87 +2099,86 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 7169,
+      "wall_ms": 16394,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 10,
+      "tokens": 55971,
+      "tools": {
+        "bash": 10,
+        "edit": 1
+      },
+      "trajectory_run": "20261018T100319Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t3-boundary/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/t3-boundary/rep0/work",
+      "log": "/tmp/dsh-256-run/build/t3-boundary/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "t3-boundary",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 6849,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "final",
       "steps": 6,
-      "tokens": 30054,
+      "tokens": 27367,
+      "tools": {
+        "bash": 4,
+        "edit": 1
+      },
+      "trajectory_run": "20261018T100336Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t3-boundary/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/t3-boundary/rep1/work",
+      "log": "/tmp/dsh-256-run/build/t3-boundary/rep1/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "t3-cache",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 9576,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 26009,
+      "tools": {
+        "bash": 4,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100343Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t3-cache/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/t3-cache/rep0/work",
+      "log": "/tmp/dsh-256-run/build/t3-cache/rep0/run.log"
+    },
+    {
+      "configuration": "build",
+      "task": "t3-cache",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 12729,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 6,
+      "tokens": 32719,
       "tools": {
         "bash": 5,
-        "edit": 1,
-        "read_file": 3
-      },
-      "trajectory_run": "20261018T091142Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t3-boundary/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/t3-boundary/rep0/work",
-      "log": "/tmp/dsh-254-run/build/t3-boundary/rep0/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "t3-boundary",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 6915,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 23483,
-      "tools": {
-        "bash": 4,
-        "edit": 1
-      },
-      "trajectory_run": "20261018T091150Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t3-boundary/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/t3-boundary/rep1/work",
-      "log": "/tmp/dsh-254-run/build/t3-boundary/rep1/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "t3-cache",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 10048,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 27033,
-      "tools": {
-        "bash": 4,
         "write_file": 1
       },
-      "trajectory_run": "20261018T091157Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t3-cache/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/t3-cache/rep0/work",
-      "log": "/tmp/dsh-254-run/build/t3-cache/rep0/run.log"
-    },
-    {
-      "configuration": "build",
-      "task": "t3-cache",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 20140,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "blocked",
-      "steps": 7,
-      "tokens": 41539,
-      "tools": {
-        "bash": 7,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091208Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t3-cache/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/t3-cache/rep1/work",
-      "log": "/tmp/dsh-254-run/build/t3-cache/rep1/run.log"
+      "trajectory_run": "20261018T100353Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t3-cache/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/t3-cache/rep1/work",
+      "log": "/tmp/dsh-256-run/build/t3-cache/rep1/run.log"
     },
     {
       "configuration": "build",
@@ -1368,20 +2187,20 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6405,
+      "wall_ms": 7569,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "final",
-      "steps": 5,
-      "tokens": 21731,
+      "steps": 6,
+      "tokens": 27883,
       "tools": {
-        "bash": 4,
-        "write_file": 1
+        "bash": 5,
+        "edit": 1
       },
-      "trajectory_run": "20261018T091228Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t3-extension/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/build/t3-extension/rep0/work",
-      "log": "/tmp/dsh-254-run/build/t3-extension/rep0/run.log"
+      "trajectory_run": "20261018T100406Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t3-extension/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/build/t3-extension/rep0/work",
+      "log": "/tmp/dsh-256-run/build/t3-extension/rep0/run.log"
     },
     {
       "configuration": "build",
@@ -1390,20 +2209,20 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 5399,
+      "wall_ms": 21257,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "final",
-      "steps": 5,
-      "tokens": 22712,
+      "steps": 8,
+      "tokens": 42826,
       "tools": {
-        "bash": 4,
+        "bash": 9,
         "write_file": 1
       },
-      "trajectory_run": "20261018T091235Z-r1",
-      "record_dir": "/tmp/dsh-254-run/build/t3-extension/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/build/t3-extension/rep1/work",
-      "log": "/tmp/dsh-254-run/build/t3-extension/rep1/run.log"
+      "trajectory_run": "20261018T100414Z-r1",
+      "record_dir": "/tmp/dsh-256-run/build/t3-extension/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/build/t3-extension/rep1/work",
+      "log": "/tmp/dsh-256-run/build/t3-extension/rep1/run.log"
     },
     {
       "configuration": "limited",
@@ -1412,93 +2231,25 @@
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 2466,
+      "wall_ms": 3528,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "budget",
       "steps": 3,
-      "tokens": 12361,
+      "tokens": 12431,
       "tools": {
         "bash": 3,
         "edit": 1
       },
-      "trajectory_run": "20261018T091241Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/average-compile/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/average-compile/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/average-compile/rep0/run.log"
+      "trajectory_run": "20261018T100436Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/average-compile/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/average-compile/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/average-compile/rep0/run.log"
     },
     {
       "configuration": "limited",
       "task": "average-compile",
       "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3021,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12352,
-      "tools": {
-        "bash": 3,
-        "edit": 1
-      },
-      "trajectory_run": "20261018T091244Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/average-compile/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/average-compile/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/average-compile/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "count-off-by-one",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3805,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12603,
-      "tools": {
-        "bash": 2,
-        "edit": 1,
-        "read_file": 2
-      },
-      "trajectory_run": "20261018T091248Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/count-off-by-one/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/count-off-by-one/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/count-off-by-one/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "count-off-by-one",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3451,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12610,
-      "tools": {
-        "bash": 2,
-        "edit": 1,
-        "read_file": 2
-      },
-      "trajectory_run": "20261018T091252Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/count-off-by-one/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/count-off-by-one/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/count-off-by-one/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "dedupe",
-      "rep": 0,
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
@@ -1507,434 +2258,755 @@
       "tier": 1,
       "stop": "budget",
       "steps": 3,
-      "tokens": 12597,
-      "tools": {
-        "bash": 2,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091256Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/dedupe/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/dedupe/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/dedupe/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "dedupe",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4086,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13012,
+      "tokens": 12557,
       "tools": {
         "bash": 3,
         "edit": 1,
         "read_file": 2
       },
-      "trajectory_run": "20261018T091300Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/dedupe/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/dedupe/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/dedupe/rep1/run.log"
+      "trajectory_run": "20261018T100440Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/average-compile/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/average-compile/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/average-compile/rep1/run.log"
     },
     {
       "configuration": "limited",
-      "task": "parse-seconds",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4111,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13007,
-      "tools": {
-        "bash": 2,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091305Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/parse-seconds/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/parse-seconds/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/parse-seconds/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "parse-seconds",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4431,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12829,
-      "tools": {
-        "bash": 3,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091309Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/parse-seconds/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/parse-seconds/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/parse-seconds/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "reverse-words",
+      "task": "breadth-fixes",
       "rep": 0,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 3790,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12383,
-      "tools": {
-        "bash": 3,
-        "read_file": 2
-      },
-      "trajectory_run": "20261018T091314Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/reverse-words/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/reverse-words/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/reverse-words/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "reverse-words",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3157,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12533,
-      "tools": {
-        "bash": 2,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091318Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/reverse-words/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/reverse-words/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/reverse-words/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "roman",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4071,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12809,
-      "tools": {
-        "bash": 2,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091322Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/roman/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/roman/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/roman/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "roman",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3839,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12744,
-      "tools": {
-        "bash": 2,
-        "read_file": 2,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091327Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/roman/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/roman/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/roman/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t2-inventory",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4238,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13081,
-      "tools": {
-        "bash": 4
-      },
-      "trajectory_run": "20261018T091331Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t2-inventory/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t2-inventory/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/t2-inventory/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t2-inventory",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4242,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13070,
-      "tools": {
-        "bash": 3,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091336Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t2-inventory/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t2-inventory/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/t2-inventory/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t2-ledger",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3985,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13176,
-      "tools": {
-        "bash": 4
-      },
-      "trajectory_run": "20261018T091340Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t2-ledger/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t2-ledger/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/t2-ledger/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t2-ledger",
-      "rep": 1,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3552,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 12995,
-      "tools": {
-        "bash": 3
-      },
-      "trajectory_run": "20261018T091345Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t2-ledger/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t2-ledger/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/t2-ledger/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t2-report",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4847,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13066,
-      "tools": {
-        "bash": 4
-      },
-      "trajectory_run": "20261018T091349Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t2-report/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t2-report/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/t2-report/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t2-report",
-      "rep": 1,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 4872,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 13078,
-      "tools": {
-        "bash": 4
-      },
-      "trajectory_run": "20261018T091354Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t2-report/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t2-report/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/t2-report/rep1/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t3-boundary",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3129,
+      "wall_ms": 3516,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "budget",
       "steps": 3,
-      "tokens": 13107,
+      "tokens": 13492,
       "tools": {
-        "bash": 2,
-        "edit": 1,
-        "read_file": 3
+        "bash": 4
       },
-      "trajectory_run": "20261018T091359Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t3-boundary/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t3-boundary/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/t3-boundary/rep0/run.log"
+      "trajectory_run": "20261018T100444Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/breadth-fixes/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/breadth-fixes/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/breadth-fixes/rep0/run.log"
     },
     {
       "configuration": "limited",
-      "task": "t3-boundary",
+      "task": "breadth-fixes",
       "rep": 1,
-      "pass": true,
+      "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 3346,
+      "wall_ms": 6007,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "budget",
       "steps": 3,
-      "tokens": 12703,
+      "tokens": 14348,
+      "tools": {
+        "bash": 5
+      },
+      "trajectory_run": "20261018T100448Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/breadth-fixes/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/breadth-fixes/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/breadth-fixes/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "count-off-by-one",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4044,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12491,
       "tools": {
         "bash": 3,
         "edit": 1
       },
-      "trajectory_run": "20261018T091403Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t3-boundary/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t3-boundary/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/t3-boundary/rep1/run.log"
+      "trajectory_run": "20261018T100455Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/count-off-by-one/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/count-off-by-one/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/count-off-by-one/rep0/run.log"
     },
     {
       "configuration": "limited",
-      "task": "t3-cache",
-      "rep": 0,
-      "pass": true,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 6926,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "budget",
-      "steps": 3,
-      "tokens": 14309,
-      "tools": {
-        "bash": 4,
-        "write_file": 1
-      },
-      "trajectory_run": "20261018T091407Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t3-cache/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t3-cache/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/t3-cache/rep0/run.log"
-    },
-    {
-      "configuration": "limited",
-      "task": "t3-cache",
+      "task": "count-off-by-one",
       "rep": 1,
       "pass": true,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6486,
+      "wall_ms": 4187,
       "model": "deepseek-flash",
-      "tier": 3,
+      "tier": 1,
       "stop": "budget",
       "steps": 3,
-      "tokens": 14295,
+      "tokens": 12606,
       "tools": {
-        "bash": 3,
-        "write_file": 1
+        "bash": 2,
+        "edit": 1,
+        "read_file": 2
       },
-      "trajectory_run": "20261018T091414Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t3-cache/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t3-cache/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/t3-cache/rep1/run.log"
+      "trajectory_run": "20261018T100459Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/count-off-by-one/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/count-off-by-one/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/count-off-by-one/rep1/run.log"
     },
     {
       "configuration": "limited",
-      "task": "t3-extension",
+      "task": "coupled-api",
       "rep": 0,
-      "pass": true,
+      "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 3775,
+      "wall_ms": 4244,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "budget",
       "steps": 3,
-      "tokens": 12608,
+      "tokens": 13519,
+      "tools": {
+        "bash": 3,
+        "read_file": 2
+      },
+      "trajectory_run": "20261018T100504Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/coupled-api/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/coupled-api/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/coupled-api/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "coupled-api",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3781,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13673,
+      "tools": {
+        "bash": 3,
+        "read_file": 2
+      },
+      "trajectory_run": "20261018T100509Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/coupled-api/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/coupled-api/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/coupled-api/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "dedupe",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3523,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12382,
       "tools": {
         "bash": 4
       },
-      "trajectory_run": "20261018T091421Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t3-extension/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t3-extension/rep0/work",
-      "log": "/tmp/dsh-254-run/limited/t3-extension/rep0/run.log"
+      "trajectory_run": "20261018T100513Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/dedupe/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/dedupe/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/dedupe/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "dedupe",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3518,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12600,
+      "tools": {
+        "bash": 2,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100517Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/dedupe/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/dedupe/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/dedupe/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "duration-spec",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 34153,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13048,
+      "tools": {
+        "bash": 5
+      },
+      "trajectory_run": "20261018T100521Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/duration-spec/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/duration-spec/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/duration-spec/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "duration-spec",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4121,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13115,
+      "tools": {
+        "bash": 5,
+        "read_file": 2
+      },
+      "trajectory_run": "20261018T100556Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/duration-spec/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/duration-spec/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/duration-spec/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "expr-eval",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3653,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13502,
+      "tools": {
+        "bash": 3,
+        "read_file": 2
+      },
+      "trajectory_run": "20261018T100601Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/expr-eval/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/expr-eval/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/expr-eval/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "expr-eval",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 2884,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12680,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100605Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/expr-eval/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/expr-eval/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/expr-eval/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "merge-inversions",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4275,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13261,
+      "tools": {
+        "bash": 3,
+        "read_file": 2
+      },
+      "trajectory_run": "20261018T100608Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/merge-inversions/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/merge-inversions/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/merge-inversions/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "merge-inversions",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4677,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13611,
+      "tools": {
+        "bash": 3,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100618Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/merge-inversions/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/merge-inversions/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/merge-inversions/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "parse-seconds",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4696,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12646,
+      "tools": {
+        "bash": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100623Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/parse-seconds/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/parse-seconds/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/parse-seconds/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "parse-seconds",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4694,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13118,
+      "tools": {
+        "bash": 3,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100628Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/parse-seconds/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/parse-seconds/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/parse-seconds/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "reverse-words",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3755,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12421,
+      "tools": {
+        "bash": 3,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100634Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/reverse-words/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/reverse-words/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/reverse-words/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "reverse-words",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 2599,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12275,
+      "tools": {
+        "bash": 3,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100638Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/reverse-words/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/reverse-words/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/reverse-words/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "rollback",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 2571,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12741,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100641Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/rollback/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/rollback/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/rollback/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "rollback",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3213,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13214,
+      "tools": {
+        "bash": 4,
+        "read_file": 2
+      },
+      "trajectory_run": "20261018T100644Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/rollback/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/rollback/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/rollback/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "roman",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4173,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12913,
+      "tools": {
+        "bash": 2,
+        "read_file": 2,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100648Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/roman/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/roman/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/roman/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "roman",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4521,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12749,
+      "tools": {
+        "bash": 3,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100653Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/roman/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/roman/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/roman/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t2-inventory",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4634,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12987,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100658Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t2-inventory/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t2-inventory/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/t2-inventory/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t2-inventory",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 5120,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13218,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100703Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t2-inventory/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t2-inventory/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/t2-inventory/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t2-ledger",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 5728,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13914,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100709Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t2-ledger/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t2-ledger/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/t2-ledger/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t2-ledger",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3275,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13157,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100715Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t2-ledger/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t2-ledger/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/t2-ledger/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t2-report",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 5511,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13017,
+      "tools": {
+        "bash": 5
+      },
+      "trajectory_run": "20261018T100719Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t2-report/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t2-report/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/t2-report/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t2-report",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 5215,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12973,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100725Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t2-report/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t2-report/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/t2-report/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t3-boundary",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 2835,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12711,
+      "tools": {
+        "bash": 2,
+        "edit": 1
+      },
+      "trajectory_run": "20261018T100730Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t3-boundary/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t3-boundary/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/t3-boundary/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t3-boundary",
+      "rep": 1,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 3972,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12952,
+      "tools": {
+        "bash": 3,
+        "edit": 1
+      },
+      "trajectory_run": "20261018T100734Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t3-boundary/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t3-boundary/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/t3-boundary/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t3-cache",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7118,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 14664,
+      "tools": {
+        "bash": 2,
+        "read_file": 3,
+        "write_file": 1
+      },
+      "trajectory_run": "20261018T100738Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t3-cache/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t3-cache/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/t3-cache/rep0/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t3-cache",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7654,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 13587,
+      "tools": {
+        "bash": 5
+      },
+      "trajectory_run": "20261018T100746Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t3-cache/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t3-cache/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/t3-cache/rep1/run.log"
+    },
+    {
+      "configuration": "limited",
+      "task": "t3-extension",
+      "rep": 0,
+      "pass": true,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 4050,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "budget",
+      "steps": 3,
+      "tokens": 12735,
+      "tools": {
+        "bash": 4
+      },
+      "trajectory_run": "20261018T100754Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t3-extension/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t3-extension/rep0/work",
+      "log": "/tmp/dsh-256-run/limited/t3-extension/rep0/run.log"
     },
     {
       "configuration": "limited",
       "task": "t3-extension",
       "rep": 1,
-      "pass": true,
+      "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 3625,
+      "wall_ms": 2573,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "budget",
       "steps": 3,
-      "tokens": 12751,
+      "tokens": 12446,
       "tools": {
-        "bash": 3,
-        "write_file": 1
+        "bash": 4
       },
-      "trajectory_run": "20261018T091425Z-r1",
-      "record_dir": "/tmp/dsh-254-run/limited/t3-extension/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/limited/t3-extension/rep1/work",
-      "log": "/tmp/dsh-254-run/limited/t3-extension/rep1/run.log"
+      "trajectory_run": "20261018T100758Z-r1",
+      "record_dir": "/tmp/dsh-256-run/limited/t3-extension/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/limited/t3-extension/rep1/work",
+      "log": "/tmp/dsh-256-run/limited/t3-extension/rep1/run.log"
     },
     {
       "configuration": "plan",
@@ -1943,67 +3015,112 @@
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 8119,
+      "wall_ms": 5241,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
+      "steps": 3,
+      "tokens": 8440,
+      "tools": {
+        "git_status": 1,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T100801Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/average-compile/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/average-compile/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/average-compile/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "average-compile",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 5299,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 3,
+      "tokens": 8329,
+      "tools": {
+        "git_status": 1,
+        "read_file": 1,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T100806Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/average-compile/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/average-compile/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/average-compile/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "breadth-fixes",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 1,
+      "wall_ms": 27324,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "error",
+      "steps": 6,
+      "tokens": 22806,
+      "tools": {
+        "git_status": 1,
+        "read_file": 2,
+        "search_files": 6
+      },
+      "trajectory_run": "20261018T100812Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/breadth-fixes/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/breadth-fixes/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/breadth-fixes/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "breadth-fixes",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 28710,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
       "steps": 5,
-      "tokens": 14285,
+      "tokens": 31341,
       "tools": {
         "git_status": 1,
         "read_file": 2,
         "search_files": 4
       },
-      "trajectory_run": "20261018T091430Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/average-compile/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/average-compile/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/average-compile/rep0/run.log"
+      "trajectory_run": "20261018T100840Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/breadth-fixes/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/breadth-fixes/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/breadth-fixes/rep1/run.log"
     },
     {
       "configuration": "plan",
-      "task": "average-compile",
-      "rep": 1,
+      "task": "count-off-by-one",
+      "rep": 0,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 8926,
+      "wall_ms": 9727,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 6,
-      "tokens": 17931,
+      "tokens": 18573,
       "tools": {
         "git_status": 1,
         "read_file": 3,
-        "search_files": 3
+        "search_files": 5
       },
-      "trajectory_run": "20261018T091438Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/average-compile/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/average-compile/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/average-compile/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "count-off-by-one",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 8806,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 4,
-      "tokens": 11914,
-      "tools": {
-        "git_status": 1,
-        "read_file": 1,
-        "search_files": 4
-      },
-      "trajectory_run": "20261018T091447Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/count-off-by-one/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/count-off-by-one/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/count-off-by-one/rep0/run.log"
+      "trajectory_run": "20261018T100909Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/count-off-by-one/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/count-off-by-one/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/count-off-by-one/rep0/run.log"
     },
     {
       "configuration": "plan",
@@ -2012,45 +3129,91 @@
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 8920,
+      "wall_ms": 11111,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
-      "steps": 5,
-      "tokens": 15239,
-      "tools": {
-        "git_status": 1,
-        "read_file": 3,
-        "search_files": 4
-      },
-      "trajectory_run": "20261018T091456Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/count-off-by-one/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/count-off-by-one/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/count-off-by-one/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "dedupe",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 8569,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 4,
-      "tokens": 11328,
+      "steps": 7,
+      "tokens": 21271,
       "tools": {
         "git_log": 1,
         "git_status": 1,
         "read_file": 3,
+        "search_files": 3
+      },
+      "trajectory_run": "20261018T100919Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/count-off-by-one/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/count-off-by-one/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/count-off-by-one/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "coupled-api",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 21410,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 4,
+      "tokens": 19163,
+      "tools": {
+        "git_status": 1,
+        "read_file": 1,
+        "search_files": 4
+      },
+      "trajectory_run": "20261018T100931Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/coupled-api/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/coupled-api/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/coupled-api/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "coupled-api",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 2,
+      "wall_ms": 24065,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "steps": 0,
+      "tokens": 0,
+      "tools": {
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 10
+      },
+      "trajectory_run": "20261018T100953Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/coupled-api/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/coupled-api/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/coupled-api/rep1/run.log",
+      "note": "the run left no run.end"
+    },
+    {
+      "configuration": "plan",
+      "task": "dedupe",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 8491,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 4,
+      "tokens": 11861,
+      "tools": {
+        "git_status": 1,
+        "read_file": 4,
         "search_files": 2
       },
-      "trajectory_run": "20261018T091506Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/dedupe/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/dedupe/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/dedupe/rep0/run.log"
+      "trajectory_run": "20261018T101018Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/dedupe/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/dedupe/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/dedupe/rep0/run.log"
     },
     {
       "configuration": "plan",
@@ -2059,133 +3222,316 @@
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 6912,
+      "wall_ms": 9542,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 4,
-      "tokens": 11969,
+      "tokens": 12088,
       "tools": {
         "git_status": 1,
         "read_file": 1,
-        "search_files": 2
+        "search_files": 4
       },
-      "trajectory_run": "20261018T091515Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/dedupe/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/dedupe/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/dedupe/rep1/run.log"
+      "trajectory_run": "20261018T101027Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/dedupe/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/dedupe/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/dedupe/rep1/run.log"
     },
     {
       "configuration": "plan",
-      "task": "parse-seconds",
+      "task": "duration-spec",
       "rep": 0,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 9463,
+      "wall_ms": 23637,
       "model": "deepseek-flash",
-      "tier": 1,
+      "tier": 3,
       "stop": "final",
-      "steps": 4,
-      "tokens": 11591,
+      "steps": 5,
+      "tokens": 28354,
       "tools": {
-        "read_file": 2,
-        "search_files": 2
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 5
       },
-      "trajectory_run": "20261018T091522Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/parse-seconds/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/parse-seconds/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/parse-seconds/rep0/run.log"
+      "trajectory_run": "20261018T101037Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/duration-spec/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/duration-spec/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/duration-spec/rep0/run.log"
     },
     {
       "configuration": "plan",
-      "task": "parse-seconds",
+      "task": "duration-spec",
       "rep": 1,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 8382,
+      "wall_ms": 25505,
       "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 4,
-      "tokens": 11904,
-      "tools": {
-        "git_status": 1,
-        "read_file": 2,
-        "search_files": 2
-      },
-      "trajectory_run": "20261018T091532Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/parse-seconds/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/parse-seconds/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/parse-seconds/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "reverse-words",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 7617,
-      "model": "deepseek-flash",
-      "tier": 1,
+      "tier": 3,
       "stop": "final",
       "steps": 5,
-      "tokens": 13560,
+      "tokens": 21723,
       "tools": {
-        "git_status": 1,
         "read_file": 2,
         "search_files": 4
       },
-      "trajectory_run": "20261018T091541Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/reverse-words/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/reverse-words/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/reverse-words/rep0/run.log"
+      "trajectory_run": "20261018T101101Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/duration-spec/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/duration-spec/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/duration-spec/rep1/run.log"
     },
     {
       "configuration": "plan",
-      "task": "reverse-words",
-      "rep": 1,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 3587,
-      "model": "deepseek-flash",
-      "tier": 1,
-      "stop": "final",
-      "steps": 2,
-      "tokens": 5112,
-      "tools": {
-        "search_files": 2
-      },
-      "trajectory_run": "20261018T091549Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/reverse-words/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/reverse-words/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/reverse-words/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "roman",
+      "task": "expr-eval",
       "rep": 0,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 10689,
+      "wall_ms": 25479,
       "model": "deepseek-flash",
-      "tier": 1,
+      "tier": 3,
       "stop": "final",
-      "steps": 5,
-      "tokens": 15204,
+      "steps": 6,
+      "tokens": 23099,
       "tools": {
         "git_status": 1,
         "read_file": 2,
         "search_files": 5
       },
-      "trajectory_run": "20261018T091553Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/roman/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/roman/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/roman/rep0/run.log"
+      "trajectory_run": "20261018T101127Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/expr-eval/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/expr-eval/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/expr-eval/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "expr-eval",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 30628,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 7,
+      "tokens": 32724,
+      "tools": {
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 6
+      },
+      "trajectory_run": "20261018T101153Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/expr-eval/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/expr-eval/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/expr-eval/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "merge-inversions",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 11761,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 4,
+      "tokens": 15290,
+      "tools": {
+        "git_log": 1,
+        "git_status": 1,
+        "search_files": 4
+      },
+      "trajectory_run": "20261018T101225Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/merge-inversions/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/merge-inversions/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/merge-inversions/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "merge-inversions",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 8946,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 3,
+      "tokens": 10602,
+      "tools": {
+        "git_status": 1,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101242Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/merge-inversions/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/merge-inversions/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/merge-inversions/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "parse-seconds",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7678,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 4,
+      "tokens": 11947,
+      "tools": {
+        "git_status": 1,
+        "read_file": 2,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101256Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/parse-seconds/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/parse-seconds/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/parse-seconds/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "parse-seconds",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7494,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 3,
+      "tokens": 9321,
+      "tools": {
+        "git_status": 1,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101304Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/parse-seconds/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/parse-seconds/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/parse-seconds/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "reverse-words",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 8735,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 14944,
+      "tools": {
+        "git_status": 1,
+        "read_file": 2,
+        "search_files": 5
+      },
+      "trajectory_run": "20261018T101312Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/reverse-words/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/reverse-words/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/reverse-words/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "reverse-words",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 7705,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 4,
+      "tokens": 11389,
+      "tools": {
+        "git_status": 1,
+        "read_file": 1,
+        "search_files": 3
+      },
+      "trajectory_run": "20261018T101322Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/reverse-words/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/reverse-words/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/reverse-words/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "rollback",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 16971,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 19818,
+      "tools": {
+        "git_log": 1,
+        "git_status": 1,
+        "search_files": 3
+      },
+      "trajectory_run": "20261018T101330Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/rollback/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/rollback/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/rollback/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "rollback",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 20262,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 8,
+      "tokens": 34670,
+      "tools": {
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 8
+      },
+      "trajectory_run": "20261018T101347Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/rollback/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/rollback/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/rollback/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "roman",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 5287,
+      "model": "deepseek-flash",
+      "tier": 1,
+      "stop": "final",
+      "steps": 3,
+      "tokens": 7666,
+      "tools": {
+        "git_status": 1,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101408Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/roman/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/roman/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/roman/rep0/run.log"
     },
     {
       "configuration": "plan",
@@ -2194,22 +3540,20 @@
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 5793,
+      "wall_ms": 7671,
       "model": "deepseek-flash",
       "tier": 1,
       "stop": "final",
       "steps": 4,
-      "tokens": 11118,
+      "tokens": 10592,
       "tools": {
-        "git_log": 1,
         "git_status": 1,
-        "read_file": 1,
         "search_files": 3
       },
-      "trajectory_run": "20261018T091605Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/roman/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/roman/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/roman/rep1/run.log"
+      "trajectory_run": "20261018T101414Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/roman/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/roman/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/roman/rep1/run.log"
     },
     {
       "configuration": "plan",
@@ -2218,112 +3562,111 @@
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 25437,
+      "wall_ms": 17001,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
-      "steps": 7,
-      "tokens": 31665,
+      "steps": 6,
+      "tokens": 23752,
+      "tools": {
+        "git_status": 1,
+        "read_file": 6,
+        "search_files": 4
+      },
+      "trajectory_run": "20261018T101422Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t2-inventory/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t2-inventory/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/t2-inventory/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t2-inventory",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 19895,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 22460,
+      "tools": {
+        "git_status": 1,
+        "read_file": 2,
+        "search_files": 5
+      },
+      "trajectory_run": "20261018T101440Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t2-inventory/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t2-inventory/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/t2-inventory/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t2-ledger",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 16191,
+      "model": "deepseek-flash",
+      "tier": 2,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 19994,
       "tools": {
         "git_status": 1,
         "read_file": 4,
-        "search_files": 8
+        "search_files": 5
       },
-      "trajectory_run": "20261018T091611Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t2-inventory/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t2-inventory/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/t2-inventory/rep0/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t2-inventory",
-      "rep": 1,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 1,
-      "wall_ms": 31998,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "error",
-      "steps": 5,
-      "tokens": 22826,
-      "tools": {
-        "git_status": 1,
-        "read_file": 1,
-        "search_files": 3
-      },
-      "trajectory_run": "20261018T091637Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t2-inventory/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t2-inventory/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/t2-inventory/rep1/run.log"
+      "trajectory_run": "20261018T101500Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t2-ledger/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t2-ledger/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/t2-ledger/rep0/run.log"
     },
     {
       "configuration": "plan",
       "task": "t2-ledger",
-      "rep": 0,
+      "rep": 1,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 16450,
+      "wall_ms": 13027,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
       "steps": 4,
-      "tokens": 15235,
+      "tokens": 17932,
       "tools": {
         "git_status": 1,
-        "read_file": 2,
-        "search_files": 2
+        "search_files": 3
       },
-      "trajectory_run": "20261018T091710Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t2-ledger/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t2-ledger/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/t2-ledger/rep0/run.log"
+      "trajectory_run": "20261018T101517Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t2-ledger/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t2-ledger/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/t2-ledger/rep1/run.log"
     },
     {
       "configuration": "plan",
-      "task": "t2-ledger",
-      "rep": 1,
+      "task": "t2-report",
+      "rep": 0,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 10780,
+      "wall_ms": 7318,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
       "steps": 3,
-      "tokens": 12303,
+      "tokens": 9818,
       "tools": {
         "git_status": 1,
         "search_files": 2
       },
-      "trajectory_run": "20261018T091727Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t2-ledger/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t2-ledger/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/t2-ledger/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t2-report",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 6941,
-      "model": "deepseek-flash",
-      "tier": 2,
-      "stop": "final",
-      "steps": 4,
-      "tokens": 11846,
-      "tools": {
-        "git_status": 1,
-        "read_file": 1,
-        "search_files": 2
-      },
-      "trajectory_run": "20261018T091738Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t2-report/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t2-report/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/t2-report/rep0/run.log"
+      "trajectory_run": "20261018T101530Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t2-report/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t2-report/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/t2-report/rep0/run.log"
     },
     {
       "configuration": "plan",
@@ -2332,154 +3675,160 @@
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 8287,
+      "wall_ms": 11132,
       "model": "deepseek-flash",
       "tier": 2,
       "stop": "final",
       "steps": 4,
-      "tokens": 12638,
+      "tokens": 13553,
       "tools": {
         "git_status": 1,
-        "search_files": 3
-      },
-      "trajectory_run": "20261018T091746Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t2-report/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t2-report/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/t2-report/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t3-boundary",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 8334,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 17870,
-      "tools": {
-        "git_status": 1,
-        "read_file": 2,
+        "read_file": 1,
         "search_files": 4
       },
-      "trajectory_run": "20261018T091754Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t3-boundary/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t3-boundary/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/t3-boundary/rep0/run.log"
+      "trajectory_run": "20261018T101538Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t2-report/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t2-report/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/t2-report/rep1/run.log"
     },
     {
       "configuration": "plan",
       "task": "t3-boundary",
-      "rep": 1,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 8775,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 5,
-      "tokens": 14979,
-      "tools": {
-        "git_status": 1,
-        "search_files": 3
-      },
-      "trajectory_run": "20261018T091803Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t3-boundary/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t3-boundary/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/t3-boundary/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t3-cache",
       "rep": 0,
       "pass": false,
       "tests_modified": false,
       "exit_code": 0,
-      "wall_ms": 11777,
+      "wall_ms": 10307,
       "model": "deepseek-flash",
       "tier": 3,
       "stop": "final",
-      "steps": 3,
-      "tokens": 10158,
-      "tools": {
-        "git_status": 1,
-        "search_files": 2
-      },
-      "trajectory_run": "20261018T091813Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t3-cache/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t3-cache/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/t3-cache/rep0/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t3-cache",
-      "rep": 1,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 9695,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 4,
-      "tokens": 14149,
-      "tools": {
-        "git_status": 1,
-        "search_files": 3
-      },
-      "trajectory_run": "20261018T091825Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t3-cache/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t3-cache/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/t3-cache/rep1/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t3-extension",
-      "rep": 0,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 6031,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 3,
-      "tokens": 9118,
-      "tools": {
-        "git_status": 1,
-        "search_files": 2
-      },
-      "trajectory_run": "20261018T091835Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t3-extension/rep0/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t3-extension/rep0/work",
-      "log": "/tmp/dsh-254-run/plan/t3-extension/rep0/run.log"
-    },
-    {
-      "configuration": "plan",
-      "task": "t3-extension",
-      "rep": 1,
-      "pass": false,
-      "tests_modified": false,
-      "exit_code": 0,
-      "wall_ms": 13288,
-      "model": "deepseek-flash",
-      "tier": 3,
-      "stop": "final",
-      "steps": 6,
-      "tokens": 21637,
+      "steps": 7,
+      "tokens": 25211,
       "tools": {
         "git_status": 1,
         "read_file": 3,
-        "search_files": 4
+        "search_files": 5
       },
-      "trajectory_run": "20261018T091841Z-r1",
-      "record_dir": "/tmp/dsh-254-run/plan/t3-extension/rep1/records",
-      "work_dir": "/tmp/dsh-254-run/plan/t3-extension/rep1/work",
-      "log": "/tmp/dsh-254-run/plan/t3-extension/rep1/run.log"
+      "trajectory_run": "20261018T101550Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t3-boundary/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t3-boundary/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/t3-boundary/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t3-boundary",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 6714,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 4,
+      "tokens": 11323,
+      "tools": {
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101601Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t3-boundary/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t3-boundary/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/t3-boundary/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t3-cache",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 11396,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 19010,
+      "tools": {
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101608Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t3-cache/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t3-cache/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/t3-cache/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t3-cache",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 15789,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 8,
+      "tokens": 32104,
+      "tools": {
+        "git_log": 1,
+        "git_status": 1,
+        "read_file": 4,
+        "search_files": 5
+      },
+      "trajectory_run": "20261018T101620Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t3-cache/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t3-cache/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/t3-cache/rep1/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t3-extension",
+      "rep": 0,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 10292,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 3,
+      "tokens": 10444,
+      "tools": {
+        "git_status": 1,
+        "read_file": 1,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101636Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t3-extension/rep0/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t3-extension/rep0/work",
+      "log": "/tmp/dsh-256-run/plan/t3-extension/rep0/run.log"
+    },
+    {
+      "configuration": "plan",
+      "task": "t3-extension",
+      "rep": 1,
+      "pass": false,
+      "tests_modified": false,
+      "exit_code": 0,
+      "wall_ms": 10178,
+      "model": "deepseek-flash",
+      "tier": 3,
+      "stop": "final",
+      "steps": 5,
+      "tokens": 16493,
+      "tools": {
+        "git_status": 1,
+        "read_file": 3,
+        "search_files": 2
+      },
+      "trajectory_run": "20261018T101646Z-r1",
+      "record_dir": "/tmp/dsh-256-run/plan/t3-extension/rep1/records",
+      "work_dir": "/tmp/dsh-256-run/plan/t3-extension/rep1/work",
+      "log": "/tmp/dsh-256-run/plan/t3-extension/rep1/run.log"
     }
   ]
 }

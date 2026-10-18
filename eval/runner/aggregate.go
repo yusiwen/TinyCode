@@ -71,24 +71,50 @@ type verdict struct {
 	Detail   string   `json:"detail"`
 }
 
-// gradientVerdict answers the question this increment was filed for: is the set
-// actually harder at the top than at the bottom?
+// gradientVerdict answers the second increment's question: is the declared top of
+// the set harder than its declared bottom?
 type gradientVerdict struct {
 	Complete bool   `json:"complete"`
 	Exist    bool   `json:"exist"`
 	Detail   string `json:"detail"`
 }
 
+// headroomVerdict answers the third increment's question, and it is about the
+// set rather than about the configurations: can any task defeat the default
+// agent at all?
+type headroomVerdict struct {
+	Complete bool     `json:"complete"`
+	Met      bool     `json:"met"`
+	Failed   []string `json:"failed,omitempty"`
+	Solved   []string `json:"solved,omitempty"`
+	Detail   string   `json:"detail"`
+}
+
+// taskDifficulty is one task's measured difficulty, from the runs themselves
+// rather than from the label attached to it.
+type taskDifficulty struct {
+	Task             string `json:"task"`
+	DeclaredTier     int    `json:"declared_tier"`
+	MeasuredBand     string `json:"measured_band"`
+	MedianTokens     int    `json:"median_tokens"`
+	MedianSteps      int    `json:"median_steps"`
+	MedianDurationMS int64  `json:"median_duration_ms"`
+	Solved           int    `json:"solved"`
+	Tasks            int    `json:"tasks"`
+}
+
 // baselineReport is what gets committed.
 type baselineReport struct {
-	GeneratedAt    string          `json:"generated_at"`
-	Reps           int             `json:"reps"`
-	Runs           int             `json:"runs"`
-	Models         map[string]int  `json:"models,omitempty"`
-	Configurations []configSummary `json:"configurations"`
-	Verdict        verdict         `json:"verdict"`
-	Gradient       gradientVerdict `json:"gradient"`
-	Results        []runResult     `json:"results"`
+	GeneratedAt    string           `json:"generated_at"`
+	Reps           int              `json:"reps"`
+	Runs           int              `json:"runs"`
+	Models         map[string]int   `json:"models,omitempty"`
+	Configurations []configSummary  `json:"configurations"`
+	Verdict        verdict          `json:"verdict"`
+	Gradient       gradientVerdict  `json:"gradient"`
+	Headroom       headroomVerdict  `json:"headroom"`
+	Difficulty     []taskDifficulty `json:"difficulty"`
+	Results        []runResult      `json:"results"`
 }
 
 // summarise folds the attempts into the report the spike is judged on.
@@ -190,6 +216,8 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 	}
 	report.Verdict = judge(report.Configurations)
 	report.Gradient = judgeGradient(report.Configurations)
+	report.Headroom = judgeHeadroom(report.Configurations)
+	report.Difficulty = measureDifficulty(report.Configurations)
 	return report, nil
 }
 
@@ -381,6 +409,31 @@ func printMarkdown(w io.Writer, report baselineReport) {
 		fmt.Fprintf(w, "**The condition for this increment is met, against calling the set graded.** %s: tier 3 is solved as often as tier 1, so the new tasks are longer, not harder. What gets built next is a difficulty axis that actually binds.\n", report.Gradient.Detail)
 	}
 
+	// Headroom: whether the set can defeat the default agent at all, which is a
+	// property of the set and not of the configuration table above.
+	fmt.Fprintf(w, "\n## Headroom\n\n")
+	if report.Headroom.Met {
+		fmt.Fprintf(w, "%s: %s.\n", report.Headroom.Detail, strings.Join(report.Headroom.Failed, ", "))
+	} else if !report.Headroom.Complete {
+		fmt.Fprintf(w, "Not decided — %s.\n", report.Headroom.Detail)
+	} else {
+		fmt.Fprintf(w, "**The condition for this increment is met, against the set having headroom.** %s.\n", report.Headroom.Detail)
+	}
+
+	// Difficulty measured rather than declared, in the order the measurement put
+	// the tasks in: the previous increment found a declared tier is a guess.
+	if len(report.Difficulty) > 0 {
+		fmt.Fprintf(w, "\n## Difficulty, measured\n\n")
+		fmt.Fprintf(w, "| Task | Declared tier | Measured band | Median tokens | Median steps | Solved |\n")
+		fmt.Fprintf(w, "| --- | --- | --- | --- | --- | --- |\n")
+		for _, row := range report.Difficulty {
+			fmt.Fprintf(w, "| `%s` | %d | %s | %d | %d | %d/%d |\n",
+				row.Task, row.DeclaredTier, row.MeasuredBand, row.MedianTokens, row.MedianSteps, row.Solved, row.Tasks)
+		}
+		fmt.Fprintf(w, "\nThe bands are thirds of this table's own token order, so they describe this run and not a label. "+
+			"A task whose measured band differs from its declared tier is a task whose label was a guess.\n")
+	}
+
 	fmt.Fprintf(w, "\n## Per task\n\n| Task | %s |\n| --- |", strings.Join(columnNames(report.Configurations), " | "))
 	fmt.Fprintf(w, "%s\n", strings.Repeat(" --- |", len(report.Configurations)))
 	for index, cell := range firstConfiguration(report.Configurations).Tasks {
@@ -554,4 +607,104 @@ func tierOf(cfg configSummary, tier int) (tierSummary, bool) {
 		}
 	}
 	return tierSummary{}, false
+}
+
+// judgeHeadroom answers the third increment's condition: can any task defeat the
+// default configuration, and does the set still contain one it solves?
+//
+// Both halves matter. A set nobody solves has no headroom either — it has a wall,
+// and a wall measures the task, not the agent's improvement.
+func judgeHeadroom(configs []configSummary) headroomVerdict {
+	var build configSummary
+	found := false
+	for _, cfg := range configs {
+		if cfg.Name == "build" {
+			build, found = cfg, true
+			break
+		}
+	}
+	if !found {
+		return headroomVerdict{Detail: "headroom is read from the build configuration, which was not run"}
+	}
+	if len(build.Tasks) == 0 {
+		return headroomVerdict{Detail: "no task results to read"}
+	}
+	result := headroomVerdict{Complete: true}
+	for _, cell := range build.Tasks {
+		if cell.Solved {
+			result.Solved = append(result.Solved, cell.Task)
+		} else {
+			result.Failed = append(result.Failed, cell.Task)
+		}
+	}
+	sort.Strings(result.Solved)
+	sort.Strings(result.Failed)
+	switch {
+	case len(result.Failed) == 0:
+		result.Detail = fmt.Sprintf("no task defeated the default configuration (%d solved)", len(result.Solved))
+	case len(result.Solved) == 0:
+		result.Detail = fmt.Sprintf("no task was solved by the default configuration (%d failed), so the set is a wall", len(result.Failed))
+	default:
+		result.Met = true
+		result.Detail = fmt.Sprintf("%d of %d tasks defeated the default configuration and %d were still solved",
+			len(result.Failed), len(result.Failed)+len(result.Solved), len(result.Solved))
+	}
+	return result
+}
+
+// measureDifficulty orders the tasks by what the runs cost and bands them by
+// cost, because the last increment showed a declared tier is a guess: the spread
+// inside one declared tier was wider than the gap between two of them.
+//
+// The bands come from the default configuration's own median token spend, split
+// into thirds of the task list, so "cheap, middle, expensive" is a statement about
+// this run rather than about a label.
+func measureDifficulty(configs []configSummary) []taskDifficulty {
+	var build configSummary
+	found := false
+	for _, cfg := range configs {
+		if cfg.Name == "build" {
+			build, found = cfg, true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	out := make([]taskDifficulty, 0, len(build.Tasks))
+	for _, cell := range build.Tasks {
+		out = append(out, taskDifficulty{
+			Task:         cell.Task,
+			DeclaredTier: cell.Tier,
+			MedianTokens: cell.MedianTokens,
+			MedianSteps:  cell.MedianSteps,
+			Solved:       cell.Passes,
+			Tasks:        cell.Reps,
+		})
+	}
+	// Most expensive first: the order the difficulty actually has.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].MedianTokens != out[j].MedianTokens {
+			return out[i].MedianTokens > out[j].MedianTokens
+		}
+		if out[i].MedianSteps != out[j].MedianSteps {
+			return out[i].MedianSteps > out[j].MedianSteps
+		}
+		return out[i].Task < out[j].Task
+	})
+	third := len(out) / 3
+	if third == 0 {
+		third = 1
+	}
+	for index := range out {
+		switch {
+		case index < third:
+			out[index].MeasuredBand = "expensive"
+		case index < len(out)-third:
+			out[index].MeasuredBand = "middle"
+		default:
+			out[index].MeasuredBand = "cheap"
+		}
+	}
+	return out
 }
