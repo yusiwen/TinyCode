@@ -7,6 +7,7 @@ import (
 	"log"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
@@ -72,6 +73,11 @@ type Agent struct {
 	// PriceTable prices a call whose route reported no charge. Nil prices
 	// nothing, which is reported as an unknown cost rather than as zero.
 	PriceTable *PriceTable
+	// Now is the clock a declared price is resolved against. It is read once per
+	// provider call, at the moment the call starts, because a route bills by the
+	// hour the request was made and a long stream can cross the boundary. Nil
+	// means time.Now: a test sets it to price a call at a fixed instant.
+	Now func() time.Time
 	// CostTotal is every cost this Agent knows, per unit, and CostUnknownCalls
 	// counts the calls whose cost it does not know. They are kept together
 	// because a total without its unknown count overstates what is known:
@@ -101,6 +107,16 @@ func callSpend(resp *types.ChatResponse) (spend types.Usage, reported bool) {
 	return types.Usage{CompletionTokens: n, TotalTokens: n}, false
 }
 
+// now reads the agent's clock, defaulting to the wall clock. One read per
+// provider call, taken before the request is sent, so the call is priced by the
+// hour it was made in.
+func (a *Agent) now() time.Time {
+	if a.Now != nil {
+		return a.Now()
+	}
+	return time.Now()
+}
+
 // recordCall accounts one provider call: its tokens and its cost.
 //
 // Tokens: accumulated into the run and session totals, with a *reported* record
@@ -108,12 +124,13 @@ func callSpend(resp *types.ChatResponse) (spend types.Usage, reported bool) {
 // fallback, so no consumer is handed an estimate dressed as a provider number.
 //
 // Cost: a charge the route reported wins outright; otherwise a rate the user
-// declared for this route and model is applied to the *reported* usage. A call
-// whose tokens we estimated is not priced at all — multiplying a declared rate
-// by a guessed token count would dress a second estimate as a measurement — and
-// neither is a call with no declared rate. Both are counted as unknown, which is
-// not the same as free.
-func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse) {
+// declared for this route and model is applied to the *reported* usage, as of
+// startedAt — the instant the request was sent, which is what a time-of-day price
+// is keyed on. A call whose tokens we estimated is not priced at all —
+// multiplying a declared rate by a guessed token count would dress a second
+// estimate as a measurement — and neither is a call with no declared rate. Both
+// are counted as unknown, which is not the same as free.
+func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse, startedAt time.Time) {
 	spend, reported := callSpend(resp)
 	if reported || spend.TotalTokens > 0 {
 		a.UsageTotal = a.UsageTotal.Add(spend)
@@ -129,7 +146,7 @@ func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse) 
 		event = types.CostEvent{Cost: *resp.Cost, Source: types.CostReported}
 	case reported && a.PriceTable != nil:
 		if key, ok := a.priceKey(); ok {
-			if cost, priced := a.PriceTable.Amount(key, spend); priced {
+			if cost, priced := a.PriceTable.AmountAt(key, spend, startedAt); priced {
 				event = types.CostEvent{Cost: cost, Source: types.CostDeclared}
 			}
 		}
@@ -376,6 +393,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		}
 
 		// Call provider
+		started := a.now()
 		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
 			Messages:        messages,
 			Tools:           toolDefs,
@@ -388,7 +406,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.HandleContextError(err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
-		a.recordCall(callbacks, resp)
+		a.recordCall(callbacks, resp, started)
 
 		// Reasoning already handled by streaming callback (OnReasoningDelta)
 		if a.ShowThinking {
@@ -665,6 +683,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 		},
 	}
+	started := a.now()
 	resp, err := a.Provider.Chat(ctx, types.ChatRequest{
 		Messages:        messages,
 		Tools:           nil, // no tools — LLM must output text only
@@ -675,7 +694,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
-	a.recordCall(summaryCallbacks, resp)
+	a.recordCall(summaryCallbacks, resp, started)
 	return resp.Content, nil
 }
 
