@@ -389,3 +389,30 @@ func TestSeatbeltLauncherRefusesAMissingCommand(t *testing.T) {
 		t.Fatalf("the contract does not classify its own refusal as a launcher failure:\n%s", out)
 	}
 }
+
+// TestSeatbeltKeepsDevNullWritable is the usability half of the boundary, run
+// rather than read: `/dev/null` is redirected constantly, and Landlock grants it
+// in every mode for that reason. The profile test pins the rule's text; this one
+// shows that `> /dev/null` actually works under the tightest workspace-write (no
+// writable root at all), which is where a missing grant would hurt most.
+func TestSeatbeltKeepsDevNullWritable(t *testing.T) {
+	if !commandConfinementAvailable() {
+		t.Skipf("no usable %s on this host", sandboxExecPath)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestSeatbeltChildHelper")
+	cmd.Env = append(os.Environ(),
+		seatbeltChildEnv+"=1",
+		seatbeltModeEnv+"=workspace-write",
+		seatbeltArgvEnv+`=/bin/sh
+-c
+printf x > /dev/null && printf ok`,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("a confined redirect to /dev/null failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("the command did not report success: %q", out)
+	}
+}
