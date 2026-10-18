@@ -509,6 +509,18 @@ working directory only — it never walks upward and never merges nested files (
   the ones where a rejected operation must leave state untouched. File count, prompt ambiguity and "read the
   tests first" were not obstacles. **The next increment builds tasks around failure-path state, and measures
   the tiers from the first run instead of declaring them.**
+- **Headroom** ([#256](https://github.com/yusiwen/TinyCode/issues/256)) — six tasks chosen to be hard for a
+  stated reason (an algorithmic bound the suite times, an implementation from a specification, five defects at
+  once, one wire format produced by three sites, all-or-nothing state, an exhaustive format with a round-trip),
+  and difficulty **measured** instead of declared: `TIER` is now an expectation and the report carries a band
+  per task from the default configuration's own token spend. **Measured 2026-10-18, 108 runs: no task defeated
+  the default configuration.** `build` solved 18/18, two repetitions each. The knob moves *cost* — tokens per
+  solved task went from 88 091 to 184 183, and the spread across tasks from 18 440 to 465 719 — and it defeats
+  a budget-starved agent (`limited` fell from 9/12 to 6/18), but it does not defeat a funded one. The task I
+  expected to be hardest, `merge-inversions` with an O(n log n) bound, came out in the **cheapest** band (6
+  steps); what cost the most was implementing `expr-eval` from a specification (28 steps, 465 719 tokens).
+  **The conclusion was written before the data: the next change is the domain, not the difficulty knob** — a
+  real repository, a multi-hour refactor, a failure mode that is not "one package, one test suite".
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the

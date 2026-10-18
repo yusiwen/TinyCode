@@ -322,3 +322,89 @@ func TestTheReportShowsTheGradient(t *testing.T) {
 		t.Errorf("the per-task table does not name the tiers:\n%s", text)
 	}
 }
+
+// TestHeadroomNeedsBothHalves pins the third increment's condition: a set with no
+// failing task has no headroom, and a set with no passing task is a wall.
+func TestHeadroomNeedsBothHalves(t *testing.T) {
+	cell := func(name string, pass bool) runResult {
+		result := attemptIn("build", name, 0, pass, 3, 100, "final")
+		result.Tier = 3
+		return result
+	}
+
+	t.Run("one failure among successes has headroom", func(t *testing.T) {
+		report, err := summarise([]runResult{cell("a", true), cell("b", false)}, []configuration{{Name: "build"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !report.Headroom.Met || !report.Headroom.Complete {
+			t.Fatalf("headroom = %+v, want met", report.Headroom)
+		}
+		if len(report.Headroom.Failed) != 1 || report.Headroom.Failed[0] != "b" {
+			t.Fatalf("failed = %v, want [b]", report.Headroom.Failed)
+		}
+	})
+
+	t.Run("everything solved has none", func(t *testing.T) {
+		report, err := summarise([]runResult{cell("a", true), cell("b", true)}, []configuration{{Name: "build"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Headroom.Met {
+			t.Fatalf("headroom = %+v, want none: nothing defeated the agent", report.Headroom)
+		}
+	})
+
+	t.Run("nothing solved is a wall", func(t *testing.T) {
+		report, err := summarise([]runResult{cell("a", false), cell("b", false)}, []configuration{{Name: "build"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Headroom.Met {
+			t.Fatalf("headroom = %+v, want none: a wall is not headroom", report.Headroom)
+		}
+	})
+}
+
+// TestDifficultyIsMeasuredFromTheRuns pins what the third increment changed: the
+// order comes from the tokens the default configuration spent, not from the
+// declared tier.
+func TestDifficultyIsMeasuredFromTheRuns(t *testing.T) {
+	makeRun := func(name string, tier, tokens int) runResult {
+		result := attemptIn("build", name, 0, true, 3, tokens, "final")
+		result.Tier = tier
+		return result
+	}
+	results := []runResult{
+		makeRun("cheap", 3, 10),
+		makeRun("medium", 3, 100),
+		makeRun("expensive", 1, 1000),
+	}
+	report, err := summarise(results, []configuration{{Name: "build"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Difficulty) != 3 {
+		t.Fatalf("difficulty rows = %d, want 3", len(report.Difficulty))
+	}
+	// The declared tier says "expensive" should be tier 1 and the other two tier
+	// 3; the measurement says the opposite, and the measurement is what orders it.
+	if report.Difficulty[0].Task != "expensive" || report.Difficulty[0].MeasuredBand != "expensive" {
+		t.Fatalf("first row = %+v, want the costliest task banded expensive", report.Difficulty[0])
+	}
+	if report.Difficulty[2].Task != "cheap" || report.Difficulty[2].MeasuredBand != "cheap" {
+		t.Fatalf("last row = %+v, want the cheapest task", report.Difficulty[2])
+	}
+	if report.Difficulty[0].DeclaredTier != 1 {
+		t.Fatalf("declared tier = %d, want the label to survive alongside the measurement", report.Difficulty[0].DeclaredTier)
+	}
+	// And the report has to show it.
+	var out strings.Builder
+	printMarkdown(&out, report)
+	text := out.String()
+	for _, want := range []string{"## Headroom", "## Difficulty, measured", "| Task | Declared tier | Measured band |"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the report is missing %q:\n%s", want, text)
+		}
+	}
+}

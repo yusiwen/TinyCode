@@ -7,7 +7,7 @@ unbuilt, on purpose: building it before knowing the signal exists would have bee
 
 ## What it measures
 
-Twelve tasks, each a directory under [`eval/tasks/`](../eval/tasks) with a `go.mod`, a failing test, a
+Eighteen tasks, each a directory under [`eval/tasks/`](../eval/tasks) with a `go.mod`, a failing test, a
 `PROMPT` and a declared `TIER`. An attempt copies the task to a scratch directory, runs
 `tinycode "<prompt>"` there, and is graded by the task's own `go test ./...` exit code — no judge model, no
 rubric, no text comparison.
@@ -18,12 +18,13 @@ rubric, no text comparison.
 | --- | --- | --- |
 | 1 | one file, one obvious defect, and a prompt that restates the goal | 6 |
 | 2 | several files, a defect that spans a contract between them, or two defects that only together keep the suite red | 3 |
-| 3 | several files, a prompt that names only the *symptom*, and a suite whose edge cases are the specification | 3 |
+| 3 | several files, a prompt that names only the *symptom*, and a suite whose edge cases are the specification — plus, since the third increment, tasks chosen to be hard for a stated reason: an algorithmic bound the suite times, an implementation from a specification, five defects at once, one wire format produced by three sites, all-or-nothing state, and an exhaustive format with a round-trip | 9 |
 
-The first increment of this harness (issue #252) shipped only tier 1, and the measurement said so: five of
-six tasks were solved by step 3, so the set could not tell a full budget from a halved one except on the
-hardest task. Tier 2 and tier 3 are that finding's answer, and the harness now reports the pass rate **per
-tier**, which is the only way to see whether the answer worked.
+The history is in the measurements. The first increment (issue #252) shipped six tier-1 tasks, and five were
+solved by step 3. The second (issue #254) added declared tiers, and the reported gradient did not appear. The
+third (issue #256) stopped trusting labels: `TIER` is now an *expectation*, and the report carries a
+**measured band** per task — thirds of the default configuration's own token spend — so the document shows
+where the label and the measurement disagree.
 
 **Every task has a reference fix**, in [`eval/_solutions/`](../eval/_solutions) — deliberately *not* inside
 the task directory, because `copyTask` would hand it to the agent. `go test ./eval/runner` proves both
@@ -77,70 +78,49 @@ this spike: what gets built next is a harder task set, not a framework.
 
 ## The baseline, and what it says
 
-`eval/BASELINE.md` is the committed report; `eval/baseline.json` is the same data per attempt. The graded
-measurement of 2026-10-18 (72 runs, `deepseek-flash`):
+`eval/BASELINE.md` is the committed report; `eval/baseline.json` is the same data per attempt. The third
+measurement of 2026-10-18 (108 runs, 4 413 153 tokens, about $0.86 on `deepseek-flash`):
 
 | Configuration | Solved | Pass rate | Reps agreed | Median steps | Median tokens | Tokens per solved task |
 | --- | --- | --- | --- | --- | --- | --- |
-| `build` | 12/12 | 100% | 100% | 5 | 27 033 | 88 091 |
-| `limited` (10 000) | 9/12 | 83% | 83% | 3 | 12 829 | 34 453 |
-| `plan` | 0/12 | 0% | 100% | 4 | 13 560 | — |
+| `build` | 18/18 | 100% | 100% | 6 | 33 616 | 184 183 |
+| `limited` (10 000) | 6/18 | 33% | 67% | 3 | 12 987 | 78 292 |
+| `plan` | 0/18 | 0% | 100% | 5 | 17 932 | — |
 
-**The signal exists, and it is stable**: `build` and `plan` agreed with themselves on every task, and they
-are the two ends. **The declared gradient does not exist**: `build` solves 6/6 of tier 1 and 3/3 of tier 3.
-The tiers are not what makes a task hard.
+**The condition for this increment failed: no task defeated the default configuration.** That was written
+down before the run, with the conclusion attached, so it is not an excuse afterwards — **the knob is the
+problem, not the setting of it**. Six tasks, each chosen from a different hypothesis about what defeats this
+agent, all fell: the algorithmic bound, the specification to implement, the five defects at once, the three
+coupled sites, the all-or-nothing state, the exhaustive format. `build` solved every one, two repetitions out
+of two.
 
-The numbers say something more useful than "the tasks were too easy", and they are worth reading before
-anyone labels a task again:
+What the increment *did* show is where the difficulty went, and it is not where the labels were:
 
-| Tier | `build` solved | `build` tokens per solved task | `limited` solved |
-| --- | --- | --- | --- |
-| 1 | 6/6 | 98 055 | 5/6 |
-| 2 | 3/3 | 198 562 | 1/3 |
-| 3 | 3/3 | 62 870 | 3/3 |
+| Task | Declared tier | Measured band | Median tokens | Median steps |
+| --- | --- | --- | --- | --- |
+| `expr-eval` | 3 | expensive | 465 719 | 28 |
+| `duration-spec` | 3 | expensive | 430 429 | 22 |
+| `coupled-api` | 3 | expensive | 314 929 | 24 |
+| `t2-inventory` | 2 | expensive | 161 647 | 21 |
+| `rollback` | 3 | expensive | 149 342 | 17 |
+| `merge-inversions` | 3 | **cheap** | 32 260 | 6 |
 
-- **The spread inside tier 1 is wider than any gap between tiers.** The single most expensive `build`
-  attempt is `t2-inventory` (164 207 tokens), and the second is a **tier-1** task — `count-off-by-one`,
-  133 666 tokens over 17 steps — while `dedupe`, also tier 1, costs a fraction of that. A *declared* tier is
-  a guess about difficulty; the measurement is not.
-- **What the halved budget bites on is an invariant that has to survive a refusal.** Its failures are
-  concentrated in tier 2 — `t2-ledger` 0/2, `t2-inventory` 1/2 — the tasks where a rejected operation must
-  leave state untouched (a refused transfer may not have moved the balances; a refused reservation may not
-  have reserved). The one other failure is a tier-1 task (`reverse-words`, 1/2), which reads as noise rather
-  than as difficulty. File count, prompt ambiguity and "read the tests first" were not obstacles at all:
-  tier 3 solved 3/3 under the same budget that cut tier 2 to 1/3.
-- **Cost is not monotone with tier**, which kills the idea that a harder tier is simply a longer one.
+- **The task I expected to be hardest was the cheapest.** `merge-inversions` — an O(n log n) bound the suite
+  enforces with its own clock — was solved in 6 steps: the model wrote a counting merge sort immediately.
+  What cost the most was the opposite: implementing `expr-eval` from a specification (28 steps, 465 719
+  tokens, 25 times the cheapest task) and the exhaustive format spec.
+- **The difficulty knob moves cost, not success.** Tokens per solved task went from 88 091 in the previous
+  twelve-task set to 184 183 here, and the spread across tasks is 18 440 to 465 719 — but the pass rate is
+  unchanged at 100%.
+- **It does defeat a starved agent.** `limited` fell from 9/12 to 6/18 with the same budget, and every one of
+  its runs hit the budget. So the tasks are harder in the sense that they cost more than a small budget
+  allows; they are not harder in the sense that defeats a funded agent.
+- **`build` still ends some runs `stop: blocked` while passing** (one this time): the terminal-refusal path is
+  still not a synonym for failure.
 
-So the next difficulty axis is not "more files" and not "vaguer prompt": it is **state that must survive a
-failure path**, and the next set should be built around that — with the tiers *measured* from the first
-run's steps and tokens rather than declared in advance.
-
-Two things the records made legible, which is the argument for the record:
-
-- One `build` attempt ended `stop: blocked` **and passed**. It had already written the fix, then tried
-  `sandbox_allow` (a permission dialog a one-shot run cannot offer) and hit a terminal refusal — at
-  **94 105 tokens, four times the median**. A `stop` of `blocked` is therefore not a synonym for failure,
-  and a future framework has to grade on the outcome, not on how the run ended.
-- The `plan` attempts burned ~12 600 tokens each to fail, and one hallucinated a tool name (`tool_use`),
-  which the record keeps as a `tool.call` with an error status. Wasted spend is visible per configuration,
-  which is the number that decides whether a read-only pass is worth running.
-
-**What this says to do next**: build tasks with a difficulty spread, not a framework. The spike's job was
-to find out whether the measurement separates; it does. Its second finding — that this task set cannot
-separate at the top — is the more useful one.
-
-## What it cannot say
-
-- **Nothing about quality beyond pass/fail.** A task is solved or it is not; there is no partial credit, no
-  judge, no rubric. That is deliberate for a spike (a judge is a second opinion to validate, and it costs
-  money), but it means a framework would have to add it.
-- **Nothing about a real repository.** The tasks are six files each. A task set that resembles real work —
-  multi-file, ambiguous, with a test suite that has to be understood — is the next increment, and it is
-  also where the cost per measurement goes up by orders of magnitude.
-- **Nothing statistically.** Two or three repetitions give a noise *reading* (did the repetitions agree),
-  not a confidence interval. Treat a one-task difference as suggestive, not significant.
-- **Nothing about a model it did not run.** The baseline names the model it used; comparing a run on
-  another model is a different measurement, not a better one.
+**So the next thing to change is the domain, not the difficulty knob**: a real repository, a multi-hour
+refactor, a task whose failure mode is not "one package, one test suite". That is written in
+`docs/roadmap.md` and in issue #256's condition, before this data existed.
 
 ## The gradient
 

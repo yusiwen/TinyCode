@@ -1,0 +1,1 @@
+Make `go test ./...` pass in this directory. The tests are the specification and one of them enforces a bound the obvious implementation cannot meet. Do not modify them.
