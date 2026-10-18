@@ -78,6 +78,16 @@ type Agent struct {
 	// hour the request was made and a long stream can cross the boundary. Nil
 	// means time.Now: a test sets it to price a call at a fixed instant.
 	Now func() time.Time
+
+	// Trajectory records this agent's runs. Nil records nothing, which is how
+	// "off" is spelled for every optional collaborator in this package.
+	Trajectory *Trajectory
+	// SessionID names the conversation a run belongs to, when one exists. It is
+	// written on every trajectory line, so a run can be traced back to its
+	// session; empty is legal, because the TUI mints an id after the first save
+	// and a run can start before that.
+	SessionID string
+
 	// CostTotal is every cost this Agent knows, per unit, and CostUnknownCalls
 	// counts the calls whose cost it does not know. They are kept together
 	// because a total without its unknown count overstates what is known:
@@ -87,6 +97,18 @@ type Agent struct {
 	CostUnknownCalls int
 
 	ContentStreamed bool // true when content was streamed via SSE; skip glamour re-print
+
+	// trajRun is the file of the run in flight, nil when nothing is recorded.
+	// Every recording site checks it, so an agent with no trajectory costs no
+	// clock reads and no allocations beyond this pointer.
+	trajRun *TrajectoryRun
+	// ttft and ttftSet carry the delay to the first streamed delta of the call in
+	// flight: the loop's callback wrapper sets them, recordCall consumes them.
+	ttft    time.Duration
+	ttftSet bool
+	// callStart is when the call in flight was sent, which is what its first
+	// delta is measured from. It is the same instant the call is priced at.
+	callStart time.Time
 }
 
 // callSpend is the token accounting for one provider call: what the provider
@@ -130,7 +152,7 @@ func (a *Agent) now() time.Time {
 // multiplying a declared rate by a guessed token count would dress a second
 // estimate as a measurement — and neither is a call with no declared rate. Both
 // are counted as unknown, which is not the same as free.
-func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse, startedAt time.Time) {
+func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse, startedAt time.Time, step int) {
 	spend, reported := callSpend(resp)
 	if reported || spend.TotalTokens > 0 {
 		a.UsageTotal = a.UsageTotal.Add(spend)
@@ -159,6 +181,23 @@ func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse, 
 	}
 	if cb != nil && cb.OnCost != nil {
 		cb.OnCost(event)
+	}
+
+	// The trajectory records the call's duration from the same instant the price
+	// was keyed on. This is the one place the clock is read twice for a call,
+	// and only when a trajectory is being written: the first read is still the
+	// price's, so a route that bills by the hour is unaffected by measuring it.
+	if a.trajRun != nil {
+		ttft := a.ttft
+		a.ttft, a.ttftSet = 0, false
+		callOutcome := trajectoryOutcomeFinal
+		switch {
+		case len(resp.ToolCalls) > 0:
+			callOutcome = trajectoryOutcomeToolCalls
+		case resp.Content == "":
+			callOutcome = trajectoryOutcomeEmpty
+		}
+		a.trajRun.LLMCall(step, a.now().Sub(startedAt), ttft, callOutcome, spend, reported, &event)
 	}
 }
 
@@ -259,8 +298,36 @@ func (a *Agent) getModel() string {
 }
 
 // Run executes the ReAct loop for a user prompt.
-func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
+func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr error) {
 	a.runSerial++
+
+	// A run is recorded from its first instant, so the file's duration covers
+	// everything it did — compression included — rather than only the model
+	// calls. The cost totals are captured the same way: CostTotal is replaced on
+	// every call rather than mutated, so holding the value from here gives the
+	// run's share by subtraction at the end.
+	runStarted := time.Time{}
+	var costStart types.CostTotals
+	unknownStart := 0
+	outcome := runOutcome{stop: trajectoryStopFinal}
+	if a.Trajectory != nil {
+		runStarted = a.now()
+		costStart = a.CostTotal
+		unknownStart = a.CostUnknownCalls
+		a.trajRun = a.beginTrajectory(prompt)
+	}
+	defer func() {
+		stop := outcome.stop
+		switch {
+		case ctx.Err() != nil:
+			// A cancelled provider call also returns an error; the cancel is the
+			// fact worth recording, because it says who stopped the run.
+			stop = trajectoryStopCancelled
+		case runErr != nil:
+			stop = trajectoryStopError
+		}
+		a.finishTrajectory(stop, outcome.steps, runStarted, costStart, unknownStart)
+	}()
 	// Resolve system prompt from config, falling back to Agent.SystemPrompt
 	sysPrompt := a.SystemPrompt
 	if a.Config != nil && a.Config.SystemPrompt != "" {
@@ -342,6 +409,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		// line is already counted, and the message reports the real numbers.
 		if which, limit, spent, reached := a.budgetReached(); reached {
 			msg := budgetMessage(which, limit, spent)
+			outcome.stop = trajectoryStopBudget
 			tlog.Info("agent.loop", "budget reached", "budget", which, "limit", limit, "spent", spent, "steps", step)
 			if a.SessionStore != nil {
 				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
@@ -352,6 +420,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 			return msg, nil
 		}
+
+		// The outcome counts the step that is about to make a model call, not
+		// the ones completed: a run that stops inside step 2 has still done two
+		// steps, while a run stopped by the budget check above has done none.
+		outcome.steps = step + 1
 
 		// Build tool definitions, filtering by config permissions
 		toolDefs := make([]types.ToolDef, 0, len(a.Tools))
@@ -392,8 +465,18 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 		}
 
+		// The step is timed and the first delta captured only when something is
+		// recording: a reader of the #225 invariant is entitled to the clock
+		// being read once per call when no trajectory is being written.
+		stepStarted := time.Time{}
+		if a.trajRun != nil {
+			stepStarted = a.now()
+			callbacks = a.recordFirstDelta(callbacks)
+		}
+
 		// Call provider
 		started := a.now()
+		a.callStart = started
 		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
 			Messages:        messages,
 			Tools:           toolDefs,
@@ -406,7 +489,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			a.HandleContextError(err)
 			return "", fmt.Errorf("LLM call failed: %w", err)
 		}
-		a.recordCall(callbacks, resp, started)
+		a.recordCall(callbacks, resp, started, step)
 
 		// Reasoning already handled by streaming callback (OnReasoningDelta)
 		if a.ShowThinking {
@@ -444,6 +527,9 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				if err := a.SessionStore.Flush(); err != nil {
 					log.Printf("warning: flush session: %v", err)
 				}
+			}
+			if a.trajRun != nil {
+				a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
 			}
 			return resp.Content, nil
 		}
@@ -504,9 +590,11 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 		type toolResult struct {
 			Index     int
 			Name      string
+			Args      string
 			Result    string
 			Truncated string
 			IsBlock   bool
+			Duration  time.Duration
 		}
 		ch := make(chan toolResult, len(toolCalls))
 		for idx, tc := range toolCalls {
@@ -514,6 +602,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			go func() {
 				a.stepDetail("[step %d] calling %s: %s", step, tc.Name, tc.Arguments)
 				tlog.Info("agent.loop", "tool exec", "step", step, "tool", tc.Name)
+				toolStarted := time.Time{}
+				if a.trajRun != nil {
+					toolStarted = a.now()
+				}
 
 				var result string
 				// A panicking tool must not take down the whole agent: convert
@@ -600,12 +692,18 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 
 				trunc := TruncateOutput(result)
 
+				toolDuration := time.Duration(0)
+				if a.trajRun != nil {
+					toolDuration = a.now().Sub(toolStarted)
+				}
 				ch <- toolResult{
 					Index:     idx,
 					Name:      tc.Name,
+					Args:      tc.Arguments,
 					Result:    result,
 					Truncated: trunc.Content,
 					IsBlock:   isBlock,
+					Duration:  toolDuration,
 				}
 			}()
 		}
@@ -628,6 +726,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 			}
 
 			if r.IsBlock {
+				outcome.stop = trajectoryStopBlocked
+				if a.trajRun != nil {
+					// The step ends here rather than at the loop's tail, and the
+					// calls after this one in the same step were never written:
+					// a terminal refusal stops the run, which is the fact the
+					// record carries.
+					a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
+				}
 				a.stepName("[step %d] security block detected, bypassing LLM", step)
 				if a.SessionStore != nil {
 					a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
@@ -644,6 +750,16 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 				ToolCallID: toolCalls[r.Index].ID,
 			})
 		}
+		// The step is written in call order, not completion order: the calls ran
+		// concurrently, and a file whose lines move between runs is not one an
+		// evaluator can diff.
+		if a.trajRun != nil {
+			for _, r := range results {
+				a.trajRun.ToolCall(step, r.Index, r.Name, r.Args, r.Result, r.Duration, toolStatus(r.Result))
+			}
+			a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
+		}
+
 		// Step boundary — signal the TUI to prepare a new message for the next step
 		if callbacks != nil && callbacks.OnStepDone != nil {
 			callbacks.OnStepDone()
@@ -652,6 +768,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	}
 
 	// Max steps reached: inject forced summary
+	outcome.stop = trajectoryStopStepLimit
 	tlog.Warn("agent.loop", "max steps", "steps", maxSteps)
 	messages = append(messages, types.Message{
 		Role:    types.RoleUser,
@@ -694,7 +811,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
-	a.recordCall(summaryCallbacks, resp, started)
+	a.recordCall(summaryCallbacks, resp, started, step)
 	return resp.Content, nil
 }
 
