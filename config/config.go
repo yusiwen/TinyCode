@@ -63,12 +63,47 @@ type PricingConfig struct {
 // written input to the input rate, reasoning to the output rate. That is how a
 // route with one input price and one output price is declared, and it is why a
 // zero here is "not separately priced" rather than "free".
+//
+// These are the entry's own rates, and they apply at every instant a window does
+// not cover: a route that bills peak and off-peak declares its steady (or
+// off-peak) rates here and the peak slice in Windows. An entry with no windows
+// behaves exactly as it did before windows existed.
 type PriceEntry struct {
 	InputPerMillion      float64 `json:"input_per_million"`
 	OutputPerMillion     float64 `json:"output_per_million"`
 	CacheReadPerMillion  float64 `json:"cache_read_per_million,omitempty"`
 	CacheWritePerMillion float64 `json:"cache_write_per_million,omitempty"`
 	ReasoningPerMillion  float64 `json:"reasoning_per_million,omitempty"`
+	// Windows are the slices of the week whose rates replace these. They are
+	// validated when the table is built (issue #225): an overlapping set, one that
+	// covers the whole week, or one that leaves a lane this entry declares at zero
+	// is a configuration error, not a guess.
+	Windows []PriceWindowEntry `json:"windows,omitempty"`
+}
+
+// PriceWindowEntry is a slice of the week during which an entry charges other
+// rates.
+//
+// Weekdays name days as mon…sun, or their full names, in any case. From and To are
+// HH:MM in UTC: From is inclusive, To is exclusive, and 00:00 or 24:00 means
+// midnight at the end of the day, which is how the published schedules write
+// "until midnight" (LiteLLM's DeepSeek windows say 10:00-00:00). A window may not
+// cross midnight: its minutes would have no single weekday, and writing it as two
+// windows says the same thing without the ambiguity.
+//
+// The lanes are spelled exactly as PriceEntry's, and a window has to repeat every
+// lane its entry declares. A lane left at zero inside a window would silently
+// charge the entry's rate there — half price, in exactly one lane — which is the
+// error this tier exists to prevent, so the loader refuses it instead.
+type PriceWindowEntry struct {
+	Weekdays             []string `json:"weekdays"`
+	From                 string   `json:"from"`
+	To                   string   `json:"to"`
+	InputPerMillion      float64  `json:"input_per_million"`
+	OutputPerMillion     float64  `json:"output_per_million"`
+	CacheReadPerMillion  float64  `json:"cache_read_per_million,omitempty"`
+	CacheWritePerMillion float64  `json:"cache_write_per_million,omitempty"`
+	ReasoningPerMillion  float64  `json:"reasoning_per_million,omitempty"`
 }
 
 // BudgetConfig bounds what a run and a session may spend, in tokens, as the
