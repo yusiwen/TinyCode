@@ -151,8 +151,13 @@ func newRootCmd() *cobra.Command {
 			ag.BudgetTokensPerRun, ag.BudgetTokensPerSession = cfg.TokenBudgets()
 			// Declared prices price a call whose route reported no charge. An
 			// empty table prices nothing, which the agent reports as an unknown
-			// cost rather than as zero.
-			ag.PriceTable = priceTable(&cfg)
+			// cost rather than as zero. A malformed schedule is fatal here: see
+			// priceTable.
+			table, err := priceTable(&cfg)
+			if err != nil {
+				return err
+			}
+			ag.PriceTable = table
 			if cfg.Truncation != nil {
 				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
 			}
@@ -824,21 +829,56 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) *a
 // priceTable turns the declared rates in the configuration into the table the
 // agent prices a call against. It returns nil when nothing is declared, which
 // the agent reports as an unknown cost rather than as zero.
-func priceTable(cfg *config.Config) *agent.PriceTable {
+//
+// A malformed window is an error rather than a warning. The rates decide what the
+// user is told they spent, and a schedule that overlaps, covers the whole week or
+// leaves a lane unpriced has no single right answer — so startup names the entry
+// and the window and stops, the way an invalid permission effect does. A refused
+// entry is stored as nothing at all, which is why the call it would have priced is
+// reported unknown instead of being priced by a guess (issue #225).
+func priceTable(cfg *config.Config) (*agent.PriceTable, error) {
 	if cfg == nil || cfg.Pricing == nil || len(cfg.Pricing.Prices) == 0 {
-		return nil
+		return nil, nil
 	}
 	table := agent.NewPriceTable(cfg.Pricing.Currency)
 	for key, entry := range cfg.Pricing.Prices {
-		table.Set(key, agent.Price{
-			InputPerMillion:      entry.InputPerMillion,
-			OutputPerMillion:     entry.OutputPerMillion,
-			CacheReadPerMillion:  entry.CacheReadPerMillion,
-			CacheWritePerMillion: entry.CacheWritePerMillion,
-			ReasoningPerMillion:  entry.ReasoningPerMillion,
-		})
+		windows := make([]agent.PriceWindow, 0, len(entry.Windows))
+		for _, declared := range entry.Windows {
+			window, err := agent.NewWindow(declared.Weekdays, declared.From, declared.To, windowPrice(declared))
+			if err != nil {
+				return nil, fmt.Errorf("pricing %s: %w", key, err)
+			}
+			windows = append(windows, window)
+		}
+		if err := table.SetEntry(key, entryPrice(entry), windows); err != nil {
+			return nil, err
+		}
 	}
-	return table
+	return table, nil
+}
+
+// entryPrice and windowPrice map the configuration's two lane spellings onto the
+// agent's. They are written out field by field rather than through a shared helper
+// so that a lane added to one spelling has to be added here, and the lane test in
+// pricing_config_test.go holds each lane to its own rate.
+func entryPrice(entry config.PriceEntry) agent.Price {
+	return agent.Price{
+		InputPerMillion:      entry.InputPerMillion,
+		OutputPerMillion:     entry.OutputPerMillion,
+		CacheReadPerMillion:  entry.CacheReadPerMillion,
+		CacheWritePerMillion: entry.CacheWritePerMillion,
+		ReasoningPerMillion:  entry.ReasoningPerMillion,
+	}
+}
+
+func windowPrice(entry config.PriceWindowEntry) agent.Price {
+	return agent.Price{
+		InputPerMillion:      entry.InputPerMillion,
+		OutputPerMillion:     entry.OutputPerMillion,
+		CacheReadPerMillion:  entry.CacheReadPerMillion,
+		CacheWritePerMillion: entry.CacheWritePerMillion,
+		ReasoningPerMillion:  entry.ReasoningPerMillion,
+	}
 }
 
 // applyAgentOverrides folds the config's per-agent overrides into the registry.

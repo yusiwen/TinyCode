@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 927 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 936 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -45,8 +45,9 @@
   - `StreamCallbacks *types.StreamCallbacks`
   - `UsageTotal types.Usage` — every token the agent has spent: provider-reported records summed, plus an estimate of the output for a call whose endpoint reported nothing (so a silent provider cannot switch a budget off)
   - `BudgetTokensPerRun`, `BudgetTokensPerSession` (int) — cumulative token limits, 0 = unlimited; `runUsage` is the same accounting restricted to the run in flight, reset by each `Run`
-  - `callSpend(resp)` → reported usage, or an output estimate marked as such; `recordCall(cb, resp)` adds it to both totals and fires `OnUsage` only for the reported case
-  - `PriceTable`/`Price` (pricing.go) — the user's declared rates per billing lane; `Lookup` resolves `"<route>/<model>"` with `*` wildcards, most specific first (exact → `route/*` → `*/model` → `*/*`), and `Amount` carves the detail lanes out of the totals, falling back to the lane they belong to and flooring every subtraction at zero
+  - `callSpend(resp)` → reported usage, or an output estimate marked as such; `recordCall(cb, resp, startedAt)` adds it to both totals and fires `OnUsage` only for the reported case; `startedAt` is the instant the request was sent, and it is what a time-of-day price is resolved against
+  - `PriceTable`/`Price` (pricing.go) — the user's declared rates per billing lane; `Lookup` resolves `"<route>/<model>"` with `*` wildcards, most specific first (exact → `route/*` → `*/model` → `*/*`) and answers with the entry's own rates, while `AmountAt`/`Amount` carve the detail lanes out of the totals, falling back to the lane they belong to and flooring every subtraction at zero
+  - `PriceWindow`, `NewWindow`, `(*PriceTable) SetEntry`, `AmountAt` (pricing_window.go) — a per-entry schedule: weekdays × UTC hours, `from` inclusive and `to` exclusive, `00:00`/`24:00` meaning the end of the day. `SetEntry` validates the whole set before storing any of it (no overlap on a shared day, the entry's own rates stay reachable, every lane the entry declares repeated in every window) and refuses a malformed one with a message naming the window; a refused entry prices nothing, so the call is unknown rather than priced by a guess. `Agent.Now` is the clock seam, read once per call before the request
   - `CostTotal types.CostTotals`, `CostUnknownCalls int` — money per unit, plus how many calls nobody could price; kept together because a total without its unknowns overstates what is known
   - `priceKey()` asks the provider (RouteInfo) for its route and default model at call time, and prefers the agent's model override — a route can be switched mid-session, so a value captured at construction would price a call against another route's rates
   - `budgetReached()` / `budgetMessage(which, limit, spent)` — the check runs at the top of the loop, before the call that would spend, and its message names the budget, the spend and the knob (`budget.max_tokens_per_run` / `..._session`)
@@ -214,8 +215,9 @@ nil for every key.
 - **`NotifyConfig`**: `Channel` (`terminal` | `desktop` | `both` | `off`) and `MinDurationSeconds` — the D5 policy; an absent section yields internal/notify's own default (terminal, 30 s) rather than silence, and a `0` means announce everything
 - **`(cfg Config) NotifyPolicy() (channel string, minDuration time.Duration)`** — nil-safe accessor; `main.go` passes it to `notify.Configure`
 - **`PricingConfig`**: `Currency` and `Prices map[string]PriceEntry` — what a route charges, keyed by `"<route>/<model>"` with `"*"` allowed in either position. The route is part of the key because a price belongs to a billing endpoint, not to a model name: the same model costs differently through a reseller, a gateway and the vendor's own API
-- **`PriceEntry`**: `InputPerMillion`, `OutputPerMillion`, `CacheReadPerMillion`, `CacheWritePerMillion`, `ReasoningPerMillion` — a zero detail rate falls back to the lane it is carved out of (cached and written input to the input rate, reasoning to the output rate)
-- **`priceTable(cfg)`** (in `main.go`) — reads `Pricing` and builds the agent's `PriceTable`; an empty section prices nothing, which the agent reports as an unknown cost rather than as zero
+- **`PriceEntry`**: `InputPerMillion`, `OutputPerMillion`, `CacheReadPerMillion`, `CacheWritePerMillion`, `ReasoningPerMillion`, `Windows []PriceWindowEntry` — a zero detail rate falls back to the lane it is carved out of (cached and written input to the input rate, reasoning to the output rate). These rates apply at every instant no window covers
+- **`PriceWindowEntry`**: `Weekdays` (`mon`…`sun`, or full names, any case), `From`, `To` (HH:MM in UTC; `from` inclusive, `to` exclusive, `00:00`/`24:00` = midnight at the end of the day) and the same five lanes. It has to repeat every lane its entry declares — a lane left at zero would charge the entry's rate inside the window — and a window may not cross midnight (`TestAPriceWindowRepeatsTheEntrysLanes` holds the two spellings to the same keys)
+- **`priceTable(cfg) (*agent.PriceTable, error)`** (in `main.go`) — reads `Pricing`, parses each window and builds the agent's table; an empty section prices nothing (nil, no error), which the agent reports as an unknown cost rather than as zero, while a malformed window stops startup with a message naming the entry and the window (issue #225). The five-lane mapping is written out field by field in `entryPrice`/`windowPrice` so a swap is visible, and both are priced lane by lane in `pricing_config_test.go`
 - **`BudgetConfig`**: `MaxTokensPerRun`, `MaxTokensPerSession` — both default to 0 = unlimited; a negative value in a file is ignored rather than read as "no limit", so only zero switches a limit off
 - **`(cfg Config) TokenBudgets() (perRun, perSession int)`** — nil-safe accessor used by `main.go` to set the agent's limits
 - **`DefaultConfig() Config`** — `deepseek-flash` (model version DeepSeek-V4.1-Flash, the name DeepSeek publishes; the `deepseek-v4-flash` alias is retired, issue #226), `https://api.deepseek.com`, 1M context
@@ -621,7 +623,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **927 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **936 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -667,7 +669,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 927 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 936 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

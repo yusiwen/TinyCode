@@ -54,6 +54,23 @@ func TestShippedExampleLoads(t *testing.T) {
 	if _, ok := cfg.Pricing.Prices["deepseek/deepseek-flash"]; !ok {
 		t.Errorf("declared rates = %v, want the route the example ships as its own default", cfg.Pricing.Prices)
 	}
+	// The default route bills by the hour, so the example has to carry the peak
+	// blocks as windows or its estimate is 2x wrong most of the week (issue #225).
+	deepseek := cfg.Pricing.Prices["deepseek/deepseek-flash"]
+	if len(deepseek.Windows) != 2 {
+		t.Errorf("deepseek windows = %d, want the two peak blocks", len(deepseek.Windows))
+	}
+	for _, w := range deepseek.Windows {
+		if len(w.Weekdays) != 5 || w.From == "" || w.To == "" {
+			t.Errorf("window = %+v, want five weekdays and a from/to", w)
+		}
+		if w.InputPerMillion <= deepseek.InputPerMillion {
+			t.Errorf("window input rate %v is not above the off-peak rate %v", w.InputPerMillion, deepseek.InputPerMillion)
+		}
+	}
+	if windows := cfg.Pricing.Prices["ollama/*"].Windows; len(windows) != 0 {
+		t.Errorf("ollama/* windows = %v, want none: the windows are optional", windows)
+	}
 	if len(cfg.MCPServers) != 2 {
 		t.Errorf("mcp_servers = %d, want the 2 the example lists", len(cfg.MCPServers))
 	}
