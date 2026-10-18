@@ -479,6 +479,7 @@ working boundary.
 | `tool/pathbeneath_*.go` | `openat2` containment and the `O_NOFOLLOW` component walk |
 | `tool/containment_*.go` | the capability probes and the degraded-result note |
 | `tool/sandboxexec.go` | the launcher contract, argv, and classification |
+| `tool/trajectory_store.go` | the run record is not a tool path either (`ask: reserved`, full access excepted) |
 | `tool/cacheroots.go` | the granted cache roots (the platform user cache directory, plus each installed toolchain's download cache as a subtree and never a directory on `PATH`), the per-user `TMPDIR`, and the confined command's env |
 | `tool/confinement_linux.go` | the Landlock ruleset and the launcher entry point |
 | `tool/confinement_darwin.go` | the Seatbelt profile and the launcher through `sandbox-exec` |

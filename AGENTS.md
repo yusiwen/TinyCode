@@ -24,6 +24,8 @@ Run interactively:
 ./bin/tinycode                          # TUI mode
 ./bin/tinycode "refactor the parser"    # one-shot mode
 ./bin/tinycode --list-sessions          # list saved sessions
+./bin/tinycode --trajectories           # list the newest run records (docs/trajectories.md)
+./bin/tinycode --trajectory <run-id>    # print one run record as JSONL
 ./bin/tinycode --resume=TUI-20260607-235959  # resume session
 ```
 

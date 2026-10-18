@@ -453,12 +453,26 @@ current tree.
 
 ### E4 — Trajectories are not persisted in an analysable format
 
-- **Gap**: no trace or span structure, no per-step timing plus token record, no machine-readable
-  export of a run. A trajectory is the raw material for evaluation, and today only a human-readable
-  session file exists.
+- **Picked up**: [#249](https://github.com/yusiwen/TinyCode/issues/249) — S1 (the writer, the schema and
+  the loop's emit sites), S2 (configuration, wiring, the delegated-agent hand-off, retention and the
+  reserved path), S3 (`--trajectories`, `--trajectory`, and the documents). **Delivered 2026-10-18**:
+  a run writes one JSONL file, one event per line, each event carrying its own duration — `run.start`,
+  `llm.call` (duration, TTFT, tokens, cost and the call's outcome), `tool.call` (duration, argument and
+  result digests, and a status), `step.end`, `run.end` (which of `final`/`budget`/`blocked`/
+  `step_limit`/`cancelled`/`error` stopped it). Recording is on by default and keeps **metadata only**
+  unless `capture: "full"` comes from the user's own config file; the store is bounded at 200 runs /
+  64 MiB, pruned once per run, and refuses tool writes with `ask: reserved` because a record the
+  recorded agent can rewrite is not evidence. A recording failure warns once and never fails a run —
+  the opposite of the checkpoint rule, on purpose. A delegated agent writes its own file, numbered and
+  linked by the parent, which is the data G1's attribution needs. `docs/trajectories.md` is the
+  user-facing page.
+- **Gap** (the state before #249): no trace or span structure, no per-step timing plus token record, no
+  machine-readable export of a run. A trajectory is the raw material for evaluation, and only a
+  human-readable session file existed.
 - **Evidence**: structured logging (`tlog`) and session JSON are present; `tlog`'s `"trace"` is a log
-  *level* (`tlog/tlog.go:38`), not tracing; nothing writes per-step spans.
-- **Effort**: ~2–3 d, and it is the prerequisite for F1.
+  *level* (`tlog/tlog.go:38`), not tracing; nothing writes per-step spans. (Re-checked 2026-10-18: still
+  why a log line is not a record, which is what #249's `agent/trajectory*.go` answers.)
+- **Effort**: ~2–3 d, and it was the prerequisite for F1.
 
 ### E5 — Refuted: project instruction files *are* loaded
 
@@ -475,6 +489,10 @@ working directory only — it never walks upward and never merges nested files (
 
 ### F1 — No agent-level evaluation framework
 
+- **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
+  tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
+  documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the
+  repetitions, pass@k and a judge: a record of what happened is not a verdict on whether it was good.
 - **Gap**: there is no task set, no pass@k, no LLM-as-judge and no regression baseline, so "did the
   agent get better?" has no signal when a prompt, a model or a compression threshold changes.
 - **Evidence**: the suite is software testing — 749 test functions in the main module (848 counting
