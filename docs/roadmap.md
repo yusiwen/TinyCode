@@ -489,6 +489,16 @@ working directory only — it never walks upward and never merges nested files (
 
 ### F1 — No agent-level evaluation framework
 
+- **Picked up**: [#252](https://github.com/yusiwen/TinyCode/issues/252) — the spike this entry asks for, and
+  deliberately not the framework. **Measured 2026-10-18**: six tasks, three configurations (the default build
+  agent, the same with a hard token budget, and the read-only plan agent), two repetitions each, graded by
+  each task's own `go test ./...` and read from the runs' trajectories. The signal exists — build 6/6, limited
+  5/6, plan 0/6, with the two ends agreeing with themselves on every task — but **the task set is saturated**:
+  five of the six tasks are solved by step 3, so the budget only binds on the hardest one, which is also the
+  only cell whose repetitions disagreed. The harness, the verdict rule and the baseline are in
+  [eval.md](eval.md); the committed numbers are `eval/BASELINE.md`. **The next increment is a task set with a
+  difficulty spread, not a framework** — a framework built on this set would measure the ceiling rather than
+  the agent.
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the

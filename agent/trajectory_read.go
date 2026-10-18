@@ -40,6 +40,9 @@ type RunSummary struct {
 	Started     time.Time
 	Lines       int
 	Complete    bool
+	// Tools counts the calls per tool name, which is what a reader needs to ask
+	// "which tool does this agent lean on" without loading the file itself.
+	Tools map[string]int
 }
 
 // TokensTotal is the number the list prints: prompt plus completion as the
@@ -121,6 +124,11 @@ func readRun(path string) (RunSummary, error) {
 			summary.Model = stringField(event, "model")
 			summary.Capture = stringField(event, "capture")
 			summary.Started = timeField(event, "at")
+		case TrajectoryToolCall:
+			if summary.Tools == nil {
+				summary.Tools = make(map[string]int)
+			}
+			summary.Tools[stringField(event, "tool")]++
 		case TrajectoryRunEnd:
 			summary.Complete = true
 			summary.Stop = stringField(event, "stop")

@@ -194,3 +194,24 @@ func TestAReadRunCarriesTheUnknownCostCount(t *testing.T) {
 		t.Fatalf("tokens = %+v, want zero", runs[0].Tokens)
 	}
 }
+
+// TestAReadRunCountsItsToolCalls is the aggregation the evaluation harness asked
+// for: which tool a run leaned on, read from the file rather than by loading it
+// into a second parser.
+func TestAReadRunCountsItsToolCalls(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"v":1,"type":"run.start","run":"20261018T070400Z-r1","at":"2026-10-18T07:04:00Z"}
+{"v":1,"type":"tool.call","run":"20261018T070400Z-r1","step":0,"call":0,"tool":"read_file","status":"ok","duration_ms":1,"at":"2026-10-18T07:04:00Z"}
+{"v":1,"type":"tool.call","run":"20261018T070400Z-r1","step":0,"call":1,"tool":"read_file","status":"ok","duration_ms":1,"at":"2026-10-18T07:04:00Z"}
+{"v":1,"type":"tool.call","run":"20261018T070400Z-r1","step":0,"call":2,"tool":"bash","status":"error","duration_ms":1,"at":"2026-10-18T07:04:00Z"}
+{"v":1,"type":"run.end","run":"20261018T070400Z-r1","stop":"final","steps":1,"duration_ms":9,"at":"2026-10-18T07:04:01Z"}
+`
+	writeTrajectoryFile(t, dir, "20261018T070400Z-r1.jsonl", body)
+	runs, err := ListRuns(dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs[0].Tools["read_file"] != 2 || runs[0].Tools["bash"] != 1 {
+		t.Fatalf("tool counts = %v, want read_file=2 bash=1", runs[0].Tools)
+	}
+}
