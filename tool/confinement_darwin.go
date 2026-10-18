@@ -122,6 +122,20 @@ var (
 	seatbeltOK        bool
 )
 
+// seatbeltResolver answers "where is the applier" for the capability probe. It
+// is a variable so this package's tests can present a host whose applier cannot
+// apply a profile; production never reassigns it. The launcher itself resolves
+// the applier directly: it is a process of its own, and a question already
+// answered in the parent is not worth a second smoke run there.
+var seatbeltResolver = seatbeltExecPath
+
+// resetSeatbeltProbeForTest clears the cached answer so a test can ask the
+// capability question again against a different applier.
+func resetSeatbeltProbeForTest() {
+	seatbeltProbeOnce = sync.Once{}
+	seatbeltOK = false
+}
+
 // commandConfinementAvailable answers the launcher-capability question with a
 // smoke run rather than a file existence check.
 //
@@ -132,7 +146,7 @@ var (
 // the interface — must therefore answer unavailable.
 func commandConfinementAvailable() bool {
 	seatbeltProbeOnce.Do(func() {
-		binary, err := seatbeltExecPath()
+		binary, err := seatbeltResolver()
 		if err != nil {
 			return
 		}
