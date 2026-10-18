@@ -21,6 +21,11 @@ wait --text "⚡ build" --timeout 10s
 send --text "write the stub file"
 send --key enter
 wait --text "stub-final-ok" --timeout 30s
+# The final text is painted before the run has finished unwinding, and a command submitted in that
+# gap is refused and consumed (`A run is already in progress`, text left in the box), so the undo
+# below would wait forever for a dialog nothing opened (issue #245). The status bar only animates
+# while a run is active, so a screen that holds still for 500ms is a screen whose run has ended.
+stable 500ms --timeout 30s
 # The tool call is on screen and the store has it. Undo it: the transcript lists the file
 # first, then the dialog asks, and only the answer acts.
 send --text /undo
