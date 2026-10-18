@@ -9,6 +9,35 @@ back to its change and tests.
 
 ## Unreleased
 
+### Price a call at the hour it was made
+
+Roadmap entry A3's cost half (issue #225): a declared rate had five billing lanes and no time dimension,
+so the provider this repository ships as its default — DeepSeek bills peak and off-peak — could not be
+priced correctly by any number. `config.example.json` declared the peak rates and was therefore **2× too
+high for about 79% of the week**, with nothing in the display saying so.
+
+A declared entry now carries an optional list of `windows` beside its rates: `weekdays` (`mon`…`sun`, or
+full names, any case), `from`/`to` as HH:MM in UTC (`from` inclusive, `to` exclusive, `00:00`/`24:00`
+meaning midnight at the end of the day — LiteLLM writes DeepSeek's schedule that way), and the same five
+lanes. The entry's own rates apply at every instant a window does not cover, so the smaller of the two
+declarations is the one to write. A call is priced at the instant its request was sent, in UTC: a route
+bills by the hour the request was made in, and a long stream can cross 04:00 while it is being generated.
+
+The declaration is checked before anything is stored. A window has to repeat every lane its entry declares
+(a lane left at zero inside a window would silently charge the entry's rate — half price, in exactly one
+lane), windows may not overlap on a shared day, and they may not cover the whole week, which would make the
+entry's own rates unreachable. Each refusal is a startup error naming the entry and the window, and a
+refused entry prices nothing, so the call is reported unknown rather than priced by a guess.
+
+The example now declares DeepSeek's real pair — off-peak on the entry, the two peak blocks
+(01:00-04:00 and 06:00-10:00 UTC on weekdays, 35 of 168 hours) as windows — and
+`pricing_config_test.go` prices that file at a fixed peak instant and a fixed off-peak one, lane by lane,
+so the document is an executable part of the change and not a copy of it. **What it still cannot say**:
+Chinese public holidays, which the vendor prices as off-peak and this schema prices at peak (2× too high on
+those hours), because a holiday calendar changes every year; a window that crosses midnight, which has to be
+written as two; and a displayed window name — the status bar still says `declared`, not which slice priced
+the call (`ba60844`, `4f40ec3`).
+
 ### Undo a `bash` command's changes too
 
 Roadmap entry C1's last boundary (issue #238): `/undo` covered the file tools' writes and nothing a
