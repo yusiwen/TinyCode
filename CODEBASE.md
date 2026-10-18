@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 960 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 980 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -332,6 +332,14 @@ before any flag parsing and re-execs itself as the launcher.
 - **`LastCall(session)` / `RestoreCall(ctx, call)`** — the newest call that has not been undone, and its restore. A restore marks the call undone in its own manifest rather than deleting it, which is what makes the next undo reach the call before it; a restore that fails partway returns the paths already restored and leaves the call unmarked, so a retry is safe. A call attributed to another session is skipped, an unattributed one stays a candidate (the TUI mints its session id after the first call it records)
 - **`pruneCheckpoints(store)`** — the bound: 50 calls or 64 MiB per project (`checkpointMaxCalls` / `checkpointMaxBytes`), dropping the oldest **already-undone** calls first and then collecting objects no remaining manifest references. A call that can still be undone is never dropped, so a project with more live calls than the limit stays over it on purpose. `/undo`, `--undo` and the `/sandbox` report are the surfaces; `docs/checkpoints.md` is the user-facing page, including the boundary that a `bash` command's own writes are not recorded
 
+### `trajectory*.go` — What a run leaves behind
+
+- **`Trajectory` / `TrajectoryRun`** (`agent/trajectory.go`) — one JSONL file per run, one event per line, each event carrying its own duration so a reader never pairs two lines to compute one. `run.start`, `llm.call`, `tool.call`, `step.end`, `run.end`; payloads are `{sha256, chars}` and carry `text` only under `capture: "full"` (bounded at 64 KiB). Files are created `O_EXCL` under a timestamp-and-counter name, so two processes starting in the same second cannot overwrite each other's record. `Prune` keeps the newest `max_runs` / `max_bytes`, never removing a file some run still holds open.
+- **`agent/trajectory_agent.go`** — where the loop meets it. `recording()` is `Trajectory != nil || TrajectoryParent != nil` (a delegated agent has no writer of its own). `Run` records from its first instant, and one `defer` writes `run.end`, so the six ways a run can return — including a panic — all close the file with the same vocabulary: `final`, `budget`, `blocked`, `step_limit`, `cancelled`, `error`. Durations come from `Agent.Now`; with nothing being recorded the clock is still read exactly once per call, which is the pricing invariant #225 established — the second read is the recorder's and only happens when a trajectory exists. `toolStatus` classifies a tool result from its text (`ok`, `error`, `blocked`, `refused`, `repeated`), because the dispatcher turns every failure into a string and there is no separate status to read.
+- **`agent/trajectory_read.go`** — the reader `--trajectories` uses. It parses the files rather than an index, reports a file with no `run.end` as incomplete rather than broken, tolerates a half-written last line, and `ValidRunID` is the path-traversal guard: the id becomes a file name, and the store is worth nothing if it can be asked for a file it never wrote.
+- **Not a tool path** (`tool/trajectory_store.go`): `CheckPathAccess` refuses the store with `ask: reserved`, full access excepted, for the reason the checkpoint store is refused — evidence the recorded agent can rewrite is not evidence.
+- **Never fails a run**: a write failure warns once and disables the recording. The checkpoint store does the opposite on purpose (a pre-image that cannot be read refuses the write); one is safety, the other is observability, and `docs/checkpoints.md` and `docs/trajectories.md` each say which they are.
+
 ### `snapshot.go` — A command's pre-images
 
 - **`beginCommandSnapshot(ctx)`** — called by the bash tool before it starts a command, because a shell command never says what it will touch. It walks the project root, skipping `.git`, the checkpoint store and non-regular files, reads and hashes every file under the per-file cap (2 MiB) into the content-addressed store, and remembers size/mtime/inode as the change detector. **It never fails the command**: over the whole-snapshot bound (32 MiB / 4000 files), on an unreadable tree, or without a store, it sets the reason and the tool result carries it — the opposite of the file tools, whose whole purpose is the write they refuse without a pre-image. The bounds are the measurement in `docs/checkpoints.md` (42.9 ms / 379 files here), not a guess.
@@ -635,7 +643,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **960 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **980 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -681,7 +689,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 960 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 980 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

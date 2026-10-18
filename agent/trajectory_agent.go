@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -37,12 +38,23 @@ type runOutcome struct {
 	steps int
 }
 
+// recording says whether this agent writes anything. A delegated agent has no
+// Trajectory of its own — its file is opened by the parent — so both fields
+// answer the question.
+func (a *Agent) recording() bool { return a.Trajectory != nil || a.TrajectoryParent != nil }
+
 // beginTrajectory opens the run's file, or returns nil when nothing records.
 func (a *Agent) beginTrajectory(prompt string) *TrajectoryRun {
 	provider, model := splitProviderModel(a)
 	agentName := ""
 	if a.Config != nil {
 		agentName = a.Config.Name
+	}
+	if a.TrajectoryParent != nil {
+		// A delegated run is a child of the run that delegated it: the parent
+		// numbers it and the file carries the link, which is the only way to
+		// attribute a sub-agent's cost to the run that caused it.
+		return a.TrajectoryParent.Child(agentName)
 	}
 	return a.Trajectory.Start(RunMetadata{
 		Session:  a.SessionID,
@@ -67,7 +79,20 @@ func (a *Agent) finishTrajectory(stop string, steps int, started time.Time, cost
 		duration = a.now().Sub(started)
 	}
 	run.End(stop, steps, duration, a.runUsage, costSince(a.CostTotal, costStart), a.CostUnknownCalls-unknownStart)
+	if a.Trajectory != nil {
+		// The store is bounded once per run, not per event: a directory listing
+		// of at most a few hundred files is cheap, and bounding it here is what
+		// keeps the record from growing without a limit nobody watches.
+		if _, err := a.Trajectory.Prune(a.TrajectoryMaxRuns, a.TrajectoryMaxBytes); err != nil {
+			tlog.Warn("trajectory", "prune", "dir", a.Trajectory.Dir(), "error", err)
+		}
+	}
 }
+
+// CurrentRun is the run in flight, or nil when nothing is being recorded. It is
+// what a delegating tool hands to the agent it builds, so the child's file hangs
+// off the parent's.
+func (a *Agent) CurrentRun() *TrajectoryRun { return a.trajRun }
 
 // splitProviderModel names the route a run was sent to. A provider that cannot
 // name itself records neither field rather than a guess: an analysis that

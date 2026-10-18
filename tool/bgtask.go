@@ -100,6 +100,9 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		sub.BudgetTokensPerRun = deps.BudgetTokensPerRun
 		sub.BudgetTokensPerSession = deps.BudgetTokensPerSession
 		sub.PriceTable = deps.PriceTable
+		if deps.ParentRun != nil {
+			sub.TrajectoryParent = deps.ParentRun()
+		}
 
 		tlog.Debug("task.bg", "start", "id", id, "agent", name, "goal", goal,
 			"tools", len(subTools), "maxSteps", cfg.MaxSteps)

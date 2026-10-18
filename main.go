@@ -62,6 +62,8 @@ func newRootCmd() *cobra.Command {
 	var listSessions bool
 	var deleteSession string
 	var exportSession string
+	var listTrajectories bool
+	var showTrajectory string
 	var searchSessions string
 	var listGrants bool
 	var revokeGrant string
@@ -158,6 +160,24 @@ func newRootCmd() *cobra.Command {
 				return err
 			}
 			ag.PriceTable = table
+
+			// Every run leaves a record, because a run that leaves nothing behind
+			// cannot be compared with another one. The directory is registered
+			// with the tool layer first, so a tool cannot write the evidence it
+			// is being measured by. capture is taken from the user's own config
+			// only when it names "full": see ResolveTrajectoryCapture.
+			spec := cfg.TrajectorySpec()
+			if spec.Enabled {
+				capture, ignored := layers.User.ResolveTrajectoryCapture(&cfg)
+				if ignored {
+					tlog.Warn("config", "project_local_capture_full_ignored",
+						"reason", "capture: full writes tool text to disk; only the user's own config may ask for it")
+				}
+				tool.SetTrajectoryRoot(spec.Dir)
+				ag.Trajectory = agent.NewTrajectory(spec.Dir, capture)
+				ag.TrajectoryMaxRuns = spec.MaxRuns
+				ag.TrajectoryMaxBytes = spec.MaxBytes
+			}
 			if cfg.Truncation != nil {
 				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
 			}
@@ -299,6 +319,7 @@ func newRootCmd() *cobra.Command {
 				BudgetTokensPerRun:     ag.BudgetTokensPerRun,
 				BudgetTokensPerSession: ag.BudgetTokensPerSession,
 				PriceTable:             ag.PriceTable,
+				ParentRun:              ag.CurrentRun,
 				GetAgentConfig: func(name string) *agent.AgentConfig {
 					cfg, err := reg.Get(name)
 					if err != nil {
@@ -369,6 +390,13 @@ func newRootCmd() *cobra.Command {
 				}
 				fmt.Printf("Deleted session: %s\n", deleteSession)
 				return nil
+			}
+
+			if listTrajectories {
+				return printTrajectories(&cfg, 20)
+			}
+			if showTrajectory != "" {
+				return printTrajectory(&cfg, showTrajectory)
 			}
 
 			if exportSession != "" {
@@ -568,6 +596,8 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().BoolVar(&listSessions, "list-sessions", false, "List saved sessions")
 	rootCmd.Flags().StringVar(&deleteSession, "delete-session", "", "Delete a saved session by ID")
 	rootCmd.Flags().StringVar(&exportSession, "export-session", "", "Export a session as Markdown")
+	rootCmd.Flags().BoolVar(&listTrajectories, "trajectories", false, "List the newest run trajectories")
+	rootCmd.Flags().StringVar(&showTrajectory, "trajectory", "", "Print one run trajectory as JSONL")
 	rootCmd.Flags().StringVar(&searchSessions, "search-sessions", "", "Search session content")
 	rootCmd.Flags().BoolVar(&listGrants, "list-grants", false, "List persistent path grants and exit")
 	rootCmd.Flags().StringVar(&revokeGrant, "revoke-grant", "", "Revoke a persistent path grant and exit")
@@ -932,4 +962,57 @@ func applyAgentOverrides(reg *agent.Registry, cfg *config.Config) error {
 		}
 	}
 	return nil
+}
+
+// printTrajectories lists the newest runs, newest first.
+//
+// It reads the files rather than an index, so the list is the format's first
+// consumer: a field the writer stopped carrying, or a shape a reader cannot
+// parse, shows up here before it shows up in an analysis script somebody wrote.
+func printTrajectories(cfg *config.Config, limit int) error {
+	spec := cfg.TrajectorySpec()
+	runs, err := agent.ListRuns(spec.Dir, limit)
+	if err != nil {
+		return fmt.Errorf("list trajectories: %w", err)
+	}
+	if len(runs) == 0 {
+		fmt.Printf("No trajectories in %s.\n", spec.Dir)
+		return nil
+	}
+	fmt.Printf("Trajectories in %s (newest %d):\n", spec.Dir, len(runs))
+	for _, run := range runs {
+		stop := run.Stop
+		if !run.Complete {
+			stop = "incomplete"
+		}
+		cost := "-"
+		if len(run.Cost) > 0 {
+			cost = run.Cost.String()
+		}
+		if run.CostUnknown > 0 {
+			cost = fmt.Sprintf("%s (+%d unpriced)", cost, run.CostUnknown)
+		}
+		fmt.Printf("  %-24s %-12s %2d steps %7.1fs %6d tok %s\n    %s\n",
+			run.Run, stop, run.Steps, run.Duration.Seconds(), run.TokensTotal(), cost, run.Path)
+	}
+	return nil
+}
+
+// printTrajectory writes one run's file to stdout unchanged.
+//
+// The id is checked against the store's own naming before it becomes a path: an
+// id such as "../../etc/passwd" would otherwise read a file this store never
+// wrote, and the whole point of the record is that it is the record.
+func printTrajectory(cfg *config.Config, id string) error {
+	if !agent.ValidRunID(id) {
+		return fmt.Errorf("trajectory: %q is not a run id", id)
+	}
+	spec := cfg.TrajectorySpec()
+	path := filepath.Join(spec.Dir, id+".jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read trajectory %s: %w", id, err)
+	}
+	_, err = os.Stdout.Write(data)
+	return err
 }

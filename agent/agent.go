@@ -82,6 +82,16 @@ type Agent struct {
 	// Trajectory records this agent's runs. Nil records nothing, which is how
 	// "off" is spelled for every optional collaborator in this package.
 	Trajectory *Trajectory
+	// TrajectoryMaxRuns and TrajectoryMaxBytes bound the trajectory store, which
+	// is pruned when a run closes. Zero means the package defaults.
+	TrajectoryMaxRuns  int
+	TrajectoryMaxBytes int64
+	// TrajectoryParent, when set, makes every run of this agent a child of that
+	// run: a delegated agent writes its own file, named and linked by the parent
+	// that started it. The parent hands out the number, so two children of one
+	// parent cannot collide.
+	TrajectoryParent *TrajectoryRun
+
 	// SessionID names the conversation a run belongs to, when one exists. It is
 	// written on every trajectory line, so a run can be traced back to its
 	// session; empty is legal, because the TUI mints an id after the first save
@@ -310,7 +320,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 	var costStart types.CostTotals
 	unknownStart := 0
 	outcome := runOutcome{stop: trajectoryStopFinal}
-	if a.Trajectory != nil {
+	if a.recording() {
 		runStarted = a.now()
 		costStart = a.CostTotal
 		unknownStart = a.CostUnknownCalls
