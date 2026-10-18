@@ -9,6 +9,35 @@ back to its change and tests.
 
 ## Unreleased
 
+### Every run leaves a machine-readable record
+
+Roadmap entry E4 (issue #249). A run left nothing a program could measure. The callbacks that drive the
+display carry a tool name and an argument *summary* for the status line, no timing and no result; the
+session store is the conversation, kept for resuming it; and `tlog`'s `"trace"` is a log level rather than
+tracing. So "did this change make the agent better" had no data to answer with, which is the whole of
+roadmap F1 waiting on a prerequisite.
+
+A run now writes one JSONL file: one event per line, each carrying its own duration, so a reader never
+pairs two lines to compute one. `run.start` names the route, the model and a digest of the prompt;
+`llm.call` records each provider call's duration, time to first token, tokens, cost and outcome;
+`tool.call` records the tool, digests of its arguments and result, its duration and a status;
+`step.end` and `run.end` close the step and the run, and `run.end` names *why* it stopped — `final`,
+`budget`, `blocked`, `step_limit`, `cancelled` or `error`. `tinycode --trajectories` lists the newest
+runs and `--trajectory <id>` prints one file.
+
+Three decisions are deliberate. Recording is on by default but keeps **metadata only** — an sha256 and a
+length per payload — because it writes to disk on every run and tool arguments carry secrets;
+`capture: "full"` is honoured only from your own config file, so a cloned repository cannot decide that
+your prompts get written down. A recording failure never fails a run, which is the opposite of the
+checkpoint rule on purpose: one is safety, the other observability. And the store is **not a tool path** —
+`ask: reserved`, as with the pre-images — because a record the recorded agent can rewrite is not evidence.
+
+A delegated agent writes its own file, numbered by the parent and linked through `parent`, which is the
+data G1's per-agent attribution needs without claiming G1. The store is bounded at 200 runs / 64 MiB and
+pruned once per run, never removing a file a run still holds open. A killed run has no `run.end`; that is
+what append-only buys, and `--trajectories` reports such a run as incomplete rather than as broken
+(`5024e09`, `bdba458`, `8ac904e`).
+
 ### Confine a shell command on macOS too
 
 Roadmap entry C7 (issue #247). The path fence confines the agent's own opens, and on Linux the launcher
