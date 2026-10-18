@@ -2,6 +2,7 @@ package agent
 
 import (
 	"strings"
+	"time"
 
 	"github.com/yusiwen/tinycode/types"
 )
@@ -38,6 +39,9 @@ type PriceTable struct {
 	// own charge in; the two are accumulated apart rather than added.
 	Currency string
 	prices   map[string]Price
+	// windows holds the schedules declared for some of those keys; a key without
+	// an entry here charges its own rates at every instant (see SetEntry).
+	windows map[string][]PriceWindow
 }
 
 // NewPriceTable returns an empty table. A nil table prices nothing, which is
@@ -48,6 +52,9 @@ func NewPriceTable(currency string) *PriceTable {
 
 // Set declares the rate for one key. An empty key is ignored: a declaration that
 // cannot match anything is a typo, not a rate for everything.
+//
+// A rate set this way applies at every instant, so it also drops any schedule
+// declared for the same key: a caller that posted a raw rate asked for one number.
 func (t *PriceTable) Set(key string, price Price) {
 	if t == nil || strings.TrimSpace(key) == "" {
 		return
@@ -56,6 +63,7 @@ func (t *PriceTable) Set(key string, price Price) {
 		t.prices = map[string]Price{}
 	}
 	t.prices[key] = price
+	delete(t.windows, key)
 }
 
 // Len is the number of declared keys, for a caller that has to report whether a
@@ -67,7 +75,9 @@ func (t *PriceTable) Len() int {
 	return len(t.prices)
 }
 
-// Lookup returns the rate that covers a key, most specific first.
+// Lookup returns the rate that covers a key, most specific first. It answers with
+// the entry's own rates, which are the ones a window does not replace: a caller
+// that has to know what a call actually cost at an instant asks AmountAt.
 func (t *PriceTable) Lookup(key string) (Price, bool) {
 	if t == nil {
 		return Price{}, false
@@ -89,15 +99,15 @@ func (t *PriceTable) Lookup(key string) (Price, bool) {
 	return Price{}, false
 }
 
-// Amount prices one usage record, or reports that no declared rate covers the
-// call. The result is an estimate of the bill computed from rates the user
-// typed, which is why it comes back with its source attached by the caller.
+// Amount prices one usage record as of now, or reports that no declared rate
+// covers the call. The result is an estimate of the bill computed from rates the
+// user typed, which is why it comes back with its source attached by the caller.
+//
+// A caller that knows when the provider call started — the agent does — uses
+// AmountAt instead, so a call that crosses an hour boundary is priced by the hour
+// it was made in rather than by the hour it finished in.
 func (t *PriceTable) Amount(key string, usage types.Usage) (types.Cost, bool) {
-	price, ok := t.Lookup(key)
-	if !ok {
-		return types.Cost{}, false
-	}
-	return types.Cost{Amount: price.amount(usage), Currency: t.Currency}, true
+	return t.AmountAt(key, usage, time.Now())
 }
 
 // amount applies the lane rates to one usage record.
