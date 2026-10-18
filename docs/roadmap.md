@@ -330,14 +330,30 @@ current tree.
 
 ### C7 — No command confinement on macOS
 
-- **Gap**: the component walk confines the agent's own opens, but nothing confines a command the
-  agent spawns. Command confinement is off by default on macOS, and turning it on yields a
-  capability refusal.
+- **Picked up**: [#247](https://github.com/yusiwen/TinyCode/issues/247) — S1 (the Seatbelt profile, the
+  launcher through `sandbox-exec`, and a capability answer that is a smoke run), S2 (the real-kernel
+  acceptance test and the documents that said macOS had no mechanism). **Delivered 2026-10-18**: the
+  launcher renders a profile from the same mode and roots a Linux launcher turns into a Landlock
+  ruleset — `(deny file-write*)`, `(literal "/dev/null")`, then one `(subpath …)` per **resolved** root,
+  because Seatbelt matches the path the kernel resolved and `/tmp`, `/var`, `/etc` are links into
+  `/private` — and re-execs through `/usr/bin/sandbox-exec`, which execvp's the command so its
+  `argv[0]` survives as it does on Linux. Because the default was already derived from the capability
+  rather than from the platform name, the config change this needed was none: the mechanism landing is
+  what flips `confine_commands`. `make test-tui-confine`, which skipped here with a printed reason, now
+  passes on macOS, asserting on the filesystem after the real binary exits. It is accepted with its
+  deprecation stated: `sandbox-exec` is Apple's and deprecated, and every failure path refuses the
+  command rather than running it unconfined, so the worst case is a host that refuses commands instead
+  of one that silently frees them.
+- **Gap** (the state before #247): the component walk confines the agent's own opens, but nothing
+  confined a command the agent spawns. Command confinement was off by default on macOS, and turning it
+  on yielded a capability refusal.
 - **Evidence**: no `sandbox_init`, no Seatbelt or libsandbox binding; `tool/confinement_other.go` is
   `//go:build !linux` and returns `launcherFail("no kernel file-boundary mechanism for subprocesses
   on this platform")` with `commandConfinementAvailable() == false`. The four `sandbox-exec` matches
   are this repository's own launcher constant, `SandboxLauncherCommand = "__sandbox-exec"`
-  (`tool/sandboxexec.go:21`) — Apple's `/usr/bin/sandbox-exec` is never invoked.
+  (`tool/sandboxexec.go:21`) — Apple's `/usr/bin/sandbox-exec` was never invoked.
+  **Updated 2026-10-18**: it is, by #247, which is what `confinement_darwin.go` is; the counts above
+  are the `7e6b017` baseline this entry was written against.
 - **Already present**: the macOS component walk (`tool/pathbeneath_walk.go`), reported as
   `ContainmentKernel` (`tool/containment_darwin.go`). Documented as a limit at `docs/sandbox.md:375`.
 - **Effort**: ~5–8 d.
@@ -586,7 +602,9 @@ by certainty of return rather than by size:
 4. **Escalate C7 above C6.** The Linux fence is real (path fence, Landlock, cgroup v2 kill); a
    container backend is a different deployment story rather than more of the same. Meanwhile macOS
    command confinement is *off on this project's own development machine*, which is a cost paid
-   daily.
+   daily. **Delivered** (issue #247): the macOS launcher applies Seatbelt through
+   `/usr/bin/sandbox-exec` and the default flipped with the capability, so this tier's cost is paid
+   and C6 is what remains open.
 5. **Bets that need a spike before an implementation** — B4 (repo index), F1 (evaluation), and the
    larger D and E items. For these the first increment should answer "is this worth it" with
    measurements on real tasks, and the issue should carry the condition under which the work is

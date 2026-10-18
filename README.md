@@ -209,9 +209,10 @@ alike, so no two of them can disagree about what is writable.
   where the kernel can, it re-checks the decision at the point of use
   (`openat2 RESOLVE_BENEATH`; the `O_NOFOLLOW` component walk on macOS).
 - **Command boundary** — on by default where the host can apply it (Landlock on
-  Linux), `bash` runs under the kernel boundary: a write outside the roots is
-  refused. On a host with no mechanism the default is off and `/sandbox` says so;
-  forcing it on there refuses the command rather than running it unconfined. The
+  Linux, Seatbelt on macOS), `bash` runs under the kernel boundary: a write
+  outside the roots is refused. On a host with no mechanism the default is off
+  and `/sandbox` says so; forcing it on there refuses the command rather than
+  running it unconfined. The
   platform user cache root is granted to both the fence and the command so a
   confined toolchain can write `GOCACHE` and friends.
 - **Approval dialog** — **Allow once** (one call, nothing cached), **Allow
@@ -224,8 +225,9 @@ alike, so no two of them can disagree about what is writable.
 
 Design, the launch protocol, grant lifetimes, the refusal vocabulary and what is
 deliberately not promised: **[docs/sandbox.md](docs/sandbox.md)**. Command
-confinement defaults on where the kernel can enforce it (Linux with Landlock) and
-off where it cannot; the per-platform default is stated in `/sandbox`.
+confinement defaults on where the kernel can enforce it (Landlock on Linux,
+Seatbelt on macOS) and off where it cannot; the per-platform default is stated in
+`/sandbox`.
 
 **Permissions:** `ToolAllowedFor(cfg, toolName)` — checked before every tool execution. Plan mode denies write/git/task/skill_manage.
 
