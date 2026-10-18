@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 998 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 1017 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -345,17 +345,24 @@ before any flag parsing and re-execs itself as the launcher.
 Not product code, and deliberately small: it answers whether an evaluation signal exists at all (issue
 #252), so that roadmap F1 is argued about with a number rather than an intention.
 
-- **`eval/tasks/`** — six self-contained tasks: a `go.mod`, a package with a real defect, a test that
-  fails, and a one-line `PROMPT`. No dependencies, so a task runs offline with the `go` on `PATH`.
+- **`eval/tasks/`** — twelve self-contained tasks: a `go.mod`, a real defect, a test that fails, a one-line
+  `PROMPT` and a declared `TIER` (1 one file and an obvious defect, 2 a contract between files, 3 a
+  symptom-only prompt whose tests are the specification). No dependencies, so a task runs offline.
+- **`eval/_solutions/`** — a reference fix per task, so "the task is solvable" is a gate rather than a claim:
+  `go test ./eval/runner` proves each task is red before its fix and green after, and that the fix never
+  touches a test. The directory leads with an underscore so the go tool ignores it — the fix is a file to
+  copy, not a package to build. It is outside `eval/tasks/` for a sharper reason: `copyTask` copies a task
+  directory into the work copy, and a solution inside it would be handed to the agent.
 - **`eval/runner/`** — `TINYCODE_EVAL=1 go run ./eval/runner`. For each (configuration × task × repetition)
   it copies the task to a scratch directory, writes that copy's own `.tinycode/config.json` (the agent mode
   under test, the hard token budget, and the attempt's record directory), runs the binary, and grades the
   attempt by the task's own `go test ./...`. Test files are hashed before and after: an attempt that edited a
   test is recorded as tampered and counts as a failure.
-- **`aggregate.go`** — everything that decides the verdict, kept pure so it is tested without spending money:
+- **`aggregate.go`** — everything that decides a verdict, kept pure so it is tested without spending money:
   solved tasks by majority of repetitions, the noise reading (did the repetitions agree), tokens per solved
-  task including the failures' spend, and `judge`, the three-clause abandonment condition stated before the
-  first measurement.
+  task including the failures' spend, per-tier rows, `judge` (the three-clause separation condition) and
+  `judgeGradient` (build must solve a strictly smaller *fraction* of tier 3 than of tier 1 — fractions
+  because the tiers do not hold the same number of tasks).
 - **Why it reads trajectories** — steps, tokens, cost, tools and `stop` come from `agent.ListRuns`, not from
   the runner's own bookkeeping. That makes the harness the record's second consumer, which is how a format
   gets found out when it is missing a field.
@@ -663,7 +670,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **998 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1017 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -709,7 +716,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 998 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1017 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

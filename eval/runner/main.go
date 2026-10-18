@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,6 +53,10 @@ type task struct {
 	Name   string
 	Dir    string
 	Prompt string
+	// Tier is the declared difficulty, read from the task's TIER file: 1 is one
+	// file and an obvious defect, 2 is several files and a contract between them,
+	// 3 is a prompt that names only the symptom and a suite that is the spec.
+	Tier int
 	// Tests is the digest of the task's test files, so an attempt that edited
 	// them can be told apart from one that passed honestly.
 	Tests map[string]string
@@ -67,6 +72,7 @@ type runResult struct {
 	ExitCode      int              `json:"exit_code"`
 	WallMS        int64            `json:"wall_ms"`
 	Model         string           `json:"model,omitempty"`
+	Tier          int              `json:"tier,omitempty"`
 	Stop          string           `json:"stop,omitempty"`
 	Steps         int              `json:"steps"`
 	Tokens        int              `json:"tokens"`
@@ -245,6 +251,7 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 	case 1:
 		run := summaries[0]
 		result.Model = run.Model
+		result.Tier = tk.Tier
 		result.Stop = run.Stop
 		result.Steps = run.Steps
 		result.Tokens = run.TokensTotal()
@@ -308,6 +315,10 @@ func loadTasks(dir string) ([]task, error) {
 		if _, err := os.Stat(filepath.Join(path, "go.mod")); err != nil {
 			return nil, fmt.Errorf("task %s has no go.mod: %w", entry.Name(), err)
 		}
+		tier, err := readTier(path)
+		if err != nil {
+			return nil, fmt.Errorf("task %s: %w", entry.Name(), err)
+		}
 		digests, err := testDigests(path)
 		if err != nil {
 			return nil, err
@@ -318,6 +329,7 @@ func loadTasks(dir string) ([]task, error) {
 		tasks = append(tasks, task{
 			Name:   entry.Name(),
 			Dir:    path,
+			Tier:   tier,
 			Prompt: strings.TrimSpace(string(prompt)),
 			Tests:  digests,
 		})
@@ -490,4 +502,24 @@ func renderBaseline(dir string) error {
 	var markdown strings.Builder
 	printMarkdown(&markdown, report)
 	return os.WriteFile(filepath.Join(dir, "BASELINE.md"), []byte(markdown.String()), 0o644)
+}
+
+// readTier reads a task's declared difficulty.
+//
+// It is declared rather than inferred: a task's tier decides what a gradient
+// claim means, and inferring it from the file count would quietly relabel a hard
+// single-file task as easy.
+func readTier(dir string) (int, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, "TIER"))
+	if err != nil {
+		return 0, fmt.Errorf("no TIER file: %w", err)
+	}
+	tier, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return 0, fmt.Errorf("TIER is not a number: %w", err)
+	}
+	if tier < 1 || tier > 3 {
+		return 0, fmt.Errorf("TIER %d is outside the declared tiers 1-3", tier)
+	}
+	return tier, nil
 }

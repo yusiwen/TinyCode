@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -94,33 +95,167 @@ func TestCopyTaskBringsTheSourcesAndNotThePrompt(t *testing.T) {
 	}
 }
 
-// TestLoadTasksRefusesAMalformedTaskSet: a task without a test or a prompt would
-// silently score as unsolvable, which reads as an agent failure.
+// TestLoadTasksRefusesAMalformedTaskSet: every piece a task needs is required,
+// because a missing one would silently score as unsolvable and read as an agent
+// failure. The tier is required too, and has to be a declared one.
 func TestLoadTasksRefusesAMalformedTaskSet(t *testing.T) {
-	noTests := t.TempDir()
-	write(t, filepath.Join(noTests, "a", "go.mod"), "module task.local/a\n\ngo 1.27\n")
-	write(t, filepath.Join(noTests, "a", "PROMPT"), "x\n")
-	write(t, filepath.Join(noTests, "a", "a.go"), "package task\n")
-	if _, err := loadTasks(noTests); err == nil {
-		t.Fatal("a task with no test file was accepted")
+	wellFormed := func(t *testing.T, mutate func(dir string)) string {
+		t.Helper()
+		root := t.TempDir()
+		task := filepath.Join(root, "a")
+		write(t, filepath.Join(task, "go.mod"), "module task.local/a\n\ngo 1.27\n")
+		write(t, filepath.Join(task, "PROMPT"), "make it pass\n")
+		write(t, filepath.Join(task, "TIER"), "1\n")
+		write(t, filepath.Join(task, "a_test.go"), "package task\n")
+		if mutate != nil {
+			mutate(task)
+		}
+		return root
 	}
 
-	noPrompt := t.TempDir()
-	write(t, filepath.Join(noPrompt, "a", "go.mod"), "module task.local/a\n\ngo 1.27\n")
-	write(t, filepath.Join(noPrompt, "a", "a_test.go"), "package task\n")
-	if _, err := loadTasks(noPrompt); err == nil {
-		t.Fatal("a task with no prompt was accepted")
+	cases := []struct {
+		name   string
+		mutate func(dir string)
+	}{
+		{"no test file", func(dir string) {
+			if err := os.Remove(filepath.Join(dir, "a_test.go")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"no prompt", func(dir string) {
+			if err := os.Remove(filepath.Join(dir, "PROMPT")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"no tier", func(dir string) {
+			if err := os.Remove(filepath.Join(dir, "TIER")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a tier outside the declared ones", func(dir string) {
+			write(t, filepath.Join(dir, "TIER"), "7\n")
+		}},
+		{"a tier that is not a number", func(dir string) {
+			write(t, filepath.Join(dir, "TIER"), "hard\n")
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := loadTasks(wellFormed(t, tc.mutate)); err == nil {
+				t.Fatalf("a task set with %s was accepted", tc.name)
+			}
+		})
 	}
 
-	ok := t.TempDir()
-	write(t, filepath.Join(ok, "a", "go.mod"), "module task.local/a\n\ngo 1.27\n")
-	write(t, filepath.Join(ok, "a", "PROMPT"), "make it pass\n")
-	write(t, filepath.Join(ok, "a", "a_test.go"), "package task\n")
-	tasks, err := loadTasks(ok)
+	t.Run("a well-formed task loads with its tier", func(t *testing.T) {
+		tasks, err := loadTasks(wellFormed(t, nil))
+		if err != nil {
+			t.Fatalf("a well-formed task was refused: %v", err)
+		}
+		if len(tasks) != 1 || tasks[0].Prompt != "make it pass" || tasks[0].Tier != 1 {
+			t.Fatalf("tasks = %+v", tasks)
+		}
+	})
+}
+
+// TestEveryTaskIsSolvable is the gate the task set needs before it can measure
+// anything: a task nobody can solve measures the task, not the agent.
+//
+// For every task it proves both halves — the suite is red before the fix and
+// green after it — with the reference fix kept in eval/_solutions, which is
+// outside the task directory on purpose: a solution shipped inside a task would
+// be copied into the work directory and handed to the agent.
+func TestEveryTaskIsSolvable(t *testing.T) {
+	tasks, err := loadTasks("../../eval/tasks")
 	if err != nil {
-		t.Fatalf("a well-formed task was refused: %v", err)
+		t.Fatalf("load tasks: %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].Prompt != "make it pass" {
-		t.Fatalf("tasks = %+v", tasks)
+	tiers := make(map[int]int)
+	for _, task := range tasks {
+		// A copy, so the subtest does not depend on the loop variable.
+		task := task
+		tiers[task.Tier]++
+		t.Run(task.Name, func(t *testing.T) {
+			solutionDir := filepath.Join("../../eval/_solutions", task.Name)
+			entries, err := os.ReadDir(solutionDir)
+			if err != nil {
+				t.Fatalf("task %s has no reference solution: %v", task.Name, err)
+			}
+
+			work := t.TempDir()
+			if err := copyTask(task, work); err != nil {
+				t.Fatal(err)
+			}
+			if gradeTask(work) {
+				t.Fatalf("task %s passes before any fix, so it measures nothing", task.Name)
+			}
+
+			applied := 0
+			for _, entry := range entries {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+					continue
+				}
+				if strings.HasSuffix(entry.Name(), "_test.go") {
+					t.Fatalf("the reference solution for %s contains a test file", task.Name)
+				}
+				data, err := os.ReadFile(filepath.Join(solutionDir, entry.Name()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(work, entry.Name()), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				applied++
+			}
+			if applied == 0 {
+				t.Fatalf("the reference solution for %s is empty", task.Name)
+			}
+			if !gradeTask(work) {
+				t.Fatalf("the reference solution for %s does not make it pass", task.Name)
+			}
+			modified, err := testsModified(task, work)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if modified {
+				t.Fatalf("the reference solution for %s edits a test file", task.Name)
+			}
+		})
+	}
+
+	// The gradient this increment is for: every declared tier has tasks, and the
+	// set has all three.
+	for tier := 1; tier <= 3; tier++ {
+		if tiers[tier] == 0 {
+			t.Errorf("tier %d has no tasks, so no gradient can be read", tier)
+		}
+	}
+	if len(tasks) < 12 {
+		t.Errorf("the set has %d tasks; the gradient increment was for 12", len(tasks))
+	}
+}
+
+// TestEverySolutionBelongsToATask: an orphaned solution is a stale answer to a
+// question nobody asks, and it would hide a task that lost its fix.
+func TestEverySolutionBelongsToATask(t *testing.T) {
+	tasks, err := loadTasks("../../eval/tasks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := make(map[string]bool, len(tasks))
+	for _, task := range tasks {
+		known[task.Name] = true
+	}
+	entries, err := os.ReadDir("../../eval/_solutions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if !known[entry.Name()] {
+			t.Errorf("eval/_solutions/%s has no task", entry.Name())
+		}
 	}
 }

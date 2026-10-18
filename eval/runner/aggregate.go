@@ -19,6 +19,7 @@ import (
 // taskSummary is one (configuration, task) cell.
 type taskSummary struct {
 	Task         string         `json:"task"`
+	Tier         int            `json:"tier"`
 	Passes       int            `json:"passes"`
 	Reps         int            `json:"reps"`
 	Solved       bool           `json:"solved"`   // a majority of reps passed
@@ -30,12 +31,24 @@ type taskSummary struct {
 	Tools        map[string]int `json:"tools,omitempty"`
 }
 
+// tierSummary is one (configuration, tier) cell: the row a gradient is read from.
+type tierSummary struct {
+	Tier            int `json:"tier"`
+	Tasks           int `json:"tasks"`
+	Solved          int `json:"solved"`
+	Passes          int `json:"passes"`
+	Runs            int `json:"runs"`
+	TokensPerSolved int `json:"tokens_per_solved"`
+	MedianTokens    int `json:"median_tokens"`
+}
+
 // configSummary is one configuration's row.
 type configSummary struct {
 	Name            string           `json:"name"`
 	Mode            string           `json:"mode"`
 	MaxTokensPerRun int              `json:"max_tokens_per_run,omitempty"`
 	Tasks           []taskSummary    `json:"tasks"`
+	Tiers           []tierSummary    `json:"tiers"`
 	Solved          int              `json:"solved"`
 	TaskCount       int              `json:"task_count"`
 	Passes          int              `json:"passes"`
@@ -58,6 +71,14 @@ type verdict struct {
 	Detail   string   `json:"detail"`
 }
 
+// gradientVerdict answers the question this increment was filed for: is the set
+// actually harder at the top than at the bottom?
+type gradientVerdict struct {
+	Complete bool   `json:"complete"`
+	Exist    bool   `json:"exist"`
+	Detail   string `json:"detail"`
+}
+
 // baselineReport is what gets committed.
 type baselineReport struct {
 	GeneratedAt    string          `json:"generated_at"`
@@ -66,6 +87,7 @@ type baselineReport struct {
 	Models         map[string]int  `json:"models,omitempty"`
 	Configurations []configSummary `json:"configurations"`
 	Verdict        verdict         `json:"verdict"`
+	Gradient       gradientVerdict `json:"gradient"`
 	Results        []runResult     `json:"results"`
 }
 
@@ -143,6 +165,7 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 				tokens = append(tokens, result.Tokens)
 			}
 		}
+		summary.Tiers = summariseTiers(summary.Tasks)
 		summary.TaskCount = len(taskNames)
 		summary.MedianSteps = medianInt(steps)
 		summary.MedianTokens = medianInt(tokens)
@@ -166,12 +189,16 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 		}
 	}
 	report.Verdict = judge(report.Configurations)
+	report.Gradient = judgeGradient(report.Configurations)
 	return report, nil
 }
 
 // summariseTask folds one cell's attempts.
 func summariseTask(name string, results []runResult) taskSummary {
 	cell := taskSummary{Task: name, Reps: len(results), Stops: make(map[string]int), Tools: make(map[string]int)}
+	if len(results) > 0 {
+		cell.Tier = results[0].Tier
+	}
 	var steps, tokens []int
 	for _, result := range results {
 		if result.Pass {
@@ -314,10 +341,50 @@ func printMarkdown(w io.Writer, report baselineReport) {
 		fmt.Fprintf(w, "**The abandonment condition is met, against building the framework.** %s. Either the task set is too easy, the harness measures the wrong thing, or the noise is wider than the difference; what gets built next is a harder task set, not a framework.\n", report.Verdict.Detail)
 	}
 
+	// The gradient, which is what this increment was for: the same pass counts
+	// per tier, so the reader does not have to derive a difficulty axis from a
+	// flat list of tasks.
+	fmt.Fprintf(w, "\n## The gradient\n\n| Tier | %s |\n| --- |", strings.Join(columnNames(report.Configurations), " | "))
+	fmt.Fprintf(w, "%s\n", strings.Repeat(" --- |", len(report.Configurations)))
+	for _, tier := range allTiers(report.Configurations) {
+		fmt.Fprintf(w, "| %d |", tier)
+		for _, cfg := range report.Configurations {
+			cell, ok := tierOf(cfg, tier)
+			if !ok {
+				fmt.Fprintf(w, " — |")
+				continue
+			}
+			fmt.Fprintf(w, " %d/%d |", cell.Solved, cell.Tasks)
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "\n| Tokens per solved task | %s |\n| --- |", strings.Join(columnNames(report.Configurations), " | "))
+	fmt.Fprintf(w, "%s\n", strings.Repeat(" --- |", len(report.Configurations)))
+	for _, tier := range allTiers(report.Configurations) {
+		fmt.Fprintf(w, "| %d |", tier)
+		for _, cfg := range report.Configurations {
+			cell, ok := tierOf(cfg, tier)
+			if !ok || cell.Solved == 0 {
+				fmt.Fprintf(w, " — |")
+				continue
+			}
+			fmt.Fprintf(w, " %d |", cell.TokensPerSolved)
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "\n**Gradient.** ")
+	if report.Gradient.Exist {
+		fmt.Fprintf(w, "The set is harder at the top than at the bottom — %s. A change can now be measured against a difficulty axis instead of a flat pass rate.\n", report.Gradient.Detail)
+	} else if !report.Gradient.Complete {
+		fmt.Fprintf(w, "Not decided — %s.\n", report.Gradient.Detail)
+	} else {
+		fmt.Fprintf(w, "**The condition for this increment is met, against calling the set graded.** %s: tier 3 is solved as often as tier 1, so the new tasks are longer, not harder. What gets built next is a difficulty axis that actually binds.\n", report.Gradient.Detail)
+	}
+
 	fmt.Fprintf(w, "\n## Per task\n\n| Task | %s |\n| --- |", strings.Join(columnNames(report.Configurations), " | "))
 	fmt.Fprintf(w, "%s\n", strings.Repeat(" --- |", len(report.Configurations)))
 	for index, cell := range firstConfiguration(report.Configurations).Tasks {
-		fmt.Fprintf(w, "| `%s` |", cell.Task)
+		fmt.Fprintf(w, "| `%s` (t%d) |", cell.Task, cell.Tier)
 		for _, cfg := range report.Configurations {
 			if index >= len(cfg.Tasks) {
 				fmt.Fprintf(w, " — |")
@@ -380,4 +447,111 @@ func firstConfiguration(configs []configSummary) configSummary {
 		return configSummary{}
 	}
 	return configs[0]
+}
+
+// summariseTiers folds the task cells into one row per tier.
+func summariseTiers(tasks []taskSummary) []tierSummary {
+	byTier := make(map[int][]taskSummary)
+	for _, cell := range tasks {
+		byTier[cell.Tier] = append(byTier[cell.Tier], cell)
+	}
+	tiers := make([]int, 0, len(byTier))
+	for tier := range byTier {
+		tiers = append(tiers, tier)
+	}
+	sort.Ints(tiers)
+	out := make([]tierSummary, 0, len(tiers))
+	for _, tier := range tiers {
+		row := tierSummary{Tier: tier, Tasks: len(byTier[tier])}
+		var tokens []int
+		for _, cell := range byTier[tier] {
+			row.Passes += cell.Passes
+			row.Runs += cell.Reps
+			if cell.Solved {
+				row.Solved++
+			}
+			for i := 0; i < cell.Reps; i++ {
+				tokens = append(tokens, cell.MedianTokens)
+			}
+		}
+		row.MedianTokens = medianInt(tokens)
+		if row.Solved > 0 {
+			total := 0
+			for _, value := range tokens {
+				total += value
+			}
+			row.TokensPerSolved = total / row.Solved
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// judgeGradient answers this increment's condition, stated in the issue before
+// any data: build must solve a strictly smaller fraction of the hardest tier
+// than of the easiest.
+//
+// Fractions rather than counts, because the tiers do not hold the same number of
+// tasks: three of three is not "harder" than six of six.
+func judgeGradient(configs []configSummary) gradientVerdict {
+	var build configSummary
+	found := false
+	for _, cfg := range configs {
+		if cfg.Name == "build" {
+			build, found = cfg, true
+			break
+		}
+	}
+	if !found {
+		return gradientVerdict{Detail: "the gradient is read from the build configuration, which was not run"}
+	}
+	var easy, hard *tierSummary
+	for index := range build.Tiers {
+		switch build.Tiers[index].Tier {
+		case 1:
+			easy = &build.Tiers[index]
+		case 3:
+			hard = &build.Tiers[index]
+		}
+	}
+	if easy == nil || hard == nil {
+		return gradientVerdict{Detail: "the gradient needs both tier 1 and tier 3 in the set"}
+	}
+	if easy.Tasks == 0 || hard.Tasks == 0 {
+		return gradientVerdict{Detail: "a tier has no tasks, so no rate can be read"}
+	}
+	easyRate := float64(easy.Solved) / float64(easy.Tasks)
+	hardRate := float64(hard.Solved) / float64(hard.Tasks)
+	detail := fmt.Sprintf("tier 1 %d/%d (%.0f%%), tier 3 %d/%d (%.0f%%)",
+		easy.Solved, easy.Tasks, easyRate*100, hard.Solved, hard.Tasks, hardRate*100)
+	if hardRate < easyRate {
+		return gradientVerdict{Complete: true, Exist: true, Detail: detail}
+	}
+	return gradientVerdict{Complete: true, Exist: false, Detail: detail}
+}
+
+// allTiers lists every tier any configuration reported, in order.
+func allTiers(configs []configSummary) []int {
+	seen := make(map[int]bool)
+	for _, cfg := range configs {
+		for _, row := range cfg.Tiers {
+			seen[row.Tier] = true
+		}
+	}
+	tiers := make([]int, 0, len(seen))
+	for tier := range seen {
+		tiers = append(tiers, tier)
+	}
+	sort.Ints(tiers)
+	return tiers
+}
+
+// tierOf finds one configuration's row for one tier.
+func tierOf(cfg configSummary, tier int) (tierSummary, bool) {
+	for _, row := range cfg.Tiers {
+		if row.Tier == tier {
+			return row, true
+		}
+	}
+	return tierSummary{}, false
 }

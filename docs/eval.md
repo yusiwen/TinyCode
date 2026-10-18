@@ -7,9 +7,28 @@ unbuilt, on purpose: building it before knowing the signal exists would have bee
 
 ## What it measures
 
-Six small tasks, each a directory under [`eval/tasks/`](../eval/tasks) with a `go.mod`, a failing test and
-a `PROMPT`. An attempt copies the task to a scratch directory, runs `tinycode "<prompt>"` there, and is
-graded by the task's own `go test ./...` exit code — no judge model, no rubric, no text comparison.
+Twelve tasks, each a directory under [`eval/tasks/`](../eval/tasks) with a `go.mod`, a failing test, a
+`PROMPT` and a declared `TIER`. An attempt copies the task to a scratch directory, runs
+`tinycode "<prompt>"` there, and is graded by the task's own `go test ./...` exit code — no judge model, no
+rubric, no text comparison.
+
+**The tiers are the difficulty axis**, and they are declared rather than inferred:
+
+| Tier | What a task in it looks like | Tasks |
+| --- | --- | --- |
+| 1 | one file, one obvious defect, and a prompt that restates the goal | 6 |
+| 2 | several files, a defect that spans a contract between them, or two defects that only together keep the suite red | 3 |
+| 3 | several files, a prompt that names only the *symptom*, and a suite whose edge cases are the specification | 3 |
+
+The first increment of this harness (issue #252) shipped only tier 1, and the measurement said so: five of
+six tasks were solved by step 3, so the set could not tell a full budget from a halved one except on the
+hardest task. Tier 2 and tier 3 are that finding's answer, and the harness now reports the pass rate **per
+tier**, which is the only way to see whether the answer worked.
+
+**Every task has a reference fix**, in [`eval/_solutions/`](../eval/_solutions) — deliberately *not* inside
+the task directory, because `copyTask` would hand it to the agent. `go test ./eval/runner` proves both
+halves for every task: red before the fix, green after it, and the fix never touches a test file. A task
+nobody can solve measures the task, not the agent.
 
 Everything else comes from the attempt's **trajectory** (the record issue #249 added, documented in
 [trajectories.md](trajectories.md)): steps, tokens, cost, the tools it called, and how it stopped. The
@@ -58,19 +77,43 @@ this spike: what gets built next is a harder task set, not a framework.
 
 ## The baseline, and what it says
 
-`eval/BASELINE.md` is the committed report; `eval/baseline.json` is the same data per attempt. The
-measurement of 2026-10-18 (36 runs, `deepseek-flash`):
+`eval/BASELINE.md` is the committed report; `eval/baseline.json` is the same data per attempt. The graded
+measurement of 2026-10-18 (72 runs, `deepseek-flash`):
 
 | Configuration | Solved | Pass rate | Reps agreed | Median steps | Median tokens | Tokens per solved task |
 | --- | --- | --- | --- | --- | --- | --- |
-| `build` | 6/6 | 100% | 100% | 5 | 22 246 | 56 512 |
-| `limited` (10 000) | 5/6 | 92% | 83% | 3 | 12 532 | 30 103 |
-| `plan` | 0/6 | 0% | 100% | 4 | 12 595 | — |
+| `build` | 12/12 | 100% | 100% | 5 | 27 033 | 88 091 |
+| `limited` (10 000) | 9/12 | 83% | 83% | 3 | 12 829 | 34 453 |
+| `plan` | 0/12 | 0% | 100% | 4 | 13 560 | — |
 
-**The signal exists, and the harness is stable**: `build` and `plan` agreed with themselves on every task,
-and they are the two ends. **But the task set is saturated**: five of the six tasks are solved by step 3, so
-a halved budget only bites on the hardest one (`parse-seconds`), which is also the only cell whose
-repetitions disagreed. A framework built on this set would measure the ceiling rather than the agent.
+**The signal exists, and it is stable**: `build` and `plan` agreed with themselves on every task, and they
+are the two ends. **The declared gradient does not exist**: `build` solves 6/6 of tier 1 and 3/3 of tier 3.
+The tiers are not what makes a task hard.
+
+The numbers say something more useful than "the tasks were too easy", and they are worth reading before
+anyone labels a task again:
+
+| Tier | `build` solved | `build` tokens per solved task | `limited` solved |
+| --- | --- | --- | --- |
+| 1 | 6/6 | 98 055 | 5/6 |
+| 2 | 3/3 | 198 562 | 1/3 |
+| 3 | 3/3 | 62 870 | 3/3 |
+
+- **The spread inside tier 1 is wider than any gap between tiers.** The single most expensive `build`
+  attempt is `t2-inventory` (164 207 tokens), and the second is a **tier-1** task — `count-off-by-one`,
+  133 666 tokens over 17 steps — while `dedupe`, also tier 1, costs a fraction of that. A *declared* tier is
+  a guess about difficulty; the measurement is not.
+- **What the halved budget bites on is an invariant that has to survive a refusal.** Its failures are
+  concentrated in tier 2 — `t2-ledger` 0/2, `t2-inventory` 1/2 — the tasks where a rejected operation must
+  leave state untouched (a refused transfer may not have moved the balances; a refused reservation may not
+  have reserved). The one other failure is a tier-1 task (`reverse-words`, 1/2), which reads as noise rather
+  than as difficulty. File count, prompt ambiguity and "read the tests first" were not obstacles at all:
+  tier 3 solved 3/3 under the same budget that cut tier 2 to 1/3.
+- **Cost is not monotone with tier**, which kills the idea that a harder tier is simply a longer one.
+
+So the next difficulty axis is not "more files" and not "vaguer prompt": it is **state that must survive a
+failure path**, and the next set should be built around that — with the tiers *measured* from the first
+run's steps and tokens rather than declared in advance.
 
 Two things the records made legible, which is the argument for the record:
 
@@ -98,3 +141,20 @@ separate at the top — is the more useful one.
   not a confidence interval. Treat a one-task difference as suggestive, not significant.
 - **Nothing about a model it did not run.** The baseline names the model it used; comparing a run on
   another model is a different measurement, not a better one.
+
+## The gradient
+
+The report has a section per tier: solved counts and tokens per solved task, for each configuration. The
+question it answers was stated in issue [#254](https://github.com/yusiwen/TinyCode/issues/254) before any
+data existed:
+
+> **`build` must solve a strictly smaller fraction of tier 3 than of tier 1.**
+
+Fractions, not counts, because the tiers do not hold the same number of tasks: three of three is not
+"harder" than six of six. If the condition fails, the new tasks are longer rather than harder, the tiers are
+mislabelled, or the difficulty axis is somewhere else — and what gets built next is that axis, not a
+framework.
+
+Read the tokens-per-solved-task rows together with the pass rates. A tier that costs three times as much to
+solve is a different kind of difficulty from one that simply fails more often, and a future evaluator will
+want to know which one it is measuring.
