@@ -94,13 +94,11 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 			Tools:           make(map[string]int),
 		}
 		byTask := make(map[string][]runResult)
-		var all []runResult
 		for _, result := range results {
 			if result.Configuration != cfg.Name {
 				continue
 			}
 			byTask[result.Task] = append(byTask[result.Task], result)
-			all = append(all, result)
 			if result.TrajectoryRun == "" {
 				summary.MissingRecords++
 			}
