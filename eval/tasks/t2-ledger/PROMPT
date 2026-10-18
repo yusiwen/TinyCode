@@ -1,0 +1,1 @@
+Make `go test ./...` pass in this directory. The problem spans more than one file, and the suite stays red until all of it is fixed. Do not modify the test files.

@@ -499,6 +499,16 @@ working directory only — it never walks upward and never merges nested files (
   [eval.md](eval.md); the committed numbers are `eval/BASELINE.md`. **The next increment is a task set with a
   difficulty spread, not a framework** — a framework built on this set would measure the ceiling rather than
   the agent.
+- **Difficulty gradient** ([#254](https://github.com/yusiwen/TinyCode/issues/254)) — six more tasks in two
+  declared tiers (multi-file contracts; symptom-only prompts whose tests are the specification), a `TIER` per
+  task, per-tier reporting, and a reference fix for every task kept outside the task directory and proved by a
+  test that each task is red before it and green after. **Measured 2026-10-18, 72 runs: the declared gradient
+  does not exist.** build solves 6/6 of tier 1 and 3/3 of tier 3, and the spread *inside* tier 1 (23k to
+  134k tokens for one task) is wider than any gap between tiers. What the numbers do separate is an invariant
+  that has to survive a refusal — the two tasks the halved budget failed, and the two most expensive ones, are
+  the ones where a rejected operation must leave state untouched. File count, prompt ambiguity and "read the
+  tests first" were not obstacles. **The next increment builds tasks around failure-path state, and measures
+  the tiers from the first run instead of declaring them.**
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the
