@@ -177,8 +177,8 @@ subprocess at all:
 
 | Host | Default | What happens |
 | --- | --- | --- |
-| A kernel mechanism (Linux with Landlock) | **on** | every shell command runs under the boundary |
-| No mechanism (macOS, and any host whose probe fails) | **off** | commands run under the string checks, and `/sandbox` says so |
+| A kernel mechanism (Landlock on Linux, Seatbelt on macOS) | **on** | every shell command runs under the boundary |
+| No mechanism (any host whose probe fails) | **off** | commands run under the string checks, and `/sandbox` says so |
 
 It is not a default of `true` because the launcher **fails closed**: on a host
 with no mechanism, on would refuse every command, and refusing every command is
@@ -230,8 +230,41 @@ restriction that needs no helper binary and no privileges.
 - Then `prctl(PR_SET_NO_NEW_PRIVS)`, `landlock_restrict_self`, and `exec` — with
   the command resolved through `PATH` first, since `execve` takes a path.
 
-On a platform with no mechanism the launcher **fails** rather than running the
-command unconfined.
+On macOS the launcher applies **Seatbelt** instead, through the system's own
+`/usr/bin/sandbox-exec`. The mode and roots are the same contract; only the
+mechanism differs, and it differs in three ways that matter:
+
+- **It cannot be self-applied.** Landlock restricts the calling process, while a
+  Seatbelt profile is installed by a separate program, so the launcher becomes
+  `sandbox-exec`, which becomes the command. The scope is deliberately the same
+  as Landlock's: write-class file access only. A profile that also refused
+  sockets would stop `go mod download`, and the two platforms would no longer
+  mean the same thing by confinement.
+- **The profile is inverted.** It starts from `(allow default)`, denies
+  `file-write*` and then re-allows each root with `(subpath …)`. Order is
+  load-bearing: a deny written after the grants removes them, and a profile with
+  no deny reads as restrictive while denying nothing.
+- **Paths must be resolved first.** Seatbelt matches the path the kernel
+  resolved, not the one the command typed. `/tmp`, `/var` and `/etc` are links
+  into `/private` on macOS, so a rule written for `/tmp/x` matches nothing while
+  the command can still address the file as `/tmp/x`. Every root goes through
+  `filepath.EvalSymlinks` before it enters the profile, and a root that cannot be
+  resolved stops the launcher instead of silently narrowing the boundary.
+- **`/dev/null` is granted explicitly**, for the same reason as on Linux, and
+  here it is not a formality: a plain `> /dev/null` is refused under
+  `(deny file-write*)`.
+- **The capability answer is a smoke run**, not a file check. It decides the
+  default of `confine_commands`, and the launcher fails closed, so a binary that
+  exists but cannot apply a profile has to read as unavailable rather than turn
+  confinement on and then refuse every command.
+
+`sandbox-exec` is **deprecated by Apple**. That is why every failure path here
+refuses the command instead of running it unconfined: if the binary disappears,
+the posture becomes "commands are refused" rather than "commands are free", and
+`/sandbox` says which one applies.
+
+On a platform with neither mechanism the launcher **fails** rather than running
+the command unconfined.
 
 ### The structured channel
 
@@ -249,7 +282,7 @@ they are not the same question:
 | Fact | Question | Reported by |
 | --- | --- | --- |
 | `ContainmentInfo()` | what confines the agent's own file opens? | `openat2`, the component walk, or in-process checks |
-| `CommandConfinementAvailable()` | can this host confine a subprocess at all? | Landlock's ABI probe, once per process |
+| `CommandConfinementAvailable()` | can this host confine a subprocess at all? | a Landlock ABI probe or a Seatbelt smoke run, once per process |
 
 Both are surfaced rather than assumed:
 
@@ -379,6 +412,7 @@ wrote that key can see it did not take effect.
 | --- | --- | --- |
 | Unit | policy freezing, non-widening, roots, the launcher argv and exit-code contract, grant records | `go test ./...` |
 | Kernel acceptance | a real Landlock boundary: a write **inside** a granted root happens and one **outside** it does not | `TestLandlockBoundaryIsEnforced` (Linux; skips with a reason elsewhere) |
+| Kernel acceptance (macOS) | the same two halves under Seatbelt, plus an **unconfined control** that writes both files, so an environmental failure cannot read as a working boundary | `TestSeatbeltBoundaryIsEnforced` (macOS; skips with a reason elsewhere) |
 | Toolchain acceptance | the repository's own `go build ./config/` and `go test ./types/` run under the boundary the product derives by default, cache root and `TMPDIR` included | `TestRepoBuildAndTestRunUnderTheDefaultBoundary` (Linux; skips with a reason) |
 | Shared roots | the fence's writable set and the command's `--allow` set are the **same** list, cache root included; a second derivation fails it | `TestCacheRootIsSharedByTheFenceAndTheCommandBoundary` |
 | Default | on where a mechanism exists, off where it does not, and the user may turn it off | `TestResolveConfineCommandsDefaultIsPerPlatform`, `TestResolveConfineCommandsUserMayTurnItOff`, `TestCommandConfinementStatusNamesThePlatformDefault` |
@@ -391,6 +425,7 @@ wrote that key can see it did not take effect.
 go test ./... -count=1 -race             # units and the policy properties
 make test-tui-confine                    # the filesystem assertion (needs a kernel mechanism)
 go test ./tool/ -run Landlock -v         # which mechanism this host offers
+go test ./tool/ -run Seatbelt -v         # the same question on macOS
 go test ./tool/ -run RepoBuild -v        # a real build+test under the default boundary (needs Landlock)
 make test-tui-scenarios                  # the rest of the TUI scenarios
 ```
@@ -400,6 +435,10 @@ reason where the host cannot confine a subprocess, rather than passing silently.
 Its CI job (`Sandbox confinement (Landlock + PTY)`) prints the kernel's LSM list
 and runs the Landlock test with `-v`, because a skipped test prints nothing and a
 green job would otherwise read as evidence it does not have.
+
+The macOS half has no CI runner: the `cross` job compiles it for darwin/arm64 but
+does not execute it, so `TestSeatbeltBoundaryIsEnforced` and
+`make test-tui-confine` are what prove it, on a Mac.
 
 The acceptance assertion is **selective on purpose**: if the boundary were
 unavailable and the command were refused wholesale, *neither* file would exist
@@ -411,16 +450,19 @@ working boundary.
 - **File effects only.** Network access is unrestricted in every mode. Process
   visibility is unchanged (no namespaces).
 - **Confinement is on by default only where it can be enforced.** On a kernel
-  with Landlock every shell command runs under the boundary, with the platform
-  user cache root granted and `TMPDIR` inside it (see
-  [Writable roots](#writable-roots)). On a host with no mechanism the default is
-  off and `/sandbox` says why; the string checks are the posture there. A user
-  who needs the wider boundary on a capable host can set `confine_commands` to
-  `false` in their own config.
-- **macOS cannot confine a subprocess.** The component walk confines the agent's
-  own opens; there is no mechanism for a command it spawns, so command
-  confinement is off by default there, and turning it on explicitly makes the
-  launcher report a capability refusal rather than run the command unconfined.
+  with Landlock, and on macOS through Seatbelt, every shell command runs under
+  the boundary, with the platform user cache root granted and `TMPDIR` inside it
+  (see [Writable roots](#writable-roots)). On a host with no mechanism the
+  default is off and `/sandbox` says why; the string checks are the posture
+  there. A user who needs the wider boundary on a capable host can set
+  `confine_commands` to `false` in their own config.
+- **The macOS mechanism is deprecated.** `sandbox-exec` is Apple's, undisclosed
+  and deprecated; there is no public API to replace it. It is accepted because the
+  launcher fails closed: a host where it cannot be applied refuses the command
+  and says so, rather than falling back to the string checks without telling
+  anyone. What that mechanism does **not** cover: the boundary is file writes
+  only, so a confined command can still reach the network, and it does not
+  confine the agent's own opens — the component walk does that.
 - **The kernel probe is single-root**, as described above; `danger-full-access` is
   in the vocabulary but nothing sets it; per-call escalation is a tested shape
   with no producer yet (the dialog's ladder is `once → session → always`).
@@ -439,6 +481,7 @@ working boundary.
 | `tool/sandboxexec.go` | the launcher contract, argv, and classification |
 | `tool/cacheroots.go` | the granted cache roots (the platform user cache directory, plus each installed toolchain's download cache as a subtree and never a directory on `PATH`), the per-user `TMPDIR`, and the confined command's env |
 | `tool/confinement_linux.go` | the Landlock ruleset and the launcher entry point |
-| `tool/confinement_other.go` | the honest failure where there is no mechanism |
+| `tool/confinement_darwin.go` | the Seatbelt profile and the launcher through `sandbox-exec` |
+| `tool/confinement_other.go` | the honest failure where there is neither mechanism |
 | `config/config.go` | the sandbox keys and the persistent-grant store |
 | `tui/sandbox.go` | `/sandbox`, the dialog labels, the always-allow file naming |
