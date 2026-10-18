@@ -147,6 +147,13 @@ type Server struct {
 	// stopAsked records an explicit `stop` request, which ends the daemon even
 	// while it still holds sessions.
 	stopAsked bool
+	// releaseAsked records a `release` from the client that started this daemon.
+	// It is remembered rather than acted on once: a release that arrives while
+	// another request is still being served has to end the daemon when that
+	// request finishes, not be forgotten. The same is true of a release that
+	// finds a session still open — the daemon it started becomes disposable the
+	// moment it holds nothing, and the polite exit honours that.
+	releaseAsked bool
 	// inFlight counts the requests being served right now, so a request that
 	// finds the daemon drained never retires it out from under another request
 	// that is still starting the session it is about to add.
@@ -255,14 +262,19 @@ func (s *Server) retire() {
 // maybeRetire ends a daemon that a request has left with nothing to hold.
 //
 // It runs after the response is written, so the caller always gets its answer,
-// and only while it is the sole request in flight: a concurrent `open` is about
-// to add the session it is still starting, and retiring underneath it would
-// orphan the program it just spawned — the very failure this file exists to
-// prevent.
-func (s *Server) maybeRetire(release bool) {
+// and only while no other request is in flight: a concurrent `open` is about to
+// add the session it is still starting, and retiring underneath it would orphan
+// the program it just spawned — the very failure this file exists to prevent.
+//
+// self is 1 when the caller is still counted in inFlight and 0 once it has
+// stopped being counted. The guard is "no *other* request is being served", and
+// that subtraction differs between the two cases: a deferred re-check after the
+// decrement must not read the request that just finished as a peer, while the
+// in-handler call must not read itself as one.
+func (s *Server) maybeRetire(self int) {
 	s.mu.Lock()
-	last := s.inFlight <= 1
-	decided := last && (s.stopAsked || (release && len(s.sessions) == 0))
+	others := s.inFlight - self
+	decided := others <= 0 && (s.stopAsked || (s.releaseAsked && len(s.sessions) == 0))
 	s.mu.Unlock()
 	if decided {
 		s.retire()
@@ -321,6 +333,10 @@ func (s *Server) handle(conn net.Conn) {
 		s.inFlight--
 		s.lastSeen = time.Now()
 		s.mu.Unlock()
+		// Decided again now that this request has stopped counting: a release
+		// that arrived while this one was being served was refused a moment
+		// ago, and nobody else is going to ask.
+		s.maybeRetire(0)
 	}()
 
 	var req Request
@@ -340,8 +356,8 @@ func (s *Server) handle(conn net.Conn) {
 		s.log("daemon: write response: %v", err)
 	}
 	// After the answer is on the wire: a request that leaves the daemon with
-	// nothing to hold may take it with it.
-	s.maybeRetire(req.Cmd == CmdRelease)
+	// nothing to hold may take it with it. This request is still counted here.
+	s.maybeRetire(1)
 }
 
 func (s *Server) dispatch(req Request) Response {
@@ -360,8 +376,12 @@ func (s *Server) dispatch(req Request) Response {
 		s.mu.Unlock()
 		return Response{OK: true}
 	case CmdRelease:
-		// The check happens in handle, after this answer is written: retiring
-		// here would close the socket before the caller could read it.
+		// The intent is recorded here and decided in handle, after this answer is
+		// written: retiring in the middle of a response would close the socket
+		// before the caller could read it.
+		s.mu.Lock()
+		s.releaseAsked = true
+		s.mu.Unlock()
 		return Response{OK: true}
 	}
 

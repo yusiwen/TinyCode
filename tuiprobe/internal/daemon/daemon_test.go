@@ -407,3 +407,102 @@ func TestMarkMakesAWaitSeeOnlyNewText(t *testing.T) {
 	call(t, c, Request{Cmd: "send", Name: "app", Text: "again", Keys: []string{"enter"}})
 	call(t, c, Request{Cmd: "wait", Name: "app", Pattern: "ready", Since: true, Timeout: "5s"})
 }
+
+// TestAReleaseIsRememberedUntilNothingElseIsServed is the regression test for a
+// lost retirement, which CI caught as a five-second timeout in
+// TestReleaseSparesABusyDaemonAndStopsADrainedOne.
+//
+// A release only retires the daemon when it is the sole request in flight. If a
+// previous request is still being served — the `close` that emptied the daemon,
+// whose deferred bookkeeping had not run yet — the release is refused, and
+// nothing asked again: the daemon stayed alive with nothing to hold. The intent
+// is remembered now, and re-decided when a request stops counting.
+//
+// The window itself is timing-dependent and does not reproduce here; this test
+// pins the decision and its two arithmetic cases, which is what the fix changed.
+func TestAReleaseIsRememberedUntilNothingElseIsServed(t *testing.T) {
+	srv := New("", time.Minute)
+
+	srv.mu.Lock()
+	srv.releaseAsked = true
+	srv.inFlight = 2
+	srv.mu.Unlock()
+
+	// This request finished, one peer is still being served.
+	srv.maybeRetire(0)
+	if srv.isStopped() {
+		t.Fatal("the daemon retired while another request was still in flight")
+	}
+
+	// The peer is the last one, and it has stopped counting.
+	srv.mu.Lock()
+	srv.inFlight = 0
+	srv.mu.Unlock()
+	srv.maybeRetire(0)
+	if !srv.isStopped() {
+		t.Fatal("the remembered release was forgotten when the daemon became free")
+	}
+}
+
+// TestTheInHandlerCheckDoesNotCountItself pins the other half of the same
+// arithmetic: while the handler is running, its own request is in inFlight, and
+// a release with nothing else going on must still retire.
+func TestTheInHandlerCheckDoesNotCountItself(t *testing.T) {
+	srv := New("", time.Minute)
+	srv.mu.Lock()
+	srv.releaseAsked = true
+	srv.inFlight = 1
+	srv.mu.Unlock()
+
+	srv.maybeRetire(1)
+	if !srv.isStopped() {
+		t.Fatal("a release from the only in-flight request did not retire the daemon")
+	}
+}
+
+// TestFinishRechecksRetirement drives the deferred re-check itself: a session
+// opened by this request leaves nothing behind, and the daemon that asked to be
+// released ends when the request that added it finishes.
+func TestFinishRechecksRetirement(t *testing.T) {
+	socket := filepath.Join(os.TempDir(), fmt.Sprintf("tpd-recheck-%d.sock", os.Getpid()))
+	t.Cleanup(func() { _ = os.Remove(socket) })
+
+	srv := New(socket, time.Minute)
+	ln, err := srv.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ln) }()
+	t.Cleanup(func() { srv.Stop(); _ = ln.Close() })
+
+	client := &Client{Socket: socket, StartDaemon: func(string) error { return nil }}
+	call(t, client, Request{Cmd: "open", Name: "app", Args: []string{"/bin/sh", "-c", "sleep 30"}})
+
+	// A release that cannot take the daemon yet — it still holds a session —
+	// is remembered rather than dropped.
+	client.Started = true
+	client.Release()
+	if sessions := call(t, client, Request{Cmd: "sessions"}); sessions.SessionCnt != 1 {
+		t.Fatalf("session count = %d, want 1", sessions.SessionCnt)
+	}
+
+	// Closing the session is the request that leaves nothing behind, and the
+	// remembered release takes the daemon when it finishes.
+	call(t, client, Request{Cmd: "close", Name: "app"})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve after the remembered release = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a daemon whose release was remembered is still running with nothing to hold")
+	}
+}
+
+// isStopped reports the server's stop flag for the tests above.
+func (s *Server) isStopped() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stopped
+}
