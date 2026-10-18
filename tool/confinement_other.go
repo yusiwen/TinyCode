@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package tool
 
@@ -8,7 +8,9 @@ package tool
 //
 // The macOS component walk (pathbeneath_walk.go) confines the *agent's* own
 // file operations; it cannot confine a subprocess it does not control, which is
-// what this entry point exists for.
+// what this entry point exists for. macOS itself is no longer described here:
+// confinement_darwin.go installs a Seatbelt boundary there, which is why this
+// file is no longer the !linux one.
 func runConfined(_ launcherSpec) int {
 	return launcherFail("no kernel file-boundary mechanism for subprocesses on this platform")
 }
