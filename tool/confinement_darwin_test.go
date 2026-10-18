@@ -19,6 +19,7 @@ const (
 	seatbeltRootsEnv   = "TINYCODE_SEATBELT_ROOTS"
 	seatbeltInsideEnv  = "TINYCODE_SEATBELT_INSIDE"
 	seatbeltOutsideEnv = "TINYCODE_SEATBELT_OUTSIDE"
+	seatbeltArgvEnv    = "TINYCODE_SEATBELT_ARGV"
 )
 
 // seatbeltWriteScript names the stage in its exit status, which is what makes a
@@ -203,10 +204,14 @@ func TestSeatbeltChildHelper(t *testing.T) {
 	if raw := os.Getenv(seatbeltRootsEnv); raw != "" {
 		roots = strings.Split(raw, "\n")
 	}
+	argv := []string{"/bin/sh", "-c", seatbeltWriteScript}
+	if raw := os.Getenv(seatbeltArgvEnv); raw != "" {
+		argv = strings.Split(raw, "\n")
+	}
 	code := runConfined(launcherSpec{
 		mode:  os.Getenv(seatbeltModeEnv),
 		roots: roots,
-		argv:  []string{"/bin/sh", "-c", seatbeltWriteScript},
+		argv:  argv,
 	})
 	// Reaching this line means the exec did not happen; runConfined has already
 	// written its own diagnostic and its status is the readable part.
@@ -331,5 +336,56 @@ func TestSeatbeltAcceptsAnOddRootAtTheKernel(t *testing.T) {
 	}
 	if _, err := os.Stat(target); err != nil {
 		t.Fatalf("the write reported success but the file is missing: %v", err)
+	}
+}
+
+// TestCommandConfinementProbeFailsClosedOnAnUnusableApplier is the safety
+// property, not the happy path: this answer decides the default of
+// confine_commands, and the launcher refuses every command when the boundary
+// cannot be applied. An applier that exists but cannot apply a profile must
+// therefore read as unavailable rather than turning confinement on.
+func TestCommandConfinementProbeFailsClosedOnAnUnusableApplier(t *testing.T) {
+	previous := seatbeltResolver
+	seatbeltResolver = func() (string, error) { return "/bin/false", nil }
+	t.Cleanup(func() {
+		seatbeltResolver = previous
+		resetSeatbeltProbeForTest()
+	})
+	resetSeatbeltProbeForTest()
+
+	if commandConfinementAvailable() {
+		t.Fatal("/bin/false was reported as a usable applier")
+	}
+}
+
+// TestSeatbeltLauncherRefusesAMissingCommand pins the contract against
+// sandbox-exec's own behaviour: it reports a missing command as exit 71 with its
+// own message, which a caller could mistake for the command's status. The
+// launcher resolves the command first so the refusal is its own 125 plus the
+// diagnostic prefix — the pair that means "the command did not run".
+func TestSeatbeltLauncherRefusesAMissingCommand(t *testing.T) {
+	if !commandConfinementAvailable() {
+		t.Skipf("no usable %s on this host", sandboxExecPath)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestSeatbeltChildHelper")
+	cmd.Env = append(os.Environ(),
+		seatbeltChildEnv+"=1",
+		seatbeltModeEnv+"=workspace-write",
+		seatbeltArgvEnv+"=definitely-not-a-command-xyz",
+	)
+	out, err := cmd.CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("the launcher did not fail (%v):\n%s", err, out)
+	}
+	if got := exitErr.ExitCode(); got != SandboxLauncherFailureExit {
+		t.Fatalf("exit = %d, want %d (%s):\n%s", got, SandboxLauncherFailureExit, SandboxLauncherDiagnosticPrefix, out)
+	}
+	if !strings.Contains(string(out), SandboxLauncherDiagnosticPrefix) {
+		t.Fatalf("the refusal carries no %q diagnostic:\n%s", SandboxLauncherDiagnosticPrefix, out)
+	}
+	if !SandboxLauncherFailed(exitErr.ExitCode(), string(out)) {
+		t.Fatalf("the contract does not classify its own refusal as a launcher failure:\n%s", out)
 	}
 }
