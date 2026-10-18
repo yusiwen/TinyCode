@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 908 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 909 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -621,12 +621,12 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **908 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **909 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
 - Sandbox I/O: the portable wrapper tests (read/create/truncate, mode, missing file, in-root symlink, outside-root and unconfigured fallbacks) run everywhere, and the replacement write is pinned by an injected mid-write failure proving the target keeps its bytes with no temp left behind (issue #36); the `openat2` containment cases (escaping symlink and directory link, `..` escape, in-root relative symlink, create) are linux-only and run in the CI job
-- Statement coverage (measured with `GOPROXY=off go test -count=1 -cover ./...`; `-coverprofile` invalidates the build cache and needs every dependency's source, so the module cache must be warm or the proxy off): types 100%, skill 91.8%, tlog 91.7%, agent 90.2%, browserproxy 90.1%, session 88.9%, mcp 84.0%, tui 81.6%, root 81.0%, config 80.9%, tool 79.3%, netsafe 78.7%, lsp 74.2%
+- Statement coverage is **a snapshot, not a claim this document keeps** (issue #241). Take it as "where the suite is thin", not as a package's coverage today: the number moves with every PR, and it is not even stable between two runs of the same command on the same tree — `tool` measured 78.5% and then 78.4%. It is captioned rather than gated for that reason; the counts beside it are gated, because they are exact. Reproduce with `GOPROXY=off go test -count=1 -cover ./...` (`-coverprofile` invalidates the build cache and needs every dependency's source, so the module cache must be warm or the proxy off). **Snapshot at `dceda33`: skill 91.1%, tlog 89.6%, browserproxy 87.8%, session 87.0%, notify 86.2%, config 86.0%, agent 85.9%, netsafe 80.3%, mcp 80.1%, tui 78.5%, tool 78.4%, lsp 74.2%, root 67.3%, types 58.3%**
 - `go test -race ./...` passes; the race detector is enforced in CI (`make test-race`)
 - Agent loop: 13 integration tests using `MockLLM` step-by-step
 - LSP: 36 tests — `io.Pipe`-based mock (no real server needed), single-reader correlation tests, server selection/error branches, baseline deltas, and `LSP_TEST=1` integration tests against real gopls
@@ -667,7 +667,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 908 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 909 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
