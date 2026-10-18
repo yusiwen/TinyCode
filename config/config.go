@@ -133,6 +133,86 @@ type NotifyConfig struct {
 	MinDurationSeconds int    `json:"min_duration_seconds,omitempty"`
 }
 
+// TrajectoryConfig declares where a run's record goes and how much of it is
+// kept. It is on by default: a run that leaves nothing behind cannot be
+// compared with another one, and F1 (an evaluation framework) has nothing to
+// read. Capture defaults to metadata — digests and lengths, no text — because
+// this writes to disk on every run and tool arguments carry secrets.
+type TrajectoryConfig struct {
+	// Enabled is a pointer so "off" can be said out loud: an absent field means
+	// the default, which is on.
+	Enabled *bool  `json:"enabled,omitempty"`
+	Dir     string `json:"dir,omitempty"`
+	// Capture is "metadata" (digests and lengths) or "full" (text as well, up to
+	// a bound). An unknown value reads as metadata rather than failing a start:
+	// a typo must not be a reason to record less safely.
+	Capture string `json:"capture,omitempty"`
+	// MaxRuns and MaxBytes bound the store; zero means the defaults.
+	MaxRuns  int   `json:"max_runs,omitempty"`
+	MaxBytes int64 `json:"max_bytes,omitempty"`
+}
+
+// The defaults for the two bounds, and the numbers the agent package falls back
+// to when it is handed zero. They are asserted equal in trajectory_config_test.go
+// so the pair cannot drift.
+const (
+	DefaultTrajectoryMaxRuns  = 200
+	DefaultTrajectoryMaxBytes = 64 << 20
+)
+
+// TrajectorySpec is the effective recording configuration, with every default
+// applied and every unknown value resolved.
+type TrajectorySpec struct {
+	Enabled  bool
+	Dir      string
+	Capture  string
+	MaxRuns  int
+	MaxBytes int64
+}
+
+// Capture modes. Agent copies of these strings are what the record writes; the
+// config layer validates against them.
+const (
+	TrajectoryCaptureMetadata = "metadata"
+	TrajectoryCaptureFull     = "full"
+)
+
+// TrajectorySpec resolves the section, filling in the defaults.
+func (c Config) TrajectorySpec() TrajectorySpec {
+	spec := TrajectorySpec{
+		Enabled:  true,
+		Capture:  TrajectoryCaptureMetadata,
+		MaxRuns:  DefaultTrajectoryMaxRuns,
+		MaxBytes: DefaultTrajectoryMaxBytes,
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		spec.Dir = filepath.Join(home, ".tinycode", "trajectories")
+	}
+	if c.Trajectory == nil {
+		return spec
+	}
+	section := c.Trajectory
+	if section.Enabled != nil {
+		spec.Enabled = *section.Enabled
+	}
+	if section.Dir != "" {
+		spec.Dir = section.Dir
+	}
+	if strings.EqualFold(section.Capture, TrajectoryCaptureFull) {
+		spec.Capture = TrajectoryCaptureFull
+	}
+	if section.MaxRuns > 0 {
+		spec.MaxRuns = section.MaxRuns
+	}
+	if section.MaxBytes > 0 {
+		spec.MaxBytes = section.MaxBytes
+	}
+	if spec.Dir == "" {
+		spec.Enabled = false
+	}
+	return spec
+}
+
 // AgentRule mirrors agent.Rule for configuration files. Keeping a local copy
 // avoids a config → agent dependency; main.go translates it.
 type AgentRule struct {
@@ -214,6 +294,7 @@ type Config struct {
 	Budget       *BudgetConfig            `json:"budget,omitempty"`
 	Notify       *NotifyConfig            `json:"notify,omitempty"`
 	Pricing      *PricingConfig           `json:"pricing,omitempty"`
+	Trajectory   *TrajectoryConfig        `json:"trajectory,omitempty"`
 	Agents       map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox      *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme        string                   `json:"theme,omitempty"`
@@ -483,6 +564,28 @@ func merge(dst, src Config) Config {
 			dst.Notify.MinDurationSeconds = src.Notify.MinDurationSeconds
 		}
 	}
+	if src.Trajectory != nil {
+		if dst.Trajectory == nil {
+			dst.Trajectory = &TrajectoryConfig{}
+		}
+		// A pointer, so a layer can switch recording off and a later layer's
+		// absent field does not switch it back on.
+		if src.Trajectory.Enabled != nil {
+			dst.Trajectory.Enabled = src.Trajectory.Enabled
+		}
+		if src.Trajectory.Dir != "" {
+			dst.Trajectory.Dir = src.Trajectory.Dir
+		}
+		if src.Trajectory.Capture != "" {
+			dst.Trajectory.Capture = src.Trajectory.Capture
+		}
+		if src.Trajectory.MaxRuns > 0 {
+			dst.Trajectory.MaxRuns = src.Trajectory.MaxRuns
+		}
+		if src.Trajectory.MaxBytes > 0 {
+			dst.Trajectory.MaxBytes = src.Trajectory.MaxBytes
+		}
+	}
 	if src.SessionDir != "" {
 		dst.SessionDir = src.SessionDir
 	}
@@ -658,6 +761,38 @@ func (l UserLayer) ConfineCommands() (value bool, set bool) {
 	}
 	value, ok := sandbox["confine_commands"].(bool)
 	return value, ok
+}
+
+// ResolveTrajectoryCapture decides the capture mode from the layers that may
+// speak to it.
+//
+// `capture: "full"` writes tool arguments and results to disk, which is a
+// privacy decision, so it is honoured only when the **user's own** file asks for
+// it. A project-local `.tinycode/config.json` that turns it on is ignored, and
+// the ignored key is reported the same way the sandbox reports a boundary key a
+// cloned repository tried to widen: a person who wrote it can see it did not
+// take effect. Recording itself is not affected — a project may switch it off,
+// and off is not a widening.
+// The second result reports that the request was ignored, so the composition can
+// say so: a config layer is not the place to decide that a log line is wanted.
+func (l UserLayer) ResolveTrajectoryCapture(cfg *Config) (capture string, ignored bool) {
+	if cfg.TrajectorySpec().Capture != TrajectoryCaptureFull {
+		return TrajectoryCaptureMetadata, false
+	}
+	if !l.wantsFullCapture() {
+		return TrajectoryCaptureMetadata, true
+	}
+	return TrajectoryCaptureFull, false
+}
+
+// wantsFullCapture reports whether this layer's own file asks for full capture.
+func (l UserLayer) wantsFullCapture() bool {
+	section, _ := l.raw["trajectory"].(map[string]any)
+	if section == nil {
+		return false
+	}
+	capture, ok := section["capture"].(string)
+	return ok && strings.EqualFold(capture, TrajectoryCaptureFull)
 }
 
 // AllowedPathGrants is the grants this layer carries, with the raw file's own

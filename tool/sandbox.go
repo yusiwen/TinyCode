@@ -646,6 +646,12 @@ func CheckPathAccess(ctx context.Context, path string) (safePath, denied string,
 	if refusal := checkpointStoreRefusal(ctx, path); refusal != "" {
 		return "", refusal, nil
 	}
+	// The same rule for the other store a run leaves behind: the trajectory is
+	// the record the run is measured by, so a tool that could rewrite it would
+	// make an evaluation compare documents the evaluated agent wrote.
+	if refusal := trajectoryStoreRefusal(ctx, path); refusal != "" {
+		return "", refusal, nil
+	}
 	// The run's frozen policy decides this call. Nothing here consults the live
 	// configuration for a mode or a root, so a concurrent run with a different
 	// policy cannot change what this one is allowed to touch.

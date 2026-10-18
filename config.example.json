@@ -127,6 +127,14 @@
   "session_dir": "~/.tinycode/sessions",
   "checkpoint_dir": "~/.tinycode/checkpoints",
 
+  "trajectory": {
+    "$comment": "ON by default: a run that leaves nothing behind cannot be compared with another one. capture is \"metadata\" (an sha256 and a length for each tool argument and result) or \"full\" (the text as well, up to 64 KiB per payload). Metadata is the default because this writes to disk on every run and tool arguments carry secrets, so \"full\" is honoured only when it comes from your own ~/.tinycode/config.json — a project-local .tinycode/config.json that asks for it is ignored and the ignore is logged. max_runs and max_bytes bound the store (defaults 200 and 64 MiB); past either bound the oldest run files are removed first, and a run still being written is never removed. The directory is not a tool path: a tool that tries to write it is refused with 'ask: reserved', as with the checkpoint store, because a record the recorded agent can rewrite is not evidence. A killed run leaves every line up to the point of the kill and no run.end; `tinycode --trajectories` reports that run as incomplete rather than as broken. See docs/trajectories.md.",
+    "enabled": true,
+    "capture": "metadata",
+    "max_runs": 200,
+    "max_bytes": 67108864
+  },
+
   "lsp": {
     "enabled": false
   },
@@ -173,6 +181,7 @@
     "mcp_servers": "List of MCP servers. Supported transports: 'stdio' (local subprocess) and 'http' (remote endpoint).",
     "session_dir": "Where sessions are stored. A leading ~ is expanded to $HOME.",
     "checkpoint_dir": "Where the bytes a file tool replaced are kept, so /undo and --undo can restore them. Deliberately outside the project root: the fence that confines a tool write then confines the recovery store. It is not a tool path — no permission grants a model access to it. A bash command's writes are recorded too, from a snapshot of the project tree taken before it, bounded per file (2 MiB) and per snapshot (32 MiB / 4000 files); paths outside the project root are not captured. See docs/checkpoints.md.",
+    "trajectory": "Where a run's record goes (dir), how much of it keeps text (capture: metadata|full), and the store's bounds (max_runs, max_bytes). enabled: false turns recording off. capture: full is honoured only from your own config file, never from a project-local one.",
     "truncation": "Tool-output truncation limits: max_lines, max_bytes, output_dir (used only when the output exceeds a limit).",
     "agents": "allowed_tools replaces the agent's ruleset with a whitelist; denied_tools is applied on top of the built-in rules."
   }

@@ -39,6 +39,11 @@ type TaskToolDeps struct {
 	// delegated call is accounted the same way as one the parent made. Nil
 	// prices nothing, which is reported as an unknown cost rather than as zero.
 	PriceTable *agent.PriceTable
+	// ParentRun returns the run that is delegating, or nil when nothing is being
+	// recorded. A sub-agent hangs its own file off it: the delegated work is the
+	// cost attribution problem, and a record that pooled it into the parent's
+	// file could not answer which agent spent it.
+	ParentRun func() *agent.TrajectoryRun
 }
 
 // TaskTool creates the task tool for delegating to sub-agents.
@@ -112,6 +117,9 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			sub.BudgetTokensPerRun = deps.BudgetTokensPerRun
 			sub.BudgetTokensPerSession = deps.BudgetTokensPerSession
 			sub.PriceTable = deps.PriceTable
+			if deps.ParentRun != nil {
+				sub.TrajectoryParent = deps.ParentRun()
+			}
 
 			tlog.Debug("task", "start", "agent", name, "goal", goal,
 				"tools", len(subTools), "maxSteps", cfg.MaxSteps)

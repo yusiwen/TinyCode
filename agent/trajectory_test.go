@@ -678,3 +678,81 @@ func TestPruneAlsoBoundsBytes(t *testing.T) {
 		t.Fatalf("want the newest file left, got %v", left)
 	}
 }
+
+// TestADelegatedRunIsAChildOfTheRunThatDelegated is the wiring a sub-agent gets:
+// its own file, numbered and linked by the parent. The delegated work is where
+// most of the cost is, so a record that pooled it into the parent's file could
+// not answer which agent spent it.
+func TestADelegatedRunIsAChildOfTheRunThatDelegated(t *testing.T) {
+	dir := t.TempDir()
+	parentTrajectory := NewTrajectory(dir, TrajectoryCaptureMetadata)
+	parent := parentTrajectory.Start(RunMetadata{Agent: "build", Session: "S-1"})
+	if parent == nil {
+		t.Fatal("the parent run was not created")
+	}
+
+	sub := New(&trajProvider{responses: []*types.ChatResponse{{Content: "done"}}})
+	sub.Config = &AgentConfig{Name: "explore"}
+	sub.TrajectoryParent = parent
+	sub.Now = newSeqClock().Now
+
+	if _, err := sub.Run(context.Background(), "go and look"); err != nil {
+		t.Fatalf("sub run: %v", err)
+	}
+
+	files := trajectoryFiles(t, dir)
+	if len(files) != 2 {
+		t.Fatalf("want the parent's file and the child's, got %v", files)
+	}
+	childPath := filepath.Join(dir, parent.ID()+".explore-1.jsonl")
+	childEvents := trajectoryLines(t, childPath)
+	if len(childEvents) == 0 {
+		t.Fatal("the child file is empty")
+	}
+	start := childEvents[0]
+	if start["parent"] != parent.ID() {
+		t.Fatalf("child parent = %v, want %s", start["parent"], parent.ID())
+	}
+	if start["agent"] != "explore" {
+		t.Fatalf("child agent = %v, want explore", start["agent"])
+	}
+	// The session is inherited from the run that delegated, since a sub-agent has
+	// no session store of its own.
+	if start["session"] != "S-1" {
+		t.Fatalf("child session = %v, want S-1", start["session"])
+	}
+	parent.End(trajectoryStopFinal, 1, time.Second, types.Usage{}, nil, 0)
+}
+
+// TestTheStoreIsPrunedWhenARunCloses pins that the bound is actually applied:
+// the writer knows the limits, and a run end is the moment to enforce them.
+func TestTheStoreIsPrunedWhenARunCloses(t *testing.T) {
+	dir := t.TempDir()
+	a := New(&trajProvider{responses: []*types.ChatResponse{
+		{Content: "one"}, {Content: "two"},
+	}})
+	a.Trajectory = NewTrajectory(dir, TrajectoryCaptureMetadata)
+	a.Now = newSeqClock().Now
+	a.TrajectoryMaxRuns = 1
+
+	for i := 0; i < 2; i++ {
+		if _, err := a.Run(context.Background(), "hi"); err != nil {
+			t.Fatal(err)
+		}
+		// Distinct names, so the prune has something to order: the store names
+		// files by the second they started, and two runs here share a second.
+		if i == 0 {
+			first := trajectoryFiles(t, dir)
+			if len(first) != 1 {
+				t.Fatalf("want one file after the first run, got %v", first)
+			}
+			older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			if err := os.Chtimes(filepath.Join(dir, first[0]), older, older); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if files := trajectoryFiles(t, dir); len(files) != 1 {
+		t.Fatalf("the store was not pruned to one run: %v", files)
+	}
+}
