@@ -11,6 +11,7 @@ make run PROMPT="..."  # build + run in one-shot mode
 make test           # run all tests
 make lint           # go vet + staticcheck
 make test-tui-visual   # TUI frame screenshots + PTY smoke (TUI_SHOT=1); needs Chromium
+TINYCODE_EVAL=1 go run ./eval/runner  # the evaluation spike: real money, never in CI (docs/eval.md)
 ```
 
 When a TUI change has to be *seen* rather than asserted on: `make test-tui-visual`
