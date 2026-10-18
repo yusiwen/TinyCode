@@ -9,6 +9,39 @@ back to its change and tests.
 
 ## Unreleased
 
+### Six hard tasks, and the finding that the knob is the problem
+
+Roadmap F1, third increment (issue #256). The second increment ended with the tier labels refuted, and with a
+worse fact: no task had ever made the default configuration fail. A set on which the agent always succeeds
+cannot measure improvement, because there is no headroom.
+
+So this increment built six tasks chosen to be hard for a *stated reason* — an algorithmic bound the suite
+enforces with its own clock (`merge-inversions`), an implementation from a specification (`expr-eval`), five
+defects at once (`breadth-fixes`), one wire format produced by three sites (`coupled-api`), all-or-nothing
+state (`rollback`), an exhaustive format with a round-trip (`duration-spec`) — and it stopped trusting
+labels: `TIER` is an *expectation* now, and the report carries a **measured band** per task, taken from thirds
+of the default configuration's own token spend.
+
+**No task defeated the default configuration.** 108 runs, `deepseek-flash`: `build` solved 18/18, two
+repetitions each. The condition was written before the data with the conclusion attached, so this is not an
+excuse afterwards: **the difficulty knob is the problem, not the setting of it.**
+
+What the increment did find is where difficulty actually lives, and it is not where the labels were:
+
+- **The task I expected to be hardest was the cheapest.** `merge-inversions`, with an O(n log n) bound the
+  suite enforces by timing 200 000 elements, was solved in 6 steps — the model wrote a counting merge sort
+  immediately. What cost the most was implementing `expr-eval` from a specification: 28 steps, 465 719 tokens,
+  twenty-five times the cheapest task.
+- **The knob moves cost, not success.** Tokens per solved task went from 88 091 to 184 183; the spread across
+  tasks is 18 440 to 465 719; the pass rate did not move from 100%.
+- **It does defeat a starved agent.** `limited` fell from 9/12 to 6/18 with the same 10 000-token budget, and
+  every one of its runs hit the budget. Harder in the sense of "costs more than a small budget allows"; not
+  harder in the sense that defeats a funded one.
+
+**The next change is the domain, not the knob**: a real repository, a multi-hour refactor, a failure mode that
+is not one package and one test suite. That conclusion is in issue #256's condition, in `docs/roadmap.md` and
+in `docs/eval.md` — all written before this data existed (`78656f0`).
+
 ### A difficulty gradient, and the measurement that refused it
 
 Roadmap F1, second increment (issue #254). The first measurement said the task set was saturated: five of six
