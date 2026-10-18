@@ -9,6 +9,33 @@ back to its change and tests.
 
 ## Unreleased
 
+### Confine a shell command on macOS too
+
+Roadmap entry C7 (issue #247). The path fence confines the agent's own opens, and on Linux the launcher
+confines a command it spawns with Landlock — but on macOS nothing confined the command, so every `bash`
+call ran under the substring checks alone. `confinement_other.go` answered the capability question false,
+`confine_commands` defaulted off with it, and `/sandbox` said so. The asymmetry was a cost paid daily on
+this project's own development machine.
+
+macOS has a mechanism, and it cannot be applied from inside the process: the launcher renders a Seatbelt
+profile and re-execs through `/usr/bin/sandbox-exec`, which becomes the command. The profile starts from
+`(allow default)`, denies `file-write*`, keeps `/dev/null` writable (a plain `> /dev/null` is refused
+otherwise) and re-allows each root with `(subpath …)`. Roots are resolved before they enter it: Seatbelt
+matches the path the kernel resolved, and `/tmp`, `/var` and `/etc` are links into `/private`, so a rule
+written for `/tmp/x` matches nothing while the command can still address the file as `/tmp/x`.
+
+The scope is deliberately identical to Landlock's — write-class file access only — so the two platforms
+mean the same thing by confinement; a profile that also refused sockets would stop `go mod download`.
+Nothing in the config changed: the default was already derived from the host's capability rather than
+from its name, so the mechanism landing is what turned `confine_commands` on. The capability answer is a
+smoke run rather than a file check, because the launcher fails closed and a false positive would turn
+confinement on and then refuse every command in the session.
+
+`sandbox-exec` is deprecated by Apple, which is exactly why every failure path refuses the command
+instead of running it unconfined: the worst case is a host that refuses commands, never a host that
+silently frees them. `make test-tui-confine`, which skipped on macOS with a printed reason, now passes
+there and asserts on the filesystem after the real binary exits (`749fa37`, `cb23310`, `bd74d6f`, `27d0707`).
+
 ### Price a call at the hour it was made
 
 Roadmap entry A3's cost half (issue #225): a declared rate had five billing lanes and no time dimension,
