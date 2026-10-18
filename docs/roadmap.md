@@ -98,7 +98,10 @@ current tree.
   [#182](https://github.com/yusiwen/TinyCode/issues/182) — **no vendored table**, with the rejected
   options and the verified inputs recorded in [pricing-decision.md](pricing-decision.md) — and the piece
   that verdict hands over is the schema's missing time dimension,
-  [#225](https://github.com/yusiwen/TinyCode/issues/225). That split narrows this entry's original wording: a price list is *not* the only way to know what a call cost, because a provider
+  [#225](https://github.com/yusiwen/TinyCode/issues/225). **Delivered 2026-10-18**: an entry carries
+  optional windows (weekdays and UTC hours) whose rates replace its own, the shipped example declares
+  DeepSeek's peak and off-peak pair, and a schedule that overlaps, covers the whole week or leaves a lane
+  unpriced is a startup error naming the window. That split narrows this entry's original wording: a price list is *not* the only way to know what a call cost, because a provider
   may report the cost itself, and because a table carrying one input price and one output price is
   wrong for the provider this repository ships by default — DeepSeek prices two input lanes (cache hit
   and cache miss) at a peak rate and an off-peak rate, and one output lane the same way. The evidence

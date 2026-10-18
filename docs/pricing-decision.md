@@ -4,15 +4,22 @@
 [#181](https://github.com/yusiwen/TinyCode/issues/181) delivered the mechanism this decision is about.
 Inputs are dated where they were read, because a pricing question ages faster than the code around it.
 
+**Updated 2026-10-18**: [#225](https://github.com/yusiwen/TinyCode/issues/225) landed, so a declared rate
+can now carry a time window (`pricing.prices.<key>.windows`, with the weekdays and UTC hours it covers).
+The verdict itself is unchanged — nothing is vendored — but the blocker this document names in sections 6
+and 7 is gone, which makes the embed option a cost question rather than a blocked one. The record below is
+kept as it was written on 2026-10-14; the statements that are no longer true carry a dated mark where they
+stand.
+
 ## The verdict
 
 **This repository does not ship a model price table, and whether it ever should is left open on a named
 condition rather than answered.** No dataset is embedded, nothing is fetched at runtime, and there is no
 regeneration script to run; what ships is the two mechanisms below. The condition is the schema: a table
 cannot be right for our own default route until `Price` can hold what it would say, which is
-[#225](https://github.com/yusiwen/TinyCode/issues/225). So this is a deferred question with its blocker
-named — not an unrecorded maybe — and sections 1–7 keep the work already done so the next person re-costs
-the options instead of re-deriving them.
+[#225](https://github.com/yusiwen/TinyCode/issues/225) (delivered 2026-10-18). So this is a deferred
+question with its blocker named — not an unrecorded maybe — and sections 1–7 keep the work already done so
+the next person re-costs the options instead of re-deriving them.
 
 A call is priced by exactly two mechanisms, both from #181:
 
@@ -29,6 +36,10 @@ what the provider this repository ships by default charges.** `Price` has five l
 dimension, while DeepSeek bills by hour. Until the schema can hold a time window, *any* number for our
 own default route is wrong most of the time — vendored and declared alike. That work is
 [#225](https://github.com/yusiwen/TinyCode/issues/225). This document is the decision, not the change.
+
+*(That paragraph was written on 2026-10-14, when it was true. Since 2026-10-18 a declared rate can carry a
+window, so the schema can hold what DeepSeek charges; the verdict — no vendored table — is what the date
+above governs.)*
 
 ## 1. Source
 
@@ -144,33 +155,40 @@ What each side can express:
 | :--- | :--- | :--- | :--- |
 | LiteLLM | **yes** — `off_peak_pricing` with `hours_utc`/`weekdays` | yes (`*_above_*k_tokens`) | yes (`*_batches`) |
 | models.dev | **no** — one number per lane, and it is the off-peak one | yes (`context_over_200k`, `tiers`) | no |
-| `agent.Price` (#181) | **no** — five lanes, no time dimension | no | no |
+| `agent.Price` (#181; windows since #225) | **yes** — a per-entry schedule of weekdays and UTC hours, plus the entry's own rate outside it | no | no |
 
 LiteLLM's windows for `deepseek/deepseek-flash` are `00:00-01:00`, `04:00-06:00` and `10:00-00:00` on
-weekdays plus all weekend — the complement of the vendor's peak rule, which is the right shape. It does
-not encode Chinese public holidays, so it prices those as peak, and it would inherit that approximation
-along with everything else a vendored table costs to maintain.
+weekdays plus all weekend — the complement of the vendor's peak rule, which is the right shape, and the
+shape #225 adopted (an entry's own rates apply outside its windows, so the smaller of the two declarations
+is the one to write). It does not encode Chinese public holidays, so it prices those as peak, and it would
+inherit that approximation along with everything else a vendored table costs to maintain.
 
-**The consequence is already shipped.** `config.example.json` declares `deepseek/deepseek-flash` at
-`0.30 / 1.20 / 0.006` — the *peak* rates — and `Price` has nowhere to put a second set. So the example's
-estimate is **2× too high for about 79% of the week**, and nothing in the display says so; the example's
-own `$comment` says so after #226, and the number still cannot be right. Declaring the off-peak rates
-instead is 2× too low during peak. There is no correct single number, which is precisely why the answer to
-"should we vendor a table" cannot be "yes" before the schema can hold what the table would say.
+**Before #225, and the record of it.** `config.example.json` declared `deepseek/deepseek-flash` at
+`0.30 / 1.20 / 0.006` — the *peak* rates — because `Price` had nowhere to put a second set. So the example's
+estimate was **2× too high for about 79% of the week**, and nothing in the display said so; its own
+`$comment` said so after #226, and the number still could not be right. Declaring the off-peak rates
+instead was 2× too low during peak. There was no correct single number, which is precisely why the answer
+to "should we vendor a table" could not be "yes" before the schema could hold what the table would say.
+
+The example now declares the off-peak rates on the entry and both peak blocks as windows, and a test in the
+repository's root package prices it at a fixed peak instant and a fixed off-peak one (`pricing_config_test.go`)
+— the file is an executable part of this document, not a copy of it.
 
 The choice is therefore between extending the schema and refusing to price such routes. This repository
-extends the schema — [#225](https://github.com/yusiwen/TinyCode/issues/225) — because the user-declared
-path is the one that stays correct for contract prices, and it is worth nothing for the default provider
-until it can express an hour. Until #225 lands, the honest reading of a DeepSeek estimate is "somewhere
-between the two rates", and #225's job is to make that sentence unnecessary rather than to document it.
+extends the schema — [#225](https://github.com/yusiwen/TinyCode/issues/225), delivered 2026-10-18 — because
+the user-declared path is the one that stays correct for contract prices, and it was worth nothing for the
+default provider until it could express an hour. Until #225 landed, the honest reading of a DeepSeek
+estimate was "somewhere between the two rates"; what remains of that sentence is the weekday holiday, which
+the schema prices at peak (2× too high on those hours) because it does not carry a holiday calendar.
 
 ## 7. The rejected options, and why
 
 - **Embed at build time** (`go:embed`, `as_of`, optional override). Rejected *for now*, and it was the
   closest call. It is offline, testable and reproducible, which fits a purely local accounting feature —
   but it needs a schema that can hold the tier (section 6), a generator and licence review (sections 2–3),
-  and it would still be stale by construction for every other vendor. Reversing this needs #225 first;
-  with #225 in place the remaining cost is the pipeline, and that is a decision to take on its own merits.
+  and it would still be stale by construction for every other vendor. Reversing this needed #225 first, and
+  #225 is in place (2026-10-18): what remains is the pipeline itself — a generator, a licence review and a
+  refresh policy — which is a decision to take on its own merits.
 - **Fetch at runtime** from a catalogue. Rejected as a mechanism. It adds a network dependency to *local
   accounting* — a feature whose whole job is to report what this machine did — and it buys a question
   that has no good answer: which catalogue wins, what happens when it is unreachable, and how a feed is
@@ -188,8 +206,8 @@ between the two rates", and #225's job is to make that sentence unnecessary rath
 The question is left open deliberately, and it is documented rather than unanswered: it is worth taking
 up again when any of these becomes true:
 
-1. #225 lands, so a declared rate can express an hour — then re-cost the embed option, which is the only
-   one whose blocker was the schema.
+1. ~~#225 lands, so a declared rate can express an hour.~~ **Happened on 2026-10-18.** Re-costing the embed
+   option is therefore open now rather than blocked: its only blocker was the schema.
 2. A second default-or-common route needs a tier the schema still cannot express, which turns a one-off
    into a pattern.
 3. The leading datasets stop disagreeing for a route we ship, which removes the ambiguity in section 1.
@@ -199,6 +217,10 @@ up again when any of these becomes true:
 
 - [#225](https://github.com/yusiwen/TinyCode/issues/225) — a time-window tier for declared prices. The
   piece this verdict says has to exist before a table could be right for the default provider.
+  **Delivered 2026-10-18**: the table holds a schedule per entry and resolves it at the instant the
+  provider call started, the shipped example declares DeepSeek's real pair, and a malformed schedule is a
+  startup error naming the window. Chinese public holidays stay unencoded; the example's `$comment` says
+  which hours that makes 2× too high.
 - [#226](https://github.com/yusiwen/TinyCode/issues/226) — the default model name is a retired alias;
   found while checking whether a vendored key would even match what this repository sends.
 
