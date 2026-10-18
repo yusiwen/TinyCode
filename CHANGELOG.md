@@ -9,6 +9,30 @@ back to its change and tests.
 
 ## Unreleased
 
+### A difficulty gradient, and the measurement that refused it
+
+Roadmap F1, second increment (issue #254). The first measurement said the task set was saturated: five of six
+tasks solved by step 3, so a halved budget bound only on the hardest one. The next increment was named in that
+finding — a set with a difficulty gradient — and this is it: six more tasks in two declared tiers (multi-file
+contracts; symptom-only prompts whose tests are the specification), a `TIER` per task, per-tier reporting, and
+a reference fix for every task.
+
+**The gradient does not exist.** Over 72 runs on `deepseek-flash`, `build` solves 6/6 of tier 1 and **3/3 of
+tier 3**, so the tiers are not what makes a task hard. The numbers say something more useful than "the tasks
+were too easy": the spread *inside* tier 1 (23k to 134k tokens for one task) is wider than any gap between
+tiers, and the halved budget's failures are concentrated in tier 2 — `t2-ledger` 0/2 and `t2-inventory` 1/2 —
+the tasks where a rejected operation must leave state untouched. File count, prompt ambiguity and "read the
+tests first" were not obstacles.
+
+Three things the increment added that outlive the result. **A reference fix per task**, kept in
+`eval/_solutions/` (outside the task directory, because `copyTask` would hand it to the agent) and proved by a
+test that every task is red before its fix and green after, never touching a test — a task nobody can solve
+measures the task, not the agent. **A `TIER` that is required**, so a task cannot silently lose its label.
+And **a second condition, pre-registered before the data**: `build` must solve a strictly smaller *fraction*
+of tier 3 than of tier 1, fractions rather than counts because the tiers do not hold the same number of
+tasks. It failed, and failing it is the deliverable: the next set is built around failure-path state and its
+tiers are measured from the first run instead of declared (`51e379c`).
+
 ### A measurement before a framework
 
 Roadmap entry F1 (issue #252). "Did the agent get better?" had no signal: 998 test functions prove
