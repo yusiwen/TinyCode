@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1101 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1105 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -291,7 +291,7 @@ rather than for a tool. The table and the code are held together by
 - **`web_extract`**: 5-level fallback (HTTP → Cloudflare → Google Cache → Wayback → Chromium), SSRF protection via `internal/netsafe`, LLM summarization for >5000 chars (`SetSummarizer(fn)`)
 - **Browser detection** (`tool/web_browser.go`): `browserCandidates` orders them — `CHROME_PATH`/`CHROME` (what CI's `setup-chrome` exposes), then the system commands, then the Playwright cache — and `firstUsableBrowser` probes each with `--version` before returning it, memoized per path. The probe is what survives a broken installation: the runner's `/usr/bin/chromium-browser` shim never answers, so it is skipped instead of being handed to an extractor that then hangs for 35 s; without a usable candidate `findBrowser` returns "" and the rod path falls back to its own launcher. `findPlaywrightBrowser` accepts every layout Playwright has shipped (the current `Google Chrome for Testing.app` under `chrome-mac-arm64`/`chrome-mac-x64`, the older `chrome-mac/Chromium.app`, the linux/windows equivalents and `chrome_headless_shell`), newest revision first and the full browser before the shell. `tryBrowser` (the `--dump-dom` fallback in `web_extract.go`) and the browser tool's automated path use `findExecBrowser` instead of a second LookPath loop: same chain, but the Playwright *headless shell* is preferred over the full browser, because a desktop build can refuse to dump at all (measured on macOS: no DOM in 120 s from "Google Chrome for Testing", about a second from `chrome-headless-shell` of the same revision — issue #43). The rod path keeps `findBrowser` (full browser first). An explicit `CHROME_PATH`/`CHROME` or a working system command still wins over both, so CI's `setup-chrome` browser is unaffected. The single rod launcher passes `browserContainerFlags` (`--no-sandbox`), because a CI container denies Chromium a user namespace and it otherwise aborts in the zygote with "No usable sandbox!" before publishing a debug URL; there is no flags-less retry any more — a launch without the sandbox flags is refused instead of silently downgrading (issue #8, see the known-limit entry for the filtering proxy). `execBrowserArgs` (pure, unit-tested) builds the `--dump-dom` argument list: no `--single-process` (Chromium documents it as unsupported and it aborts while rendering on the runner), a throwaway `--user-data-dir` from `os.MkdirTemp` (extraction never touches the user's real profile, and it works where that profile is not writable), `--disable-breakpad`, and on Linux `--disable-dev-shm-usage`. When Chromium fails, the error carries the last three stderr lines (`lastLines`), because a core dump in CI leaves no other trace.
 - **`task`**: Sub-agent delegation (explore/general), sync or background mode, 120s timeout; a timed-out or cancelled sync task cancels the sub-agent's context (the result channel is buffered so the goroutine always exits)
-- **`todo`**: CRUD with `TodoStore` (max 256 items, 4000 chars/item, one in_progress); every method takes an `RWMutex` and `Read` returns a copy
+- **`todo`**: CRUD with `TodoStore` (max 256 items, 4000 chars/item, one in_progress); every method takes an `RWMutex` and `Read` returns a copy. The store is one per process but its **contents** are session state: `persistSession` writes `Session.Todos` and `adoptSession` replaces the list on `--resume`, `/session` and `/fork` (issue #270)
 - **`goal`**: the model-facing half of D7. `action` is one of `get`/`create`/`edit`/`pause`/`resume`/`complete`/`blocked`; every mutation echoes the `goal_id` and `revision` a `get` returned, and a stale revision is refused. Authority is the point: `create`/`edit`/`pause`/`resume` need a turn a human started (`types.InGoalRound` is false), `complete`/`blocked` also work inside a goal round, and a sub-agent may only read (`types.InSubagent`). It returns `{goal, armed}` JSON, with `goal: null` when none is current; `blocked` records the code `model-reported` and the reason the model gave
 - **`sandbox_allow`**: Interactive permission dialog (Allow once / Allow session / Always allow / Deny)
 
@@ -461,7 +461,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 
 ### `session.go`
 
-- **`Session`** struct: `ID`, `Title`, `Preview`, `ModelName`, `CreatedAt`, `UpdatedAt`, `MessageCount`, `ParentSessionID`, `ForkAt int`, `AllowedPaths []string`, `Messages []types.Message`, `Goal *goal.Goal`, `dir string` — the goal is stored here because the session file is the only durable log a resume reads; activation is not, so a resumed session is disarmed
+- **`Session`** struct: `ID`, `Title`, `Preview`, `ModelName`, `CreatedAt`, `UpdatedAt`, `MessageCount`, `ParentSessionID`, `ForkAt int`, `AllowedPaths []string`, `Messages []types.Message`, `Todos []types.TodoItem`, `Goal *goal.Goal`, `dir string` — the task list and the goal are session state, stored beside the transcript; activation is not, so a resumed session is disarmed — the goal is stored here because the session file is the only durable log a resume reads; activation is not, so a resumed session is disarmed
 - **`New(id, dir string) *Session`**
 - Methods: `Append(msg types.Message) error`, `Flush() error` (atomic temp-file+rename write, mode 0600, derives title/preview), `ExportMarkdown() string` (takes the session lock while reading messages)
 - **`Store`** struct:
@@ -501,6 +501,10 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - The service never touches the filesystem: the TUI is the single writer, at its own safe points
 
 ---
+
+### Session switching (`adoptSession`)
+
+- One function swaps everything a session owns: the transcript, `Agent.History` (rebuilt with `historyFromSession`, so the model's context and the screen agree), the todo list (`Write(branch.Todos, false)` — replace, never merge, so an empty list clears), the goal (`Restore`, which disarms) and the per-session counters. `--resume`, `/session` and `/fork` all go through it, because the defect it replaces (#270) was a switch that replaced the screen and left the rest behind
 
 ### The continuation driver (`tui/goal_driver.go`)
 
@@ -715,7 +719,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1101 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1105 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -761,7 +765,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1101 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1105 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
