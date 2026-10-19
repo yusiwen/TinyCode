@@ -9,6 +9,22 @@ back to its change and tests.
 
 ## Unreleased
 
+### A goal that survives the session, and never arms itself
+
+Issue #259, S1 — the domain half of D7. One completion objective per session, with a durable phase
+(`active` / `paused` / `blocked` / `complete`), a round budget and a revision fence, stored in the
+session file and carried through a fork.
+
+The split is the design. Everything a restart has to restore lives in `goal.Goal` and is written with
+the session; whether work may continue *on its own* is not stored at all. `goal.Service.Restore`
+disarms unconditionally, so a start, a resume and a fork all begin without permission to continue,
+and only a human can arm one. A test asserts that no serialised goal carries an `armed` key, because
+the property is the absence.
+
+Two mutation checks, both reverted: arming on restore fails the disarmed paths
+(`TestResumeRearmsAnActiveGoal`, `TestStartRound`, `TestShouldContinue`), and dropping the fork copy
+loses the branch's goal (`TestForkCarriesTheGoal`).
+
 ### A resumed session reaches the model, and every ending leaves a trace
 
 Issue #258, the prerequisite for D7. Two defects shared one consequence: a run that was not a clean final

@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 1040 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 1058 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -13,6 +13,7 @@
 | `internal/notify/` | Completion announcements (roadmap D5): OSC 9 + OSC 777 by default, the platform notifier (osascript/notify-send) when asked, one duration gate, and no sound or Windows path |
 | `internal/netsafe/` | Shared SSRF policy: blocked-IP table, resolve-once + pinned-IP HTTP client, redirect re-validation, validated raw dialing (`DialValidatedContext`), optional loopback allowance |
 | `internal/browserproxy/` | Loopback filtering HTTP proxy for Chromium: validates and pins every hostname the browser contacts (CONNECT tunnels and plain HTTP) |
+| `goal/` | The persistent completion objective and the process-local permission to continue it (D7) |
 | `lsp/` | LSP client (JSON-RPC over stdio), 4 tool wrappers, diagnostics |
 | `mcp/` | Native MCP client (stdio + HTTP transports), JSON-RPC 2.0 |
 | `session/` | Session persistence (JSON on disk), fork/branch, export, search |
@@ -458,7 +459,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 
 ### `session.go`
 
-- **`Session`** struct: `ID`, `Title`, `Preview`, `ModelName`, `CreatedAt`, `UpdatedAt`, `MessageCount`, `ParentSessionID`, `ForkAt int`, `AllowedPaths []string`, `Messages []types.Message`, `dir string`
+- **`Session`** struct: `ID`, `Title`, `Preview`, `ModelName`, `CreatedAt`, `UpdatedAt`, `MessageCount`, `ParentSessionID`, `ForkAt int`, `AllowedPaths []string`, `Messages []types.Message`, `Goal *goal.Goal`, `dir string` — the goal is stored here because the session file is the only durable log a resume reads; activation is not, so a resumed session is disarmed
 - **`New(id, dir string) *Session`**
 - Methods: `Append(msg types.Message) error`, `Flush() error` (atomic temp-file+rename write, mode 0600, derives title/preview), `ExportMarkdown() string` (takes the session lock while reading messages)
 - **`Store`** struct:
@@ -471,6 +472,28 @@ Not product code, and deliberately small: it answers whether an evaluation signa
   - `List() []SessionInfo`
 - **`SessionInfo`** struct: `ID`, `Title`, `Preview`, `ModelName`, `CreatedAt`, `UpdatedAt`, `MessageCount`
 - **`ExportMarkdown() string`** — session to markdown
+
+---
+
+## Package: `goal`
+
+### `goal.go` — The Objective
+
+- **`Goal`** struct: `ID`, `Objective`, `Phase`, `RoundsStarted`, `MaxGoalRounds`, `Blocker *Blocker`, `Revision`, `CreatedAt`, `UpdatedAt` — the durable half of D7, persisted with the session
+- **`Phase`**: `active` | `paused` | `blocked` | `complete`, with `Valid()`; a goal is in exactly one, and the phase — not the conversation — is what a resumed session reports
+- **`Blocker`**: `Code` + `Reason`; the codes are `round-limit`, `no-progress` and `model-reported`. Only a blocked goal carries one, and `Validate` enforces the pairing in both directions
+- **`Ref`** (`{ID, Revision}`) and `(*Goal) Ref()`: every mutation echoes the exact view it was decided on, and an older revision is refused instead of overwriting newer state
+- `Clone()` (deep, including the blocker), `RoundsLeft()`, `Validate()` (id, objective, known phase, positive cap, rounds inside the cap, revision ≥ 1, blocker pairing)
+- `DefaultMaxRounds = 256` — one round is a whole turn, so this bounds continuation, not the cost of one round
+
+### `service.go` — State and Permission
+
+- **`Service`** owns the current goal plus an **activation flag that is never persisted**. `Restore` disarms unconditionally, so a start, a resume and a fork all begin without permission to continue, and only a human can arm one
+- `Snapshot() *Goal` (detached clone), `Armed() bool`, `Restore(*Goal) error` (validates, then disarms)
+- Mutations, all compare-and-set on `{id, revision}` under the lock: `Create(objective, maxRounds)` refuses while an unfinished goal exists and arms the new one; `Edit`, `Pause`, `Resume` (rearms an active goal without touching the revision, refuses at the round cap), `Complete`, `Block(code, reason)`, `Clear`
+- `StartRound() (int, error)` claims the next 1-based round, increments `RoundsStarted` and bumps the revision; the caller persists it before working, so a crash loop cannot spend the budget twice. `ShouldContinue() (bool, string)` is the read-only twin
+- **`Error`**: a stable `Code` (`no-goal`, `unfinished-goal`, `stale-revision`, `illegal-phase`, `round-limit`, `disarmed`, `invalid`) plus a message for a human
+- The service never touches the filesystem: the TUI is the single writer, at its own safe points
 
 ---
 
@@ -677,7 +700,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1040 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1058 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -723,7 +746,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1040 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1058 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
