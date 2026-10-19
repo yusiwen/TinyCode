@@ -21,7 +21,7 @@ func newRunTestTUI(provider *agent.MockProvider) *TuiModel {
 	return NewTUI(agent.New(provider), &config.Config{}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{
 			{Name: "test", Provider: provider},
-		}), tool.NewTodoStore())
+		}), tool.NewTodoStore(), nil)
 }
 
 // newResumeTestTUI builds a TUI that resumes the given session id.
@@ -34,7 +34,7 @@ func newResumeTestTUI(dir, resumeID string, withTool bool) *TuiModel {
 	return NewTUI(ag, &config.Config{SessionDir: dir}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{
 			{Name: "test", Provider: provider},
-		}), tool.NewTodoStore(), resumeID)
+		}), tool.NewTodoStore(), nil, resumeID)
 }
 
 // drainUntilTerminal processes stream messages until the terminal StreamDone

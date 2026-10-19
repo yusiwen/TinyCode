@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -348,6 +349,10 @@ func newRootCmd() *cobra.Command {
 				Parameters: td.Parameters, Execute: td.Execute,
 			})
 
+			// Goal service. The /goal command and the goal tool share it; the
+			// session file is the only durable copy, written by the TUI.
+			goals := goal.NewService()
+
 			// Sandbox
 			ag.AddTool(tool.SandboxAllowTool())
 			// Wire LLM summarizer for web_extract (content >5000 chars)
@@ -575,8 +580,15 @@ func newRootCmd() *cobra.Command {
 				return nil
 			}
 
-			// Interactive TUI mode
-			model := tui.NewTUI(ag, &cfg, reg, provReg, todoStore, resume)
+			// Interactive TUI mode. The goal tool exists only here: a goal is
+			// session state, and a one-shot run has no session to keep it in.
+			gt := tool.Goal(goals)
+			ag.AddTool(agent.Tool{
+				Name: gt.Name, Description: gt.Description,
+				Parameters: gt.Parameters, Execute: gt.Execute,
+			})
+
+			model := tui.NewTUI(ag, &cfg, reg, provReg, todoStore, goals, resume)
 			p := tea.NewProgram(model, tea.WithMouseAllMotion())
 			if _, err := p.Run(); err != nil {
 				return err

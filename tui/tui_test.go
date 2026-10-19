@@ -14,7 +14,7 @@ func newTestTUI() *TuiModel {
 	return NewTUI(agent.New(nil), &config.Config{}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{
 			{Name: "test", Provider: &agent.MockProvider{}},
-		}), tool.NewTodoStore())
+		}), tool.NewTodoStore(), nil)
 }
 
 func TestInitialInputHeight(t *testing.T) {

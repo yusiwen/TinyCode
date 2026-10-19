@@ -8,6 +8,7 @@ import (
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/tlog"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // syncTaskTimeoutDefault is the production timeout for a synchronous
@@ -132,7 +133,9 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// or a cancelled parent context stops it instead of leaving it to
 			// keep calling tools in the background. The channel is buffered so
 			// an abandoned goroutine can always deliver its result and exit.
-			runCtx, cancel := context.WithCancel(ctx)
+			// A delegated agent has no authority over the session's goal; the
+			// marker is what the goal tool checks (types.InSubagent).
+			runCtx, cancel := context.WithCancel(types.WithSubagent(ctx))
 			defer cancel()
 			ch := make(chan result, 1)
 			go func() {

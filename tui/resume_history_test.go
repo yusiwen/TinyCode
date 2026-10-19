@@ -103,7 +103,7 @@ func TestResumedHistoryReachesTheFirstRequest(t *testing.T) {
 	ag := agent.New(provider)
 	m := NewTUI(ag, &config.Config{SessionDir: dir}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{{Name: "test", Provider: provider}}),
-		tool.NewTodoStore(), "TUI-test-request")
+		tool.NewTodoStore(), nil, "TUI-test-request")
 
 	if _, err := m.agent.Run(context.Background(), "third question"); err != nil {
 		t.Fatalf("run: %v", err)

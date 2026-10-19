@@ -271,7 +271,12 @@ func historyFromSession(msgs []types.Message) []types.Message {
 }
 
 // NewTUI creates and returns a new TUI model.
-func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, todoStore *tool.TodoStore, resume ...string) *TuiModel {
+func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, todoStore *tool.TodoStore, goals *goal.Service, resume ...string) *TuiModel {
+	if goals == nil {
+		// A caller that does not care about the goal still gets one, so the
+		// command and the driver never have to test for its absence.
+		goals = goal.NewService()
+	}
 	t := textarea.New()
 	t.Placeholder = "Type your request (Ctrl+J for newline)..."
 	t.CharLimit = 0
@@ -297,7 +302,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		input:         t,
 		spinner:       s,
 		todoStore:     todoStore,
-		goals:         goal.NewService(),
+		goals:         goals,
 		modeName:      reg.CurrentName(),
 		status:        StatusIdle,
 		streamCh:      make(chan tea.Msg, 200),
