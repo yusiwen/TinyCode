@@ -33,8 +33,8 @@ const (
 )
 
 type (
-	goalRunKey   struct{}
-	subagentKey  struct{}
+	goalRunKey  struct{}
+	subagentKey struct{}
 )
 
 // WithGoalRound returns a context that attributes the run to info.
