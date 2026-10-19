@@ -240,6 +240,29 @@ func (m *TuiModel) filteredCmds() []cmdEntry {
 	return filtered
 }
 
+// historyFromSession turns a persisted transcript back into the multi-turn
+// history the agent loop sends as context.
+//
+// Only user and assistant turns are restored. A "system" entry in the session
+// is command output the interface rendered ("Unknown command", "Switched
+// theme", …), not dialogue, and feeding it to the model would invent a
+// conversation that never happened. Reasoning is dropped on purpose: the
+// provider resends reasoning_content verbatim, and a thinking block from an
+// earlier turn is not input the model should read back.
+func historyFromSession(msgs []types.Message) []types.Message {
+	history := make([]types.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role != types.RoleUser && m.Role != types.RoleAssistant {
+			continue
+		}
+		if strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		history = append(history, types.Message{Role: m.Role, Content: m.Content})
+	}
+	return history
+}
+
 // NewTUI creates and returns a new TUI model.
 func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, todoStore *tool.TodoStore, resume ...string) *TuiModel {
 	t := textarea.New()
@@ -302,6 +325,11 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 				}
 				m.messages = append(m.messages, cm)
 			}
+			// The screen is not the model. Agent.History is what Run sends as
+			// context, and nothing on this path used to fill it, so a resumed
+			// session answered with no memory of the conversation the user could
+			// see (issue #258).
+			ag.History = append(ag.History, historyFromSession(sess.Messages)...)
 			// Restore provider/model from session
 			if sess.ModelName != "" && m.provReg != nil {
 				m.provReg.SwitchToName(sess.ModelName)
