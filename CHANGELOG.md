@@ -9,6 +9,24 @@ back to its change and tests.
 
 ## Unreleased
 
+### The goal tool, driven by the model on a real terminal
+
+`goal-tool.scenario`, and a dynamic `goal` mode on the stub. No `/goal` is typed: the scripted model
+calls `goal create` from a prompt, the human turn ends, the continuation driver starts round 1, and the
+round calls `goal get` and then `goal complete` with the exact `{goal_id, revision}` the get returned.
+The asserts are the chain through the real binary: the goal appears before any command (`goal 0/256` on
+the status bar), a round runs (`Round: 1/256`), the goal reports `done`, `/goal` says
+`Phase: complete`, and three seconds later the counter is still `1/256` — no further round.
+
+The `get` is not ceremony. A round is a new run, and the agent keeps user/assistant turns in its
+history only, so the create's tool result is not in the next round's request; a stubbed `complete` with
+a constant ref would be refused as stale, and the scenario would fail for the wrong reason. This was
+found by running it, not by reasoning about it.
+
+What it does not prove: that a real model *chooses* to create a goal from a sentence. The stub follows
+a script and never reads the prompt, so this is the tool path; the decision is pinned only as prompt
+guidance.
+
 ### The model is told when to create a goal
 
 D7 shipped the mechanism — a goal tool, an authority rule, an idle driver — and nothing told the model

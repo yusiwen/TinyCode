@@ -458,9 +458,11 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   page. `goal-resume.scenario` is the cross-process gate: a resumed session shows the goal disarmed
   and proves it by running a command instead of starting a round. What stays outside this entry: no
   mid-run steering (a round in flight refuses input, so the input-empty guard is the interim
-  answer), no independent evaluator of "complete", and a *tool-using* round that completes the
-  goal under the PTY — `goal-round.scenario` now covers three running rounds and the `no-progress`
-  stop, but the stub has no goal-aware mode, so a `goal` tool call under the PTY is still missing.
+  answer), and no independent evaluator of "complete". The model-facing tool path is covered under
+  the PTY now — `goal-tool.scenario` creates a goal through the tool, runs a round, and completes it
+  with the `{goal_id, revision}` the tool returned — while `goal-round.scenario` covers the running
+  rounds and the `no-progress` stop. A model *choosing* to create a goal from a sentence remains
+  untestable by a stub; it is pinned only as prompt guidance (`agent/prompt_test.go`).
 - **Gap**: a session holds a conversation, not an objective. Only the transcript survives "stop and
   come back tomorrow", nothing continues a run when the agent goes idle, so a multi-hour task is a
   human typing "continue"; there is no round budget and no durable done/blocked state.
