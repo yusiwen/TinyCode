@@ -9,6 +9,27 @@ back to its change and tests.
 
 ## Unreleased
 
+### A resumed session reaches the model, and every ending leaves a trace
+
+Issue #258, the prerequisite for D7. Two defects shared one consequence: a run that was not a clean final
+answer left the model with no memory of it.
+
+`--resume` rebuilt the transcript for the screen only. `Agent.History` — the context `Run` sends — was never
+filled from the session, so the first prompt after a resume answered a conversation the user could read and
+the model could not. It is now restored from the persisted user and assistant turns. Command output (the
+`system` entries the interface renders) is skipped, and so is a previous turn's reasoning: the provider
+resends `reasoning_content` verbatim, and a thinking block from an earlier turn is not input.
+
+The other half was the endings that needed continuing most. Three early returns — the step limit, a token
+budget and a terminal refusal — left `History` untouched, and the step limit left the session untouched too,
+so the next run could not read what the previous one did. All four endings, the normal answer included, now
+go through one `recordTurn`: it appends the pair to `History` and the session and flushes. A turn with no
+assistant text is not recorded, because there is nothing a later run could read.
+
+Two mutation checks, both reverted: removing the history append fails all three ending tests, and skipping
+the session writes fails their session assertions. `TestResumedHistoryReachesTheFirstRequest` asserts order,
+not presence — the restored turns come before the new prompt in the request the provider actually receives.
+
 ### Six hard tasks, and the finding that the knob is the problem
 
 Roadmap F1, third increment (issue #256). The second increment ended with the tier labels refuted, and with a
