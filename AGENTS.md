@@ -117,7 +117,7 @@ go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run \
 ```
 
 The `go run` line takes the version from `go.mod` (no `@version`): one place to bump.
-There are 38 files today (`ls tui/testdata/scenarios/*.scenario | wc -l`); the ones to read
+There are 39 files today (`ls tui/testdata/scenarios/*.scenario | wc -l`); the ones to read
 first are `startup` (80x24, geometry, exit code), `narrow` (40x12), `palette` (`/` opens the
 command palette, typing filters it, Esc closes it — note that Ctrl+C while the palette is
 open *closes the palette*, so Esc comes first) and `status-cost` (the status bar's budget

@@ -7,10 +7,10 @@
 #
 # The stub answers every request with plain text, so no round makes a tool call.
 # Three of those block the goal with `no-progress` — the guard a round cap cannot
-# provide — which is the deterministic outcome this scenario asserts. What it
-# does not cover is a *tool-using* round that calls the goal tool to complete the
-# objective: the stub has no goal-aware mode, so that remains a unit-level and
-# resume-level property for now.
+# provide — which is the deterministic outcome this scenario asserts. The
+# model-facing tool path (create, then get and complete inside a round) is
+# `goal-tool.scenario`; what neither can assert is a model *choosing* to create a
+# goal from a sentence, because a stub follows a script and never reads the prompt.
 #
 # The home is its own (/tmp/tinyscen-goal-run) and is wiped by the wrapper, so
 # this scenario cannot see or leave state that another one depends on.
