@@ -18,6 +18,7 @@ import (
 	"github.com/yusiwen/TinyCode/tuiprobe/golden"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -243,8 +244,9 @@ func frameLongOutput(w, h int) *TuiModel {
 }
 
 // frameStatusBar is the bar with everything a session can report on it: a session
-// token budget, a spend, money in two units and the calls nobody could price
-// (issues #174, #179, #181). It is here because those three surfaces were asserted
+// token budget, a goal in progress, a spend, money in two units and the calls
+// nobody could price (issues #174, #179, #181, #259). The goal sits above the
+// spend in priority: at 80 columns it survives and the money does not. It is here because those three surfaces were asserted
 // only against renderStatusBar's string, which cannot see the two things this bar
 // actually fails at — width and wrapping. The clock stays the builders' zero
 // sessionStart, so the frame is deterministic.
@@ -265,6 +267,17 @@ func frameStatusBar(w, h int) *TuiModel {
 	// accumulated apart and never added together.
 	m.sessionCost = types.CostTotals{"credits": 0.95, "USD": 2.4}
 	m.unpricedCalls = 3
+	// A goal in its third round: the segment has to fit beside everything else
+	// at 80 columns and keep the status message whole.
+	m.goals = goal.NewService()
+	if _, err := m.goals.Create("make the failing test pass", 256); err != nil {
+		panic(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := m.goals.StartRound(); err != nil {
+			panic(err)
+		}
+	}
 	m.messages = []chatMessage{
 		{Role: "user", Content: "summarise the diff"},
 		{Role: "assistant", Content: "Two files changed, nothing else.",

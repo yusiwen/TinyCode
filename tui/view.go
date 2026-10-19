@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+	"github.com/yusiwen/tinycode/goal"
 )
 
 // View renders the TUI layout.
@@ -504,6 +505,22 @@ func (m *TuiModel) renderStatusBar() string {
 		}
 	}
 
+	// Goal progress is the number a user watching an unattended session needs,
+	// and a phase suffix is what makes a spent goal readable without typing
+	// /goal. The round count alone would leave a blocked goal looking busy.
+	goalStr := ""
+	if m.goals != nil {
+		if g := m.goals.Snapshot(); g != nil {
+			goalStr = fmt.Sprintf("  goal %d/%d", g.RoundsStarted, g.MaxGoalRounds)
+			switch g.Phase {
+			case goal.PhaseBlocked:
+				goalStr += " blocked"
+			case goal.PhaseComplete:
+				goalStr += " done"
+			}
+		}
+	}
+
 	// The bar is a list of segments in priority order — an earlier one survives a
 	// narrow terminal — plus the status message, which is budgeted first because it
 	// is the part that must be readable: `Press Ctrl+C again to quit` is the only
@@ -513,6 +530,7 @@ func (m *TuiModel) renderStatusBar() string {
 		fmt.Sprintf("%s %s%s%s", modeIcon, modelName, spinnerStr, procStr),
 		fmt.Sprintf("  ■ %s", provName),
 		"  " + tokensStr,
+		goalStr,
 		costStr,
 		fmt.Sprintf("  tools: %d", m.sessionToolCalls),
 		fmt.Sprintf("  msgs: %d", len(m.messages)),

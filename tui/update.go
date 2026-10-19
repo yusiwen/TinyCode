@@ -404,7 +404,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, m.lspDiagCmd())
 
 	case ChatMsg:
-		model, cmd, ok := m.beginAgentRun(msg.Text, false)
+		model, cmd, ok := m.beginAgentRun(msg.Text, 0)
 		if !ok {
 			// Refuse a second concurrent run: the previous run may still be
 			// unwinding (e.g. right after an interrupt). A compression in flight
@@ -616,22 +616,22 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// now safe to leave the streaming state and accept new input.
 		m.finishRun(msg.RunID)
 		m.status = StatusIdle
+		elapsed := time.Since(m.runStart)
 		// What this run means for the goal is decided before the session is
 		// written, so a pause or a blocker is durable at the same moment.
-		m.settleGoalRound(msg.Error)
+		goalNotice := m.settleGoalRound(msg.Error)
 		// The session file is the durable log: a finished run — and whatever
 		// it did to the goal — is written now, not only when the user quits.
 		m.persistSession()
 		m.curAssistant = nil
-		elapsed := time.Since(m.runStart)
 		if msg.Error != nil {
 			// Do not spend an LLM call on a title after a failed or
 			// interrupted run.
-			return m, notifyFinishedCmd(elapsed, "run failed")
+			return m, batch(notifyFinishedCmd(elapsed, "run failed"), notifyGoalCmd(elapsed, goalNotice))
 		}
 		// Generate the session title off the event loop (async + timeout), and
 		// give the continuation driver its chance to start another round.
-		return m, batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, "run finished"), m.scheduleGoalRound())
+		return m, batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, "run finished"), notifyGoalCmd(elapsed, goalNotice), m.scheduleGoalRound())
 
 	case sessionTitleMsg:
 		if msg.Title != "" && m.sessionTitle == "" {
@@ -1030,6 +1030,17 @@ func notifyFinishedCmd(elapsed time.Duration, what string) tea.Cmd {
 		notify.Finished(elapsed, "TinyCode", what)
 		return nil
 	}
+}
+
+// notifyGoalCmd announces why a goal stopped, when it did. It returns nil for
+// the common case (the goal is still running), because a nil command is what
+// batch drops — and it goes through the same duration gate as any other
+// completion: a two-second goal stays quiet.
+func notifyGoalCmd(elapsed time.Duration, notice string) tea.Cmd {
+	if notice == "" {
+		return nil
+	}
+	return notifyFinishedCmd(elapsed, notice)
 }
 
 // generateSessionTitleCmd returns a command that derives a session title with
@@ -1506,11 +1517,12 @@ func (m *TuiModel) waitForStream() tea.Cmd {
 	}
 }
 
-func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, goalRound bool) {
-	// The goal tool reads this to decide what a round may do: a round may
-	// read, complete or block, never create, rewrite, pause or resume.
-	if goalRound {
-		ctx = types.WithGoalRound(ctx)
+func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, goalRun *types.GoalRunInfo) {
+	// Two consumers read this: the goal tool, which decides what the run may
+	// do, and the run record, which then says which goal the run served and
+	// whether a human or the driver started it.
+	if goalRun != nil {
+		ctx = types.WithGoalRound(ctx, *goalRun)
 	}
 	m.agent.StreamCallbacks = &types.StreamCallbacks{
 		OnReasoningDelta: func(text string) {

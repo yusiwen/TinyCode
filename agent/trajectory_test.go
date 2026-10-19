@@ -756,3 +756,45 @@ func TestTheStoreIsPrunedWhenARunCloses(t *testing.T) {
 		t.Fatalf("the store was not pruned to one run: %v", files)
 	}
 }
+
+// TestARunRecordsTheGoalItServed: a run that serves a goal carries the
+// attribution on its start line, and a run that serves none carries nothing.
+// This is what lets an evaluation separate driver rounds from human turns.
+func TestARunRecordsTheGoalItServed(t *testing.T) {
+	dir := t.TempDir()
+	a := New(&trajProvider{responses: []*types.ChatResponse{{Content: "hello"}}})
+	a.Trajectory = NewTrajectory(dir, TrajectoryCaptureMetadata)
+	ctx := types.WithGoalRound(context.Background(), types.GoalRunInfo{
+		GoalID: "goal-7", Round: 3, Source: types.GoalSourceDriver,
+	})
+	if _, err := a.Run(ctx, "work"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	_, events := onlyRun(t, dir)
+	goal, ok := events[0]["goal"].(map[string]any)
+	if !ok {
+		t.Fatalf("run.start carries no goal: %v", events[0])
+	}
+	if goal["goal_id"] != "goal-7" {
+		t.Errorf("goal_id = %v, want goal-7", goal["goal_id"])
+	}
+	if got := number(t, goal, "round"); got != 3 {
+		t.Errorf("round = %v, want 3", got)
+	}
+	if goal["source"] != types.GoalSourceDriver {
+		t.Errorf("source = %v, want driver", goal["source"])
+	}
+
+	// An ordinary run must not invent one.
+	plain := t.TempDir()
+	b := New(&trajProvider{responses: []*types.ChatResponse{{Content: "hello"}}})
+	b.Trajectory = NewTrajectory(plain, TrajectoryCaptureMetadata)
+	if _, err := b.Run(context.Background(), "work"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	_, plainEvents := onlyRun(t, plain)
+	if _, carried := plainEvents[0]["goal"]; carried {
+		t.Errorf("a goal-less run carries a goal: %v", plainEvents[0])
+	}
+}

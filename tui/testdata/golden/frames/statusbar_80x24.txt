@@ -21,4 +21,4 @@
 
 
 ┃   1 Type your request (Ctrl+J for newline)...
-⚡ plan  ■ unknown  tokens: 12840/20000
+⚡ plan  ■ unknown  tokens: 12840/20000  goal 2/256
