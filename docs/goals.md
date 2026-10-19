@@ -14,8 +14,15 @@ record is in [roadmap.md](roadmap.md).
 /goal make the failing test pass
 ```
 
-The model can also create one when you ask for a long-running piece of work in your own words: it has
-a `goal` tool. Either way there is **at most one goal per session** — an unfinished one has to be
+The model can also create one on its own: the build agent's system prompt tells it to create a goal
+before starting work that clearly will not fit in one turn — a migration, a multi-file refactor,
+fixing every failing test or every issue matching a label — and to call `complete` or `blocked` when
+the work ends. That is a judgement the model makes from your wording, not a classifier, so it is not
+a guarantee; `/goal` is the deterministic path. Plan mode cannot create one (its read-only ruleset
+denies the `goal` tool), so a long-running request usually becomes a plan and then a goal after
+`/build`.
+
+Either way there is **at most one goal per session** — an unfinished one has to be
 edited, paused, completed, blocked or cleared before another replaces it.
 
 `/goal` with no argument shows the current objective, the round count, the phase, and whether

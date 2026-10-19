@@ -100,7 +100,17 @@ func DefaultAgents() map[string]*AgentConfig {
 				"The task tool counts as ONE step regardless of how many internal steps the sub-agent takes.\n\n" +
 				"When delegating to sub-agents via task(), use relative paths (relative to the current " +
 				"working directory), not absolute paths. Sub-agents run in the same project workspace " +
-				"and inherit the working directory from the parent agent.",
+				"and inherit the working directory from the parent agent.\n\n" +
+				"When the user asks for work that clearly will not fit in one turn — a migration, a " +
+				"multi-file refactor, fixing every failing test or every issue matching a label — create " +
+				"a goal with the goal tool (action create) before you start: one goal per session, and " +
+				"the session keeps working on it, round after round, while it is idle. Do not create one " +
+				"for a routine single-turn request.\n\n" +
+				"Call goal get before any other goal action and pass back the exact goal_id and " +
+				"revision. In a goal round you may read the goal, complete it (naming the evidence), or " +
+				"block it (naming the concrete condition that persisted); creating, editing, pausing and " +
+				"resuming require a direct human request. After a resume or a fork the goal comes back " +
+				"disarmed: when the user asks to continue, call the goal tool with action resume.",
 			MaxSteps: 50,
 			Permissions: Ruleset{
 				{Action: "*", Resource: "*", Effect: EffectAllow},

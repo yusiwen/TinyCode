@@ -9,6 +9,21 @@ back to its change and tests.
 
 ## Unreleased
 
+### The model is told when to create a goal
+
+D7 shipped the mechanism — a goal tool, an authority rule, an idle driver — and nothing told the model
+when to use it. Until now only `/goal` created a goal in practice.
+
+The build agent's prompt now says it: work that clearly will not fit one turn (a migration, a
+multi-file refactor, fixing every failing test or every matching issue) starts with `goal create`; a
+goal round may read, complete or block the goal but not rewrite it; and after a resume or a fork,
+"continue" means `goal resume`.
+
+What this does not buy is a guarantee. The decision is the model's judgement on your wording, not a
+classifier, and it cannot be asserted in CI: a stub-backed scenario would test the script, not the
+choice. What is pinned is the prompt itself (`TestBuildPromptTellsTheModelWhenToCreateAGoal`) and that
+plan mode — whose ruleset denies the tool — is not told to use it.
+
 ### The driver, proven on a real terminal
 
 Issue #259's deferred PTY scenario. `goal-round.scenario` starts the real binary against a stub
