@@ -9,6 +9,19 @@ back to its change and tests.
 
 ## Unreleased
 
+### The driver, proven on a real terminal
+
+Issue #259's deferred PTY scenario. `goal-round.scenario` starts the real binary against a stub
+provider, creates a goal with `/goal`, and watches the driver do the thing it exists for: round 1 is
+counted and prompted, round 2 and round 3 follow after the grace period, and because no round makes a
+tool call the goal stops with `Goal blocked: consecutive rounds made no tool calls` — the `no-progress`
+guard doing exactly what the round cap cannot. `/goal` then reports `Phase: blocked` with
+`Blocker: no-progress`, and the status bar reads `goal 3/256 blocked`.
+
+It runs in the `tui-visual` job with the other scenarios. The one thing it does not cover is a
+tool-using round that calls the `goal` tool to complete the objective; the stub has no goal-aware mode,
+so that stays a unit-level property for now.
+
 ### A session switch changes the session, not only the screen
 
 Issue #270. `/session <id>` and `/fork` rebuilt the transcript and reset the token counters, and

@@ -1,0 +1,33 @@
+# The continuation driver, against the real binary (issue #259, S4/S5).
+#
+# goal-resume proves what a *resumed* goal does; this proves what a running one
+# does: `/goal <objective>` starts a round on its own, the round is counted, the
+# next one follows after the grace period, and a goal that keeps producing no
+# work stops with a durable, named blocker instead of spending its 256 rounds.
+#
+# The stub answers every request with plain text, so no round makes a tool call.
+# Three of those block the goal with `no-progress` — the guard a round cap cannot
+# provide — which is the deterministic outcome this scenario asserts. What it
+# does not cover is a *tool-using* round that calls the goal tool to complete the
+# objective: the stub has no goal-aware mode, so that remains a unit-level and
+# resume-level property for now.
+#
+# The home is its own (/tmp/tinyscen-goal-run) and is wiped by the wrapper, so
+# this scenario cannot see or leave state that another one depends on.
+open --dir . --size 120x40 --env HOME=/tmp/tinyscen-goal-run --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-goal-run && mkdir -p /tmp/tinyscen-goal-run/.tinycode /tmp/tinyscen-goal-run/sessions; python3 tui/testdata/stub/openai_stub.py 18521 "" 1 /tmp/tinyscen-goal-run/count.txt & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18521/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-goal-run/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Type your request" --timeout 20s
+send --text "/goal make the failing test pass"
+send --key enter
+wait --text "Round: 1/256" --timeout 20s
+wait --text "stub-answer-ok" --timeout 20s
+wait --text "Round: 2/256" --timeout 25s
+wait --text "Round: 3/256" --timeout 25s
+wait --text "Goal blocked: consecutive rounds made no tool calls" --timeout 30s
+send --text "/goal"
+send --key enter
+wait --text "Phase: blocked" --timeout 15s
+wait --text "Blocker: no-progress" --timeout 15s
+screenshot /tmp/tinyscen-shots/goal-round-120x40.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 20s
+expect-exit 0
