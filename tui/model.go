@@ -192,6 +192,11 @@ type TuiModel struct {
 	// completed or blocked the goal can be announced once rather than on every
 	// later run of the same session.
 	runGoalPhase goal.Phase
+	// goalGrace and goalNoProgress are the continuation policy this session
+	// runs with, read from the config once so a mid-session file edit cannot
+	// change the rules under a running round.
+	goalGrace      time.Duration
+	goalNoProgress int
 
 	// Todo rendering tracking (virtual message in CellGrid)
 	todoRowCount int  // rendered row count for todo section (0 = no items)
@@ -308,26 +313,28 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 	s.Spinner = spinner.Dot
 
 	m := &TuiModel{
-		agent:         ag,
-		config:        cfg,
-		registry:      reg,
-		provReg:       provReg,
-		input:         t,
-		spinner:       s,
-		todoStore:     todoStore,
-		goals:         goals,
-		modeName:      reg.CurrentName(),
-		status:        StatusIdle,
-		streamCh:      make(chan tea.Msg, 200),
-		selectStart:   -1,
-		selectEnd:     -1,
-		charSelStart:  selPos{Offset: -1},
-		charSelEnd:    selPos{Offset: -1},
-		sessionStart:  time.Now(),
-		SessionDir:    cfg.SessionDir,
-		currentBranch: "", // no session yet
-		sessionStore:  session.NewStore(cfg.SessionDir),
-		diagSource:    lsp.DiagnosticsSnapshot,
+		agent:          ag,
+		config:         cfg,
+		registry:       reg,
+		provReg:        provReg,
+		input:          t,
+		spinner:        s,
+		todoStore:      todoStore,
+		goals:          goals,
+		goalGrace:      time.Duration(cfg.GoalSettings().IdleGraceSeconds) * time.Second,
+		goalNoProgress: cfg.GoalSettings().NoProgressRounds,
+		modeName:       reg.CurrentName(),
+		status:         StatusIdle,
+		streamCh:       make(chan tea.Msg, 200),
+		selectStart:    -1,
+		selectEnd:      -1,
+		charSelStart:   selPos{Offset: -1},
+		charSelEnd:     selPos{Offset: -1},
+		sessionStart:   time.Now(),
+		SessionDir:     cfg.SessionDir,
+		currentBranch:  "", // no session yet
+		sessionStore:   session.NewStore(cfg.SessionDir),
+		diagSource:     lsp.DiagnosticsSnapshot,
 	}
 
 	// Load session if resume ID provided

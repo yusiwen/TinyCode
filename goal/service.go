@@ -50,6 +50,11 @@ type Service struct {
 	// timestamp-based id.
 	Now   func() time.Time
 	NewID func(time.Time) string
+
+	// DefaultRounds is the cap a create gets when it names none. Zero means
+	// DefaultMaxRounds; a host sets it from its configuration so the /goal
+	// command and the goal tool cannot disagree about the budget.
+	DefaultRounds int
 }
 
 // NewService returns a service with no goal, disarmed.
@@ -106,6 +111,14 @@ func (s *Service) Restore(g *Goal) error {
 	return nil
 }
 
+// defaultRounds is the configured cap, or the package default.
+func (s *Service) defaultRounds() int {
+	if s.DefaultRounds > 0 {
+		return s.DefaultRounds
+	}
+	return DefaultMaxRounds
+}
+
 // Create starts a new goal and arms it, because a human asked for it.
 //
 // An unfinished goal must be dealt with first — edited, paused, resumed, blocked
@@ -117,7 +130,7 @@ func (s *Service) Create(objective string, maxRounds int) (*Goal, error) {
 		return nil, newError(ErrInvalid, "an objective is required")
 	}
 	if maxRounds <= 0 {
-		maxRounds = DefaultMaxRounds
+		maxRounds = s.defaultRounds()
 	}
 
 	s.mu.Lock()

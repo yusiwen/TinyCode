@@ -21,9 +21,13 @@ func newGoalTestTUI(t *testing.T, dir string, resume ...string) *TuiModel {
 		return &types.ChatResponse{Content: "done"}, nil
 	}}
 	ag := agent.New(provider)
-	return NewTUI(ag, &config.Config{SessionDir: dir}, agent.NewRegistry(),
+	m := NewTUI(ag, &config.Config{SessionDir: dir}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{{Name: "test", Provider: provider}}),
 		tool.NewTodoStore(), nil, resume...)
+	if testGoalGrace >= 0 {
+		m.goalGrace = testGoalGrace
+	}
+	return m
 }
 
 // runOnce drives one complete run through the Update loop and waits for the

@@ -352,6 +352,8 @@ func newRootCmd() *cobra.Command {
 			// Goal service. The /goal command and the goal tool share it; the
 			// session file is the only durable copy, written by the TUI.
 			goals := goal.NewService()
+			// One number for both creators: the /goal command and the goal tool.
+			goals.DefaultRounds = cfg.GoalSettings().MaxRounds
 
 			// Sandbox
 			ag.AddTool(tool.SandboxAllowTool())

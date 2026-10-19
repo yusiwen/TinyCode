@@ -102,6 +102,12 @@
     "max_tokens_per_run": 0,
     "max_tokens_per_session": 0
   },
+  "goal": {
+    "$comment": "Optional continuation policy for /goal (roadmap D7). One round is a whole turn -- dozens of tool calls, minutes of work -- so max_goal_rounds bounds how long a goal may keep going, not how long one round may be. Shown with the shipped defaults; a positive value replaces the default and zero or absent means the default, so a typo cannot remove a guard. idle_grace_seconds is the wait before an automatic round, so someone already typing gets in first (a run refuses concurrent input). no_progress_rounds blocks a goal after that many consecutive rounds made no tool call. Budget the money separately: with no max_tokens_per_session, 256 rounds of a funded model is a large bill.",
+    "max_goal_rounds": 256,
+    "idle_grace_seconds": 2,
+    "no_progress_rounds": 3
+  },
 
   "agents": {
     "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), permissions (an explicit ruleset that REPLACES both the built-in ruleset and the two tool lists: [{action, resource, effect: allow|deny}], last match wins), model.",
