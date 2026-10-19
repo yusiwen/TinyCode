@@ -888,5 +888,6 @@ make run PROMPT="..."  # one-shot mode
 
 - Nix flake (`flake.nix`) + `direnv` (`.envrc`) for reproducible toolchain
 - Go 1.27 (`pkgs.go_1_27`), gopls 0.23.0, gofumpt pinned
+- The dev shell's `go` is a wrapper that drops an inherited `GOROOT`/`GOTOOLDIR` before exec'ing the flake's Go: a host version manager (e.g. mise) re-exports `GOROOT` on every prompt, and direnv does not undo that, which would otherwise pair the flake's `go` with another release's compiler and fail every build with `compile: version … does not match go tool version …`
 - `nix develop` or `direnv allow` to activate; the shell provides `gopls`, so `make test-lsp` works there without touching the host environment
 - CI: GitHub Actions (build+lint+test on push/PR, cross-compile+release on tags)
