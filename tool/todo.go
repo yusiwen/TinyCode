@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/yusiwen/tinycode/types"
 )
 
 const (
@@ -18,21 +20,12 @@ const (
 	MaxTodoContentChars = 4000
 )
 
-// TodoItem represents a single tracked task.
-type TodoItem struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-	Status  string `json:"status"`
-}
+// TodoItem is one tracked task. It is defined in types because the list is
+// session state; the alias keeps every existing caller compiling.
+type TodoItem = types.TodoItem
 
-// TodoSummary provides a quick overview of the task list.
-type TodoSummary struct {
-	Total      int `json:"total"`
-	Pending    int `json:"pending"`
-	InProgress int `json:"in_progress"`
-	Completed  int `json:"completed"`
-	Cancelled  int `json:"cancelled"`
-}
+// TodoSummary counts the list by status.
+type TodoSummary = types.TodoSummary
 
 // Todo result type for JSON serialization
 type TodoResult struct {
