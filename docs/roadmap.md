@@ -5,7 +5,75 @@ re-derived. **This is a record, not a commitment:** an entry becomes work only w
 up, at which point it gets its own issue with numbered increments (`S1`, `S2`, …) so that a large
 capability does not become several issues nobody can close. A picked-up entry carries a
 **Picked up** line linking that issue; an entry without one has not been started. The tracker is
-[issue #168](https://github.com/yusiwen/TinyCode/issues/168).
+[issue #168](https://github.com/yusiwen/TinyCode/issues/168). **The status table below is part of
+this document's contract**: the PR that lands an entry updates its row in the same commit, so the
+table never trails the prose.
+
+## Where the entries stand
+
+The source inventory lists 39 items; this document carries 40 entries, because D7 was recorded
+after it (see *Provenance and method*).
+
+| State | Entries | Note |
+| :--- | ---: | :--- |
+| Delivered | 9 | the entry's **Picked up** line names the issue that landed it |
+| Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
+| In progress | 1 | F1 — three increments landed, the next one is not opened |
+| Not started | 29 | verified gaps, no issue opened |
+| **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
+
+**Open work**: F1, whose next increment (a task set with headroom) is not opened, and
+[#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a run streams), which
+is not a roadmap entry.
+
+**Next, by the reading order**: B1/B2 (memory — blocked on a privacy decision, which is why it is
+not already done), C6 (a second isolation tier, since C7's macOS fence is delivered), B4 (repository
+index), F1, then the larger D and E items.
+
+### Status by entry
+
+| Code | Entry | Status |
+| :--- | :--- | :--- |
+| A1 | No retry, backoff or rate-limit handling for provider calls | Delivered — #192 |
+| A2 | Provider-reported usage is discarded; no cost accounting | Delivered — #174 |
+| A3 | No cumulative token or cost budget, no circuit breaker | Delivered — #179 |
+| A4 | No prompt caching | Not started |
+| A5 | No failover and no provider routing | Not started |
+| A6 | Only two provider backends | Not started |
+| B1 | The memory capability exists but is never called | Not started |
+| B2 | No local memory backend | Not started |
+| B3 | No embeddings, vector search or rerank | Not started |
+| B4 | No repository index or repo map | Not started |
+| B5 | Context management has a single strategy | Not started |
+| B6 | Truncation is fixed, not budget-aware | Not started |
+| C1 | No checkpoint and no undo | Delivered — #234 |
+| C2 | No automatic change preview and commit loop, and no remote operations | Not started |
+| C3 | No isolation for parallel execution | Not started |
+| C4 | No user-configurable hooks and no session lifecycle events | Not started |
+| C5 | No test feedback loop | Not started |
+| C6 | Isolation has only one tier | Not started |
+| C7 | No command confinement on macOS | Delivered — #247 |
+| C8 | No Windows support | Not started |
+| D1 | No image input | Not started |
+| D2 | No audio | Not started |
+| D3 | No desktop computer use | Not started |
+| D4 | No event-driven entry point | Not started |
+| D5 | No notification when a long task finishes | Delivered — #198 |
+| D6 | No virtual terminal pane | Not started |
+| D7 | No persistent goal and no continuation driver | Delivered — #259 |
+| E1 | Cannot serve as an MCP server | Not started |
+| E2 | No service mode | Not started |
+| E3 | No IDE plugin | Not started |
+| E4 | Trajectories are not persisted in an analysable format | Delivered — #249 |
+| E5 | Refuted: project instruction files *are* loaded | Refuted |
+| F1 | No agent-level evaluation framework | In progress — #252 #254 #256 |
+| F2 | No A/B comparison mechanism | Not started |
+| F3 | Tool calls are not validated against their schema | Delivered — #200 |
+| G1 | Delegation is two levels deep | Not started |
+| G2 | Sub-agent output is not streamed to the UI | Not started |
+| H1 | No i18n | Not started |
+| H2 | Command checks are heuristics, not a boundary | Not started |
+| H3 | No branch visualisation | Not started |
 
 ## Provenance and method
 
