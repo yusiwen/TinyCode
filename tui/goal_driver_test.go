@@ -15,23 +15,32 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
+// testGoalGrace is the grace a test wants; negative means "the configured one".
+// NewTUI copies the config value onto the model, so a test that needs rounds to
+// start immediately sets this before the model is built.
+var testGoalGrace = -time.Second
+
 // zeroGrace removes the wait before an automatic round for the duration of one
 // test. The wait exists so a human who was already typing gets in first; a test
 // that keeps it would take seconds per round and prove nothing extra.
 func zeroGrace(t *testing.T) {
 	t.Helper()
-	old := goalIdleGrace
-	goalIdleGrace = 0
-	t.Cleanup(func() { goalIdleGrace = old })
+	old := testGoalGrace
+	testGoalGrace = 0
+	t.Cleanup(func() { testGoalGrace = old })
 }
 
 // driverTestTUI builds a TUI over dir whose provider is the one given, so a test
 // can record what the model was told and how.
 func driverTestTUI(t *testing.T, dir string, provider *agent.MockProvider) *TuiModel {
 	t.Helper()
-	return NewTUI(agent.New(provider), &config.Config{SessionDir: dir}, agent.NewRegistry(),
+	m := NewTUI(agent.New(provider), &config.Config{SessionDir: dir}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{{Name: "test", Provider: provider}}),
 		tool.NewTodoStore(), nil)
+	if testGoalGrace >= 0 {
+		m.goalGrace = testGoalGrace
+	}
+	return m
 }
 
 func answerProvider(answer string) *agent.MockProvider {
@@ -251,20 +260,20 @@ func TestToolFreeRoundsBlockTheGoal(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	for i := 0; i < goalNoProgressRounds; i++ {
+	for i := 0; i < m.goalNoProgress; i++ {
 		m = fireRound(t, m, m.scheduleGoalRound())
 		drainUntilTerminal(t, m, 5*time.Second)
 	}
 
 	got := m.goals.Snapshot()
 	if got.Phase != goal.PhaseBlocked {
-		t.Fatalf("phase = %s, want blocked after %d tool-free rounds", got.Phase, goalNoProgressRounds)
+		t.Fatalf("phase = %s, want blocked after %d tool-free rounds", got.Phase, m.goalNoProgress)
 	}
 	if got.Blocker == nil || got.Blocker.Code != goal.BlockerNoProgress {
 		t.Errorf("blocker = %+v, want the no-progress code", got.Blocker)
 	}
-	if got.RoundsStarted != goalNoProgressRounds {
-		t.Errorf("rounds started = %d, want %d", got.RoundsStarted, goalNoProgressRounds)
+	if got.RoundsStarted != m.goalNoProgress {
+		t.Errorf("rounds started = %d, want %d", got.RoundsStarted, m.goalNoProgress)
 	}
 }
 
@@ -373,4 +382,27 @@ func TestSettleGoalRoundReportsWhyItStopped(t *testing.T) {
 			t.Errorf("a completed goal announced again: %q", notice)
 		}
 	})
+}
+
+// TestGoalTimingsComeFromTheConfig pins the wiring: the grace period and the
+// no-progress threshold are session properties read once at construction, not
+// package constants that a user cannot reach.
+func TestGoalTimingsComeFromTheConfig(t *testing.T) {
+	provider := answerProvider("done")
+	m := NewTUI(agent.New(provider), &config.Config{
+		Goal: &config.GoalConfig{IdleGraceSeconds: 5, NoProgressRounds: 2},
+	}, agent.NewRegistry(), agent.NewProviderRegistry(nil), tool.NewTodoStore(), nil)
+	if m.goalGrace != 5*time.Second {
+		t.Errorf("goalGrace = %v, want 5s", m.goalGrace)
+	}
+	if m.goalNoProgress != 2 {
+		t.Errorf("goalNoProgress = %d, want 2", m.goalNoProgress)
+	}
+
+	// An absent section takes the shipped policy.
+	plain := NewTUI(agent.New(provider), &config.Config{}, agent.NewRegistry(),
+		agent.NewProviderRegistry(nil), tool.NewTodoStore(), nil)
+	if plain.goalGrace != 2*time.Second || plain.goalNoProgress != 3 {
+		t.Errorf("defaults = %v/%d, want 2s/3", plain.goalGrace, plain.goalNoProgress)
+	}
 }

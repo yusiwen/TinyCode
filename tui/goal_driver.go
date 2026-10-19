@@ -9,17 +9,6 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
-// goalIdleGrace is how long the session must stay idle before an automatic round
-// starts. It is a variable so tests can set it to zero; production waits long
-// enough for someone who was already typing to get their message in first, which
-// matters because a run refuses concurrent input.
-var goalIdleGrace = 2 * time.Second
-
-// goalNoProgressRounds is how many consecutive rounds may make no tool call
-// before the goal is blocked. A round that only narrates is the failure mode a
-// round cap cannot catch: 256 of them would cost the cap and produce nothing.
-const goalNoProgressRounds = 3
-
 // batch composes commands, dropping the nil ones.
 //
 // tea.Batch panics on a nil command, and the driver's contribution is nil most of
@@ -111,7 +100,7 @@ func (m *TuiModel) scheduleGoalRound() tea.Cmd {
 	if decision := goal.Decide(m.goals.Snapshot(), m.goals.Armed(), m.goalState()); !decision.Continue {
 		return nil
 	}
-	return tea.Tick(goalIdleGrace, func(time.Time) tea.Msg { return goalRoundMsg{} })
+	return tea.Tick(m.goalGrace, func(time.Time) tea.Msg { return goalRoundMsg{} })
 }
 
 // startGoalRound claims the next round and starts the run.
@@ -178,7 +167,7 @@ func (m *TuiModel) settleGoalRound(runErr error) string {
 		} else {
 			m.goalToolFreeRounds = 0
 		}
-		if m.goalToolFreeRounds >= goalNoProgressRounds {
+		if m.goalNoProgress > 0 && m.goalToolFreeRounds >= m.goalNoProgress {
 			if _, err := m.goals.Block(ref, goal.BlockerNoProgress,
 				fmt.Sprintf("%d consecutive rounds made no tool calls", m.goalToolFreeRounds)); err == nil {
 				m.appendSystem("Goal blocked: consecutive rounds made no tool calls. Investigate, then /goal resume.")

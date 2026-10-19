@@ -464,3 +464,29 @@ func TestClearRemovesTheGoal(t *testing.T) {
 		t.Error("a cleared goal must not continue")
 	}
 }
+
+// TestCreateUsesTheConfiguredDefaultRounds: the /goal command and the goal tool
+// both create with "no cap named", so the one place that decides must be the
+// service's configured default.
+func TestCreateUsesTheConfiguredDefaultRounds(t *testing.T) {
+	s := testService()
+	s.DefaultRounds = 7
+	g, err := s.Create("the objective", 0)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if g.MaxGoalRounds != 7 {
+		t.Errorf("max rounds = %d, want the configured 7", g.MaxGoalRounds)
+	}
+	// An explicit cap still wins.
+	if _, err := s.Complete(g.Ref()); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	explicit, err := s.Create("another", 3)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if explicit.MaxGoalRounds != 3 {
+		t.Errorf("max rounds = %d, want the explicit 3", explicit.MaxGoalRounds)
+	}
+}

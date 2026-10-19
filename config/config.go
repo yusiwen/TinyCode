@@ -118,6 +118,69 @@ type BudgetConfig struct {
 	MaxTokensPerSession int `json:"max_tokens_per_session,omitempty"`
 }
 
+// GoalConfig is the continuation-driver surface (roadmap D7).
+//
+// MaxGoalRounds bounds how many rounds one goal may run. One round is a whole
+// turn — dozens of tool calls — so this is a budget on continuation, not on a
+// single turn; the token budgets are what bound the money.
+//
+// IdleGraceSeconds is how long the session must stay idle before an automatic
+// round starts. It exists so a human who was already typing gets in first: a run
+// refuses concurrent input, so a round that starts while a draft is open would
+// lock the user out for its whole duration. Zero is not a meaningful value here
+// (it would reintroduce exactly that), and an absent or zero field takes the
+// default.
+//
+// NoProgressRounds blocks a goal after that many consecutive rounds made no tool
+// call. It is the guard a round cap cannot provide: a model that only narrates
+// would otherwise spend every round of the budget saying nothing.
+type GoalConfig struct {
+	MaxGoalRounds    int `json:"max_goal_rounds,omitempty"`
+	IdleGraceSeconds int `json:"idle_grace_seconds,omitempty"`
+	NoProgressRounds int `json:"no_progress_rounds,omitempty"`
+}
+
+// GoalPolicy is the effective continuation policy: the configured values with
+// the built-in defaults filled in. Callers read this rather than the section, so
+// a layer that sets one field does not have to repeat the others.
+type GoalPolicy struct {
+	MaxRounds        int
+	IdleGraceSeconds int
+	NoProgressRounds int
+}
+
+// Defaults the policy falls back to. They are the shipped values, and the
+// shipped example names them so a reader can tell which knob is which.
+const (
+	defaultMaxGoalRounds    = 256
+	defaultIdleGraceSeconds = 2
+	defaultNoProgressRounds = 3
+)
+
+// GoalSettings resolves the continuation policy for this configuration.
+func (c Config) GoalSettings() GoalPolicy {
+	policy := GoalPolicy{
+		MaxRounds:        defaultMaxGoalRounds,
+		IdleGraceSeconds: defaultIdleGraceSeconds,
+		NoProgressRounds: defaultNoProgressRounds,
+	}
+	if c.Goal == nil {
+		return policy
+	}
+	if c.Goal.MaxGoalRounds > 0 {
+		policy.MaxRounds = c.Goal.MaxGoalRounds
+	}
+	if c.Goal.IdleGraceSeconds > 0 {
+		policy.IdleGraceSeconds = c.Goal.IdleGraceSeconds
+	}
+	// Zero would disable the guard; a configured value must be positive, so an
+	// absent or zero field takes the default rather than silently removing it.
+	if c.Goal.NoProgressRounds > 0 {
+		policy.NoProgressRounds = c.Goal.NoProgressRounds
+	}
+	return policy
+}
+
 // NotifyConfig declares when a finished task should announce itself (roadmap D5).
 //
 // Channel is one of "terminal" (the default: an escape the terminal may render as
@@ -292,6 +355,7 @@ type Config struct {
 	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
 	Truncation   *TruncationConfig        `json:"truncation,omitempty"`
 	Budget       *BudgetConfig            `json:"budget,omitempty"`
+	Goal         *GoalConfig              `json:"goal,omitempty"`
 	Notify       *NotifyConfig            `json:"notify,omitempty"`
 	Pricing      *PricingConfig           `json:"pricing,omitempty"`
 	Trajectory   *TrajectoryConfig        `json:"trajectory,omitempty"`
@@ -373,6 +437,11 @@ func DefaultConfig() Config {
 				// granting bash here.
 				MaxSteps: 15,
 			},
+		},
+		Goal: &GoalConfig{
+			MaxGoalRounds:    defaultMaxGoalRounds,
+			IdleGraceSeconds: defaultIdleGraceSeconds,
+			NoProgressRounds: defaultNoProgressRounds,
 		},
 		SessionDir:           filepath.Join(home, ".tinycode", "sessions"),
 		CheckpointDir:        filepath.Join(home, ".tinycode", "checkpoints"),
@@ -530,6 +599,22 @@ func merge(dst, src Config) Config {
 		}
 		if src.Budget.MaxTokensPerSession > 0 {
 			dst.Budget.MaxTokensPerSession = src.Budget.MaxTokensPerSession
+		}
+	}
+	if src.Goal != nil {
+		if dst.Goal == nil {
+			dst.Goal = &GoalConfig{}
+		}
+		// Only positive values replace a default, for the same reason the token
+		// budgets do: a zero or a typo is not a way to switch a guard off.
+		if src.Goal.MaxGoalRounds > 0 {
+			dst.Goal.MaxGoalRounds = src.Goal.MaxGoalRounds
+		}
+		if src.Goal.IdleGraceSeconds > 0 {
+			dst.Goal.IdleGraceSeconds = src.Goal.IdleGraceSeconds
+		}
+		if src.Goal.NoProgressRounds > 0 {
+			dst.Goal.NoProgressRounds = src.Goal.NoProgressRounds
 		}
 	}
 	if src.Pricing != nil {

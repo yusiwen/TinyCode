@@ -763,3 +763,45 @@ func TestLoadUserLayerReportsAMalformedFileOnce(t *testing.T) {
 		t.Errorf("theme = %q after a malformed file, want the default %q", got, want)
 	}
 }
+
+// TestGoalRoundTripsThroughJSON pins the file names a user types for the
+// continuation policy.
+func TestGoalRoundTripsThroughJSON(t *testing.T) {
+	raw := []byte(`{"goal":{"max_goal_rounds":20,"idle_grace_seconds":5,"no_progress_rounds":2}}`)
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	policy := cfg.GoalSettings()
+	if policy.MaxRounds != 20 || policy.IdleGraceSeconds != 5 || policy.NoProgressRounds != 2 {
+		t.Errorf("GoalSettings() = %+v, want 20/5/2", policy)
+	}
+}
+
+// TestGoalSettingsDefaults: a missing section, and a section that sets one field,
+// both land on the shipped defaults for the rest. A guard that disappears because
+// a key was omitted is the failure mode this prevents.
+func TestGoalSettingsDefaults(t *testing.T) {
+	policy := Config{}.GoalSettings()
+	if policy.MaxRounds != 256 || policy.IdleGraceSeconds != 2 || policy.NoProgressRounds != 3 {
+		t.Errorf("GoalSettings() with no section = %+v, want 256/2/3", policy)
+	}
+
+	partial := Config{Goal: &GoalConfig{MaxGoalRounds: 10}}.GoalSettings()
+	if partial.MaxRounds != 10 || partial.IdleGraceSeconds != 2 || partial.NoProgressRounds != 3 {
+		t.Errorf("GoalSettings() with one field = %+v, want 10/2/3", partial)
+	}
+}
+
+// TestMergeGoalKeepsTheDefaults: the merge replaces only the fields a layer set,
+// and a zero or a negative there is not a way to remove a guard.
+func TestMergeGoalKeepsTheDefaults(t *testing.T) {
+	merged := merge(DefaultConfig(), Config{Goal: &GoalConfig{MaxGoalRounds: 10, NoProgressRounds: -1}})
+	policy := merged.GoalSettings()
+	if policy.MaxRounds != 10 {
+		t.Errorf("MaxRounds = %d, want 10", policy.MaxRounds)
+	}
+	if policy.IdleGraceSeconds != 2 || policy.NoProgressRounds != 3 {
+		t.Errorf("a partial merge lost a default: %+v", policy)
+	}
+}
