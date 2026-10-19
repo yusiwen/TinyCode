@@ -199,6 +199,7 @@ nil for every key.
   - `Providers []ProviderRecordConfig`
   - `Truncation *TruncationConfig`
   - `Budget *BudgetConfig`
+  - `Goal *GoalConfig`
   - `Pricing *PricingConfig`
   - `Agents map[string]AgentOverride`
   - `Sandbox *SandboxConfig`
@@ -222,6 +223,8 @@ nil for every key.
 - **`priceTable(cfg) (*agent.PriceTable, error)`** (in `main.go`) — reads `Pricing`, parses each window and builds the agent's table; an empty section prices nothing (nil, no error), which the agent reports as an unknown cost rather than as zero, while a malformed window stops startup with a message naming the entry and the window (issue #225). The five-lane mapping is written out field by field in `entryPrice`/`windowPrice` so a swap is visible, and both are priced lane by lane in `pricing_config_test.go`
 - **`BudgetConfig`**: `MaxTokensPerRun`, `MaxTokensPerSession` — both default to 0 = unlimited; a negative value in a file is ignored rather than read as "no limit", so only zero switches a limit off
 - **`(cfg Config) TokenBudgets() (perRun, perSession int)`** — nil-safe accessor used by `main.go` to set the agent's limits
+- **`GoalConfig`**: `MaxGoalRounds`, `IdleGraceSeconds`, `NoProgressRounds` — the D7 continuation policy. A positive value replaces its default (256 / 2 / 3); zero, absent or negative takes the default, so a typo cannot remove a guard
+- **`(cfg Config) GoalSettings() GoalPolicy`** — nil-safe accessor that fills in every unset field: `main.go` sets the goal service's default cap from it, and `NewTUI` reads the grace and the no-progress threshold
 - **`DefaultConfig() Config`** — `deepseek-flash` (model version DeepSeek-V4.1-Flash, the name DeepSeek publishes; the `deepseek-v4-flash` alias is retired, issue #226), `https://api.deepseek.com`, 1M context
 - **`loadFile(path) (Config, error)`** / **`decodeConfig(data) (Config, error)`** — `loadFile` reads one JSON file and hands the bytes to `decodeConfig`; the split exists so a layer that also needs the raw object decodes the same bytes instead of opening the file again (issue #231). `decodeConfig` drops every object key whose name begins with `$` (documentation, at any depth: `agents`, `pricing.prices`, an MCP server's `env`/`headers` all decode into maps, where a note would otherwise be read as an entry and cost the whole file, issue #229) and decodes the rest; values travel as `json.RawMessage` so their text is preserved. A malformed file is reported on stderr **once** and returned as an error, which the callers read as "no file"
 - **`readConfigFile(path) ([]byte, error)`** — package-variable seam over `os.ReadFile`, so a test can count how often a layer is opened; production always uses `os.ReadFile`
@@ -338,7 +341,7 @@ before any flag parsing and re-execs itself as the launcher.
 
 ### `trajectory*.go` — What a run leaves behind
 
-- **`Trajectory` / `TrajectoryRun`** (`agent/trajectory.go`) — one JSONL file per run, one event per line, each event carrying its own duration so a reader never pairs two lines to compute one. `run.start`, `llm.call`, `tool.call`, `step.end`, `run.end`; payloads are `{sha256, chars}` and carry `text` only under `capture: "full"` (bounded at 64 KiB). Files are created `O_EXCL` under a timestamp-and-counter name, so two processes starting in the same second cannot overwrite each other's record. `Prune` keeps the newest `max_runs` / `max_bytes`, never removing a file some run still holds open.
+- **`Trajectory` / `TrajectoryRun`** (`agent/trajectory.go`) — one JSONL file per run, one event per line, each event carrying its own duration so a reader never pairs two lines to compute one. `run.start` (which carries `goal{goal_id, round, source}` when the run serves a goal), `llm.call`, `tool.call`, `step.end`, `run.end`; payloads are `{sha256, chars}` and carry `text` only under `capture: "full"` (bounded at 64 KiB). Files are created `O_EXCL` under a timestamp-and-counter name, so two processes starting in the same second cannot overwrite each other's record. `Prune` keeps the newest `max_runs` / `max_bytes`, never removing a file some run still holds open.
 - **`agent/trajectory_agent.go`** — where the loop meets it. `recording()` is `Trajectory != nil || TrajectoryParent != nil` (a delegated agent has no writer of its own). `Run` records from its first instant, and one `defer` writes `run.end`, so the six ways a run can return — including a panic — all close the file with the same vocabulary: `final`, `budget`, `blocked`, `step_limit`, `cancelled`, `error`. Durations come from `Agent.Now`; with nothing being recorded the clock is still read exactly once per call, which is the pricing invariant #225 established — the second read is the recorder's and only happens when a trajectory exists. `toolStatus` classifies a tool result from its text (`ok`, `error`, `blocked`, `refused`, `repeated`), because the dispatcher turns every failure into a string and there is no separate status to read.
 - **`agent/trajectory_read.go`** — the reader `--trajectories` uses. It parses the files rather than an index, reports a file with no `run.end` as incomplete rather than broken, tolerates a half-written last line, and `ValidRunID` is the path-traversal guard: the id becomes a file name, and the store is worth nothing if it can be asked for a file it never wrote.
 - **Not a tool path** (`tool/trajectory_store.go`): `CheckPathAccess` refuses the store with `ask: reserved`, full access excepted, for the reason the checkpoint store is refused — evidence the recorded agent can rewrite is not evidence.
@@ -499,6 +502,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - **`driver.go`**: `State` (idle, running, compressing, dialog, input) and `Decide(g, armed, state) Decision` — pure, advisory, and the reason it returns is what makes a silent driver debuggable. `Service.StartRound` is the authority and re-checks under the same lock that claims the round
 - **`prompt.go`**: `RoundPrompt(g, round)` — the `<goal_round>` block: the JSON-quoted objective, `Round: n/N`, the workspace-and-tool-results authority rule, the evidence rule for completion, and the goal tool's authority in the model's own terms
 - The service never touches the filesystem: the TUI is the single writer, at its own safe points
+- The user's page is [goals.md](goals.md): the commands, the authority table, every way a goal stops, what survives a restart, and the cost
 
 ---
 

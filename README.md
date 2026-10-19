@@ -48,9 +48,9 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **[Copy] buttons**: click to copy assistant response to clipboard. Fixed: button row now counted in msgRowCount so subsequent messages don't overlap. (f9143cc). Fixed: button stops working after incremental render — activeButtons preserved per MsgIdx across renders. (8dffd64)
 - **Spinner**: `⣾ ⣽ ⣻ ⢿ ⡿ ⣟` braille spinner in status bar during streaming. Tick pipeline kept alive even during idle. Spinner continues across intermediate steps. (42b8794, 9a0f55b, afc14e1)
 - **Auto-scroll**: viewport follows streaming output, pauses when user scrolls up
-- **Status bar**: mode icon, model name, provider, token count (as a fraction of `budget.max_tokens_per_session` when one is configured), what the session is known to have cost per unit plus the count of calls nobody could price, tool/msg counts, session duration, and a transient status message — including `retrying (2/3): …` while a provider call is being re-sent
+- **Status bar**: mode icon, model name, provider, token count (as a fraction of `budget.max_tokens_per_session` when one is configured), the goal's round (`goal n/256`, with `blocked` or `done` when it stops), what the session is known to have cost per unit plus the count of calls nobody could price, tool/msg counts, session duration, and a transient status message — including `retrying (2/3): …` while a provider call is being re-sent
 - **A long task announces itself when it finishes** — a background task, or a run that outlived `notify.min_duration_seconds` (default 30). Terminal escapes by default (`OSC 9`/`OSC 777`), the platform notifier (`osascript`/`notify-send`) when `notify.channel` asks for it, and nothing makes a sound
-- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 29 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), and `make test-tui-visual` (`TUI_SHOT=1`), which renders the scenarios to PNGs, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live stream into a screen buffer that is rendered too. The mechanism is the nested **[tuiprobe](tuiprobe/README.md)** module (pinned in `go.mod`, released as `tuiprobe/v0.1.0`); the fixtures and the judgments stay here. Reference: **[docs/tui-verification.md](docs/tui-verification.md)**.
+- **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 32 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), and `make test-tui-visual` (`TUI_SHOT=1`), which renders the scenarios to PNGs, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live stream into a screen buffer that is rendered too. The mechanism is the nested **[tuiprobe](tuiprobe/README.md)** module (pinned in `go.mod`, released as `tuiprobe/v0.1.0`); the fixtures and the judgments stay here. Reference: **[docs/tui-verification.md](docs/tui-verification.md)**.
 
 ### Agent Loop
 - ReAct loop with tool calling support (25 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, goal, sandbox_allow, load_skill, skill_manage)
@@ -280,7 +280,8 @@ delta does not block a repaint.
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
-docs/           Reference documents (sandbox design, TUI visual harness, pricing decision)
+docs/           Reference documents (sandbox, TUI verification, goals, trajectories, roadmap, pricing)
+goal/           Persistent objective, /goal, idle continuation driver (docs/goals.md)
 internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)

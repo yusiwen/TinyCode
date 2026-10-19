@@ -125,7 +125,7 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### A4 — No prompt caching
 
-- **Gap**: the system prompt and the JSON Schema of all 24 tools are resent every step, on
+- **Gap**: the system prompt and the JSON Schema of all 25 tools are resent every step, on
   providers where a stable prefix could be cached.
 - **Evidence**: `rg -c 'cache_control'`, `'prompt_cache'`, `'cached_tokens'` → exit 1 each, over
   the whole repository including the nested module.
