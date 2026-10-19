@@ -40,11 +40,15 @@ UTC) and, when known, `parent`, `session` and `agent`.
 
 | `type` | Written when | Carries |
 | --- | --- | --- |
-| `run.start` | the run opens, before anything takes time | `provider`, `model`, `capture`, `prompt` (digest) |
+| `run.start` | the run opens, before anything takes time | `provider`, `model`, `capture`, `prompt` (digest), `goal` (`goal_id`, `round`, `source`) when the run serves a goal |
 | `llm.call` | a provider call returns, one per call | `step`, `duration_ms`, `ttft_ms` (only when something streamed), `outcome` (`final`/`tool_calls`/`empty`), `tokens`, `cost` |
 | `tool.call` | one tool call finishes, in call order | `step`, `call`, `tool`, `args` (digest), `result` (digest), `duration_ms`, `status` |
 | `step.end` | the step that made the call finishes | `step`, `duration_ms` |
 | `run.end` | the run stops, whatever the reason | `stop`, `steps`, `duration_ms`, `tokens`, `cost`, `cost_unknown_calls` |
+
+`goal` is present on a run that serves a session goal, and `source` says who started it: `driver` for
+a round the continuation driver began, `human` for a turn a person did. It is what lets an evaluation
+separate automatic rounds from human work without inferring it from the prompt.
 
 `stop` is the outcome, and it is the field an evaluation groups by:
 

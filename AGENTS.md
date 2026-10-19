@@ -186,6 +186,7 @@ gh api "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/commits/$SH
 ```
 agent/          ReAct loop, LLM providers, context compression, registry
 config/         JSON config loading (default → ~/.tinycode/ → ./.tinycode/)
+goal/           Persistent objective, /goal, idle continuation driver (docs/goals.md)
 lsp/            LSP client (gopls, pyright, etc.), diagnostics, 4 tools
 mcp/            MCP client (stdio/HTTP), JSON-RPC 2.0, auto-discovery
 session/        Session persistence (JSON), fork/branch support, export
@@ -223,7 +224,7 @@ User Input → TUI / CLI
 
 ### Tools (`tool/`)
 Each tool is `{Name, Description, Parameters (JSON Schema), Execute(ctx, args)}`.
-25 built-in tools across categories: shell, file r/w, search, edit, git, web, LSP, task, todo, skill, sandbox.
+25 built-in tools across categories: shell, file r/w, search, edit, git, web, LSP, task, todo, goal, skill, sandbox.
 
 ### TUI (`tui/`)
 - Bubble Tea framework with custom CellGrid frame buffer
