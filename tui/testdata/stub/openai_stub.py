@@ -8,6 +8,10 @@ consulted for is the marker of the TUI's asynchronous session-title call, which 
 consume a position in the script (see TITLE_MARKER below).
 
 Usage: openai_stub.py <port> [mode [cycles [count_file]]]
+
+Modes: "" (plain answer), retry, tool, multi, fail, todo, read, lsp, write, undo,
+bashwrite, confine, and "goal" (a dynamic mode that creates and then completes a
+session goal; see goal-tool.scenario).
 Started by the scenario that needs it; see prompt-answer.scenario, and
 permission-allow-always.scenario for a flow that starts the binary twice and therefore
 asks for two cycles.
@@ -164,6 +168,73 @@ BASH_WRITE_CALL = (
     'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
     'data: [DONE]\n\n'
 )
+# "goal" is a dynamic mode, not a static script: the calls it makes depend on
+# what the previous one returned. It is the only mode that exercises the
+# model-facing goal tool (workspace issue #259, S3): the first request asks for
+# `goal create`, the turn ends, the continuation driver starts a round, and the
+# round asks for `goal complete`.
+#
+# The complete call cannot be a constant: the goal service's compare-and-set
+# requires the exact {goal_id, revision} the create returned, so the stub reads
+# them out of the last tool message (the request carries every message,
+# including tool results). A constant would be refused as stale and the
+# scenario would fail for the wrong reason.
+GOAL_CREATE_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_goal_create","type":"function",'
+    '"function":{"name":"goal","arguments":%s}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+) % json.dumps(json.dumps({"action": "create", "objective": "make the failing test pass"}))
+
+
+def goal_complete_call(body):
+    """The complete call, carrying the id and revision the create returned."""
+    goal = {}
+    try:
+        req = json.loads(body)
+        for msg in reversed(req.get("messages", [])):
+            content = msg.get("content") or ""
+            if msg.get("role") == "tool" and '"goal"' in content:
+                goal = (json.loads(content).get("goal") or {})
+                break
+    except (ValueError, AttributeError):
+        goal = {}
+    args = {"action": "complete", "goal_id": goal.get("id", ""), "revision": goal.get("revision", 0)}
+    return (
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_goal_complete","type":"function",'
+        '"function":{"name":"goal","arguments":%s}}]}}]}\n\n'
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+        'data: [DONE]\n\n'
+    ) % json.dumps(json.dumps(args))
+
+
+GOAL_GET_CALL = (
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_goal_get","type":"function",'
+    '"function":{"name":"goal","arguments":%s}}]}}]}\n\n'
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+    'data: [DONE]\n\n'
+) % json.dumps(json.dumps({"action": "get"}))
+
+
+def goal_mode(body):
+    """One request of the goal mode: create, answer, get, complete, answer.
+
+    The get is not ceremony: a round starts a *new* run, and the agent's
+    multi-turn history keeps user/assistant turns only — the create's tool
+    result is not in the next round's request. So the round asks for the goal
+    first, exactly as the tool's description tells a model to, and the complete
+    call reads the {goal_id, revision} out of that result.
+    """
+    served = _served["requests"]
+    if served == 1:
+        return GOAL_CREATE_CALL.encode()
+    if served == 3:
+        return GOAL_GET_CALL.encode()
+    if served == 4:
+        return goal_complete_call(body).encode()
+    return final_payload()
+
+
 SCRIPT = {
     "tool": TOOL_CALL,
     "bashwrite": BASH_WRITE_CALL,
@@ -223,6 +294,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
 
         _served["requests"] += 1
+        if MODE == "goal":
+            self.answer(goal_mode(body))
+            return
         if MODE == "retry" and _served["requests"] == 1:
             # The transient failure the client is expected to retry: a rate limit with no
             # Retry-After, so the scenario pays one backoff rather than a second.

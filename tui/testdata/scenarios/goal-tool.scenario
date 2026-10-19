@@ -1,0 +1,56 @@
+# The model-facing goal tool, driven by the model (workspace issue #259, S3).
+#
+# No `/goal` is typed here. The stub's "goal" mode scripts one model-initiated
+# chain, and the point is what the chain proves through the real binary:
+#
+#   1. the model calls `goal create` (a human turn) — the goal appears, so the
+#      tool's dispatcher, schema and permission path all work;
+#   2. the human turn ends and the continuation driver starts round 1;
+#   3. in that round the model calls `goal get`, then `goal complete` with the
+#      exact {goal_id, revision} it read. The get is required: a round is a new
+#      run, and the create's tool result is not in the next round's history, so
+#      the stub's complete call parses the ref out of the get's result;
+#   4. the goal reports complete, and the driver stops — no round 2.
+#
+# What it does not prove: that a real model *chooses* to create a goal from a
+# sentence. The stub ignores the prompt and follows its script, so this is the
+# tool path, not the decision; the build prompt's guidance is pinned by
+# `agent/prompt_test.go`, and the decision itself is model behaviour.
+#
+# The home is its own (/tmp/tinyscen-goal-tool) and is wiped by the wrapper, so
+# this scenario cannot see or leave state another one depends on.
+open --dir . --size 120x40 --env HOME=/tmp/tinyscen-goal-tool --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-goal-tool && mkdir -p /tmp/tinyscen-goal-tool/.tinycode /tmp/tinyscen-goal-tool/sessions; python3 tui/testdata/stub/openai_stub.py 18523 goal 1 /tmp/tinyscen-goal-tool/count.txt & sleep 1; ./bin/tinycode --base-url=http://127.0.0.1:18523/v1 --api-key=stub --model=stub --session-dir=/tmp/tinyscen-goal-tool/sessions --log-level=error; status=$?; kill %1 2>/dev/null; exit $status'
+wait --text "Type your request" --timeout 20s
+# Build mode first: the session starts in plan mode, whose read-only ruleset
+# denies the goal tool, so a create there would be refused (and should be — the
+# docs say plan mode cannot create a goal). The assertion is the status bar's
+# mode label, not the welcome menu entry.
+send --text "/build"
+send --key enter
+wait --text "⚡ build" --timeout 15s
+# "implement the whole migration" is not parsed by anyone: the stub answers with
+# the create call regardless of the prompt. The assertion is about the call.
+send --text "implement the whole migration"
+send --key enter
+# The goal exists before any /goal command: it was created through the tool.
+wait --text "goal 0/256" --timeout 30s
+# The human turn ends, and the driver starts round 1 on its own.
+wait --text "Round: 1/256" --timeout 30s
+# The round completed the goal through the tool, so the goal stopped.
+wait --text "goal 1/256 done" --timeout 30s
+# The goal completed inside the round, but the round's answer is still
+# streaming: a command submitted now would be refused with "A run is already in
+# progress". Wait for the screen to settle first (the session clock is the only
+# thing still changing once the run ends, so a short stable window is enough).
+stable 200ms --timeout 15s
+send --text "/goal"
+send --key enter
+wait --text "Phase: complete" --timeout 15s
+screenshot /tmp/tinyscen-shots/goal-tool-120x40.png --scale 2
+# No round 2: a further round would have raised the status-bar counter. The
+# counter is the only place this text appears, so it staying is the assertion.
+sleep 3s
+wait --text "goal 1/256 done" --timeout 10s
+send --key ctrl+c --key ctrl+c
+wait-exit 30s
+expect-exit 0
