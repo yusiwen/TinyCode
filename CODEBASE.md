@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1092 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1096 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -608,7 +608,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - Incremental rendering: dirty-message tracking, only re-renders from first dirty (~2.3ms)
 - Banner messages (`msg.Banner != nil`) bypass word-wrap and place each pre-laid-out row inline
 - `stripANSI` removes both CSI and OSC sequences, so OSC 8 hyperlinks never leak into selection/copy text
-- Status bar: mode icon, model, spinner, provider, tokens, tool calls, msg count, diagnostics, duration, history. `tokens:` is the session counter; when `budget.max_tokens_per_session` is configured it reads `spent/limit`, and with no budget configured it is byte-identical to what it has always been (which is what keeps the committed frame goldens stable)
+- Status bar: mode icon, model, spinner, provider, tokens, `goal n/max` (with `blocked`/`done` when it stops), spend, tool calls, msg count, diagnostics, duration, history. The goal sits above the spend in priority: at 80 columns the round survives and the money does not. `tokens:` is the session counter; when `budget.max_tokens_per_session` is configured it reads `spent/limit`, and with no budget configured it is byte-identical to what it has always been (which is what keeps the committed frame goldens stable)
 - Character-level selection via `grid.Fill()` with SelectionStyle
 
 ### Frame verification (test files)
@@ -715,7 +715,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1092 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1096 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -761,7 +761,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1092 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1096 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
