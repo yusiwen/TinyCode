@@ -43,6 +43,9 @@ type RunSummary struct {
 	// Tools counts the calls per tool name, which is what a reader needs to ask
 	// "which tool does this agent lean on" without loading the file itself.
 	Tools map[string]int
+	// Goal is the attribution a run carried: which goal it served, the round it
+	// started, and whether a human or the driver started it. Nil when none.
+	Goal *types.GoalRunInfo
 }
 
 // TokensTotal is the number the list prints: prompt plus completion as the
@@ -124,6 +127,13 @@ func readRun(path string) (RunSummary, error) {
 			summary.Model = stringField(event, "model")
 			summary.Capture = stringField(event, "capture")
 			summary.Started = timeField(event, "at")
+			if raw, ok := event["goal"].(map[string]any); ok {
+				summary.Goal = &types.GoalRunInfo{
+					GoalID: stringField(raw, "goal_id"),
+					Round:  int(numberField(raw, "round")),
+					Source: stringField(raw, "source"),
+				}
+			}
 		case TrajectoryToolCall:
 			if summary.Tools == nil {
 				summary.Tools = make(map[string]int)

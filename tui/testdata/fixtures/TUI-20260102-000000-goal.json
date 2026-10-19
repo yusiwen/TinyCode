@@ -1,0 +1,22 @@
+{
+  "id": "TUI-20260102-000000-goal",
+  "title": "goal fixture",
+  "preview": "scenario-goal-answer",
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "message_count": 2,
+  "messages": [
+    {"role": "user", "content": "fix the build"},
+    {"role": "assistant", "content": "scenario-goal-answer"}
+  ],
+  "goal": {
+    "id": "goal-fixture",
+    "objective": "make the failing test pass",
+    "phase": "active",
+    "rounds_started": 2,
+    "max_goal_rounds": 256,
+    "revision": 1,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+}

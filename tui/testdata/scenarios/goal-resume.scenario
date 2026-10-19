@@ -1,0 +1,43 @@
+# A goal that survived the process, and what a resumed session does with it.
+#
+# Issue #259 S5. This is the one property no in-process test can reach: the goal
+# was written by a previous process, and this one reads it back. The correct
+# behaviour is that the goal is still there, that continuation is *disarmed*, and
+# that no round starts on its own -- so no model request is expected at all,
+# which is why the base URL is deliberately unreachable: an unintended call would
+# fail visibly instead of passing quietly.
+#
+# The fixture is copied into the session directory by `make test-tui-scenarios`
+# (tui/testdata/fixtures/*.json), so this asserts known content rather than
+# whatever an earlier run left behind.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --resume=TUI-20260102-000000-goal --session-dir=/tmp/tinyscen-home/sessions --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --log-level=error
+wait --text "scenario-goal-answer" --timeout 20s
+# The durable state came back: objective, round count and the phase line that
+# says a human has to re-arm it.
+send --text "/goal"
+send --key enter
+wait --text "Round: 2/256" --timeout 15s
+wait --text "disarmed" --timeout 15s
+# The status bar carries the round, so the goal is in the live session and not
+# only in the transcript.
+wait --text "goal 2/256" --timeout 15s
+# Three seconds of waiting: the screen cannot be asserted stable because the
+# status bar's session clock ticks, and an armed goal would have started a round
+# by now. The next step is what proves the session is idle.
+sleep 3s
+# Prove the session is genuinely idle: a command executes and answers. If a round
+# had started, Enter would be refused with "A run is already in progress" and
+# this line would never appear.
+send --text "/goal pause"
+send --key enter
+wait --text "Phase: paused" --timeout 15s
+screenshot /tmp/tinyscen-shots/goal-resume-120x30.png --scale 2
+# Leave the way the other scenarios do: settle, then two Ctrl+C presses with the
+# confirmation between them. A round left running would take the first Ctrl+C as
+# an interrupt and never reach the confirmation.
+stable 200ms --timeout 15s
+send --key ctrl+c
+wait --text "Press Ctrl\+C again to quit" --timeout 15s
+send --key ctrl+c
+wait-exit 30s
+expect-exit 0

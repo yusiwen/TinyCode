@@ -37,4 +37,4 @@
 
 
 ┃   1 Type your request (Ctrl+J for newline)...
-⚡ plan  ■ unknown  tokens: 12840/20000  cost: 0.95 credits, 2.4 USD (+3 unpriced)  tools: 7  msgs: 2
+⚡ plan  ■ unknown  tokens: 12840/20000  goal 2/256  cost: 0.95 credits, 2.4 USD (+3 unpriced)  tools: 7  msgs: 2

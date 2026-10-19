@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/goal"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // goalIdleGrace is how long the session must stay idle before an automatic round
@@ -45,12 +46,17 @@ func batch(cmds ...tea.Cmd) tea.Cmd {
 //
 // goalRound travels to runAgent as a value rather than through shared state, so
 // the context the agent sees cannot be changed by a later run.
-func (m *TuiModel) beginAgentRun(prompt string, goalRound bool) (tea.Model, tea.Cmd, bool) {
+func (m *TuiModel) beginAgentRun(prompt string, round int) (tea.Model, tea.Cmd, bool) {
 	ctx, runID, ok := m.beginRun()
 	if !ok {
 		return m, nil, false
 	}
-	m.currentRunIsGoal = goalRound
+	m.currentRunIsGoal = round > 0
+	m.runGoalPhase = ""
+	if current := m.goals.Snapshot(); current != nil {
+		m.runGoalPhase = current.Phase
+	}
+	goalRun := m.goalRunInfo(round)
 	m.runToolCallsStart = m.sessionToolCalls
 	m.messages = append(m.messages, chatMessage{Role: "user", Content: prompt})
 	cur := chatMessage{Role: "assistant", Streaming: true}
@@ -59,8 +65,27 @@ func (m *TuiModel) beginAgentRun(prompt string, goalRound bool) (tea.Model, tea.
 	m.status = StatusStreaming
 	m.streamDoneNotified = false
 	m.callTokens = 0 // a new call starts with no estimate charged to it
-	go m.runAgent(ctx, runID, prompt, goalRound)
+	go m.runAgent(ctx, runID, prompt, goalRun)
 	return m, m.waitForStream(), true
+}
+
+// goalRunInfo attributes the run to the session's goal, when one is current.
+// A claimed round makes it a driver run; any other run is a human turn that
+// carries the round count for context, not authority.
+func (m *TuiModel) goalRunInfo(round int) *types.GoalRunInfo {
+	if m.goals == nil {
+		return nil
+	}
+	current := m.goals.Snapshot()
+	if current == nil {
+		return nil
+	}
+	info := &types.GoalRunInfo{GoalID: current.ID, Round: current.RoundsStarted, Source: types.GoalSourceHuman}
+	if round > 0 {
+		info.Round = round
+		info.Source = types.GoalSourceDriver
+	}
+	return info
 }
 
 // goalState is what the driver needs to know about the interface.
@@ -109,7 +134,7 @@ func (m *TuiModel) startGoalRound() (tea.Model, tea.Cmd) {
 	prompt := goal.RoundPrompt(m.goals.Snapshot(), round)
 	m.persistSession()
 
-	model, cmd, ok := m.beginAgentRun(prompt, true)
+	model, cmd, ok := m.beginAgentRun(prompt, round)
 	if !ok {
 		// Unreachable: the decision above and this call happen in one Update, so
 		// nothing can take the session in between. Reported rather than hidden,
@@ -127,21 +152,24 @@ func (m *TuiModel) startGoalRound() (tea.Model, tea.Cmd) {
 // a provider error is a loop nobody asked for. Consecutive rounds that made no
 // tool call block it, and so does spending the last round — a goal that stopped
 // for a reason has to say so, or the user finds out only by typing /goal.
-func (m *TuiModel) settleGoalRound(runErr error) {
+// It returns a short notice when the goal stopped, which the run-end path turns
+// into a completion announcement; an empty string means nothing to announce.
+func (m *TuiModel) settleGoalRound(runErr error) string {
 	if m.goals == nil {
-		return
+		return ""
 	}
 	current := m.goals.Snapshot()
 	if current == nil {
-		return
+		return ""
 	}
 	ref := current.Ref()
 
 	if m.currentRunIsGoal && runErr != nil {
 		if _, err := m.goals.Pause(ref); err == nil {
 			m.appendSystem("Goal paused: the round ended with an error. /goal resume re-arms it.")
+			return "goal paused: the round ended with an error"
 		}
-		return
+		return ""
 	}
 
 	if m.currentRunIsGoal {
@@ -154,8 +182,9 @@ func (m *TuiModel) settleGoalRound(runErr error) {
 			if _, err := m.goals.Block(ref, goal.BlockerNoProgress,
 				fmt.Sprintf("%d consecutive rounds made no tool calls", m.goalToolFreeRounds)); err == nil {
 				m.appendSystem("Goal blocked: consecutive rounds made no tool calls. Investigate, then /goal resume.")
+				return "goal blocked: no progress"
 			}
-			return
+			return ""
 		}
 	}
 
@@ -163,6 +192,14 @@ func (m *TuiModel) settleGoalRound(runErr error) {
 		if _, err := m.goals.Block(ref, goal.BlockerRoundLimit,
 			fmt.Sprintf("the goal spent its %d rounds", current.MaxGoalRounds)); err == nil {
 			m.appendSystem("Goal blocked: it spent its round budget. Raise max_goal_rounds, then /goal resume.")
+			return "goal blocked: round budget spent"
 		}
+		return ""
 	}
+
+	// The model completed it: say so once, not on every later run.
+	if current.Phase == goal.PhaseComplete && m.runGoalPhase != goal.PhaseComplete {
+		return "goal complete"
+	}
+	return ""
 }

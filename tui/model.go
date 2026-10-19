@@ -188,6 +188,10 @@ type TuiModel struct {
 	// the run began. Together they are the no-progress guard.
 	goalToolFreeRounds int
 	runToolCallsStart  int
+	// runGoalPhase is the goal's phase when the run began, so a run that
+	// completed or blocked the goal can be announced once rather than on every
+	// later run of the same session.
+	runGoalPhase goal.Phase
 
 	// Todo rendering tracking (virtual message in CellGrid)
 	todoRowCount int  // rendered row count for todo section (0 = no items)

@@ -44,7 +44,7 @@ type runOutcome struct {
 func (a *Agent) recording() bool { return a.Trajectory != nil || a.TrajectoryParent != nil }
 
 // beginTrajectory opens the run's file, or returns nil when nothing records.
-func (a *Agent) beginTrajectory(prompt string) *TrajectoryRun {
+func (a *Agent) beginTrajectory(prompt string, goal *types.GoalRunInfo) *TrajectoryRun {
 	provider, model := splitProviderModel(a)
 	agentName := ""
 	if a.Config != nil {
@@ -62,6 +62,7 @@ func (a *Agent) beginTrajectory(prompt string) *TrajectoryRun {
 		Provider: provider,
 		Model:    model,
 		Prompt:   prompt,
+		Goal:     goal,
 	})
 }
 

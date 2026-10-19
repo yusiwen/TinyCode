@@ -312,3 +312,65 @@ func TestASecondRoundMessageIsRefused(t *testing.T) {
 	}
 	drainUntilTerminal(t, m, 5*time.Second)
 }
+
+// TestSettleGoalRoundReportsWhyItStopped: the run-end path turns this string into
+// a completion announcement, so it has to name what happened rather than say
+// "finished" over a goal that just spent its budget.
+func TestSettleGoalRoundReportsWhyItStopped(t *testing.T) {
+	t.Run("round budget spent", func(t *testing.T) {
+		m := driverTestTUI(t, t.TempDir(), answerProvider("done"))
+		if _, err := m.goals.Create("the objective", 1); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if _, err := m.goals.StartRound(); err != nil {
+			t.Fatalf("start round: %v", err)
+		}
+		m.runGoalPhase = goal.PhaseActive
+
+		notice := m.settleGoalRound(nil)
+		if notice != "goal blocked: round budget spent" {
+			t.Errorf("notice = %q", notice)
+		}
+		if got := m.goals.Snapshot().Blocker; got == nil || got.Code != goal.BlockerRoundLimit {
+			t.Errorf("blocker = %+v, want round-limit", got)
+		}
+	})
+
+	t.Run("the round failed", func(t *testing.T) {
+		m := driverTestTUI(t, t.TempDir(), answerProvider("done"))
+		if _, err := m.goals.Create("the objective", 8); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		m.currentRunIsGoal = true
+		m.runGoalPhase = goal.PhaseActive
+
+		notice := m.settleGoalRound(context.DeadlineExceeded)
+		if notice != "goal paused: the round ended with an error" {
+			t.Errorf("notice = %q", notice)
+		}
+		if got := m.goals.Snapshot().Phase; got != goal.PhasePaused {
+			t.Errorf("phase = %s, want paused", got)
+		}
+	})
+
+	t.Run("the model completed it", func(t *testing.T) {
+		m := driverTestTUI(t, t.TempDir(), answerProvider("done"))
+		created, err := m.goals.Create("the objective", 8)
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if _, err := m.goals.Complete(created.Ref()); err != nil {
+			t.Fatalf("complete: %v", err)
+		}
+		m.runGoalPhase = goal.PhaseActive
+
+		if notice := m.settleGoalRound(nil); notice != "goal complete" {
+			t.Errorf("notice = %q", notice)
+		}
+		// A later run of the same completed goal must not announce it again.
+		m.runGoalPhase = goal.PhaseComplete
+		if notice := m.settleGoalRound(nil); notice != "" {
+			t.Errorf("a completed goal announced again: %q", notice)
+		}
+	})
+}

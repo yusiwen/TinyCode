@@ -129,6 +129,9 @@ type RunMetadata struct {
 	Provider string
 	Model    string
 	Prompt   string
+	// Goal attributes the run to the goal it serves, when it serves one. A
+	// delegated run leaves it nil: its parent link is its attribution.
+	Goal *types.GoalRunInfo
 }
 
 // Start opens a run: one file, and a run.start line.
@@ -159,6 +162,7 @@ func (t *Trajectory) Start(meta RunMetadata) *TrajectoryRun {
 
 	run.emit(&runStartEvent{
 		trajectoryEnvelope: run.envelope(TrajectoryRunStart),
+		Goal:               meta.Goal,
 		Provider:           meta.Provider,
 		Model:              meta.Model,
 		Capture:            t.capture,
@@ -527,6 +531,7 @@ type trajectoryPayload struct {
 
 type runStartEvent struct {
 	trajectoryEnvelope
+	Goal     *types.GoalRunInfo `json:"goal,omitempty"`
 	Provider string             `json:"provider,omitempty"`
 	Model    string             `json:"model,omitempty"`
 	Capture  string             `json:"capture"`

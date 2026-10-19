@@ -29,6 +29,14 @@ func goalTestTool() Tool {
 	return Goal(goal.NewService())
 }
 
+// goalRoundCtx is an automatic round's context: the source the goal tool treats
+// as the one that may not rewrite the objective.
+func goalRoundCtx() context.Context {
+	return types.WithGoalRound(context.Background(), types.GoalRunInfo{
+		GoalID: "goal-1", Round: 1, Source: types.GoalSourceDriver,
+	})
+}
+
 func execute(t *testing.T, tl Tool, ctx context.Context, args map[string]any) (string, error) {
 	t.Helper()
 	return tl.Execute(ctx, args)
@@ -89,7 +97,7 @@ func TestGoalToolCreateFromAHumanTurn(t *testing.T) {
 }
 
 func TestGoalToolCreateNeedsAHumanTurn(t *testing.T) {
-	ctx := types.WithGoalRound(context.Background())
+	ctx := goalRoundCtx()
 	_, err := execute(t, goalTestTool(), ctx, map[string]any{"action": "create", "objective": "sneak one in"})
 	if err == nil {
 		t.Fatal("a goal round created a goal")
@@ -153,7 +161,7 @@ func TestGoalToolPauseResumeStayHuman(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	created := decodeGoal(t, out).Goal
-	round := types.WithGoalRound(context.Background())
+	round := goalRoundCtx()
 
 	for _, action := range []string{"pause", "resume", "edit"} {
 		if _, err := execute(t, tl, round, map[string]any{
@@ -174,7 +182,7 @@ func TestGoalToolCompleteFromAGoalRound(t *testing.T) {
 	}
 	created := decodeGoal(t, out).Goal
 
-	out, err = execute(t, tl, types.WithGoalRound(context.Background()), map[string]any{
+	out, err = execute(t, tl, goalRoundCtx(), map[string]any{
 		"action": "complete", "goal_id": created.ID, "revision": created.Revision,
 	})
 	if err != nil {
@@ -196,7 +204,7 @@ func TestGoalToolBlockedFromAGoalRound(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	created := decodeGoal(t, out).Goal
-	round := types.WithGoalRound(context.Background())
+	round := goalRoundCtx()
 
 	if _, err := execute(t, tl, round, map[string]any{
 		"action": "blocked", "goal_id": created.ID, "revision": created.Revision,
@@ -229,5 +237,19 @@ func TestGoalToolUnknownAction(t *testing.T) {
 	}
 	if _, err := execute(t, Goal(nil), context.Background(), map[string]any{"action": "get"}); err == nil {
 		t.Error("a nil service was accepted")
+	}
+}
+
+// TestGoalToolHumanAttributionMayCreate: a run attributed to the goal but started
+// by a human keeps human authority, so "continue" after a resume can re-create or
+// edit the goal.
+func TestGoalToolHumanAttributionMayCreate(t *testing.T) {
+	ctx := types.WithGoalRound(context.Background(), types.GoalRunInfo{
+		GoalID: "goal-1", Round: 2, Source: types.GoalSourceHuman,
+	})
+	if _, err := execute(t, goalTestTool(), ctx, map[string]any{
+		"action": "create", "objective": "a human asked for this",
+	}); err != nil {
+		t.Fatalf("a human-attributed run could not create a goal: %v", err)
 	}
 }

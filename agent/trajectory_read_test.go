@@ -215,3 +215,29 @@ func TestAReadRunCountsItsToolCalls(t *testing.T) {
 		t.Fatalf("tool counts = %v, want read_file=2 bash=1", runs[0].Tools)
 	}
 }
+
+const goalRun = `{"v":1,"type":"run.start","run":"20261019T090000Z-g1","session":"S-3","agent":"build","goal":{"goal_id":"goal-9","round":2,"source":"driver"},"capture":"metadata","at":"2026-10-19T09:00:00Z"}
+{"v":1,"type":"run.end","run":"20261019T090000Z-g1","stop":"final","steps":1,"duration_ms":10,"at":"2026-10-19T09:00:01Z"}
+`
+
+// TestListRunsReadsTheGoalAttribution pins the goal object on the start line: a
+// reader that cannot see it cannot tell a driver round from a human turn.
+func TestListRunsReadsTheGoalAttribution(t *testing.T) {
+	dir := t.TempDir()
+	writeTrajectoryFile(t, dir, "20261019T090000Z-g1.jsonl", goalRun)
+
+	runs, err := ListRuns(dir, 0)
+	if err != nil {
+		t.Fatalf("ListRuns: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("got %d runs, want 1", len(runs))
+	}
+	goal := runs[0].Goal
+	if goal == nil {
+		t.Fatal("the run's goal attribution was dropped")
+	}
+	if goal.GoalID != "goal-9" || goal.Round != 2 || goal.Source != types.GoalSourceDriver {
+		t.Errorf("goal = %+v, want goal-9 round 2 driver", goal)
+	}
+}

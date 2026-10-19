@@ -354,7 +354,13 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		runStarted = a.now()
 		costStart = a.CostTotal
 		unknownStart = a.CostUnknownCalls
-		a.trajRun = a.beginTrajectory(prompt)
+		// The run record says which goal this run served and whether a human or
+		// the driver started it, so an evaluation can filter driver rounds.
+		var goal *types.GoalRunInfo
+		if info, ok := types.GoalRoundFrom(ctx); ok {
+			goal = &info
+		}
+		a.trajRun = a.beginTrajectory(prompt, goal)
 	}
 	defer func() {
 		stop := outcome.stop
