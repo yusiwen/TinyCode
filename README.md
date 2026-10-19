@@ -52,7 +52,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Frame verification** — the rendered frame is a test artifact, not only an assertion target: 29 plain-text golden frames plus one raw ANSI frame under `tui/testdata/golden/` (regenerate with `go test ./tui -run Golden -update`), and `make test-tui-visual` (`TUI_SHOT=1`), which renders the scenarios to PNGs, starts the built binary on a real 80x24 PTY (and once on a size-less one) and replays that live stream into a screen buffer that is rendered too. The mechanism is the nested **[tuiprobe](tuiprobe/README.md)** module (pinned in `go.mod`, released as `tuiprobe/v0.1.0`); the fixtures and the judgments stay here. Reference: **[docs/tui-verification.md](docs/tui-verification.md)**.
 
 ### Agent Loop
-- ReAct loop with tool calling support (24 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, sandbox_allow, load_skill, skill_manage)
+- ReAct loop with tool calling support (25 tools: bash, read_file, write_file, search_files, edit, apply_patch, git_*, web, LSP, task, task_collect, todo, goal, sandbox_allow, load_skill, skill_manage)
 - **Transient failures are retried** — a 429, a 5xx or a connection that dies before any answer is re-sent with exponential backoff and jitter, floored at `Retry-After`; a stream that already delivered text is never replayed, because drawing an answer twice is worse than the failure
 - **A tool call is checked before it runs** — arguments are validated against the schema the model was shown (`type`, `properties`, `required`, `enum`, `items`), a call that breaks it is answered with every problem at once instead of being executed, and the same call failing repeatedly is refused as a loop
 - **Cumulative token budgets** — `budget.max_tokens_per_run` and `budget.max_tokens_per_session` (0 = unlimited) stop a run before its next provider call once either is reached
@@ -105,7 +105,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **1069 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
+- **1079 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally
@@ -159,7 +159,7 @@ Two failures that are the environment, not the code:
 | Agent | Mode | Hidden | Tools | Steps | Purpose |
 |-------|------|--------|-------|-------|---------|
 | **plan** | primary | | read_file, search_files, git_*, web_*, lsp_*, todo, load_skill | 20 | Read-only analysis (whitelist, no bash) |
-| **build** | primary | | * (all 24 tools) | 50 | Full access implementation |
+| **build** | primary | | * (all 25 tools) | 50 | Full access implementation |
 | **explore** | subagent | | read_file, search_files | 15 | Fast read-only code search |
 | **general** | subagent | | * except {task, task_collect, skill_manage} | 20 | Full-execution parallel sub-agent |
 | **compact** | primary | ✅ | (no tools) | 1 | History compression |
@@ -284,7 +284,7 @@ internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect c
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
 session/        Session persistence (JSON files, metadata, listing, fork)
 skill/          SKILL.md discovery (3-layer), Load/LoadOnce/CRUD
-tool/           Tool definitions (24 tools + MCP: edit, todo, skill, LSP, web, mcp)
+tool/           Tool definitions (25 tools + MCP: edit, todo, skill, LSP, web, mcp)
 tui/            Bubble Tea TUI (CellGrid, components, key/mouse, cmd palette)
 types/          Shared types (Message, ToolCall, StreamCallbacks)
 main.go         CLI entry point with cobra

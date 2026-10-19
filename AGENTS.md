@@ -191,7 +191,7 @@ mcp/            MCP client (stdio/HTTP), JSON-RPC 2.0, auto-discovery
 session/        Session persistence (JSON), fork/branch support, export
 skill/          SKILL.md discovery (3 layers: builtin/global/project)
 tlog/           Structured logger (file + level filtering)
-tool/           24 tool definitions (bash, edit, git, web, LSP, task, MCP, ...)
+tool/           25 tool definitions (bash, edit, git, web, LSP, task, MCP, ...)
 tui/            Bubble Tea TUI (CellGrid, markdown render, cmd palette)
 types/          Shared types (Message, ToolCall, ChatRequest, StreamCallbacks)
 main.go         CLI entry (cobra), dependency wiring
@@ -223,7 +223,7 @@ User Input → TUI / CLI
 
 ### Tools (`tool/`)
 Each tool is `{Name, Description, Parameters (JSON Schema), Execute(ctx, args)}`.
-24 built-in tools across categories: shell, file r/w, search, edit, git, web, LSP, task, todo, skill, sandbox.
+25 built-in tools across categories: shell, file r/w, search, edit, git, web, LSP, task, todo, skill, sandbox.
 
 ### TUI (`tui/`)
 - Bubble Tea framework with custom CellGrid frame buffer
