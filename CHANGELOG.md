@@ -9,6 +9,25 @@ back to its change and tests.
 
 ## Unreleased
 
+### The model can see the goal, and cannot hand itself one
+
+Issue #259, S3 — the `goal` tool. `get` returns `{goal, armed}`; `create`, `edit`, `pause`, `resume`,
+`complete` and `blocked` mutate it, each echoing the `{goal_id, revision}` a `get` returned, so a stale
+view is refused instead of overwriting newer state.
+
+The authority rule is the substance. A human turn may create, edit, pause or resume; a goal round may
+only read, complete or block — a round that could rewrite its own objective would be a machine deciding
+what to work on next. A sub-agent may only read, because it was handed a unit of work inside a turn, not
+authority over the session. The facts live in the context (`types.InGoalRound`, `types.InSubagent`),
+stamped by the driver (S4) and by `tool/task.go` / `tool/bgtask.go`, and the tool checks them before the
+service is touched, so a refusal mutates nothing.
+
+The tool is registered only in the interactive path: a goal is session state, and a one-shot run has no
+session to keep it in.
+
+Mutation-checked, both reverted: ignoring the sub-agent marker lets a child create goals, and ignoring the
+goal-round marker lets a round create or pause its own.
+
 ### A goal a person can see and steer
 
 Issue #259, S2 — `/goal`: show, create, edit, pause, resume, clear. The human half of D7; the
