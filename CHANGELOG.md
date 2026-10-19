@@ -9,6 +9,26 @@ back to its change and tests.
 
 ## Unreleased
 
+### A goal that runs while nobody is watching
+
+Issue #259, S4 — the idle continuation driver. A goal a human created starts a round of its own once
+the session is idle, and each round is a whole turn: dozens of tool calls, minutes of work.
+
+The decision is a pure function (`goal.Decide`), made twice: once when the tick is armed and again when
+it arrives, because the user may have started typing during the grace period — a draft in the input box
+wins, which is the interim answer to there being no mid-run steering yet. `Service.StartRound` is the
+authority and re-checks under the lock that claims the round; the counter is persisted before the work,
+so a crash loop cannot spend the budget twice.
+
+Four ways a goal stops, and every one of them says so in the transcript: the round cap (`round-limit`),
+three consecutive rounds that made no tool call (`no-progress`), a round that failed or was cancelled
+(paused — cancellation never auto-restarts), and the model calling `complete` or `blocked`. The 2-second
+grace, the no-progress threshold and the round cap are the knobs; S6 moves them into the config file.
+
+Mutation-checked, four reverted: dropping the input guard starts rounds over a draft, dropping the
+pause-on-error leaves a failed round armed, dropping the cap blocker leaves a spent goal active, and
+dropping the context marker lets a round carry human authority.
+
 ### The model can see the goal, and cannot hand itself one
 
 Issue #259, S3 — the `goal` tool. `get` returns `{goal, armed}`; `create`, `edit`, `pause`, `resume`,
