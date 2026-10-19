@@ -11,6 +11,10 @@ capability does not become several issues nobody can close. A picked-up entry ca
 
 - **Source**: a third-party inventory ("TinyCode 功能缺口清单", dated 2026-10-09) listing 39 items
   against baseline `7e6b017`.
+- **Added since the inventory**: D7 and the resume/history defect its prerequisite names were not in
+  the source report. They were recorded 2026-10-19 from a capability-by-capability comparison with a
+  harness that has persistent goals, and every reference in them was checked with the same rule as
+  the rest — a counted search or an exit code, never a sample.
 - **Re-checked**: every item was verified against the source with counted or exit-coded searches
   (`rg -c`, `rg -q`; exit 1 = no match, exit 2 = searched wrong) rather than by sampling. Nothing
   here rests on a truncated listing.
@@ -41,7 +45,8 @@ Every reference was checked against `7e6b017` (83 references, none missing, veri
 that was itself mutation-tested: a renamed file and an out-of-range line each make it fail). The
 line numbers are pinned to that baseline and **will drift** as the code moves. The durable part of
 an entry is its file and symbol; read a line number as a starting point, not as a fact about the
-current tree.
+current tree. D7 is the exception: it was recorded later, so its references are pinned to the
+2026-10-19 tree instead.
 
 ---
 
@@ -114,7 +119,8 @@ current tree.
 - **Already present**: a per-run *step* budget — `MaxSteps` 20 / 50 / 15 / 20 per agent
   (`agent/config.go:64,104,123,140`), enforced at `agent/agent.go:190` — and a per-request output
   cap `MaxTokens = 4096` (`agent/agent.go:105` → `"max_tokens"`, `agent/provider_openai.go:103`).
-  Neither is a cumulative budget.
+  Neither is a cumulative budget. **Needed by D7**: a session token budget can end a goal before its
+  round cap, so `/goal` has to show both numbers side by side.
 - **Effort**: ~1 d.
 
 ### A4 — No prompt caching
@@ -214,6 +220,8 @@ current tree.
   re-derived as `limit/2` after a context-length downgrade (`agent/compression.go:238`);
   `rg '"/drop"|"/pin"|unload'` → exit 1.
 - **Already present**: `/compress` triggers the same strategy by hand (`tui/update.go:1050`).
+  **Needed by D7**: continuation round after round depends on compaction running *inside* a run, not
+  only before one starts — that is the part this entry records as missing.
 - **Effort**: ~3–5 d.
 
 ### B6 — Truncation is fixed, not budget-aware
@@ -300,6 +308,8 @@ current tree.
   `OnToolCall` before each tool (`agent/agent.go:328`), `OnToolResult` after it
   (`agent/agent.go:388`) and `OnStepDone` per step (`agent/agent.go:444`), wired by the TUI
   (`tui/update.go:1377-1398`). They drive display only and are not user-extensible — that is the gap.
+  **Needed by D7**: the continuation driver needs a turn-end seam; the TUI's `StreamDone` is this
+  bundle's only one, and a general lifecycle event remains this entry's gap.
 - **Effort**: ~2–3 d.
 
 ### C5 — No test feedback loop
@@ -400,6 +410,8 @@ current tree.
 - **Evidence**: `webhook`, `cron`, `fsnotify`, `watcher`, `inotify` → all 0. Background work is
   in-process: `tool/bgtask.go` holds a `map[string]*BgTask`, starts a `go func()` with a 120 s
   timeout and has no persistence, socket or daemon — the state dies with the process.
+- **Not D7**: this entry is about an *external* trigger starting a run; D7 is an *internal* idle driver
+  continuing one, and it needs durable goal state that this entry does not.
 - **Effort**: ~5–8 d.
 
 ### D5 — No notification when a long task finishes
@@ -423,6 +435,40 @@ current tree.
   product feature. `bash` is one-shot with no stdin (`tool/bash.go:251`), a default 30 s timeout and
   a process-tree and process-group kill (`tool/sysproc_unix.go:20,36-44`).
 - **Effort**: ~8–15 d.
+
+### D7 — No persistent goal and no continuation driver
+
+- **Picked up**: [#259](https://github.com/yusiwen/TinyCode/issues/259) — S1 (the goal domain and its
+  persistence in the session file), S2 (`/goal`: view, create, edit, pause, resume, clear), S3 (the
+  model-facing `goal` tool and its authority rules), S4 (the round prompt and the idle driver), S5
+  (the status-bar segment, the completion announcement and the trajectory attribution), S6 (the
+  `goal` config section and the documents). **Prerequisite**:
+  [#258](https://github.com/yusiwen/TinyCode/issues/258) — a continuation cannot read a context the
+  process never restored, so the resume/history defect lands first. The cap defaults to **256
+  rounds** (configurable smaller), with a `no-progress` guard at three consecutive tool-free rounds;
+  mid-run steering stays out of scope, and the input-empty guard plus a grace period is the interim
+  answer.
+- **Gap**: a session holds a conversation, not an objective. Only the transcript survives "stop and
+  come back tomorrow", nothing continues a run when the agent goes idle, so a multi-hour task is a
+  human typing "continue"; there is no round budget and no durable done/blocked state.
+- **Evidence**: `session.Session` has no goal, phase or round field (`session/session.go:18-45`); the
+  17 slash commands contain no `/goal` (`tui/update.go:1115-1459`); a second submission while a run
+  is streaming is refused (`tui/update.go:298-310`); `rg -n 'goal' agent/ tui/ session/` → only the
+  `task` tool's per-subagent string (`agent/config.go:96-98`); the only bounds on a run are
+  `MaxSteps` (`agent/config.go:64-140`) and the token budget (`agent/agent.go:220-228`).
+- **Already present**: one precedent for carrying state across a boundary — the todo store is
+  re-injected after compression (`agent/compression.go:177`) and restored by reverse-scanning the
+  transcript on resume (`tui/model.go:321-333`); `internal/notify` already announces a finished long
+  task (`tool/bgtask.go:178`); one trajectory is already written per run with a stop reason
+  (`agent/trajectory_agent.go:19-24`), so a round is a run with an attribution rather than a new
+  record type.
+- **Not D4**: D4 is an *external* trigger starting a run (webhook, cron, file watch). This is an
+  *internal* idle driver continuing one, and it needs durable goal state that D4 does not.
+- **Not in the source inventory**: unlike the other entries, this gap was not in the 2026-10-09
+  report. It was recorded 2026-10-19 from a capability-by-capability comparison with a harness that
+  has persistent goals, and every reference here was checked the same way as the rest — a counted
+  search or an exit code, never a sample.
+- **Effort**: ~6–8 d (estimate).
 
 ---
 
@@ -521,6 +567,8 @@ working directory only — it never walks upward and never merges nested files (
   steps); what cost the most was implementing `expr-eval` from a specification (28 steps, 465 719 tokens).
   **The conclusion was written before the data: the next change is the domain, not the difficulty knob** — a
   real repository, a multi-hour refactor, a failure mode that is not "one package, one test suite".
+  **D7 supplies the execution mechanism for that domain**: a task set can span more work than one
+  request, without a human typing "continue" between rounds.
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the
@@ -659,3 +707,7 @@ by certainty of return rather than by size:
    larger D and E items. For these the first increment should answer "is this worth it" with
    measurements on real tasks, and the issue should carry the condition under which the work is
    abandoned.
+6. **Long-horizon execution** — D7 (persistent goal and continuation driver), after its prerequisite
+   [#258](https://github.com/yusiwen/TinyCode/issues/258). It is the mechanism F1's next task set
+   needs, and it is cheap only once the resume/history defect is fixed: without that, every round
+   starts from a model that cannot read the previous one.
