@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -620,6 +621,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// now safe to leave the streaming state and accept new input.
 		m.finishRun(msg.RunID)
 		m.status = StatusIdle
+		// The session file is the durable log: a finished run — and whatever
+		// it did to the goal — is written now, not only when the user quits.
+		m.persistSession()
 		m.curAssistant = nil
 		elapsed := time.Since(m.runStart)
 		if msg.Error != nil {
@@ -985,6 +989,11 @@ func (m *TuiModel) persistSession() {
 	if m.sessionTitle != "" {
 		s.Title = m.sessionTitle
 	}
+	// The goal is written with the transcript, from this goroutine only:
+	// the service is in-memory, so one writer keeps the file consistent.
+	if m.goals != nil {
+		s.Goal = m.goals.Snapshot()
+	}
 	if err := s.Flush(); err != nil {
 		tlog.Warn("tui.session", "flush_error", "err", err)
 	}
@@ -1177,6 +1186,7 @@ Commands:
   /theme         Switch theme (nord, default)
   /diagnostics   Show LSP diagnostics
   /undo          Restore the files the last tool call wrote
+  /goal          View the goal; /goal <objective>, edit, pause, resume, clear
   /model         Switch provider/model
 
 Keyboard:
@@ -1402,6 +1412,23 @@ Mouse:
 			m.autoScroll()
 		})
 		return m, nil
+	case "/goal":
+		rest := strings.TrimSpace(strings.TrimPrefix(cmd, "/goal"))
+		parsed, err := goal.ParseCommand(rest)
+		if err != nil {
+			m.appendSystem(err.Error())
+			return m, nil
+		}
+		reply, err := m.applyGoal(parsed)
+		if err != nil {
+			m.appendSystem(err.Error())
+			return m, nil
+		}
+		m.appendSystem(reply)
+		// A goal the user just changed is written now; the next StreamDone or
+		// quit would otherwise be the first chance to lose it.
+		m.persistSession()
+		return m, nil
 	case "/skill":
 		parts := strings.Fields(cmd)
 		skills := skill.Discover(".")
@@ -1524,4 +1551,64 @@ func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string) {
 		Content: result,
 		Error:   err,
 	}
+}
+
+// appendSystem adds one line of interface text to the transcript.
+//
+// It is not dialogue: the resumed-history rebuild skips "system" entries, so a
+// command's output never becomes a turn the model reads. persistSession keeps it
+// for display, which is why a resumed session still shows what the user ran.
+func (m *TuiModel) appendSystem(text string) {
+	m.messages = append(m.messages, chatMessage{Role: "system", Content: text})
+	m.autoScroll()
+}
+
+// applyGoal performs one parsed /goal command and returns the text to show.
+//
+// The service owns the rules (which phase may move where, the round cap, the
+// revision fence); this method only maps a command onto it and renders the
+// result. A refusal is returned as an error, unchanged, so the user reads the
+// reason the domain gave.
+func (m *TuiModel) applyGoal(parsed goal.Command) (string, error) {
+	if m.goals == nil {
+		return "", fmt.Errorf("no goal service is attached")
+	}
+	switch parsed.Action {
+	case goal.ActionShow:
+		return goal.Describe(m.goals.Snapshot(), m.goals.Armed()), nil
+	case goal.ActionCreate:
+		created, err := m.goals.Create(parsed.Objective, 0)
+		if err != nil {
+			return "", err
+		}
+		return goal.Describe(created, m.goals.Armed()), nil
+	case goal.ActionClear:
+		m.goals.Clear()
+		return goal.Describe(nil, false), nil
+	}
+
+	// Every other action applies to the current goal. An absent goal is not
+	// special-cased here: the service answers no-goal, which keeps one wording.
+	var ref goal.Ref
+	if current := m.goals.Snapshot(); current != nil {
+		ref = current.Ref()
+	}
+	var (
+		updated *goal.Goal
+		err     error
+	)
+	switch parsed.Action {
+	case goal.ActionEdit:
+		updated, err = m.goals.Edit(ref, parsed.Objective)
+	case goal.ActionPause:
+		updated, err = m.goals.Pause(ref)
+	case goal.ActionResume:
+		updated, err = m.goals.Resume(ref)
+	default:
+		return "", fmt.Errorf("unknown goal action %q", parsed.Action)
+	}
+	if err != nil {
+		return "", err
+	}
+	return goal.Describe(updated, m.goals.Armed()), nil
 }

@@ -46,6 +46,7 @@
   /skill  Load a skill
   /diagnostics  LSP diagnostics
   /undo  Restore the last tool call's files
+  /goal  View, create, pause or resume the goal
   /sandbox  Sandbox status
   /model  Switch model
   /fork  Create session branch
