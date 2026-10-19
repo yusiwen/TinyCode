@@ -9,6 +9,22 @@ back to its change and tests.
 
 ## Unreleased
 
+### A goal you can watch, and a round you can attribute
+
+Issue #259, S5 — the surfaces. The status bar carries `goal n/256` (with `blocked` or `done` when it
+stops) and sits **above the spend** in priority, so an 80-column terminal keeps the round counter and
+drops the money — a driver-managed session needs to know whether it is still running more than it needs
+the running total. A goal that stops announces itself through the same completion channel as a finished
+run, gated by the same duration rule, and the run record carries `goal{goal_id, round, source}` on its
+start line, so an evaluation can tell a driver round from a human turn.
+
+The cross-process property finally has a gate of its own. `goal-resume.scenario` resumes a committed
+session whose goal was written by a previous process, asserts the objective, `Round: 2/256`, the
+disarmed hint and the status segment, then proves the session is idle by running `/goal pause`: a round
+in flight would refuse the submission, so the phase line would never appear. It needs no model — the
+base URL is unreachable on purpose, because an unintended request should fail loudly. Mutation-checked
+by arming a restored goal: the scenario fails at `disarmed`.
+
 ### A goal that runs while nobody is watching
 
 Issue #259, S4 — the idle continuation driver. A goal a human created starts a round of its own once
