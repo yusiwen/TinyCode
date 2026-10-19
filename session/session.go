@@ -43,6 +43,11 @@ type Session struct {
 
 	Messages []types.Message `json:"messages"`
 
+	// Todos is the session's task list. It is stored beside the transcript
+	// because it is session state: before it lived here, one process-global
+	// list outlived every session switch (issue #270).
+	Todos []types.TodoItem `json:"todos,omitempty"`
+
 	// Goal is the completion objective this session is working toward, or nil.
 	// It is persisted here because the session file is the only durable log a
 	// resume reads, and because a goal that outlived its session would be state
@@ -298,6 +303,9 @@ func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, erro
 		// fork is a different attempt at the same work, not a fresh one. The
 		// branch still starts disarmed, because no file ever carries activation.
 		Goal: parent.Goal.Clone(),
+		// The branch shares the work the parent had planned. A copy, so an
+		// edit on one side cannot rewrite the other.
+		Todos: append([]types.TodoItem(nil), parent.Todos...),
 	}
 
 	// Persist immediately so the file exists for subsequent forks

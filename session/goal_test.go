@@ -127,3 +127,38 @@ func TestHandWrittenGoalLoadsAndValidates(t *testing.T) {
 		t.Fatal("the invalid goal validated")
 	}
 }
+
+// TestTodosSurviveTheSessionFileAndAFork pins the task list's place: it is
+// session state, so it is stored with the transcript and copied by a fork
+// (issue #270).
+func TestTodosSurviveTheSessionFileAndAFork(t *testing.T) {
+	dir := t.TempDir()
+	s := New("todos-session", dir)
+	s.Todos = []types.TodoItem{
+		{ID: "1", Content: "one", Status: "pending"},
+		{ID: "2", Content: "two", Status: "in_progress"},
+	}
+	if err := s.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	loaded, err := Load("todos-session", dir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !reflect.DeepEqual(loaded.Todos, s.Todos) {
+		t.Errorf("todos changed through the file: got %+v, want %+v", loaded.Todos, s.Todos)
+	}
+
+	branch, err := NewStore(dir).Fork("todos-session", 0, "attempt")
+	if err != nil {
+		t.Fatalf("fork: %v", err)
+	}
+	if !reflect.DeepEqual(branch.Todos, s.Todos) {
+		t.Errorf("the branch lost the list: got %+v", branch.Todos)
+	}
+	branch.Todos[0].Content = "changed"
+	if loaded.Todos[0].Content != "one" {
+		t.Errorf("the branch aliases the parent's list: %+v", loaded.Todos)
+	}
+}
