@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1096 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1101 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -486,7 +486,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - **`Blocker`**: `Code` + `Reason`; the codes are `round-limit`, `no-progress` and `model-reported`. Only a blocked goal carries one, and `Validate` enforces the pairing in both directions
 - **`Ref`** (`{ID, Revision}`) and `(*Goal) Ref()`: every mutation echoes the exact view it was decided on, and an older revision is refused instead of overwriting newer state
 - `Clone()` (deep, including the blocker), `RoundsLeft()`, `Validate()` (id, objective, known phase, positive cap, rounds inside the cap, revision ≥ 1, blocker pairing)
-- `DefaultMaxRounds = 256` — one round is a whole turn, so this bounds continuation, not the cost of one round
+- `DefaultMaxRounds = 256` — the fallback cap; `Service.DefaultRounds` carries the configured one (`goal.max_goal_rounds`), so the `/goal` command and the goal tool cannot disagree. One round is a whole turn, so this bounds continuation, not the cost of one round
 
 ### `service.go` — State and Permission
 
@@ -504,7 +504,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 
 ### The continuation driver (`tui/goal_driver.go`)
 
-- `goalIdleGrace` (2 s, a variable so tests can zero it) is the wait before an automatic round: long enough for someone already typing to get their message in, which matters because a run refuses concurrent input
+- `goalGrace` (from `goal.idle_grace_seconds`, default 2 s) is the wait before an automatic round: long enough for someone already typing to get their message in, which matters because a run refuses concurrent input. `goalNoProgress` (from `goal.no_progress_rounds`, default 3) is the threshold `settleGoalRound` blocks on
 - `beginAgentRun(prompt, goalRound)` is the one admission path for both a human message and a round; `goalRound` travels to `runAgent` as a value and becomes `types.WithGoalRound(ctx)`, which is what the goal tool reads to refuse `create`/`edit`/`pause`/`resume` inside a round
 - `scheduleGoalRound` arms one `tea.Tick` only when `goal.Decide` allows it; the `goalRoundMsg` handler re-checks the same decision, so a human who started typing during the grace period wins
 - `startGoalRound` claims `Service.StartRound` and **persists the counter before the work**, so a crash between the claim and the end of the round wastes at most one round
@@ -715,7 +715,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1096 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1101 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -761,7 +761,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1096 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1101 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

@@ -9,6 +9,18 @@ back to its change and tests.
 
 ## Unreleased
 
+### A goal you can configure, and a page that explains it
+
+Issue #259, S6 — the closing increment. The continuation policy is now configuration rather than
+constants: `goal.max_goal_rounds` (256), `goal.idle_grace_seconds` (2) and `goal.no_progress_rounds`
+(3). A positive value replaces the default and zero, absent or negative means the default, the same
+rule the token budgets use, so a typo cannot switch a guard off. The cap is set once on the service,
+which is what keeps the `/goal` command and the goal tool from disagreeing about the budget.
+
+[docs/goals.md](docs/goals.md) is the user's page: what a goal is, what a round is, who may do what,
+every way it stops, what survives a restart and what does not, the cost, and the limits — no mid-run
+steering, no independent verification, no goal history, not in plan or one-shot mode.
+
 ### A goal you can watch, and a round you can attribute
 
 Issue #259, S5 — the surfaces. The status bar carries `goal n/256` (with `blocked` or `done` when it
