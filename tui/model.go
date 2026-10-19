@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
@@ -174,6 +175,11 @@ type TuiModel struct {
 	// Todo store
 	todoStore *tool.TodoStore
 
+	// goals is the session's completion objective and its process-local
+	// permission to continue. It is the only writer of that state; the
+	// session file is written by persistSession, on this goroutine.
+	goals *goal.Service
+
 	// Todo rendering tracking (virtual message in CellGrid)
 	todoRowCount int  // rendered row count for todo section (0 = no items)
 	todoDirty    bool // true = todo section needs re-render
@@ -216,6 +222,7 @@ func commandList() []cmdEntry {
 		{"/skill", "Load a skill"},
 		{"/diagnostics", "LSP diagnostics"},
 		{"/undo", "Restore the last tool call's files"},
+		{"/goal", "View, create, pause or resume the goal"},
 		{"/sandbox", "Sandbox status"},
 		{"/model", "Switch model"},
 		{"/fork", "Create session branch"},
@@ -290,6 +297,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		input:         t,
 		spinner:       s,
 		todoStore:     todoStore,
+		goals:         goal.NewService(),
 		modeName:      reg.CurrentName(),
 		status:        StatusIdle,
 		streamCh:      make(chan tea.Msg, 200),
@@ -330,6 +338,14 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 			// session answered with no memory of the conversation the user could
 			// see (issue #258).
 			ag.History = append(ag.History, historyFromSession(sess.Messages)...)
+			// A goal survives the file, its permission to continue does not:
+			// Restore always disarms, so a resumed session waits for a human.
+			if err := m.goals.Restore(sess.Goal); err != nil {
+				m.messages = append(m.messages, chatMessage{
+					Role:    "system",
+					Content: fmt.Sprintf("The goal saved with session %q is not usable: %v", resume[0], err),
+				})
+			}
 			// Restore provider/model from session
 			if sess.ModelName != "" && m.provReg != nil {
 				m.provReg.SwitchToName(sess.ModelName)
