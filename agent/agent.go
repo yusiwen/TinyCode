@@ -307,6 +307,36 @@ func (a *Agent) getModel() string {
 	return ""
 }
 
+// recordTurn adds one finished turn to the model's multi-turn history and to
+// the session log.
+//
+// It exists because three endings — the step limit, a budget and a terminal
+// refusal — used to return without recording anything, so the next run (a
+// human's "continue", or a goal round) could not read what this one did
+// (issue #258). The normal final answer goes through the same path so the two
+// cannot drift.
+//
+// History keeps the reasoning the model produced; the session log does not, as
+// it never did. A turn with no assistant text is not recorded: there is nothing
+// a later run could read.
+func (a *Agent) recordTurn(user, assistant, reasoning string) {
+	if assistant == "" {
+		return
+	}
+	a.History = append(a.History,
+		types.Message{Role: types.RoleUser, Content: user},
+		types.Message{Role: types.RoleAssistant, Content: assistant, ReasoningContent: reasoning},
+	)
+	if a.SessionStore == nil {
+		return
+	}
+	a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: user})
+	a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: assistant})
+	if err := a.SessionStore.Flush(); err != nil {
+		log.Printf("warning: flush session: %v", err)
+	}
+}
+
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr error) {
 	a.runSerial++
@@ -421,13 +451,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			msg := budgetMessage(which, limit, spent)
 			outcome.stop = trajectoryStopBudget
 			tlog.Info("agent.loop", "budget reached", "budget", which, "limit", limit, "spent", spent, "steps", step)
-			if a.SessionStore != nil {
-				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
-				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: msg})
-				if err := a.SessionStore.Flush(); err != nil {
-					log.Printf("warning: flush session: %v", err)
-				}
-			}
+			a.recordTurn(prompt, msg, "")
 			return msg, nil
 		}
 
@@ -525,18 +549,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			a.ContentStreamed = true
 			// Save to multi-turn history (skip empty responses)
 			if resp.Content != "" {
-				a.History = append(a.History,
-					types.Message{Role: types.RoleUser, Content: prompt},
-					types.Message{Role: types.RoleAssistant, Content: resp.Content, ReasoningContent: resp.ReasoningContent},
-				)
-			}
-			// Persist to disk if session store available
-			if a.SessionStore != nil {
-				a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
-				a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: resp.Content})
-				if err := a.SessionStore.Flush(); err != nil {
-					log.Printf("warning: flush session: %v", err)
-				}
+				a.recordTurn(prompt, resp.Content, resp.ReasoningContent)
 			}
 			if a.trajRun != nil {
 				a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
@@ -745,11 +758,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 					a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
 				}
 				a.stepName("[step %d] security block detected, bypassing LLM", step)
-				if a.SessionStore != nil {
-					a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: prompt})
-					a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: r.Result})
-					a.SessionStore.Flush()
-				}
+				a.recordTurn(prompt, r.Result, "")
 				return r.Result, nil
 			}
 
@@ -822,6 +831,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
 	a.recordCall(summaryCallbacks, resp, started, step)
+	a.recordTurn(prompt, resp.Content, resp.ReasoningContent)
 	return resp.Content, nil
 }
 
