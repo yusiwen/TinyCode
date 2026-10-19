@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -41,7 +42,15 @@ type Session struct {
 	Containment string `json:"containment,omitempty"`
 
 	Messages []types.Message `json:"messages"`
-	dir      string
+
+	// Goal is the completion objective this session is working toward, or nil.
+	// It is persisted here because the session file is the only durable log a
+	// resume reads, and because a goal that outlived its session would be state
+	// nobody owns. Whether it may continue *on its own* is not stored: that is
+	// process-local, so a resumed session always starts disarmed (see goal.Service).
+	Goal *goal.Goal `json:"goal,omitempty"`
+
+	dir string
 }
 
 // New creates a new session.
@@ -285,6 +294,10 @@ func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, erro
 		Title:           parent.Title,
 		ModelName:       parent.ModelName,
 		MessageCount:    forkAt,
+		// The objective and the rounds already spent travel with the branch: a
+		// fork is a different attempt at the same work, not a fresh one. The
+		// branch still starts disarmed, because no file ever carries activation.
+		Goal: parent.Goal.Clone(),
 	}
 
 	// Persist immediately so the file exists for subsequent forks
