@@ -448,6 +448,18 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   rounds** (configurable smaller), with a `no-progress` guard at three consecutive tool-free rounds;
   mid-run steering stays out of scope, and the input-empty guard plus a grace period is the interim
   answer.
+- **Delivered 2026-10-19** (six PRs, merged as #262–#267 on top of #261): one objective per session
+  persists in the session file with its phase, round count and blocker; `/goal` and a `goal` tool
+  steer it under an authority rule — a round may complete or block the goal, never create, edit,
+  pause or resume it; an idle driver starts a round after a grace period and counts it *before* the
+  work, so a crash loop cannot spend the budget twice; the status bar, the completion channel and the
+  run record all report it. The defaults are 256 rounds, a two-second grace and a three-round
+  `no-progress` guard, configurable in the `goal` section, and [goals.md](goals.md) is the user's
+  page. `goal-resume.scenario` is the cross-process gate: a resumed session shows the goal disarmed
+  and proves it by running a command instead of starting a round. What stays outside this entry: no
+  mid-run steering (a round in flight refuses input, so the input-empty guard is the interim
+  answer), no independent evaluator of "complete", and a PTY scenario for a *running* round
+  (deferred once S4's `Update` tests showed they cover the driver).
 - **Gap**: a session holds a conversation, not an objective. Only the transcript survives "stop and
   come back tomorrow", nothing continues a run when the agent goes idle, so a multi-hour task is a
   human typing "continue"; there is no round budget and no durable done/blocked state.
@@ -707,7 +719,8 @@ by certainty of return rather than by size:
    larger D and E items. For these the first increment should answer "is this worth it" with
    measurements on real tasks, and the issue should carry the condition under which the work is
    abandoned.
-6. **Long-horizon execution** — D7 (persistent goal and continuation driver), after its prerequisite
-   [#258](https://github.com/yusiwen/TinyCode/issues/258). It is the mechanism F1's next task set
-   needs, and it is cheap only once the resume/history defect is fixed: without that, every round
-   starts from a model that cannot read the previous one.
+6. **Long-horizon execution** — D7 (persistent goal and continuation driver). **Delivered** (issue
+   #259, prerequisite [#258](https://github.com/yusiwen/TinyCode/issues/258) landed first). It is
+   the mechanism F1's next task set needs: the domain can now be a real repository and a multi-hour
+   refactor, because a round is a whole turn and the goal continues it. What it leaves open is
+   mid-run steering and an independent judgement of "complete".
