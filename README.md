@@ -280,7 +280,7 @@ delta does not block a repaint.
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
-docs/           Reference documents (sandbox, TUI verification, goals, trajectories, roadmap, pricing)
+docs/           Reference documents (sandbox, checkpoints, goals, trajectories, eval, roadmap, TUI verification, pricing)
 goal/           Persistent objective, /goal, idle continuation driver (docs/goals.md)
 internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)
 lsp/            LSP client (gopls), diagnostics, Formatter, touch
