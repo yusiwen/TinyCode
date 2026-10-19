@@ -404,11 +404,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, m.lspDiagCmd())
 
 	case ChatMsg:
-		// Refuse a second concurrent run: the previous run may still be
-		// unwinding (e.g. right after an interrupt). A compression in flight
-		// owns Agent.History and must not overlap the agent loop either.
-		ctx, runID, ok := m.beginRun()
+		model, cmd, ok := m.beginAgentRun(msg.Text, false)
 		if !ok {
+			// Refuse a second concurrent run: the previous run may still be
+			// unwinding (e.g. right after an interrupt). A compression in flight
+			// owns Agent.History and must not overlap the agent loop either.
 			if m.compressIsActive() {
 				m.ShowStatus("Cannot start a run: compression is in progress")
 			} else {
@@ -417,15 +417,10 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.autoScroll()
 			return m, nil
 		}
-		m.messages = append(m.messages, chatMessage{Role: "user", Content: msg.Text})
-		cur := chatMessage{Role: "assistant", Streaming: true}
-		m.messages = append(m.messages, cur)
-		m.curAssistant = &m.messages[len(m.messages)-1]
-		m.status = StatusStreaming
-		m.streamDoneNotified = false
-		m.callTokens = 0 // a new call starts with no estimate charged to it
-		go m.runAgent(ctx, runID, msg.Text)
-		return m, m.waitForStream()
+		return model, cmd
+
+	case goalRoundMsg:
+		return m.startGoalRound()
 
 	case ToolCallMsg:
 		if m.isStaleRun(msg.RunID) {
@@ -621,6 +616,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// now safe to leave the streaming state and accept new input.
 		m.finishRun(msg.RunID)
 		m.status = StatusIdle
+		// What this run means for the goal is decided before the session is
+		// written, so a pause or a blocker is durable at the same moment.
+		m.settleGoalRound(msg.Error)
 		// The session file is the durable log: a finished run — and whatever
 		// it did to the goal — is written now, not only when the user quits.
 		m.persistSession()
@@ -631,8 +629,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// interrupted run.
 			return m, notifyFinishedCmd(elapsed, "run failed")
 		}
-		// Generate the session title off the event loop (async + timeout).
-		return m, tea.Batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, "run finished"))
+		// Generate the session title off the event loop (async + timeout), and
+		// give the continuation driver its chance to start another round.
+		return m, batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, "run finished"), m.scheduleGoalRound())
 
 	case sessionTitleMsg:
 		if msg.Title != "" && m.sessionTitle == "" {
@@ -1428,7 +1427,9 @@ Mouse:
 		// A goal the user just changed is written now; the next StreamDone or
 		// quit would otherwise be the first chance to lose it.
 		m.persistSession()
-		return m, nil
+		// Creating or resuming a goal while the session is idle starts working
+		// on it after the grace period; pausing or clearing schedules nothing.
+		return m, m.scheduleGoalRound()
 	case "/skill":
 		parts := strings.Fields(cmd)
 		skills := skill.Discover(".")
@@ -1505,7 +1506,12 @@ func (m *TuiModel) waitForStream() tea.Cmd {
 	}
 }
 
-func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string) {
+func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, goalRound bool) {
+	// The goal tool reads this to decide what a round may do: a round may
+	// read, complete or block, never create, rewrite, pause or resume.
+	if goalRound {
+		ctx = types.WithGoalRound(ctx)
+	}
 	m.agent.StreamCallbacks = &types.StreamCallbacks{
 		OnReasoningDelta: func(text string) {
 			m.streamCh <- StreamMsg{RunID: runID, ReasoningDelta: text}

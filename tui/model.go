@@ -179,6 +179,15 @@ type TuiModel struct {
 	// permission to continue. It is the only writer of that state; the
 	// session file is written by persistSession, on this goroutine.
 	goals *goal.Service
+	// currentRunIsGoal marks the run in flight as one the continuation driver
+	// started, so a cancel or a failure pauses the goal instead of silently
+	// leaving it armed. It is written and read on this goroutine only.
+	currentRunIsGoal bool
+	// goalToolFreeRounds counts consecutive goal rounds that made no tool
+	// calls, and runToolCallsStart records where the session counter stood when
+	// the run began. Together they are the no-progress guard.
+	goalToolFreeRounds int
+	runToolCallsStart  int
 
 	// Todo rendering tracking (virtual message in CellGrid)
 	todoRowCount int  // rendered row count for todo section (0 = no items)

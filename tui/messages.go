@@ -52,6 +52,11 @@ type ChatMsg struct {
 	Text string
 }
 
+// goalRoundMsg is sent when the idle grace period has passed and the
+// continuation driver may start a round. It is re-checked when it arrives: the
+// user may have typed in the meantime, which wins.
+type goalRoundMsg struct{}
+
 // modeSwitchMsg is sent when the user presses Tab to switch modes.
 type modeSwitchMsg struct{}
 
