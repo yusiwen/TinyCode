@@ -9,6 +9,23 @@ back to its change and tests.
 
 ## Unreleased
 
+### A goal a person can see and steer
+
+Issue #259, S2 — `/goal`: show, create, edit, pause, resume, clear. The human half of D7; the
+model-facing tool is S3 and the driver is S4.
+
+Two details are pinned rather than left to taste. Control words count only when they fill the whole
+input, so `/goal pause after verification` creates that literal objective instead of pausing and
+throwing the rest away. And the goal is written to the session at two safe points — every `/goal`
+mutation and the end of every run — because the service is in-memory and the file is the only durable
+log: a finished run now saves the transcript and the goal, instead of waiting for `/exit`.
+
+`/goal` on a resumed session says `disarmed`: S1 already refuses to arm a restored goal, and this is
+where the user reads that and re-arms it.
+
+Mutation-checked, both reverted: dropping the goal from `persistSession` fails the create, pause and
+resume tests, and removing the run-end save leaves a cleared goal on disk.
+
 ### A goal that survives the session, and never arms itself
 
 Issue #259, S1 — the domain half of D7. One completion objective per session, with a durable phase
