@@ -9,6 +9,24 @@ back to its change and tests.
 
 ## Unreleased
 
+### A session switch changes the session, not only the screen
+
+Issue #270. `/session <id>` and `/fork` rebuilt the transcript and reset the token counters, and
+nothing else: the todo list was one process-global store, so the previous session's three pending items
+survived the switch, were snapshotted into the new session's first tool-calling message, and were
+injected into its model context. The model's `History` was not swapped either, so after a switch it
+answered from the old conversation. A fork additionally kept the parent's armed goal while the branch's
+own record stayed untouched.
+
+The list is now session state: `Session.Todos`, written with the transcript and copied by a fork. Every
+session change goes through one `adoptSession`, which rebuilds the transcript and `Agent.History` from
+the branch, **replaces** the todo list (an empty one clears), restores the goal (disarmed, as always)
+and resets the counters. The old `"todos"` reverse-scan is gone: it only matched a model reply that
+quoted the tool JSON, which real transcripts do not contain.
+
+Three mutation checks, all reverted: dropping the list replacement fails both leak tests, dropping the
+history rebuild fails the context test, and dropping the fork copy loses the branch's plan.
+
 ### A goal you can configure, and a page that explains it
 
 Issue #259, S6 — the closing increment. The continuation policy is now configuration rather than

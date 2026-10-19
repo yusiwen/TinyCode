@@ -78,11 +78,11 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **Limitation**: the first call of a session pays the server startup cost (~500 ms); subsequent calls reuse the connection. The one-shot fallback (no persistent client) still pays it per call.
 
 ### Todo System
-- **TodoStore**: In-memory task list with CRUD (create/read/update/merge/delete/summary). Enforces one `in_progress`, max 256 items, max 4000 chars per task.
+- **TodoStore**: Task list with CRUD (create/read/update/merge/delete/summary). Enforces one `in_progress`, max 256 items, max 4000 chars per task. The list is **session state**: it is stored in the session file and restored by `--resume`, `/session` and `/fork`, so one session's plan cannot leak into another.
 - **todo tool**: OpenAI function-calling schema, registered in all modes. LLM calls it to plan and track multi-step work.
 - **Compression protection**: After context compression, active todo items (pending + in_progress) are re-injected so the LLM doesn't redo completed work.
 - **Housekeeping mute**: When all tool calls are `todo`, the model's text reply is suppressed — no noise, just progress markers.
-- **Session recovery**: On `--resume`, reverse-scans history for the latest todo result and restores the store.
+- **Session recovery**: The list is written with the transcript and restored from the file, so a resumed session shows its own plan rather than nothing (or another session's).
 - **TUI rendering**: `▾ Todo (2/6)` with `[x]` completed, `[>]` in_progress, `[ ]` pending, `[~]` cancelled markers.
 
 ### Line-Level Code Edit
@@ -106,7 +106,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **1101 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
+- **1105 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally
