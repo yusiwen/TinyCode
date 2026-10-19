@@ -988,6 +988,10 @@ func (m *TuiModel) persistSession() {
 	if m.sessionTitle != "" {
 		s.Title = m.sessionTitle
 	}
+	// The task list is session state too, and this is the same safe point.
+	if m.todoStore != nil {
+		s.Todos = m.todoStore.Read()
+	}
 	// The goal is written with the transcript, from this goroutine only:
 	// the service is in-memory, so one writer keeps the file consistent.
 	if m.goals != nil {
@@ -1238,13 +1242,13 @@ Mouse:
 			m.autoScroll()
 			return m, nil
 		}
-		m.messages = nil
+		// The branch carries the shared prefix, the task list and the goal; its
+		// goal arrives disarmed, because no file carries activation.
+		m.adoptSession(branch)
 		m.messages = append(m.messages, chatMessage{
 			Role:    "system",
 			Content: fmt.Sprintf("Created branch: %s (forked at message %d from %s)", branch.ID, branch.ForkAt, branch.ParentSessionID),
 		})
-		m.currentBranch = branch.ID
-		m.resetSessionStats()
 		m.autoScroll()
 	case "/session":
 		parts := strings.Fields(cmd)
@@ -1281,21 +1285,9 @@ Mouse:
 		if m.currentBranch != "" {
 			m.saveBranchSession()
 		}
-		// Load branch messages
-		m.messages = nil
-		for _, sm := range branch.Messages {
-			cm := chatMessage{
-				Role:             sm.Role,
-				Content:          sm.Content,
-				ReasoningContent: sm.ReasoningContent,
-			}
-			if sm.Role == "assistant" && sm.Content != "" {
-				cm.Blocks = parseMarkdown(sm.Content)
-			}
-			m.messages = append(m.messages, cm)
-		}
-		m.currentBranch = branch.ID
-		m.resetSessionStats()
+		// Everything the session owns changes here: transcript, model context,
+		// todos, goal and counters (issue #270).
+		m.adoptSession(branch)
 		m.messages = append(m.messages, chatMessage{
 			Role:    "system",
 			Content: fmt.Sprintf("Switched to session: %s (%d messages)", branch.ID, len(branch.Messages)),

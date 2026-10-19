@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -288,6 +287,47 @@ func historyFromSession(msgs []types.Message) []types.Message {
 	return history
 }
 
+// adoptSession makes branch the current session: transcript, model context,
+// task list, goal and per-session counters all change together.
+//
+// It is one function on purpose. The defect it replaces (issue #270) was a
+// switch that replaced the screen and left the rest behind — a process-global
+// todo list was snapshotted into the new session and injected into its model
+// context, the model kept the old conversation, and a fork kept the parent's
+// armed goal while the branch's own record stayed untouched.
+func (m *TuiModel) adoptSession(branch *session.Session) {
+	m.messages = nil
+	for _, sm := range branch.Messages {
+		cm := chatMessage{
+			Role:             sm.Role,
+			Content:          sm.Content,
+			ReasoningContent: sm.ReasoningContent,
+		}
+		if sm.Role == types.RoleAssistant && sm.Content != "" {
+			cm.Blocks = parseMarkdown(sm.Content)
+		}
+		m.messages = append(m.messages, cm)
+	}
+	// The model's copy is rebuilt with the same rule a resume uses: user and
+	// assistant turns only, never command output and never prior reasoning.
+	m.agent.History = historyFromSession(branch.Messages)
+	if m.todoStore != nil {
+		// Replace, never merge: an empty list has to clear the previous
+		// session's items, which is exactly what a merge would keep.
+		if err := m.todoStore.Write(branch.Todos, false); err != nil {
+			m.appendSystem(fmt.Sprintf("The task list saved with session %q is not usable: %v", branch.ID, err))
+		}
+	}
+	if m.goals != nil {
+		// A goal survives the file; its permission to continue does not.
+		if err := m.goals.Restore(branch.Goal); err != nil {
+			m.appendSystem(fmt.Sprintf("The goal saved with session %q is not usable: %v", branch.ID, err))
+		}
+	}
+	m.currentBranch = branch.ID
+	m.resetSessionStats()
+}
+
 // NewTUI creates and returns a new TUI model.
 func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *agent.ProviderRegistry, todoStore *tool.TodoStore, goals *goal.Service, resume ...string) *TuiModel {
 	if goals == nil {
@@ -343,34 +383,9 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		sess, err := session.Load(resume[0], cfg.SessionDir)
 		if err == nil {
 			resumedOK = true
-			// Track the resumed session so forks, "Allow session" persistence
-			// and saving on quit all update this session instead of minting a
-			// new one.
-			m.currentBranch = resume[0]
-			for _, sm := range sess.Messages {
-				cm := chatMessage{
-					Role:             sm.Role,
-					Content:          sm.Content,
-					ReasoningContent: sm.ReasoningContent,
-				}
-				if sm.Role == "assistant" && sm.Content != "" {
-					cm.Blocks = parseMarkdown(sm.Content)
-				}
-				m.messages = append(m.messages, cm)
-			}
-			// The screen is not the model. Agent.History is what Run sends as
-			// context, and nothing on this path used to fill it, so a resumed
-			// session answered with no memory of the conversation the user could
-			// see (issue #258).
-			ag.History = append(ag.History, historyFromSession(sess.Messages)...)
-			// A goal survives the file, its permission to continue does not:
-			// Restore always disarms, so a resumed session waits for a human.
-			if err := m.goals.Restore(sess.Goal); err != nil {
-				m.messages = append(m.messages, chatMessage{
-					Role:    "system",
-					Content: fmt.Sprintf("The goal saved with session %q is not usable: %v", resume[0], err),
-				})
-			}
+			// Everything the session owns — transcript, model context, todos,
+			// goal, counters — changes in one place (issue #270).
+			m.adoptSession(sess)
 			// Restore provider/model from session
 			if sess.ModelName != "" && m.provReg != nil {
 				m.provReg.SwitchToName(sess.ModelName)
@@ -384,20 +399,6 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 				Role:    "system",
 				Content: fmt.Sprintf("Failed to resume session %q: %v", resume[0], err),
 			})
-		}
-	}
-
-	// Recover todo state from session history (find most recent todo result)
-	if todoStore != nil && len(m.messages) > 0 {
-		for i := len(m.messages) - 1; i >= 0; i-- {
-			msg := m.messages[i]
-			if msg.Role == "assistant" && strings.Contains(msg.Content, "\"todos\"") {
-				var result tool.TodoResult
-				if err := json.Unmarshal([]byte(msg.Content), &result); err == nil && len(result.Todos) > 0 {
-					todoStore.Write(result.Todos, false)
-					break
-				}
-			}
 		}
 	}
 
