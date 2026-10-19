@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 1035 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 24 built-in tools + MCP, LSP diagnostics, session persistence. 1040 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -35,7 +35,7 @@
   - `Memory types.MemoryStore` — **never assigned**: no caller sets it, so the recall step below is inert; `memory.go` is internal and unwired
   - `MemoryMode int` — 0=none, 1=auto, 2=on-demand; `MemoryModeNone` is the only value ever in effect today
   - `SessionStore` — interface `{Append(msg types.Message) error; Flush() error}`
-  - `History []types.Message` — multi-turn conversation
+  - `History []types.Message` — multi-turn conversation; restored from the session on `--resume` (user and assistant turns only — command output and prior reasoning stay out) and appended by every ending through `recordTurn`
   - `CompressionThreshold int` (default 500000)
   - `ContextLength int` (default 1000000)
   - `discoveredCtxLen int` (unexported; lowered after `context_length_exceeded`)
@@ -59,12 +59,13 @@
   2. Loop up to `maxSteps`:
      - Filter tools by `ToolAllowedFor`
      - Call `Provider.Chat()` with streaming callbacks
-     - No tool calls → save to history + session, return content
+     - No tool calls → `recordTurn` (history + session), return content
      - Empty response (no content, no tool calls) → append placeholder, retry
      - Has tool calls → append assistant message with all calls, execute concurrently via goroutines, collect results in index order. Each call goes through `toolcall.go` first: its arguments are checked against the tool's own schema (`ValidateArgs` — type/properties/required/enum/items, the five keywords the built-in schemas use, everything else ignored), and a call that breaks it is **not executed** but answered with every problem at once. A call whose exact identity (`toolCallKey`, key-order independent) has already failed `repeatFailureLimit` times in this run is refused as a loop instead of being tried again; successes are never counted, and the count resets with each run
      - Security block detection: result starting with `[SECURITY BLOCKED]` bypasses LLM
      - Fire `OnStepDone` callback after all tools complete
-  3. Max steps reached: inject forced summary user message, one final LLM call with no tools
+  3. Max steps reached: inject forced summary user message, one final LLM call with no tools, then record that summary with `recordTurn`
+- **`(*Agent) recordTurn(user, assistant, reasoning string)`** — the one path that records a finished turn: appends the pair to `History` and, when a session store is attached, appends it there and flushes. Every ending goes through it — the final answer, the step-limit summary, a token budget and a terminal refusal — because the three early returns used to record nothing, so the next run (a human's "continue", or a goal round) could not read what the previous one did (issue #258). A turn with no assistant text is not recorded.
 - **`(*Agent) CompressHistory(ctx context.Context) (bool, error)`** — compresses `a.History` in-place using the provider under the caller's context, so a cancel ends a stalled summarizer; reports whether the history shrank and the summarizer error, and leaves `a.History` untouched when it fails
 - Constants: `MemoryModeNone=0`, `MemoryModeAuto=1`, `MemoryModeOnDemand=2`
 - `securityBlockMarker = "[SECURITY BLOCKED]"`
@@ -676,7 +677,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1035 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1040 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -722,7 +723,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1035 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1040 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
