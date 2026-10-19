@@ -10,6 +10,7 @@ import (
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/tlog"
+	"github.com/yusiwen/tinycode/types"
 )
 
 var nextTaskID atomic.Int64
@@ -111,7 +112,8 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		// deadline even if it ignores ctx and blocks. The watchdog settles the
 		// task state and releases Collect waiters at the hard timeout; the
 		// once-guarded completion path below is idempotent with it.
-		ctx, cancel := context.WithTimeout(context.Background(), bgTaskTimeout)
+		// A background child is still a delegated agent: no goal authority.
+		ctx, cancel := context.WithTimeout(types.WithSubagent(context.Background()), bgTaskTimeout)
 		defer cancel()
 
 		watchdog := time.AfterFunc(bgTaskTimeout, func() {

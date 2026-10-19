@@ -23,7 +23,7 @@ func newGoalTestTUI(t *testing.T, dir string, resume ...string) *TuiModel {
 	ag := agent.New(provider)
 	return NewTUI(ag, &config.Config{SessionDir: dir}, agent.NewRegistry(),
 		agent.NewProviderRegistry([]agent.ProviderRecord{{Name: "test", Provider: provider}}),
-		tool.NewTodoStore(), resume...)
+		tool.NewTodoStore(), nil, resume...)
 }
 
 // runOnce drives one complete run through the Update loop and waits for the

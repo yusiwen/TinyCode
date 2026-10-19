@@ -204,7 +204,7 @@ func TestNewTUIAddsWelcomeBanner(t *testing.T) {
 	m := NewTUI(ag, &config.Config{}, reg,
 		agent.NewProviderRegistry([]agent.ProviderRecord{
 			{Name: "test", Provider: &agent.MockProvider{}},
-		}), tool.NewTodoStore())
+		}), tool.NewTodoStore(), nil)
 
 	if len(m.messages) != 1 {
 		t.Fatalf("startup messages = %d, want 1", len(m.messages))
