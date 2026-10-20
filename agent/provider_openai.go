@@ -70,6 +70,10 @@ type OpenAIProvider struct {
 	// built without one.
 	route        string
 	costCurrency string
+
+	// cache is the route's prompt-cache policy (roadmap A4). The zero value sends
+	// no hints, which is what a provider built without configuration does.
+	cache PromptCachePolicy
 }
 
 // RouteInfo is implemented by a provider that can say which configuration route
@@ -103,6 +107,14 @@ func (p *OpenAIProvider) DefaultModel() string { return p.model }
 // CostCurrency returns the unit this route bills a reported cost in.
 func (p *OpenAIProvider) CostCurrency() string { return p.costCurrency }
 
+// SetPromptCache sets how this route is told to cache its prompt prefix.
+//
+// It is a setter rather than a constructor argument because the provider is built
+// before its configuration entry is resolved, the same order SetRouteInfo uses.
+func (p *OpenAIProvider) SetPromptCache(policy PromptCachePolicy) {
+	p.cache = policy
+}
+
 // NewOpenAIProvider creates a provider for OpenAI-compatible APIs (DeepSeek, OpenAI, etc.).
 func NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider {
 	config := openai.DefaultConfig(apiKey)
@@ -122,8 +134,12 @@ func (p *OpenAIProvider) Name() string {
 func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	// Build messages with reasoning_content support (DeepSeek thinking mode).
 	type rawMsg struct {
-		Role             string            `json:"role"`
-		Content          string            `json:"content"`
+		Role string `json:"role"`
+		// Content is a string for every ordinary message. Explicit prompt caching
+		// replaces the system message's value with a text block array so the block
+		// can carry cache_control; the field is any so that one message can take
+		// the other shape without changing the wire form of the rest.
+		Content          any               `json:"content"`
 		Name             string            `json:"name,omitempty"`
 		ToolCallID       string            `json:"tool_call_id,omitempty"`
 		ToolCalls        []openai.ToolCall `json:"tool_calls,omitempty"`
@@ -158,6 +174,21 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		rawMsgs[i] = m
 	}
 
+	// Mark the end of the stable prefix (roadmap A4). Cache order is tools →
+	// system → messages, so one breakpoint on the last leading system message
+	// covers the tool schemas and the system prompt without caching anything that
+	// changes between steps. A request without a system message is left alone: an
+	// invented block would change the prompt for no cache.
+	if p.cache.PlacesBreakpoints() {
+		if idx := cacheBreakpointIndex(req.Messages); idx >= 0 {
+			rawMsgs[idx].Content = []map[string]any{{
+				"type":          "text",
+				"text":          req.Messages[idx].Content,
+				"cache_control": p.cache.cacheControl(),
+			}}
+		}
+	}
+
 	// Convert types.ToolDef → openai.Tool
 	openaiTools := make([]openai.Tool, len(req.Tools))
 	for i, td := range req.Tools {
@@ -183,6 +214,12 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	}
 	if len(openaiTools) > 0 {
 		bodyMap["tools"] = openaiTools
+	}
+	// The routing key names the prefix, not the request: it is derived from the
+	// model, the leading system messages and the tool schemas, so every step of
+	// every run on this route sends the same value (roadmap A4).
+	if p.cache.UsesKey() {
+		bodyMap["prompt_cache_key"] = promptCacheKey(model, req.Messages, req.Tools)
 	}
 
 	// Use streaming if callbacks are provided

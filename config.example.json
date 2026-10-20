@@ -24,7 +24,9 @@
       "type": "openai",
       "model": "anthropic/claude-sonnet-4",
       "base_url": "https://openrouter.ai/api/v1",
-      "cost_currency": "credits"
+      "cost_currency": "credits",
+      "prompt_cache": { "mode": "explicit" },
+      "$comment": "Anthropic models cache only content marked with cache_control. OpenAI, DeepSeek and Gemini cache a stable prefix automatically, so \"auto\" (a routing key) is enough there; a native ollama route accepts neither."
     },
     {
       "name": "groq",

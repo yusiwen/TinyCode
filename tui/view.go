@@ -481,6 +481,12 @@ func (m *TuiModel) renderStatusBar() string {
 			tokensStr = fmt.Sprintf("tokens: %d/%d", m.sessionTokens, perSession)
 		}
 	}
+	// Cache reads sit beside the total they are part of, and only when a provider
+	// reported one: a route without caching shows the bar it always showed
+	// (roadmap A4). The number is the token saving, not a second total.
+	if m.sessionCached > 0 {
+		tokensStr += fmt.Sprintf(" (%d cached)", m.sessionCached)
+	}
 
 	// Money appears only when cost accounting is in play — a rate the user
 	// declared, or a route that reported a charge. A session with neither is not

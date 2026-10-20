@@ -159,3 +159,51 @@ func TestStatusBarPairsTheCounterWithAConfiguredBudget(t *testing.T) {
 		t.Errorf("with a session budget, bar = %q, want 'tokens: 1200/5000'", bar)
 	}
 }
+
+// TestCachedTokensAreShownBesideTheTotal covers roadmap A4's visibility half: the
+// cache reads a provider reports accumulate and are rendered as part of the
+// prompt tokens, without changing the total they belong to.
+func TestCachedTokensAreShownBesideTheTotal(t *testing.T) {
+	m := usageModel()
+
+	m.Update(UsageMsg{Usage: types.Usage{
+		PromptTokens: 1000, CompletionTokens: 40, TotalTokens: 1040, CachedPromptTokens: 640,
+	}})
+
+	if m.sessionCached != 640 {
+		t.Errorf("sessionCached = %d, want 640", m.sessionCached)
+	}
+	if bar := m.renderStatusBar(); !strings.Contains(bar, "tokens: 1040 (640 cached)") {
+		t.Errorf("bar = %q, want the cache reads beside the total", bar)
+	}
+
+	// A later call adds its own reads; the total stays the provider's total.
+	m.Update(UsageMsg{Usage: types.Usage{
+		PromptTokens: 500, CompletionTokens: 10, TotalTokens: 510, CachedPromptTokens: 500,
+	}})
+	if bar := m.renderStatusBar(); !strings.Contains(bar, "tokens: 1550 (1140 cached)") {
+		t.Errorf("bar = %q, want the accumulated cache reads", bar)
+	}
+}
+
+// TestNoCacheHitLeavesTheBarUnchanged pins the default: a route that reports no
+// cached tokens renders exactly the counter it rendered before.
+func TestNoCacheHitLeavesTheBarUnchanged(t *testing.T) {
+	m := usageModel()
+	m.Update(UsageMsg{Usage: types.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110}})
+
+	if strings.Contains(m.renderStatusBar(), "cached") {
+		t.Errorf("bar = %q, want no cache segment when nothing hit", m.renderStatusBar())
+	}
+}
+
+// TestResetClearsCachedTokens keeps a transcript swap from carrying another
+// conversation's cache reads into this one's counter.
+func TestResetClearsCachedTokens(t *testing.T) {
+	m := usageModel()
+	m.sessionCached = 900
+	m.resetSessionStats()
+	if m.sessionCached != 0 {
+		t.Errorf("sessionCached = %d after reset, want 0", m.sessionCached)
+	}
+}

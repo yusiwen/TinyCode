@@ -24,11 +24,30 @@ type ProviderRecordConfig struct {
 	Model     string `json:"model,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`
 	APIKeyEnv string `json:"api_key_env,omitempty"` // env var name for API key
+	// PromptCache tells this route how to cache its prompt prefix (roadmap A4).
+	// Absent means "send no cache hints": DeepSeek, OpenAI and Gemini cache a
+	// stable prefix automatically, while Anthropic-style routes only cache what
+	// carries an explicit breakpoint. The mode and ttl are validated when the
+	// provider is built, so a value that cannot be honoured is a startup error
+	// rather than a silent no-op.
+	PromptCache *PromptCacheConfig `json:"prompt_cache,omitempty"`
 	// CostCurrency names the unit this route bills a *reported* charge in, e.g.
 	// "credits" for an account that bills in its own credits. Empty means the
 	// route's unit is unknown, and an amount is then displayed without one
 	// rather than labelled with a unit nobody stated.
 	CostCurrency string `json:"cost_currency,omitempty"`
+}
+
+// PromptCacheConfig is one route's prompt-cache policy.
+//
+// Mode is "off" (the default), "auto" or "explicit". Auto sends only a stable
+// prompt_cache_key, which improves routing on OpenAI before GPT-5.6 and is the
+// sticky-routing key on OpenRouter; explicit additionally marks the end of the
+// leading system message with cache_control. TTL is "5m" (the provider default)
+// or "1h" and is only meaningful with explicit.
+type PromptCacheConfig struct {
+	Mode string `json:"mode,omitempty"`
+	TTL  string `json:"ttl,omitempty"`
 }
 
 // TruncationConfig holds tool output truncation settings.
