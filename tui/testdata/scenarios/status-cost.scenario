@@ -2,9 +2,9 @@
 #
 # Two surfaces landed together and neither had ever been rendered by a real binary: the
 # session token budget as a fraction (issue #179) and the money a route reported (issue
-# #181). The unit test asserts renderStatusBar's string, which cannot see the two things
-# this bar actually fails at — width and wrapping. Issue #195 is the gap, and this is the
-# PTY half of it.
+# #181). A third joined with A4 (issue #279): the cache reads a provider reported. The unit
+# test asserts renderStatusBar's string, which cannot see the two things this bar actually
+# fails at — width and wrapping. Issue #195 is the gap, and this is the PTY half of it.
 #
 # The stub's "priced" mode reports a usage object whose `cost` is 0.0042 and whose
 # prompt has 800 cached tokens, in the chunk order every OpenAI-compatible endpoint uses
@@ -16,6 +16,10 @@
 # there is no quoting to get wrong; the directory is named `config` and not `fixtures`
 # because `make test-tui-scenarios` copies `fixtures/*.json` into the session directory,
 # where a config-shaped file would show up as a session.
+#
+# The `(800 cached)` step is the A4 assertion: 800 is the stub's
+# `prompt_tokens_details.cached_tokens`, so the step fails if that detail stops reaching
+# the bar. It is checked at 120 columns, where the appended segment still has to fit.
 #
 # Why 200 columns: this bar is long *by design* — a fraction, a charge and a unit — and the
 # scenario is about its content, not about how a narrow terminal copes. At 120 the bar's
@@ -44,6 +48,8 @@ wait --text "stub-answer-ok" --timeout 30s
 wait --text "cost: 0.0042 credits" --timeout 15s
 # And the counter as a fraction of the configured session budget.
 wait --text "tokens: 15[0-9][0-9]/100000" --timeout 15s
+# The cache detail the same usage object reported, beside the total it belongs to.
+wait --text "(800 cached)" --timeout 15s
 screenshot /tmp/tinyscen-shots/status-cost-120x30.png --scale 2
 # Exit the way the other TUI scenarios do: wait for the screen to settle first (the
 # spinner animates while a run streams), then two Ctrl+C presses with the confirmation
