@@ -16,10 +16,10 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 9 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 10 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 29 | verified gaps, no issue opened |
+| Not started | 28 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
@@ -37,7 +37,7 @@ index), F1, then the larger D and E items.
 | A1 | No retry, backoff or rate-limit handling for provider calls | Delivered — #192 |
 | A2 | Provider-reported usage is discarded; no cost accounting | Delivered — #174 |
 | A3 | No cumulative token or cost budget, no circuit breaker | Delivered — #179 |
-| A4 | No prompt caching | Not started |
+| A4 | No prompt caching | Delivered — #279 |
 | A5 | No failover and no provider routing | Not started |
 | A6 | Only two provider backends | Not started |
 | B1 | The memory capability exists but is never called | Not started |
@@ -193,11 +193,40 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### A4 — No prompt caching
 
-- **Gap**: the system prompt and the JSON Schema of all 25 tools are resent every step, on
-  providers where a stable prefix could be cached.
-- **Evidence**: `rg -c 'cache_control'`, `'prompt_cache'`, `'cached_tokens'` → exit 1 each, over
-  the whole repository including the nested module.
-- **Effort**: ~2–3 d.
+- **Picked up**: [#279](https://github.com/yusiwen/TinyCode/issues/279) — S1 (`providers[].prompt_cache`
+  with `off`/`auto`/`explicit` and a 5m/1h ttl, validated when the provider is built), S2 (a stable
+  `prompt_cache_key`, plus one `cache_control` breakpoint after the leading system message in explicit
+  mode), S3 (the status bar shows the cache reads a provider reported), S4 (tests and docs).
+  **Delivered 2026-10-20**.
+- **Gap (corrected)**: the original entry said the system prompt and the JSON Schema of all 25 tools
+  are resent every step with no way to cache them. The first half is still true of the *request* — the
+  tokens are on the wire on every call — but not of the provider's work: DeepSeek, OpenAI and Gemini
+  cache an unchanged prefix automatically, and the message list is append-only within a run, so the
+  prefix is already stable. What was missing was a way to **tell** a route to cache: Anthropic-style
+  routes (including Anthropic models routed through OpenRouter), Bedrock/Vertex and Alibaba cache only
+  content whose block carries `cache_control`, and TinyCode built every message as a plain string. It
+  also sent no routing key and displayed no cache activity.
+- **Evidence**: at the `7e6b017` baseline, `rg -c 'cache_control'` and `rg -c 'prompt_cache'` → exit 1
+  each. The `'cached_tokens'` half is **stale after A2**: the detail is parsed into
+  `types.Usage.CachedPromptTokens` (`agent/provider_openai.go`) and priced as its own lane
+  (`agent/pricing.go`), but nothing put a cache hint on the wire and nothing showed a hit.
+- **Already present**: provider-side automatic prefix caching on DeepSeek, OpenAI and Gemini; the
+  cache-hit usage detail from A2 and its cache-read/cache-write prices from A3; a message list that is
+  append-only inside a run, so the prefix a provider sees is already stable; and the session token
+  counter the cache number now sits beside. A4 adds the request hints and the visibility, not a
+  second cache.
+- **Effort**: ~2–3 d (source report estimate, unverified).
+- **Delivered (2026-10-20)**: `providers[].prompt_cache` selects `off` (the default), `auto` or
+  `explicit`, with `ttl` `5m`/`1h` only in explicit. `auto` sends a `prompt_cache_key` derived from the
+  model, the leading system messages and the tool schemas — never from the conversation — which is
+  OpenAI's routing hint before GPT-5.6 and OpenRouter's sticky-routing key. `explicit` also rewrites
+  the last leading system message into one text block carrying
+  `cache_control: {"type":"ephemeral"}`; cache order is tools → system → messages, so that single
+  breakpoint covers the 25 tool schemas and the system prompt. A value that cannot be honoured
+  (unknown mode or ttl, a ttl with `auto`, any enabled mode on a native `ollama` route) stops startup
+  with the route named. The status bar shows the session's reported cache reads as
+  `tokens: N (M cached)` and stays silent when nothing hit. The model reads byte-identical text; only
+  the wire shape changes, and `prompt_cache_key` is absent without a policy.
 
 ### A5 — No failover and no provider routing
 
