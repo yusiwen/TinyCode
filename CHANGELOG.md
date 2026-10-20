@@ -9,6 +9,25 @@ back to its change and tests.
 
 ## Unreleased
 
+### Prompt caching can be asked for, and a cache hit is visible
+
+A4. `providers[].prompt_cache` selects `off` (the default), `auto` or `explicit`; `auto` sends a
+`prompt_cache_key` derived from the model, the system prompt and the tool schemas — never the
+conversation — which is OpenAI's routing hint before GPT-5.6 and OpenRouter's sticky-routing key.
+`explicit` also turns the last leading system message into a text block carrying
+`cache_control: {"type":"ephemeral"}` (with a `1h` ttl when configured); cache order is tools → system
+→ messages, so that one breakpoint covers the 25 tool schemas and the system prompt. An unknown mode
+or ttl, a ttl with `auto`, and any enabled policy on a native `ollama` route stop startup naming the
+route.
+
+The status bar shows the session's reported cache reads beside the token counter as
+`tokens: N (M cached)`, and says nothing when nothing hit. The number was already parsed by A2 and
+priced by A3; it had no screen, and no request could ask for it.
+
+What this does not do: DeepSeek, OpenAI and Gemini cache a stable prefix automatically, and `off` does
+not turn that off — it means TinyCode sends no hints. The new control is for routes that only cache
+what carries a breakpoint (Anthropic, including through OpenRouter, Bedrock/Vertex and Alibaba).
+
 ### The goal tool, driven by the model on a real terminal
 
 `goal-tool.scenario`, and a dynamic `goal` mode on the stub. No `/goal` is typed: the scripted model

@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1107 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1117 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -120,8 +120,17 @@
     count) and `notifyRetry`
   - `deliveryTracker` wraps a caller's callbacks to record whether any delta reached it — the
     **safe-replay** rule: text already drawn may not be drawn twice
-- **`OpenAIProvider`** struct (unexported fields: client, model, apiKey, baseURL)
+- **`OpenAIProvider`** struct (unexported fields: client, model, apiKey, baseURL, route, costCurrency, cache)
 - **`NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider`**
+- `SetPromptCache(PromptCachePolicy)` stores the route's cache policy (roadmap A4). `auto` adds a
+  `prompt_cache_key` derived from the model, the leading system messages and the tool schemas — never
+  from the conversation — so every step of every run sends the same routing hint (OpenAI's hint before
+  GPT-5.6, OpenRouter's sticky-routing key). `explicit` also rewrites the *last leading system
+  message* into one text block carrying `cache_control: {"type":"ephemeral"}` (plus `"ttl":"1h"` when
+  configured); cache order is tools → system → messages, so that one breakpoint covers the tool
+  schemas and the system prompt. `off`/absent sends neither field and leaves the body unchanged. The
+  grammar (`off`/`auto`/`explicit`, `5m`/`1h`) and its validation live in `prompt_cache.go`
+  (`ResolvePromptCache`); a value that cannot be honoured is a startup error naming the route.
 - `Chat()` — SSE streaming via `net/http` (not go-openai SDK's streaming); accumulates reasoning/content deltas and tool calls by index; 64KB→256KB scanner buffer; `stream_options: {include_usage: true}`. The parse runs to `data: [DONE]` rather than stopping at `finish_reason`, because the usage chunk that answers that option comes *after* the finish chunk with an empty `choices` array; both it and the batch body's `usage` object land in `ChatResponse.Usage` (a pointer: "not reported" is not "zero"), and a `total_tokens` the endpoint omits is derived from the two halves
 - Bounded (issue #176), with the same two-bounds shape as the Ollama provider: `openAIRequestTimeout` (120 s) covers one non-streaming request, while `openAIIdleTimeout` (2 min) is the silence allowed between lines of a stream and is reset by every line, so a long generation is not killed while a stalled one fails. Before that bound existed, reading past `finish_reason` (which is what makes the usage chunk reachable) meant an endpoint that went quiet after a complete answer stalled for the whole request timeout — and `chatStream` handed back the text it had with a nil error. A read that fails now returns `openai stream: …` instead, with `openAIRequestError` naming the bound that fired; a caller cancellation keeps `errors.Is(err, context.Canceled)` so a TUI run still reads as interrupted. Both bounds are package variables (tests shrink them), and **neither is armed on the `http.Client`**: a client timer also covers reading the body, where on a streaming call it is a total limit on the generation (issue #185) and, because its clock starts at the request while the idle watchdog rebases on every line, it fired first once a line had arrived and made the idle bound's own message unreachable at the shipped equal defaults (issue #186). The batch bound is therefore a watchdog on the request context, and the streaming path's only bound is the idle watchdog, which also covers the wait for response headers. A stream that *closes* without `[DONE]` is still accepted as complete: OpenAI-compatible servers vary here, and turning their working answers into errors would cost more than the truncation it would catch
 
@@ -207,7 +216,8 @@ nil for every key.
   - `LSP *LSPConfig`, `LogLevel string`
   - `ContextLength int` (default 1M), `CompressionThreshold int` (default 500K)
   - `SearXNGURL string`, `MCPServers []MCPServerConfig`
-- **`ProviderRecordConfig`**: `Name`, `Type` ("openai"|"ollama"), `Model`, `BaseURL`, `APIKeyEnv`, `CostCurrency` (the unit this route bills a *reported* charge in, e.g. `credits`; empty means the amount is displayed without a unit rather than labelled with a guessed one)
+- **`ProviderRecordConfig`**: `Name`, `Type` ("openai"|"ollama"), `Model`, `BaseURL`, `APIKeyEnv`, `PromptCache *PromptCacheConfig`, `CostCurrency` (the unit this route bills a *reported* charge in, e.g. `credits`; empty means the amount is displayed without a unit rather than labelled with a guessed one)
+  - `PromptCacheConfig`: `Mode` (`"off"` default, `"auto"`, `"explicit"`) and `TTL` (`"5m"`, `"1h"`, explicit only). Resolved by `agent.ResolvePromptCache` when the provider is built, so an invalid value is a startup error rather than a silent no-op
   - `APIKey()` method: priority → `api_key_env` → `UPPER(NAME)_API_KEY` → `OPENAI_API_KEY`
 - **`AgentOverride`**: `MaxSteps`, `AllowedTools`, `DeniedTools`, `SystemPrompt`, `Model`, `Permissions []AgentRule` (an explicit ruleset that replaces the agent's built-in one and wins over the tool lists)
 - **`AgentRule`**: `Action`, `Resource`, `Effect` (`"allow"`/`"deny"`) — a config-local mirror of `agent.Rule`
@@ -608,7 +618,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - `persistSession()` — the single save path for `/exit`, `/quit` and double-Ctrl+C; reuses `currentBranch` (preserving `AllowedPaths`) instead of minting a duplicate id
 - `generateSessionTitleCmd()` — "title" agent call runs as a `tea.Cmd` (15s timeout) instead of blocking the event loop
 - `lspDiagCmd()` reads `lsp.DiagnosticsSnapshot()` inside a `tea.Cmd` (never on the Update goroutine) and posts `LSPDiagMsg`; it is fired from the existing spinner tick (~10 Hz) and after every tool result, which is what feeds the status-bar `errors: N` counter and `/diagnostics`
-- `/compress` refuses while a run is active (compression must not touch `History` concurrently) and runs the summarizer as a `tea.Cmd` instead of inline: on the Update goroutine a stalled provider froze the whole interface, and the Ctrl+C that would cancel it could never be delivered. `beginCompress`/`finishCompress` hold the compression lifecycle under `runMu` and `beginRun` refuses while it is held, so a run and a compression never touch `History` at once; Ctrl+C cancels the summarizer, and the result message carries the compressed/no-op/cancelled/failed outcome into the status bar. `sessionTokens`/`sessionToolCalls` are maintained from the stream and reset when the transcript is swapped; a `UsageMsg` from a call whose endpoint reported usage replaces the estimate charged to that call (`callTokens`) with the reported total, so the counter is provider-accurate where a provider reports and keeps the estimate where it does not
+- `/compress` refuses while a run is active (compression must not touch `History` concurrently) and runs the summarizer as a `tea.Cmd` instead of inline: on the Update goroutine a stalled provider froze the whole interface, and the Ctrl+C that would cancel it could never be delivered. `beginCompress`/`finishCompress` hold the compression lifecycle under `runMu` and `beginRun` refuses while it is held, so a run and a compression never touch `History` at once; Ctrl+C cancels the summarizer, and the result message carries the compressed/no-op/cancelled/failed outcome into the status bar. `sessionTokens`/`sessionToolCalls` are maintained from the stream and reset when the transcript is swapped; a `UsageMsg` from a call whose endpoint reported usage replaces the estimate charged to that call (`callTokens`) with the reported total, so the counter is provider-accurate where a provider reports and keeps the estimate where it does not; the same message adds its `CachedPromptTokens` to `sessionCached`, the session's reported cache reads
 - `View()` tolerates an empty transcript with a dirty todo list, and a message role with no component renders zero rows so `msgRowCount`/`lineSrcs` stay in sync
 
 ### `view.go`
@@ -616,7 +626,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - Incremental rendering: dirty-message tracking, only re-renders from first dirty (~2.3ms)
 - Banner messages (`msg.Banner != nil`) bypass word-wrap and place each pre-laid-out row inline
 - `stripANSI` removes both CSI and OSC sequences, so OSC 8 hyperlinks never leak into selection/copy text
-- Status bar: mode icon, model, spinner, provider, tokens, `goal n/max` (with `blocked`/`done` when it stops), spend, tool calls, msg count, diagnostics, duration, history. The goal sits above the spend in priority: at 80 columns the round survives and the money does not. `tokens:` is the session counter; when `budget.max_tokens_per_session` is configured it reads `spent/limit`, and with no budget configured it is byte-identical to what it has always been (which is what keeps the committed frame goldens stable)
+- Status bar: mode icon, model, spinner, provider, tokens, `goal n/max` (with `blocked`/`done` when it stops), spend, tool calls, msg count, diagnostics, duration, history. The goal sits above the spend in priority: at 80 columns the round survives and the money does not. `tokens:` is the session counter; when `budget.max_tokens_per_session` is configured it reads `spent/limit`, and with no budget configured it is byte-identical to what it has always been (which is what keeps the committed frame goldens stable). Reported cache reads are appended as `(N cached)` only when a provider reported one, so a route without caching renders the bar it always did (roadmap A4)
 - Character-level selection via `grid.Fill()` with SelectionStyle
 
 ### Frame verification (test files)
@@ -723,7 +733,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1107 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1117 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -769,7 +779,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1107 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1117 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
