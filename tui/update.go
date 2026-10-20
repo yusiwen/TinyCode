@@ -515,6 +515,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the call's own share rather than an assignment.
 		m.sessionTokens += msg.Usage.TotalTokens - m.callTokens
 		m.callTokens = 0
+		// Cache hits are a subset of the prompt tokens already counted above, so
+		// this accumulates the saving without changing the total (roadmap A4).
+		m.sessionCached += msg.Usage.CachedPromptTokens
 		m.autoScroll()
 		return m, m.waitForStream()
 

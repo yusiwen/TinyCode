@@ -155,6 +155,12 @@ type TuiModel struct {
 	callTokens       int
 	sessionTitle     string // auto-generated conversation title
 	sessionToolCalls int
+	// sessionCached is the part of the session's prompt tokens a provider served
+	// from its cache, summed from reported usage (roadmap A4). It is a subset of
+	// the prompt tokens counted in sessionTokens, not a separate counter, and it
+	// stays zero until a provider reports a hit, so a route that does not cache
+	// leaves the bar unchanged.
+	sessionCached int
 	// sessionCost is the money this session is known to have cost, per unit, and
 	// unpricedCalls counts the calls whose cost is not known. The bar shows both,
 	// because a total without its unknowns is a different claim from a total
@@ -657,6 +663,7 @@ func (m *TuiModel) MarkAllDirty() {
 func (m *TuiModel) resetSessionStats() {
 	m.sessionTokens = 0
 	m.callTokens = 0
+	m.sessionCached = 0
 	m.sessionToolCalls = 0
 	m.sessionCost = nil
 	m.unpricedCalls = 0

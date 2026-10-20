@@ -102,7 +102,10 @@ func newRootCmd() *cobra.Command {
 			}
 
 			// Build provider registry from config
-			provReg := buildProviderRegistry(&cfg, apiKey, model, baseURL)
+			provReg, err := buildProviderRegistry(&cfg, apiKey, model, baseURL)
+			if err != nil {
+				return err
+			}
 
 			// Wire sandbox config first. The keys that can widen the fence come
 			// from the user's own file: ./.tinycode/config.json is checked out
@@ -831,20 +834,43 @@ func providerRuntime(pc config.ProviderRecordConfig, primary bool, model, baseUR
 // buildProviderRegistry turns the configured providers into a runtime registry.
 // An empty configuration yields a single default OpenAI-compatible provider so
 // the agent still starts.
-func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) *agent.ProviderRegistry {
+//
+// A prompt-cache policy that cannot be honoured stops startup instead of being
+// dropped: a mode silently read as "off" would leave the user believing the
+// prefix is cached. The error names the route and, through ResolvePromptCache,
+// the accepted values (roadmap A4).
+func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) (*agent.ProviderRegistry, error) {
 	var records []agent.ProviderRecord
 	for i, pc := range cfg.Providers {
 		primary := i == 0
 		key := resolveProviderKey(pc, primary, apiKey, os.Getenv)
 		modelName, base := providerRuntime(pc, primary, model, baseURL)
 
+		policy := agent.PromptCachePolicy{Mode: agent.PromptCacheOff}
+		if pc.PromptCache != nil {
+			var err error
+			policy, err = agent.ResolvePromptCache(pc.PromptCache.Mode, pc.PromptCache.TTL)
+			if err != nil {
+				return nil, fmt.Errorf("provider %q: %w", providerLabel(pc, i), err)
+			}
+		}
+
 		var prov agent.LLMProvider
 		switch pc.Type {
 		case "ollama":
+			// The native endpoint accepts neither a routing key nor a
+			// cache_control block, so an enabled policy there is a configuration
+			// error, not something to ignore.
+			if policy.Mode != agent.PromptCacheOff {
+				return nil, fmt.Errorf("provider %q: prompt_cache is not supported by the native ollama backend",
+					providerLabel(pc, i))
+			}
 			prov = agent.NewOllamaProvider(base, modelName)
 		default:
 			// "openai" or unknown — use an OpenAI-compatible provider
-			prov = agent.NewOpenAIProvider(key, base, modelName)
+			p := agent.NewOpenAIProvider(key, base, modelName)
+			p.SetPromptCache(policy)
+			prov = p
 		}
 		// A route is what a price is keyed on: the same model costs differently
 		// through different routes, so the provider has to carry the name the
@@ -867,7 +893,16 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) *a
 			Provider: prov,
 		})
 	}
-	return agent.NewProviderRegistry(records)
+	return agent.NewProviderRegistry(records), nil
+}
+
+// providerLabel names a configuration entry in an error, falling back to its
+// position when the user did not give it a name.
+func providerLabel(pc config.ProviderRecordConfig, index int) string {
+	if pc.Name != "" {
+		return pc.Name
+	}
+	return fmt.Sprintf("#%d", index+1)
 }
 
 // priceTable turns the declared rates in the configuration into the table the

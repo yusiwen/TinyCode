@@ -570,7 +570,10 @@ func TestProviderRuntimeOverrides(t *testing.T) {
 // TestBuildProviderRegistry covers provider construction: type routing and the
 // single default provider used when nothing is configured.
 func TestBuildProviderRegistry(t *testing.T) {
-	reg := buildProviderRegistry(&config.Config{}, "", "", "")
+	reg, err := buildProviderRegistry(&config.Config{}, "", "", "")
+	if err != nil {
+		t.Fatalf("buildProviderRegistry: %v", err)
+	}
 	if reg.Len() != 1 {
 		t.Fatalf("empty config produced %d providers, want 1", reg.Len())
 	}
@@ -582,7 +585,10 @@ func TestBuildProviderRegistry(t *testing.T) {
 		{Name: "remote", Type: "openai", Model: "m"},
 		{Name: "local", Type: "ollama", Model: "llama"},
 	}}
-	reg = buildProviderRegistry(cfg, "", "", "")
+	reg, err = buildProviderRegistry(cfg, "", "", "")
+	if err != nil {
+		t.Fatalf("buildProviderRegistry: %v", err)
+	}
 	if reg.Len() != 2 {
 		t.Fatalf("registry has %d providers, want 2", reg.Len())
 	}
@@ -595,6 +601,66 @@ func TestBuildProviderRegistry(t *testing.T) {
 	}
 	if _, ok := records[1].Provider.(*agent.OllamaProvider); !ok {
 		t.Errorf("ollama provider is %T", records[1].Provider)
+	}
+}
+
+// TestBuildProviderRegistryWiresPromptCache covers the config-to-provider path
+// (roadmap A4): a valid policy reaches the request, and a policy that cannot be
+// honoured stops startup with the route named instead of being dropped.
+func TestBuildProviderRegistryWiresPromptCache(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body = map[string]any{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{Providers: []config.ProviderRecordConfig{{
+		Name:        "cached",
+		Type:        "openai",
+		Model:       "m",
+		BaseURL:     srv.URL,
+		PromptCache: &config.PromptCacheConfig{Mode: "auto"},
+	}}}
+	reg, err := buildProviderRegistry(cfg, "sk-test", "", "")
+	if err != nil {
+		t.Fatalf("buildProviderRegistry: %v", err)
+	}
+	if _, err := reg.Current().Chat(context.Background(), types.ChatRequest{
+		Messages:  []types.Message{{Role: types.RoleSystem, Content: "sys"}},
+		MaxTokens: 8,
+	}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if key, ok := body["prompt_cache_key"].(string); !ok || key == "" {
+		t.Errorf("prompt_cache_key = %v, want the configured policy to reach the request", body["prompt_cache_key"])
+	}
+
+	// A mode nobody can honour is an error naming the route, not a silent off.
+	cfg.Providers[0].PromptCache = &config.PromptCacheConfig{Mode: "always"}
+	if _, err := buildProviderRegistry(cfg, "", "", ""); err == nil ||
+		!strings.Contains(err.Error(), `provider "cached"`) ||
+		!strings.Contains(err.Error(), `unknown mode "always"`) {
+		t.Errorf("invalid mode error = %v, want the route and the accepted values", err)
+	}
+
+	// A ttl without explicit breakpoints is contradictory for the same reason.
+	cfg.Providers[0].PromptCache = &config.PromptCacheConfig{Mode: "auto", TTL: "1h"}
+	if _, err := buildProviderRegistry(cfg, "", "", ""); err == nil ||
+		!strings.Contains(err.Error(), `ttl "1h" needs mode "explicit"`) {
+		t.Errorf("ttl with auto error = %v", err)
+	}
+
+	// The native Ollama backend accepts neither field.
+	cfg.Providers = []config.ProviderRecordConfig{{
+		Name: "local", Type: "ollama", Model: "llama",
+		PromptCache: &config.PromptCacheConfig{Mode: "explicit"},
+	}}
+	if _, err := buildProviderRegistry(cfg, "", "", ""); err == nil ||
+		!strings.Contains(err.Error(), `provider "local"`) ||
+		!strings.Contains(err.Error(), "not supported") {
+		t.Errorf("ollama error = %v, want a refusal naming the route", err)
 	}
 }
 
@@ -709,7 +775,10 @@ func TestDefaultConfigSendsTheCanonicalDeepSeekModel(t *testing.T) {
 	defer srv.Close()
 
 	cfg := config.DefaultConfig()
-	registry := buildProviderRegistry(&cfg, "sk-test", "", srv.URL)
+	registry, err := buildProviderRegistry(&cfg, "sk-test", "", srv.URL)
+	if err != nil {
+		t.Fatalf("buildProviderRegistry: %v", err)
+	}
 	// An empty request model is what the agent loop sends when no per-agent
 	// override is configured, so this is the default path end to end.
 	if _, err := registry.Current().Chat(context.Background(), types.ChatRequest{}); err != nil {
