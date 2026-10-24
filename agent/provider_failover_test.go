@@ -281,3 +281,54 @@ func TestFailureKind(t *testing.T) {
 		}
 	}
 }
+
+// TestAFailoverLeavesItsOwnEventAndTheServingRoute: the run's record names the
+// planned route once, and every call that moved says where it went and why
+// (roadmap A5, S3).
+func TestAFailoverLeavesItsOwnEventAndTheServingRoute(t *testing.T) {
+	dir := t.TempDir()
+	primary := &scriptedRoute{
+		route: "a", model: "am", name: "openai/a",
+		chat: func(context.Context, types.ChatRequest) (*types.ChatResponse, error) {
+			return nil, &statusError{status: 429, body: "slow down"}
+		},
+	}
+	fallback := &scriptedRoute{
+		route: "b", model: "bm", name: "openai/b",
+		chat: func(context.Context, types.ChatRequest) (*types.ChatResponse, error) {
+			return &types.ChatResponse{Content: "ok", Route: "b", Model: "bm"}, nil
+		},
+	}
+	a := New(NewFailoverProvider(primary, []LLMProvider{fallback}))
+	a.Trajectory = NewTrajectory(dir, TrajectoryCaptureMetadata)
+
+	if _, err := a.Run(context.Background(), "hi"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	_, events := onlyRun(t, dir)
+	var failovers, calls int
+	for _, event := range events {
+		switch event["type"] {
+		case TrajectoryRouteFailover:
+			failovers++
+			if event["step"] != float64(0) || event["from"] != "a" || event["to"] != "b" ||
+				event["reason"] != "rate_limit" {
+				t.Errorf("route.failover = %v, want step 0 a→b rate_limit", event)
+			}
+		case TrajectoryLLMCall:
+			calls++
+			if event["route"] != "b" || event["model"] != "bm" {
+				t.Errorf("llm.call route/model = %v/%v, want the serving route b/bm",
+					event["route"], event["model"])
+			}
+		}
+	}
+	if failovers != 1 || calls != 1 {
+		t.Errorf("failover events = %d, llm.call events = %d; want one each", failovers, calls)
+	}
+	if events[0]["type"] != TrajectoryRunStart ||
+		events[0]["provider"] != "a" || events[0]["model"] != "am" {
+		t.Errorf("run.start = %v, want the planned route a/am", events[0])
+	}
+}

@@ -9,6 +9,26 @@ back to its change and tests.
 
 ## Unreleased
 
+### A failover is visible, and the record says which route answered
+
+A5, S3. A route change now prints one line in the terminal and one status line in the TUI
+(`⇄ routing deepseek → openrouter: status 429 …`), from the same `OnFailover` event, so a
+paused call is not mistaken for a slow one and the user sees which account is paying.
+
+The run record gains two things. `llm.call` carries `route`/`model` — who served that call — while
+`run.start` keeps the route the run was planned on, so a call moved mid-run is priced and attributed
+to the route that charged it. A `route.failover` event records `step`, `from`, `to` and a `reason`
+from a small vocabulary (`rate_limit`, `server_error`, `timeout`, `network`, `protocol`, `status`),
+written at the moment of the decision.
+
+`failover-counted.scenario` is the end-to-end gate: a primary stub that answers every request with
+429 and a fallback that answers once, through the real binary and a two-route config. It asserts the
+answer drawn once, the notice once, the primary's full retry budget spent (requests=3) and exactly
+one request on the fallback.
+
+What this does not add: a route cooldown or circuit breaker, a per-route token total, or a failover
+count in `--trajectories` (the events are there; the summary is unchanged).
+
 ### A failed call can move to another route
 
 A5, S2. `providers[].failover` lists the routes to try when one fails in a way another route could

@@ -49,11 +49,12 @@ const (
 	TrajectoryCaptureFull     = "full"
 
 	// Event types. They are the "type" field a reader switches on.
-	TrajectoryRunStart = "run.start"
-	TrajectoryLLMCall  = "llm.call"
-	TrajectoryToolCall = "tool.call"
-	TrajectoryStepEnd  = "step.end"
-	TrajectoryRunEnd   = "run.end"
+	TrajectoryRunStart      = "run.start"
+	TrajectoryLLMCall       = "llm.call"
+	TrajectoryRouteFailover = "route.failover"
+	TrajectoryToolCall      = "tool.call"
+	TrajectoryStepEnd       = "step.end"
+	TrajectoryRunEnd        = "run.end"
 
 	// TrajectoryMaxTextBytes bounds one captured payload. A result can be
 	// megabytes; a trajectory is a record, not a copy of the transcript. The
@@ -329,7 +330,7 @@ func (r *TrajectoryRun) emit(event any) {
 // ttft is the delay to the first streamed delta, zero when nothing was streamed;
 // it is recorded only when it is known, because "no first token" and "the first
 // token arrived at 0 ms" are different facts.
-func (r *TrajectoryRun) LLMCall(step int, duration, ttft time.Duration, outcome string, usage types.Usage, reported bool, cost *types.CostEvent) {
+func (r *TrajectoryRun) LLMCall(step int, duration, ttft time.Duration, outcome string, usage types.Usage, reported bool, cost *types.CostEvent, route, model string) {
 	if r == nil {
 		return
 	}
@@ -338,6 +339,8 @@ func (r *TrajectoryRun) LLMCall(step int, duration, ttft time.Duration, outcome 
 		Step:               step,
 		DurationMS:         duration.Milliseconds(),
 		Outcome:            outcome,
+		Route:              route,
+		Model:              model,
 	}
 	if ttft > 0 {
 		ms := ttft.Milliseconds()
@@ -348,6 +351,25 @@ func (r *TrajectoryRun) LLMCall(step int, duration, ttft time.Duration, outcome 
 	}
 	event.Cost = cost
 	r.emit(event)
+}
+
+// RouteFailover records one decision to try another route after one failed.
+//
+// It is emitted at the moment of the decision, before the next request, so its
+// position in the file is the order the routes were tried. from and to are route
+// names, and reason is the failure class (rate_limit, server_error, timeout,
+// network, protocol, status).
+func (r *TrajectoryRun) RouteFailover(step int, from, to, reason string) {
+	if r == nil {
+		return
+	}
+	r.emit(&routeFailoverEvent{
+		trajectoryEnvelope: r.envelope(TrajectoryRouteFailover),
+		Step:               step,
+		From:               from,
+		To:                 to,
+		Reason:             reason,
+	})
 }
 
 // ToolCall records one tool call: what it was, how long it took, what came back,
@@ -546,6 +568,22 @@ type llmCallEvent struct {
 	Outcome    string           `json:"outcome"`
 	Tokens     *types.Usage     `json:"tokens,omitempty"`
 	Cost       *types.CostEvent `json:"cost,omitempty"`
+	// Route and Model name who served this call. They are per call rather than
+	// per run because a failover can move one call inside an otherwise unchanged
+	// run; the planned route stays on run.start (roadmap A5, S3).
+	Route string `json:"route,omitempty"`
+	Model string `json:"model,omitempty"`
+}
+
+// routeFailoverEvent records one decision to try another route. Its reason is
+// failureKind's vocabulary, not an error string: an analysis groups by it, and a
+// full provider message in every line would make the file unreadable.
+type routeFailoverEvent struct {
+	trajectoryEnvelope
+	Step   int    `json:"step"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason,omitempty"`
 }
 
 type toolCallEvent struct {

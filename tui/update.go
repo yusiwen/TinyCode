@@ -536,6 +536,14 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.autoScroll()
 		return m, m.waitForStream()
 
+	case FailoverMsg:
+		if m.isStaleRun(msg.RunID) {
+			return m, m.waitForStream()
+		}
+		m.ShowStatus(fmt.Sprintf("⇄ routing %s → %s: %v", msg.From, msg.To, msg.Err))
+		m.autoScroll()
+		return m, m.waitForStream()
+
 	case CostMsg:
 		if m.isStaleRun(msg.RunID) {
 			return m, m.waitForStream()
@@ -1561,6 +1569,9 @@ func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, go
 		},
 		OnRetry: func(attempt, maxAttempts int, err error) {
 			m.streamCh <- RetryMsg{RunID: runID, Attempt: attempt, MaxAttempts: maxAttempts, Err: err}
+		},
+		OnFailover: func(from, to string, err error) {
+			m.streamCh <- FailoverMsg{RunID: runID, From: from, To: to, Err: err}
 		},
 	}
 	result, err := m.agent.Run(ctx, prompt)

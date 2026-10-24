@@ -1,0 +1,25 @@
+# A failed route moves the call to another one, and the answer is drawn exactly once.
+#
+# S2 added the failover chain and S3 the line that announces it (roadmap A5). The Go tests
+# pin the policy at the provider boundary; this scenario is the end-to-end consequence:
+# two stubs, a primary that answers every request with 429 and a fallback that answers
+# once, through the real binary and the real configuration path.
+#
+# The config is a committed file (tui/testdata/scenarios/config/failover.json) because
+# two providers with their own base URLs cannot be expressed through --base-url, which
+# overrides the primary only. The primary retries through A1's budget before the chain
+# moves (three requests), so the counts are assertions about the whole path rather than
+# about one request:
+#
+#   hits=1       the answer was drawn once — a duplicated stream would show as 2
+#   notices=1    the route change was announced, not taken silently
+#   primary      cycles=0 requests=3 — the retry budget really was spent first
+#   fallback     requests=1 — exactly one request reached the other route (the plain
+#                mode never advances the stub's cycle counter, so cycles stays 0)
+#
+# One-shot mode is the assertion surface for the same reason retry-counted.scenario uses
+# it: a TUI repaints, so the same text legitimately appears many times there.
+open --dir . --size 120x30 --env HOME=/tmp/tinyscen-home-failover --env FAILOVER_STUB_KEY=stub --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- /bin/sh -c 'rm -rf /tmp/tinyscen-home-failover && mkdir -p /tmp/tinyscen-home-failover/sessions /tmp/tinyscen-home-failover/.tinycode; cp tui/testdata/scenarios/config/failover.json /tmp/tinyscen-home-failover/.tinycode/config.json; python3 tui/testdata/stub/openai_stub.py 18530 down 0 /tmp/tinyscen-home-failover/primary-count.txt & python3 tui/testdata/stub/openai_stub.py 18531 "" 1 /tmp/tinyscen-home-failover/fallback-count.txt & for f in primary fallback; do i=0; while [ ! -s "/tmp/tinyscen-home-failover/$f-count.txt" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done; done; ./bin/tinycode "ask once" --session-dir=/tmp/tinyscen-home-failover/sessions --log-level=error > /tmp/tinyscen-home-failover/out.txt 2>&1; status=$?; kill %1 %2 2>/dev/null; out=/tmp/tinyscen-home-failover/out.txt; hits=$(grep -o "stub-answer-ok" "$out" | wc -l | tr -d " "); notices=$(grep -o "routing primary" "$out" | wc -l | tr -d " "); primary=$(tr -d "\n" < /tmp/tinyscen-home-failover/primary-count.txt); fallback=$(tr -d "\n" < /tmp/tinyscen-home-failover/fallback-count.txt); echo "FAILOVER hits=$hits notices=$notices primary=[$primary] fallback=[$fallback]"; exit $status'
+wait --text "FAILOVER hits=1 notices=1 primary=\[cycles=0 requests=3 title=0\] fallback=\[cycles=0 requests=1 title=0\]" --timeout 60s
+wait-exit 20s
+expect-exit 0

@@ -147,6 +147,31 @@ func (a *Agent) recordFirstDelta(cb *types.StreamCallbacks) *types.StreamCallbac
 	return &wrapped
 }
 
+// recordFailover attaches a route change to the run's file and forwards it to the
+// caller.
+//
+// The provider wrapper decides to fail over and has no step number; the loop has
+// the step but does not see the decision. This wrapper joins the two: it is
+// installed per call, so the event carries the step that made it. Without a run
+// being recorded the wrapper still forwards, which is what makes the TUI and the
+// terminal see the same event either way.
+func (a *Agent) recordFailover(cb *types.StreamCallbacks, step int) *types.StreamCallbacks {
+	if cb == nil {
+		return nil
+	}
+	wrapped := *cb
+	inner := cb.OnFailover
+	wrapped.OnFailover = func(from, to string, err error) {
+		if a.trajRun != nil {
+			a.trajRun.RouteFailover(step, from, to, failureKind(err))
+		}
+		if inner != nil {
+			inner(from, to, err)
+		}
+	}
+	return &wrapped
+}
+
 // toolStatus names what a tool call produced.
 //
 // It is classified from the result text, because the text is what the loop has:

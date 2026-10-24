@@ -40,11 +40,18 @@ UTC) and, when known, `parent`, `session` and `agent`.
 
 | `type` | Written when | Carries |
 | --- | --- | --- |
-| `run.start` | the run opens, before anything takes time | `provider`, `model`, `capture`, `prompt` (digest), `goal` (`goal_id`, `round`, `source`) when the run serves a goal |
-| `llm.call` | a provider call returns, one per call | `step`, `duration_ms`, `ttft_ms` (only when something streamed), `outcome` (`final`/`tool_calls`/`empty`), `tokens`, `cost` |
+| `run.start` | the run opens, before anything takes time | `provider`, `model` (the route the run was **planned** on), `capture`, `prompt` (digest), `goal` (`goal_id`, `round`, `source`) when the run serves a goal |
+| `llm.call` | a provider call returns, one per call | `step`, `duration_ms`, `ttft_ms` (only when something streamed), `outcome` (`final`/`tool_calls`/`empty`), `tokens`, `cost`, `route`, `model` (the route that **served** it) |
+| `route.failover` | a call is about to be sent to another route | `step`, `from`, `to`, `reason` (`rate_limit`/`server_error`/`timeout`/`network`/`protocol`/`status`) |
 | `tool.call` | one tool call finishes, in call order | `step`, `call`, `tool`, `args` (digest), `result` (digest), `duration_ms`, `status` |
 | `step.end` | the step that made the call finishes | `step`, `duration_ms` |
 | `run.end` | the run stops, whatever the reason | `stop`, `steps`, `duration_ms`, `tokens`, `cost`, `cost_unknown_calls` |
+
+`route` on `llm.call` differs from `run.start`'s `provider` only when a failover moved that call: the
+run's plan is recorded once, and each call says who answered it, so the cost of a moved call is
+attributable to the route that charged it. A `route.failover` line sits between the call that failed and
+the call that answered, and its `reason` is a vocabulary an analysis groups by — the full provider
+message stays in the log, not in every record line.
 
 `goal` is present on a run that serves a session goal, and `source` says who started it: `driver` for
 a round the continuation driver began, `human` for a turn a person did. It is what lets an evaluation
@@ -95,6 +102,12 @@ jq -s 'map(select(.type=="tool.call")) | group_by(.tool)
 
 # Every run a budget stopped, newest first
 jq -s 'map(select(.type=="run.end" and .stop=="budget")) | reverse | .[].run' \
+   ~/.tinycode/trajectories/*.jsonl
+
+# Which route moved a call, and why
+jq -s 'map(select(.type=="route.failover")) | group_by(.from + "->" + .to)
+       | map({route: (.[0].from + "->" + .[0].to), moves: length,
+              reasons: (map(.reason)|group_by(.)|map({(.[0]): length})|add)})' \
    ~/.tinycode/trajectories/*.jsonl
 ```
 
