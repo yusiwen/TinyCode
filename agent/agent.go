@@ -645,6 +645,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			Role:             types.RoleAssistant,
 			Content:          "",
 			ReasoningContent: resp.ReasoningContent,
+			// The signature travels with the thinking text: a vendor that signs
+			// its reasoning rejects the next step when the block comes back
+			// unsigned (roadmap A6).
+			ReasoningSignature: resp.ReasoningSignature,
 		}
 		assistantMsg.ToolCalls = make([]types.ToolCall, len(toolCalls))
 		for i, tc := range toolCalls {

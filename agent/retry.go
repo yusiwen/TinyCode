@@ -160,7 +160,7 @@ func retryableError(ctx context.Context, err error) bool {
 	// its whole window. That is exactly the silent endpoint a second attempt may
 	// reach, and the delivery check keeps it honest for a call that had already
 	// streamed something.
-	if errors.Is(err, errOpenAISilent) || errors.Is(err, errOllamaSilent) {
+	if isSilentStream(err) {
 		return true
 	}
 	// A transport error that produced no response at all — a refused connection,
@@ -173,6 +173,21 @@ func retryableError(ctx context.Context, err error) bool {
 	return false
 }
 
+// errStreamSilent is the cancel cause shared by the native backends added for
+// roadmap A6. Each of them bounds the silence between streamed events; the
+// message is deliberately vendor-neutral there, while the two older providers
+// keep their own sentinels because their messages name the endpoint they know.
+var errStreamSilent = errors.New("stream went silent")
+
+// isSilentStream reports whether an error is one of the idle bounds rather than
+// a transport failure. A silent stream is retryable (the endpoint may answer a
+// second attempt) and is classified as a timeout in a failover record.
+func isSilentStream(err error) bool {
+	return errors.Is(err, errOpenAISilent) ||
+		errors.Is(err, errOllamaSilent) ||
+		errors.Is(err, errStreamSilent)
+}
+
 // isProtocolError reports whether an error came from reading the answer rather
 // than from the transport: a body we could not parse, or an answer that carried
 // no choices.
@@ -180,6 +195,8 @@ func isProtocolError(err error) bool {
 	msg := err.Error()
 	for _, marker := range []string{
 		"parse response", "no choices returned", "ollama decode",
+		"anthropic decode", "gemini decode", "bedrock decode",
+		"no candidates returned", "no content blocks returned", "bedrock config", "bedrock stream",
 		"marshal", "cannot unmarshal", "unexpected end of JSON",
 	} {
 		if strings.Contains(msg, marker) {
