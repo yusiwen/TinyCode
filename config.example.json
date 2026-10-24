@@ -31,6 +31,37 @@
       "$comment": "Anthropic models cache only content marked with cache_control. OpenAI, DeepSeek and Gemini cache a stable prefix automatically, so \"auto\" (a routing key) is enough there; a native ollama route accepts neither."
     },
     {
+      "name": "anthropic",
+      "type": "anthropic",
+      "model": "claude-sonnet-4-20250514",
+      "prompt_cache": { "mode": "explicit" },
+      "thinking_budget_tokens": 2048,
+      "$comment": "Native Anthropic Messages API (roadmap A6). base_url defaults to https://api.anthropic.com and the key comes from ANTHROPIC_API_KEY (or api_key_env). prompt_cache explicit marks the last system block; auto is refused because Anthropic has no routing-key equivalent. thinking_budget_tokens is opt-in, passed through unchanged, and its thinking block is replayed with the vendor's signature on the next tool step."
+    },
+    {
+      "name": "gemini",
+      "type": "gemini",
+      "model": "gemini-2.5-pro",
+      "thinking_budget_tokens": 2048,
+      "$comment": "Native Gemini generateContent API (roadmap A6). base_url defaults to https://generativelanguage.googleapis.com/v1beta and the key comes from GEMINI_API_KEY, then GOOGLE_API_KEY. prompt_cache auto is accepted because Gemini caches a stable prefix automatically; explicit is refused because the cachedContents resource is not implemented."
+    },
+    {
+      "name": "bedrock",
+      "type": "bedrock",
+      "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "region": "us-east-1",
+      "prompt_cache": { "mode": "explicit" },
+      "$comment": "Native Bedrock Converse API (roadmap A6), signed with SigV4 from AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and the optional AWS_SESSION_TOKEN. region falls back to AWS_REGION, then AWS_DEFAULT_REGION; base_url defaults to the regional bedrock-runtime host. prompt_cache explicit adds a cachePoint; auto and a 1h ttl are refused."
+    },
+    {
+      "name": "azure",
+      "type": "azure",
+      "model": "my-deployment",
+      "base_url": "https://my-resource.openai.azure.com",
+      "api_version": "2024-10-21",
+      "$comment": "Native Azure OpenAI (roadmap A6): model is the deployment in the path, the key comes from AZURE_OPENAI_API_KEY and travels in the api-key header, and api_version defaults to the pinned date. The request body is the same OpenAI-compatible shape, so retry, usage and failover behave identically."
+    },
+    {
       "name": "groq",
       "type": "openai",
       "model": "llama-3.3-70b-versatile",

@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1147 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1174 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -125,8 +125,9 @@
     count) and `notifyRetry`
   - `deliveryTracker` wraps a caller's callbacks to record whether any delta reached it — the
     **safe-replay** rule: text already drawn may not be drawn twice
-- **`OpenAIProvider`** struct (unexported fields: client, model, apiKey, baseURL, route, costCurrency, cache)
+- **`OpenAIProvider`** struct (unexported fields: client, model, apiKey, baseURL, route, costCurrency, cache, and the request seam `chatURL`/`authHeader`/`authValue`/`namePrefix` that the Azure route sets)
 - **`NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider`**
+- **`NewAzureOpenAIProvider(apiKey, baseURL, deployment, apiVersion string) *OpenAIProvider`** (`provider_openai.go`) — the same body, stream parser, retry, usage and prompt-cache path, addressed to `{base_url}/openai/deployments/{model}/chat/completions?api-version=…` with an `api-key` header. `model` is the deployment, so an agent-level model override selects a different deployment; `apiVersion` defaults to the pinned `2024-10-21` (`azureAPIVersion`). Only `prompt_cache: off` is accepted, because Azure caches automatically and has no request hint (roadmap A6)
 - `SetPromptCache(PromptCachePolicy)` stores the route's cache policy (roadmap A4). `auto` adds a
   `prompt_cache_key` derived from the model, the leading system messages and the tool schemas — never
   from the conversation — so every step of every run sends the same routing hint (OpenAI's hint before
@@ -156,6 +157,87 @@
 - `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call. A local route reports no charge, so `CostCurrency()` is empty and its calls are priced from the declared table or counted as unknown. `ChatRequest.Model` wins over the route's configured model (it was ignored before A5, S2); every response is stamped with the route and model that served it
 - `SetRouteInfo(route, model, _)` names the configuration route, so a price lookup keys on the route rather than on a model name several routes share; the cost currency is ignored because this route bills in none
 - Bounded (issue #1): `ollamaRequestTimeout` (10 min) covers a whole non-streaming request, `ollamaIdleTimeout` (2 min) covers the silence between tokens on a stream and is reset by every line, so a long generation is not killed while a stalled one fails. Both are package variables (tests shrink them), and the cancel cause names the bound that fired instead of surfacing "context canceled". A stream that ends without its `{"done":true}` line is now an error rather than the partial text it managed to send.
+
+### `provider_anthropic.go` — Native Anthropic Messages API
+
+Roadmap A6. Implements `LLMProvider` against `POST {base_url}/v1/messages` with `x-api-key` and
+`anthropic-version: 2023-06-01`; `base_url` defaults to `https://api.anthropic.com` and a value
+already ending in `/v1` is accepted.
+
+- **`AnthropicProvider`** (apiKey, baseURL, model, thinkingBudget, route/costCurrency, cache)
+- `SetThinkingBudget(n)`, `SetPromptCache(policy)`, `SetRouteInfo(route, model, currency)`,
+  `Route`/`DefaultModel`/`CostCurrency`, `Name() = "anthropic/<model>"`
+- `anthropicMessages` maps the shared history: every system message becomes a top-level `system`
+  text block (rather than a turn), an assistant turn becomes optional `thinking` + `text` +
+  `tool_use` blocks, and a run of `tool` messages becomes **one** user message of `tool_result`
+  blocks, which is the shape the API requires. A thinking block is replayed only when it carries the
+  vendor's signature, because an unsigned or invented one is rejected
+- Batch and SSE parsing (`message_start`, `content_block_start/delta/stop`, `message_delta`,
+  `message_stop`, plus an `error` event): `text_delta` → content and `OnTextDelta`, `thinking_delta`
+  → reasoning and `OnReasoningDelta`, `signature_delta` → `ChatResponse.ReasoningSignature`,
+  `input_json_delta` → accumulated tool arguments per block index
+- Usage: `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` is `PromptTokens`
+  (the API's `input_tokens` counts only the uncached half), `output_tokens` is `CompletionTokens`,
+  and the two cache counters keep their own lanes
+- `prompt_cache: explicit` marks the last leading system block with `cache_control`; a `1h` TTL adds
+  `anthropic-beta: extended-cache-ttl-2025-04-11`. `auto` is refused at startup (no routing key)
+- `thinking_budget_tokens` sends `{"type":"enabled","budget_tokens":N}`; the response's thinking text
+  and signature travel back on `types.Message` so a tool step can replay them
+- The same retry policy, bounds and route stamping as the other providers: `anthropicRequestTimeout`
+  (120 s, batch), `anthropicIdleTimeout` (2 min, stream), no bound on the client
+
+### `provider_gemini.go` — Native Gemini generateContent
+
+Roadmap A6. Implements `POST {base_url}/models/{model}:generateContent` and
+`:streamGenerateContent?alt=sse`, authenticated by `x-goog-api-key`; `base_url` defaults to
+`https://generativelanguage.googleapis.com/v1beta` and a `models/` prefix on the configured model is
+stripped.
+
+- **`GeminiProvider`** (apiKey, baseURL, model, thinkingBudget, route/costCurrency, cache)
+- `geminiContents` maps the history: system messages become `systemInstruction`, the assistant role
+  is `model`, a tool call is a `functionCall` part whose `args` are the parsed JSON object, and a run
+  of tool messages becomes one user content of `functionResponse` parts (`{"result": "<text>"}`)
+- **`geminiSchema`** translates the shared JSON Schema into Gemini's `Schema` message: `type` values
+  are upper-cased (`OBJECT`, `STRING`, …), `properties`/`items` recurse, and keys Gemini does not
+  define are dropped rather than guessed
+- Batch and SSE parsing: normal `text` parts → content, `thought: true` parts → reasoning and
+  `OnReasoningDelta`, `functionCall` parts → `types.ToolCall` (`ID` is the function name, because
+  Gemini has no call id and correlates a result by name)
+- Usage: `promptTokenCount` → `PromptTokens`, `cachedContentTokenCount` → `CachedPromptTokens`,
+  `candidatesTokenCount + thoughtsTokenCount` → `CompletionTokens` with `thoughtsTokenCount` as
+  `ReasoningTokens` (candidates excludes thoughts, and the completion lane has to carry both)
+- `thinking_budget_tokens` sends `thinkingConfig {includeThoughts: true, thinkingBudget: N}`;
+  `prompt_cache: auto` is accepted as a no-op (Gemini caches automatically), `explicit` is refused
+  until the `cachedContents` resource exists
+- `geminiRequestTimeout` / `geminiIdleTimeout` and the shared retry/route stamping
+
+### `provider_bedrock.go` — Native Bedrock Converse
+
+Roadmap A6. Implements `POST /model/{modelId}/converse` and `/converse-stream` against
+`https://bedrock-runtime.{region}.amazonaws.com`, signing every request with SigV4 (`bedrock`
+service) from `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and an optional `AWS_SESSION_TOKEN`.
+Region: `providers[].region`, then `AWS_REGION`, then `AWS_DEFAULT_REGION`. No other credential
+provider is implemented — reaching IMDS from an agent process is a separate security decision.
+
+- **`BedrockProvider`** (accessKey, secretKey, sessionToken, region, baseURL, model,
+  thinkingBudget, route/costCurrency, cache, and a `now` clock seam for the signing tests)
+- `sign` builds the canonical request (host, `x-amz-date`, optional `x-amz-security-token`, sorted;
+  SHA-256 payload) and the `AWS4-HMAC-SHA256` Authorization header
+- `bedrockMessages` maps the history onto Converse: system blocks, `toolUse` blocks, and a run of
+  tool messages into one user message of `toolResult` blocks; a signed reasoning block is replayed
+  as `reasoningContent.reasoningText`
+- **`readBedrockFrame`/`parseBedrockHeaders`** decode the binary `vnd.amazon.eventstream` framing:
+  prelude length, header block, payload and **both CRC32s**, with a 16 MiB frame cap. Events:
+  `messageStart`, `contentBlockStart`, `contentBlockDelta` (`text`, `reasoningContent`,
+  `toolUse.input`), `contentBlockStop`, `messageStop`, `metadata`; an `exception`/`error` frame is
+  returned as an error rather than a partial answer
+- Usage: Converse's `inputTokens` is the whole prompt and `cacheReadInputTokens`/
+  `cacheWriteInputTokens` are subsets, so they are copied into `PromptTokens`/the cache lanes;
+  `totalTokens` is used when present and derived otherwise
+- `prompt_cache: explicit` appends a `cachePoint` to the system array, or to the tool list when
+  there is no system block; `auto` and a `1h` ttl are refused
+- `thinking_budget_tokens` travels in `additionalModelRequestFields.thinking`
+- `bedrockRequestTimeout` / `bedrockIdleTimeout` and the shared retry/route stamping
 
 ### `compression.go` — Context Compression
 
@@ -228,9 +310,10 @@ nil for every key.
   - `LSP *LSPConfig`, `LogLevel string`
   - `ContextLength int` (default 1M), `CompressionThreshold int` (default 500K)
   - `SearXNGURL string`, `MCPServers []MCPServerConfig`
-- **`ProviderRecordConfig`**: `Name`, `Type` ("openai"|"ollama"), `Model`, `BaseURL`, `APIKeyEnv`, `PromptCache *PromptCacheConfig`, `CostCurrency` (the unit this route bills a *reported* charge in, e.g. `credits`; empty means the amount is displayed without a unit rather than labelled with a guessed one)
-  - `PromptCacheConfig`: `Mode` (`"off"` default, `"auto"`, `"explicit"`) and `TTL` (`"5m"`, `"1h"`, explicit only). Resolved by `agent.ResolvePromptCache` when the provider is built, so an invalid value is a startup error rather than a silent no-op
-  - `APIKey()` method: priority → `api_key_env` → `UPPER(NAME)_API_KEY` → `OPENAI_API_KEY`
+- **`ProviderRecordConfig`**: `Name`, `Type` (`"openai"` default, `"ollama"`, `"anthropic"`, `"gemini"`, `"bedrock"`, `"azure"`), `Model`, `BaseURL`, `APIKeyEnv`, `APIVersion` (Azure), `Region` (Bedrock), `ThinkingBudgetTokens` (native reasoning backends only), `PromptCache *PromptCacheConfig`, `Failover []string`, `CostCurrency` (the unit this route bills a *reported* charge in, e.g. `credits`; empty means the amount is displayed without a unit rather than labelled with a guessed one)
+  - `PromptCacheConfig`: `Mode` (`"off"` default, `"auto"`, `"explicit"`) and `TTL` (`"5m"`, `"1h"`, explicit only). Resolved by `agent.ResolvePromptCache` when the provider is built, so an invalid value is a startup error rather than a silent no-op; which mode a backend accepts is decided by `validateBackendOptions` in `main.go` (compatible route: all three; Anthropic/Bedrock: `off`/`explicit`; Gemini: `off`/`auto`; Ollama/Azure: `off`)
+  - `APIKey()` method: priority → `api_key_env` → `UPPER(NAME)_API_KEY` → the type's own variable (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY` then `GOOGLE_API_KEY`, `AZURE_OPENAI_API_KEY`, `OPENAI_API_KEY`). `providerKeyFallbacks` holds the per-type list, so a native route never silently offers an OpenAI key
+  - `ThinkingBudgetTokens` is refused at startup on a backend that has no such request field, and passed through unchanged to the three that do (Anthropic, Gemini, Bedrock)
 - **`AgentOverride`**: `MaxSteps`, `AllowedTools`, `DeniedTools`, `SystemPrompt`, `Model`, `Permissions []AgentRule` (an explicit ruleset that replaces the agent's built-in one and wins over the tool lists)
 - **`AgentRule`**: `Action`, `Resource`, `Effect` (`"allow"`/`"deny"`) — a config-local mirror of `agent.Rule`
 - **`SandboxConfig`**: `ProjectRoot`, `DenyCommands []string`, `AllowedPaths []string`
@@ -679,11 +762,11 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 
 ### `types.go`
 - **Constants**: `RoleSystem`, `RoleUser`, `RoleAssistant`, `RoleTool`
-- **`Message`** struct: `Role`, `Content`, `Name`, `ToolCallID`, `ToolCalls []ToolCall`, `ReasoningContent`
+- **`Message`** struct: `Role`, `Content`, `Name`, `ToolCallID`, `ToolCalls []ToolCall`, `ReasoningContent`, `ReasoningSignature` (the vendor's receipt for a thinking block, carried from the response onto the assistant turn so Anthropic/Bedrock can replay it; empty for providers that do not sign reasoning)
 - **`ToolCall`** struct: `ID`, `Name`, `Arguments string` (raw JSON)
 - **`ToolDef`** struct: `Name`, `Description`, `Parameters map[string]any`
 - **`ChatRequest`** struct: `Messages []Message`, `Tools []ToolDef`, `MaxTokens int`, `Model string`, `StreamCallbacks *StreamCallbacks`
-- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage`, `Cost *Cost` (both nil when the endpoint reported none), `Route`/`Model` (the route and model that **served** the call, stamped by the provider, so a failed-over call is priced against the route that answered)
+- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `ReasoningSignature`, `Usage *Usage`, `Cost *Cost` (both nil when the endpoint reported none), `Route`/`Model` (the route and model that **served** the call, stamped by the provider, so a failed-over call is priced against the route that answered)
 - **`Usage`** struct: `PromptTokens`, `CompletionTokens`, `TotalTokens`; `Add(v Usage) Usage` sums two records
 - **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown), `OnRetry` (fired before a request is re-sent, carrying the attempt and its cap so a caller renders `2/3` without knowing the policy), `OnFailover` (fired once per failed route before the next one is tried, carrying both route names and the failure)
 - **`Usage`** detail fields: `CachedPromptTokens`, `CacheWriteTokens`, `ReasoningTokens` — one per *billing lane*, so OpenAI's `prompt_tokens_details` shape and DeepSeek's `prompt_cache_hit_tokens` land in the same field. They are subsets of the counts beside them, not extra tokens
@@ -745,7 +828,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1147 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1174 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -791,7 +874,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1147 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1174 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

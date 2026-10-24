@@ -9,6 +9,45 @@ back to its change and tests.
 
 ## Unreleased
 
+### Four native provider backends
+
+A6. A route can now name the vendor's own protocol instead of the OpenAI-compatible shape:
+`type: "anthropic"`, `"gemini"`, `"bedrock"` or `"azure"`. The compatible layer was not wrong, but
+it loses the two things the roadmap entry names — each vendor's reasoning stream and its own billing
+lanes — and a gateway's translation is a second place for a tool call to be reshaped.
+
+- **Anthropic** speaks the Messages API: `system` is top-level, an assistant tool call is a
+  `tool_use` block, consecutive tool results are one `user` message of `tool_result` blocks, and SSE
+  events are read as `text_delta`, `thinking_delta`, `input_json_delta` and `signature_delta`. Usage
+  maps `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` onto the whole prompt,
+  keeping the two cache lanes separate so a declared price can bill them at their own rates.
+  `prompt_cache: "explicit"` marks the last system block (and asks for the vendor's 1h beta header
+  when the TTL is `1h`); `auto` is refused because Anthropic has no routing-key equivalent.
+  `thinking_budget_tokens` enables extended thinking, and the signature the vendor attaches is now
+  carried on `types.Message.ReasoningSignature` so the next tool step replays the block unmodified.
+- **Gemini** speaks `generateContent` / `streamGenerateContent`: `systemInstruction`, `contents` with
+  `functionCall`/`functionResponse`, a schema translation into Gemini's upper-case `Schema` enum, and
+  `usageMetadata` mapped to the cache and thought lanes (`candidatesTokenCount` excludes thoughts, so
+  the completion lane is their sum). `thinking_budget_tokens` sends `includeThoughts`; `prompt_cache:
+  "auto"` is accepted because Gemini caches automatically, while `explicit` is refused until the
+  `cachedContents` resource is implemented.
+- **Bedrock** speaks Converse and ConverseStream: SigV4-signed requests from `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY` and an optional session token, the neutral `messages`/`system`/`toolConfig`
+  shape, a binary `vnd.amazon.eventstream` decoder with both CRCs checked, and the
+  `cacheReadInputTokens`/`cacheWriteInputTokens` lanes. `prompt_cache: "explicit"` appends a
+  `cachePoint`; `auto` and a `1h` ttl are refused because a Converse cachePoint has neither.
+- **Azure** reuses the OpenAI-compatible provider wholesale — same body, stream parser, retry,
+  usage and prompt-cache semantics — and changes only the deployment path, the `api-version` query
+  and the `api-key` header. That reuse is the point: a second copy of the parser would drift.
+
+Every backend is an `LLMProvider`, so A1's retry and safe-replay rule, A2/A3's usage and budgets,
+A5's route identity, per-agent pins and failover apply without new code. A route's credential falls
+back to its vendor's own variable (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY` then `GOOGLE_API_KEY`,
+`AZURE_OPENAI_API_KEY`) rather than to `OPENAI_API_KEY`, so a native route cannot silently offer the
+wrong key. Unknown `type` values, a cache mode the backend cannot honour, a thinking budget on a
+backend that has no such field, an Azure route without a resource endpoint and a Bedrock route
+without a region or credentials are named errors, not silent no-ops.
+
 ### A failover is visible, and the record says which route answered
 
 A5, S3. A route change now prints one line in the terminal and one status line in the TUI

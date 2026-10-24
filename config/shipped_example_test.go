@@ -42,8 +42,8 @@ func TestShippedExampleLoads(t *testing.T) {
 
 	// Values the example sets and DefaultConfig does not, so a silent fallback to
 	// the defaults cannot pass for a successful load.
-	if len(cfg.Providers) != 5 {
-		t.Errorf("providers = %d, want the 5 the example lists (update this count if the example gains or loses one)", len(cfg.Providers))
+	if len(cfg.Providers) != 9 {
+		t.Errorf("providers = %d, want the 9 the example lists (update this count if the example gains or loses one)", len(cfg.Providers))
 	}
 	if cfg.Theme != "nord" {
 		t.Errorf("theme = %q, want nord", cfg.Theme)

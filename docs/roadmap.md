@@ -16,10 +16,10 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 11 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 12 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 27 | verified gaps, no issue opened |
+| Not started | 26 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
@@ -39,7 +39,7 @@ index), F1, then the larger D and E items.
 | A3 | No cumulative token or cost budget, no circuit breaker | Delivered — #179 |
 | A4 | No prompt caching | Delivered — #279 |
 | A5 | No failover and no provider routing | Delivered — #285 |
-| A6 | Only two provider backends | Not started |
+| A6 | Only two provider backends | Delivered — #290 |
 | B1 | The memory capability exists but is never called | Not started |
 | B2 | No local memory backend | Not started |
 | B3 | No embeddings, vector search or rerank | Not started |
@@ -260,15 +260,33 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### A6 — Only two provider backends
 
+- **Picked up**: [#290](https://github.com/yusiwen/TinyCode/issues/290) — S1 (native Anthropic
+  Messages API), S2 (native Gemini `generateContent`), S3 (native Bedrock Converse), S4 (native
+  Azure OpenAI), S5 (documents and the status row). **Delivered 2026-10-24.** A route's `type` now
+  selects the wire protocol: `"anthropic"` maps the history onto `system`/`tool_use`/`tool_result`,
+  reads `text_delta`/`thinking_delta`/`input_json_delta`/`signature_delta`, and keeps the two cache
+  counters as their own lanes; `"gemini"` maps `systemInstruction`/`functionCall`/`functionResponse`,
+  translates the tool schema into Gemini's upper-case `Schema` enum, and reads `thought` parts,
+  `cachedContentTokenCount` and `thoughtsTokenCount`; `"bedrock"` signs Converse and
+  ConverseStream with SigV4 and decodes the binary `vnd.amazon.eventstream` framing with both CRCs
+  checked; `"azure"` reuses the OpenAI-compatible body and parser behind a deployment path and the
+  `api-key` header. A vendor-signed thinking block now travels back on
+  `types.Message.ReasoningSignature`, which is what makes extended thinking usable across a tool
+  step. The per-backend cache matrix, the credential fallbacks, an unknown `type` and a
+  `thinking_budget_tokens` on a backend without the field are validated at startup rather than
+  silently dropped.
 - **Gap**: no native Anthropic, Gemini, Bedrock or Azure backend. Going through the compatible
   layer loses each vendor's own reasoning fields and its own billing semantics.
 - **Evidence**: `rg -il 'gemini'|'bedrock'|'azure'|'vertex'` → exit 1 each; `main.go:727` selects
-  `case "ollama"`, everything else is OpenAI-compatible.
+  `case "ollama"`, everything else is OpenAI-compatible. The selector has moved since; at the commit
+  that delivers this entry it is `buildProviderRegistry` in `main.go`, whose type switch names all
+  six protocols. The `rg` result describes the `7e6b017` baseline, not the current tree.
 - **Already present**: an OpenAI-compatible backend (`agent/provider_openai.go`, raw `net/http`) and
   a native Ollama backend (`agent/provider_ollama.go:192`, `POST /api/chat`). Note that
   `config.example.json:25` configures `"anthropic/claude-sonnet-4"` under `"type": "openai"`, i.e.
   the shipped example routes a Claude model through OpenRouter — not through a native backend.
-- **Effort**: ~3–5 d per vendor.
+- **Effort**: ~3–5 d per vendor (source report estimate, unverified). The entry was delivered as four
+  backends in one change; the estimate was not re-measured.
 
 ---
 
