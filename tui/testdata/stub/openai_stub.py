@@ -10,8 +10,9 @@ consume a position in the script (see TITLE_MARKER below).
 Usage: openai_stub.py <port> [mode [cycles [count_file]]]
 
 Modes: "" (plain answer), retry, tool, multi, fail, todo, read, lsp, write, undo,
-bashwrite, confine, and "goal" (a dynamic mode that creates and then completes a
-session goal; see goal-tool.scenario).
+bashwrite, confine, "down" (every request is a 429, for the failover scenario) and
+"goal" (a dynamic mode that creates and then completes a session goal; see
+goal-tool.scenario).
 Started by the scenario that needs it; see prompt-answer.scenario, and
 permission-allow-always.scenario for a flow that starts the binary twice and therefore
 asks for two cycles.
@@ -296,6 +297,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         _served["requests"] += 1
         if MODE == "goal":
             self.answer(goal_mode(body))
+            return
+        if MODE == "down":
+            # The primary half of the failover scenario: a rate limit on every request,
+            # so the client spends its retry budget and then moves to the other route.
+            self.answer(b"down", status=429)
             return
         if MODE == "retry" and _served["requests"] == 1:
             # The transient failure the client is expected to retry: a rate limit with no

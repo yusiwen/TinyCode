@@ -239,7 +239,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   `providers[].failover` is validated at startup (unknown name, self-reference, duplicate, cycle),
   flattened through each listed route's own list, and followed only for a transient failure with
   nothing streamed; each response names the route that served it, so a moved call is priced by that
-  route. The native Ollama route now honours the model override it used to ignore.
+  route. The native Ollama route now honours the model override it used to ignore. **S3 delivered
+  2026-10-24**: a failover prints one terminal/TUI line, `llm.call` names the route that served it
+  while `run.start` keeps the plan, a `route.failover` event carries `step`/`from`/`to`/`reason`, and
+  `failover-counted.scenario` is the end-to-end gate.
 - **Gap**: a provider cannot be failed over automatically, and the provider half of a
   `"<provider>/<model>"` setting is ignored.
 - **Evidence**: `SwitchTo`/`SwitchToName` are called only from the `/model` picker

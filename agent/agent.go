@@ -222,7 +222,8 @@ func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse, 
 		case resp.Content == "":
 			callOutcome = trajectoryOutcomeEmpty
 		}
-		a.trajRun.LLMCall(step, a.now().Sub(startedAt), ttft, callOutcome, spend, reported, &event)
+		a.trajRun.LLMCall(step, a.now().Sub(startedAt), ttft, callOutcome, spend, reported, &event,
+			resp.Route, resp.Model)
 	}
 }
 
@@ -557,6 +558,12 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 					// looks like a hang.
 					fmt.Printf("\n%sretrying (%d/%d): %v%s\n", colorYellow, attempt, maxAttempts, err, colorReset)
 				},
+				OnFailover: func(from, to string, err error) {
+					// A route change is a decision the user is paying for, so
+					// it is announced rather than silently taken.
+					fmt.Printf("\n%srouting %s → %s: %v%s\n",
+						colorYellow, from, to, err, colorReset)
+				},
 			}
 		}
 
@@ -568,6 +575,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			stepStarted = a.now()
 			callbacks = a.recordFirstDelta(callbacks)
 		}
+		// The failover record needs the step, which the provider cannot know:
+		// the wrapper reports route changes through the callbacks, and this is
+		// where the loop attaches them to the run's file (roadmap A5, S3).
+		callbacks = a.recordFailover(callbacks, step)
 
 		// Call provider
 		started := a.now()
@@ -879,7 +890,15 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 				a.StreamCallbacks.OnRetry(attempt, maxAttempts, err)
 			}
 		},
+		OnFailover: func(from, to string, err error) {
+			if a.StreamCallbacks != nil && a.StreamCallbacks.OnFailover != nil {
+				a.StreamCallbacks.OnFailover(from, to, err)
+			}
+		},
 	}
+	// The summary is a call like any other: a failover it makes belongs to the
+	// step that asked for it and to the run's record (roadmap A5, S3).
+	summaryCallbacks = a.recordFailover(summaryCallbacks, step)
 	started := a.now()
 	resp, err := provider.Chat(ctx, types.ChatRequest{
 		Messages:        messages,

@@ -38,6 +38,17 @@ type RetryMsg struct {
 	Err         error
 }
 
+// FailoverMsg says a call is about to be sent to a different route because the
+// previous one failed. It is separate from RetryMsg because it changes which
+// account and which model the answer comes from, not just when it arrives
+// (roadmap A5, S3).
+type FailoverMsg struct {
+	RunID uint64 // generation id of the producing run (0 in legacy tests)
+	From  string // the route that failed
+	To    string // the route about to be tried
+	Err   error  // the failure that moved the call
+}
+
 // StreamDone is sent when the agent completes (final answer or error).
 type StreamDone struct {
 	RunID            uint64 // generation id of the producing run (0 in legacy tests)

@@ -1,0 +1,19 @@
+{
+  "providers": [
+    {
+      "name": "primary",
+      "type": "openai",
+      "model": "primary-model",
+      "base_url": "http://127.0.0.1:18530/v1",
+      "api_key_env": "FAILOVER_STUB_KEY",
+      "failover": ["fallback"]
+    },
+    {
+      "name": "fallback",
+      "type": "openai",
+      "model": "fallback-model",
+      "base_url": "http://127.0.0.1:18531/v1",
+      "api_key_env": "FAILOVER_STUB_KEY"
+    }
+  ]
+}
