@@ -911,6 +911,12 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) (*
 		})
 	}
 
+	wired, err := wireFailover(cfg.Providers, records)
+	if err != nil {
+		return nil, err
+	}
+	records = wired
+
 	// Fallback: if no providers are configured, create a default one.
 	if len(records) == 0 {
 		prov := agent.NewOpenAIProvider(apiKey, baseURL, model)
@@ -921,6 +927,98 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) (*
 		})
 	}
 	return agent.NewProviderRegistry(records), nil
+}
+
+// wireFailover validates the declared failover chains and wraps every route that
+// has one.
+//
+// A route's list is flattened: a listed route's own list follows it, so two
+// entries can describe one chain without repeating it. The walk that does the
+// flattening is also where a cycle would run forever, so it refuses one at
+// startup, as it refuses an unknown name, a self-reference and a name listed
+// twice in one list.
+//
+// Each route is wrapped around its *raw* provider, never around another route's
+// wrapper: a call follows one chain once, and a route used directly still gets
+// its own chain.
+func wireFailover(configs []config.ProviderRecordConfig, records []agent.ProviderRecord) ([]agent.ProviderRecord, error) {
+	index := make(map[string]int, len(configs))
+	for i, pc := range configs {
+		if pc.Name == "" {
+			continue
+		}
+		index[pc.Name] = i
+	}
+	raw := make([]agent.LLMProvider, len(records))
+	for i := range records {
+		raw[i] = records[i].Provider
+	}
+
+	chains := make([][]int, len(configs))
+	for i, pc := range configs {
+		if len(pc.Failover) == 0 {
+			continue
+		}
+		label := providerLabel(pc, i)
+		visiting := map[string]bool{}
+		if pc.Name != "" {
+			visiting[pc.Name] = true
+		}
+		seen := map[int]bool{}
+		var chain []int
+		var walk func(names []string, depth int) error
+		walk = func(names []string, depth int) error {
+			local := map[string]bool{}
+			for _, name := range names {
+				if name == "" {
+					return fmt.Errorf("provider %q: failover names an empty route", label)
+				}
+				if local[name] {
+					return fmt.Errorf("provider %q: failover lists %q twice", label, name)
+				}
+				local[name] = true
+				j, ok := index[name]
+				if !ok {
+					return fmt.Errorf("provider %q: failover names unknown provider %q", label, name)
+				}
+				if depth == 0 && name == pc.Name {
+					return fmt.Errorf("provider %q: failover names itself", label)
+				}
+				if visiting[name] {
+					return fmt.Errorf("provider %q: failover cycle through %q", label, name)
+				}
+				visiting[name] = true
+				if !seen[j] {
+					seen[j] = true
+					chain = append(chain, j)
+				}
+				if err := walk(configs[j].Failover, depth+1); err != nil {
+					return err
+				}
+				// The name is off the current path, but it stays in the chain:
+				// the same route reached from a second branch is a diamond to
+				// flatten, not a cycle to refuse.
+				delete(visiting, name)
+			}
+			return nil
+		}
+		if err := walk(pc.Failover, 0); err != nil {
+			return nil, err
+		}
+		chains[i] = chain
+	}
+
+	for i, chain := range chains {
+		if len(chain) == 0 {
+			continue
+		}
+		fallbacks := make([]agent.LLMProvider, len(chain))
+		for k, j := range chain {
+			fallbacks[k] = raw[j]
+		}
+		records[i].Provider = agent.NewFailoverProvider(raw[i], fallbacks)
+	}
+	return records, nil
 }
 
 // providerLabel names a configuration entry in an error, falling back to its

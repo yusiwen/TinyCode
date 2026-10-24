@@ -182,7 +182,17 @@ func (a *Agent) recordCall(cb *types.StreamCallbacks, resp *types.ChatResponse, 
 	case resp.Cost != nil:
 		event = types.CostEvent{Cost: *resp.Cost, Source: types.CostReported}
 	case reported && a.PriceTable != nil:
-		if key, ok := a.priceKey(); ok {
+		// The route that answered prices the call, which is not always the one
+		// planned: a failover moves a call to another route, and that route's
+		// rate is the bill (roadmap A5, S2). A provider that cannot name itself
+		// leaves the fields empty, and the planned route is used.
+		key, ok := resp.Route, resp.Route != "" && resp.Model != ""
+		if ok {
+			key += "/" + resp.Model
+		} else {
+			key, ok = a.priceKey()
+		}
+		if ok {
 			if cost, priced := a.PriceTable.AmountAt(key, spend, startedAt); priced {
 				event = types.CostEvent{Cost: cost, Source: types.CostDeclared}
 			}

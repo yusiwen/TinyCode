@@ -245,3 +245,32 @@ func TestOllamaStreamIdleBound(t *testing.T) {
 		}
 	})
 }
+
+// TestOllamaHonoursTheModelOverrideAndStampsTheRoute: the native route used to
+// ignore ChatRequest.Model, which made a pinned model on an ollama route silently
+// do nothing. The response now names what served it (roadmap A5, S2).
+func TestOllamaHonoursTheModelOverrideAndStampsTheRoute(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody = map[string]any{}
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = io.WriteString(w, `{"message":{"role":"assistant","content":"hi"}}`)
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, "configured-model")
+	p.SetRouteInfo("local", "", "")
+	resp, err := p.Chat(context.Background(), types.ChatRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Model:    "override-model",
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if gotBody["model"] != "override-model" {
+		t.Errorf("request model = %v, want the override", gotBody["model"])
+	}
+	if resp.Route != "local" || resp.Model != "override-model" {
+		t.Errorf("served route/model = %q/%q, want local/override-model", resp.Route, resp.Model)
+	}
+}

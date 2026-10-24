@@ -11,7 +11,9 @@
       "name": "deepseek",
       "type": "openai",
       "model": "deepseek-flash",
-      "base_url": "https://api.deepseek.com"
+      "base_url": "https://api.deepseek.com",
+      "failover": ["openrouter"],
+      "$comment": "failover lists the routes to try, in order, when a call fails transiently (408/429/5xx, a network error, a silent stream) before anything reached the caller. The primary spends its own retry budget first. A listed route follows its own list too, so chains compose. A fallback uses its own configured model, and the call is billed by the route that answered. An empty or absent list (the default) never moves a call. The chain above is an example: remove it if you do not want a failed call billed to another route."
     },
     {
       "name": "openai",

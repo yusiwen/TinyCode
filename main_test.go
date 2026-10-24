@@ -1011,3 +1011,100 @@ func TestAgentRouteReachesTheConfiguredProvider(t *testing.T) {
 		t.Fatalf("models = %v, want the model half of the pin", models)
 	}
 }
+
+// TestBuildProviderRegistryWiresFailover covers the config-to-provider path for
+// S2: a declared chain is flattened through the listed routes' own chains, and a
+// route without one is left unwrapped.
+func TestBuildProviderRegistryWiresFailover(t *testing.T) {
+	cfg := &config.Config{Providers: []config.ProviderRecordConfig{
+		{Name: "a", Type: "openai", Model: "m", Failover: []string{"b"}},
+		{Name: "b", Type: "openai", Model: "n", Failover: []string{"c"}},
+		{Name: "c", Type: "openai", Model: "o"},
+	}}
+	reg, err := buildProviderRegistry(cfg, "", "", "")
+	if err != nil {
+		t.Fatalf("buildProviderRegistry: %v", err)
+	}
+	records := reg.List()
+	failover, ok := records[0].Provider.(*agent.FailoverProvider)
+	if !ok {
+		t.Fatalf("route a is %T, want a failover chain", records[0].Provider)
+	}
+	chain := failover.Fallbacks()
+	if len(chain) != 2 {
+		t.Fatalf("a's chain has %d entries, want b then c", len(chain))
+	}
+	if routeOf(chain[0]) != "b" || routeOf(chain[1]) != "c" {
+		t.Errorf("a's chain = %q, %q; want b, c", routeOf(chain[0]), routeOf(chain[1]))
+	}
+	if _, ok := records[1].Provider.(*agent.FailoverProvider); !ok {
+		t.Errorf("route b is %T, want its own chain", records[1].Provider)
+	}
+	if _, ok := records[2].Provider.(*agent.FailoverProvider); ok {
+		t.Error("route c has no failover list and must not be wrapped")
+	}
+}
+
+// routeOf names a provider by its configured route, for assertions.
+func routeOf(p agent.LLMProvider) string {
+	if info, ok := p.(agent.RouteInfo); ok {
+		return info.Route()
+	}
+	return ""
+}
+
+// TestBuildProviderRegistryRejectsBadFailover pins the validation: every one of
+// these is a route reference that would misbehave at call time.
+func TestBuildProviderRegistryRejectsBadFailover(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []config.ProviderRecordConfig
+		want    string
+	}{
+		{
+			name: "unknown",
+			entries: []config.ProviderRecordConfig{
+				{Name: "a", Type: "openai", Model: "m", Failover: []string{"nope"}},
+			},
+			want: `unknown provider "nope"`,
+		},
+		{
+			name: "self",
+			entries: []config.ProviderRecordConfig{
+				{Name: "a", Type: "openai", Model: "m", Failover: []string{"a"}},
+			},
+			want: "names itself",
+		},
+		{
+			name: "cycle",
+			entries: []config.ProviderRecordConfig{
+				{Name: "a", Type: "openai", Model: "m", Failover: []string{"b"}},
+				{Name: "b", Type: "openai", Model: "n", Failover: []string{"a"}},
+			},
+			want: `cycle through "a"`,
+		},
+		{
+			name: "duplicate",
+			entries: []config.ProviderRecordConfig{
+				{Name: "a", Type: "openai", Model: "m", Failover: []string{"b", "b"}},
+				{Name: "b", Type: "openai", Model: "n"},
+			},
+			want: `lists "b" twice`,
+		},
+		{
+			name: "empty",
+			entries: []config.ProviderRecordConfig{
+				{Name: "a", Type: "openai", Model: "m", Failover: []string{""}},
+			},
+			want: "empty route",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildProviderRegistry(&config.Config{Providers: tc.entries}, "", "", "")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}

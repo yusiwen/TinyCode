@@ -178,8 +178,16 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		}
 	}
 
+	// An agent-level override wins over the route's configured model, the same
+	// way it does on the OpenAI-compatible provider. Before this, the override
+	// was silently ignored on the native Ollama route (roadmap A5).
+	model := p.model
+	if req.Model != "" {
+		model = req.Model
+	}
+
 	apiReq := ollamaChatRequest{
-		Model:    p.model,
+		Model:    model,
 		Messages: ollamaMsgs,
 		Stream:   req.StreamCallbacks != nil,
 		Options:  map[string]any{},
@@ -208,6 +216,9 @@ func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		tracker := trackedCallbacks(req.StreamCallbacks)
 		resp, err := p.attempt(ctx, body, tracker.callbacks())
 		if err == nil {
+			// The route and model that served the call, for pricing and the
+			// record when a failover moved it (roadmap A5, S2).
+			resp.Route, resp.Model = p.route, model
 			return resp, nil
 		}
 		lastErr = err

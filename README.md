@@ -106,7 +106,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **1131 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
+- **1144 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally
@@ -255,6 +255,12 @@ type LLMProvider interface {
   a prefix that names no configured route is a startup error rather than a silent fallback.
 - The same names key `pricing.prices` (`"<route>/<model>"`), and a session remembers the route it
   ran on.
+
+A route can declare where to go when it fails: `providers[].failover: ["openrouter", "ollama"]` is
+tried in order after the primary's own retry budget is spent, and only for a transient failure
+(408/429/5xx, a network error, a silent stream). Nothing moves once any text has been streamed, and a
+rejected key or a missing model is returned rather than hidden behind another route. A fallback is
+asked for its own configured model, and the call is billed by the route that answered.
 
 ### Context Compression
 

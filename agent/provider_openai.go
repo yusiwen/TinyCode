@@ -250,6 +250,10 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 		tracker := trackedCallbacks(req.StreamCallbacks)
 		resp, err := p.attempt(ctx, body, tracker.callbacks())
 		if err == nil {
+			// Name the route and model that served the call: a caller may have
+			// failed over to this provider, and pricing must follow the route
+			// that answered (roadmap A5, S2).
+			resp.Route, resp.Model = p.route, model
 			return resp, nil
 		}
 		lastErr = err
