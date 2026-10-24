@@ -16,15 +16,15 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 10 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 11 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 2 | F1 — three increments landed, the next one is not opened; A5 — S1 landed |
+| In progress | 1 | F1 — three increments landed, the next one is not opened |
 | Not started | 27 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: F1, whose next increment (a task set with headroom) is not opened; A5, whose S2–S4
-are not opened yet; and [#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a
-run streams), which is not a roadmap entry.
+**Open work**: F1, whose next increment (a task set with headroom) is not opened, and
+[#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a run streams), which is
+not a roadmap entry.
 
 **Next, by the reading order**: B1/B2 (memory — blocked on a privacy decision, which is why it is
 not already done), C6 (a second isolation tier, since C7's macOS fence is delivered), B4 (repository
@@ -38,7 +38,7 @@ index), F1, then the larger D and E items.
 | A2 | Provider-reported usage is discarded; no cost accounting | Delivered — #174 |
 | A3 | No cumulative token or cost budget, no circuit breaker | Delivered — #179 |
 | A4 | No prompt caching | Delivered — #279 |
-| A5 | No failover and no provider routing | In progress — #285 |
+| A5 | No failover and no provider routing | Delivered — #285 |
 | A6 | Only two provider backends | Not started |
 | B1 | The memory capability exists but is never called | Not started |
 | B2 | No local memory backend | Not started |
@@ -242,7 +242,9 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   route. The native Ollama route now honours the model override it used to ignore. **S3 delivered
   2026-10-24**: a failover prints one terminal/TUI line, `llm.call` names the route that served it
   while `run.start` keeps the plan, a `route.failover` event carries `step`/`from`/`to`/`reason`, and
-  `failover-counted.scenario` is the end-to-end gate.
+  `failover-counted.scenario` is the end-to-end gate. **S4 delivered 2026-10-24**: README,
+  CODEBASE, `config.example.json`, `docs/trajectories.md` and this entry describe the surface, and the
+  entry's row moves to Delivered.
 - **Gap**: a provider cannot be failed over automatically, and the provider half of a
   `"<provider>/<model>"` setting is ignored.
 - **Evidence**: `SwitchTo`/`SwitchToName` are called only from the `/model` picker
