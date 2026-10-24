@@ -17,7 +17,12 @@ import (
 type Agent struct {
 	Config *AgentConfig // agent mode config (plan/build/subagent)
 
-	Provider   LLMProvider
+	Provider LLMProvider
+	// Resolver names the provider a route on Config refers to. Nil means the
+	// agent never routes: every call goes to Provider. A route is resolved at
+	// call time so a session-wide provider switch does not have to rebuild the
+	// agents that use it (roadmap A5).
+	Resolver   RouteResolver
 	Tools      []Tool
 	Memory     types.MemoryStore
 	MemoryMode int // 0=none, 1=auto, 2=on-demand
@@ -307,6 +312,38 @@ func (a *Agent) getModel() string {
 	return ""
 }
 
+// getRoute returns the configured route this agent's calls go to, or empty when
+// the agent follows the session's active provider.
+func (a *Agent) getRoute() string {
+	if a.Config != nil {
+		return a.Config.Route
+	}
+	return ""
+}
+
+// providerFor returns the provider that serves one route. An empty route is the
+// agent's own Provider, which is the session's active one.
+//
+// A route without a resolver is an error rather than a fallback: silently using
+// another provider is precisely the bug this exists to fix (roadmap A5).
+func (a *Agent) providerFor(route string) (LLMProvider, error) {
+	if route == "" {
+		if a.Provider == nil {
+			return nil, fmt.Errorf("agent %s has no provider", a.agentPrefix())
+		}
+		return a.Provider, nil
+	}
+	if a.Resolver == nil {
+		return nil, fmt.Errorf("agent %s routes to %q but has no provider resolver", a.agentPrefix(), route)
+	}
+	return a.Resolver.Resolve(route)
+}
+
+// chatProvider resolves the provider for this agent's configuration.
+func (a *Agent) chatProvider() (LLMProvider, error) {
+	return a.providerFor(a.getRoute())
+}
+
 // recordTurn adds one finished turn to the model's multi-turn history and to
 // the session log.
 //
@@ -374,6 +411,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		}
 		a.finishTrajectory(stop, outcome.steps, runStarted, costStart, unknownStart)
 	}()
+	// A route is resolved before anything is spent. A pin that names no
+	// configured provider is a configuration error, and the run says so instead
+	// of sending the request to whichever provider happens to be active
+	// (roadmap A5).
+	provider, err := a.chatProvider()
+	if err != nil {
+		return "", err
+	}
 	// Resolve system prompt from config, falling back to Agent.SystemPrompt
 	sysPrompt := a.SystemPrompt
 	if a.Config != nil && a.Config.SystemPrompt != "" {
@@ -517,7 +562,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		// Call provider
 		started := a.now()
 		a.callStart = started
-		resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+		resp, err := provider.Chat(ctx, types.ChatRequest{
 			Messages:        messages,
 			Tools:           toolDefs,
 			MaxTokens:       a.MaxTokens,
@@ -826,7 +871,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		},
 	}
 	started := a.now()
-	resp, err := a.Provider.Chat(ctx, types.ChatRequest{
+	resp, err := provider.Chat(ctx, types.ChatRequest{
 		Messages:        messages,
 		Tools:           nil, // no tools — LLM must output text only
 		MaxTokens:       a.MaxTokens,

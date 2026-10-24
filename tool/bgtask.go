@@ -91,9 +91,20 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 			}
 		}
 
-		// Create sub-agent
-		sub := agent.New(deps.Provider)
-		sub.Config = cfg
+		// Create sub-agent. Its route is resolved now, when the task starts:
+		// a background task outlives the call that started it, and the provider
+		// it should use is the one configured at that moment (roadmap A5).
+		provider, err := resolveTaskProvider(deps, cfg)
+		if err != nil {
+			mgr.finalize(task, TaskFailed, err.Error(), "")
+			return
+		}
+		sub := agent.New(provider)
+		// The route is already in the provider; a copy without it keeps the
+		// sub-agent from trying to resolve the name again (roadmap A5).
+		subCfg := *cfg
+		subCfg.Route = ""
+		sub.Config = &subCfg
 		sub.Tools = subTools
 		sub.MaxSteps = cfg.MaxSteps
 		sub.ShowThinking = false

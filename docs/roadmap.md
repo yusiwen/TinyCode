@@ -18,13 +18,13 @@ after it (see *Provenance and method*).
 | :--- | ---: | :--- |
 | Delivered | 10 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 28 | verified gaps, no issue opened |
+| In progress | 2 | F1 — three increments landed, the next one is not opened; A5 — S1 landed |
+| Not started | 27 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: F1, whose next increment (a task set with headroom) is not opened, and
-[#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a run streams), which
-is not a roadmap entry.
+**Open work**: F1, whose next increment (a task set with headroom) is not opened; A5, whose S2–S4
+are not opened yet; and [#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a
+run streams), which is not a roadmap entry.
 
 **Next, by the reading order**: B1/B2 (memory — blocked on a privacy decision, which is why it is
 not already done), C6 (a second isolation tier, since C7's macOS fence is delivered), B4 (repository
@@ -38,7 +38,7 @@ index), F1, then the larger D and E items.
 | A2 | Provider-reported usage is discarded; no cost accounting | Delivered — #174 |
 | A3 | No cumulative token or cost budget, no circuit breaker | Delivered — #179 |
 | A4 | No prompt caching | Delivered — #279 |
-| A5 | No failover and no provider routing | Not started |
+| A5 | No failover and no provider routing | In progress — #285 |
 | A6 | Only two provider backends | Not started |
 | B1 | The memory capability exists but is never called | Not started |
 | B2 | No local memory backend | Not started |
@@ -230,12 +230,19 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### A5 — No failover and no provider routing
 
+- **Picked up**: [#285](https://github.com/yusiwen/TinyCode/issues/285) — S1 (route identity and
+  resolution: parsing, the resolver, sub-agent routing, session restore), S2 (the failover chain),
+  S3 (visibility and the record), S4 (documents and the status row). **S1 delivered 2026-10-24**: a
+  `"<route>/<model>"` override now selects the configured provider, an unknown route is a startup
+  error, `task` sub-agents resolve their route when they start, and the session file stores the route
+  name it can restore instead of the provider's display name (#284).
 - **Gap**: a provider cannot be failed over automatically, and the provider half of a
   `"<provider>/<model>"` setting is ignored.
 - **Evidence**: `SwitchTo`/`SwitchToName` are called only from the `/model` picker
   (`tui/update.go:175`, restored at `tui/model.go:289`); `rg -in 'failover'` → exit 1;
   `main.go:793` takes only the part after the slash (`aCfg.Model = after // use model part, ignore
-  provider for now`).
+  provider for now`). These references are pinned to the `7e6b017` baseline and have drifted; the
+  strip then lived at `main.go:1004-1011`, and S1 replaced it with `agent.ParseRoute`.
 - **Already present**: the per-agent model override **is** read and applied —
   `AgentOverride.Model` (`config/config.go:43-49`) → `main.go:790-796` → `agent/agent.go:116-119` →
   `ChatRequest.Model` — and `task` sub-agents inherit it (`tool/task.go:97`). The source report's

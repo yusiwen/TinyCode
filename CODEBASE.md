@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1117 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1131 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -32,6 +32,7 @@
 - **`Agent`** struct — fields:
   - `Config *AgentConfig` — mode config (plan/build/subagent)
   - `Provider LLMProvider`
+  - `Resolver RouteResolver` — resolves a configured route to its provider; nil means the agent never routes. A route on `Config` is resolved at call time, so a session-wide switch does not override a pin (roadmap A5)
   - `Tools []Tool`
   - `Memory types.MemoryStore` — **never assigned**: no caller sets it, so the recall step below is inert; `memory.go` is internal and unwired
   - `MemoryMode int` — 0=none, 1=auto, 2=on-demand; `MemoryModeNone` is the only value ever in effect today
@@ -50,7 +51,7 @@
   - `PriceTable`/`Price` (pricing.go) — the user's declared rates per billing lane; `Lookup` resolves `"<route>/<model>"` with `*` wildcards, most specific first (exact → `route/*` → `*/model` → `*/*`) and answers with the entry's own rates, while `AmountAt`/`Amount` carve the detail lanes out of the totals, falling back to the lane they belong to and flooring every subtraction at zero
   - `PriceWindow`, `NewWindow`, `(*PriceTable) SetEntry`, `AmountAt` (pricing_window.go) — a per-entry schedule: weekdays × UTC hours, `from` inclusive and `to` exclusive, `00:00`/`24:00` meaning the end of the day. `SetEntry` validates the whole set before storing any of it (no overlap on a shared day, the entry's own rates stay reachable, every lane the entry declares repeated in every window) and refuses a malformed one with a message naming the window; a refused entry prices nothing, so the call is unknown rather than priced by a guess. `Agent.Now` is the clock seam, read once per call before the request
   - `CostTotal types.CostTotals`, `CostUnknownCalls int` — money per unit, plus how many calls nobody could price; kept together because a total without its unknowns overstates what is known
-  - `priceKey()` asks the provider (RouteInfo) for its route and default model at call time, and prefers the agent's model override — a route can be switched mid-session, so a value captured at construction would price a call against another route's rates
+  - `priceKey()` resolves the provider from the agent's route first and asks it (RouteInfo) for its route and default model at call time, preferring the agent's model override — a route can be switched mid-session, so a value captured at construction would price a call against another route's rates
   - `budgetReached()` / `budgetMessage(which, limit, spent)` — the check runs at the top of the loop, before the call that would spend, and its message names the budget, the spend and the knob (`budget.max_tokens_per_run` / `..._session`)
   - `ContentStreamed bool`
 - **`New(provider LLMProvider) *Agent`** — defaults: MaxSteps=20, MaxTokens=4096
@@ -103,6 +104,10 @@
   - `Current() LLMProvider`, `CurrentName() string`
   - `List() []ProviderRecord`, `Len() int`, `CurrentIndex() int`
   - `SwitchTo(idx int) error`, `SwitchToName(name string) error`
+  - `CurrentRoute() string` — the active provider's configuration name, the identity a route reference and a saved session use (`Name()` is the backend/model display value)
+  - `Resolve(route string) (LLMProvider, error)` — the `RouteResolver` implementation: empty means the active provider, an unknown name is an error rather than a fallback
+- **`RouteResolver`** interface: `Resolve(route string) (LLMProvider, error)`; `Agent.Resolver` holds one (roadmap A5)
+- **`ParseRoute(value) (route, model string, err error)`** (`route.go`) — cuts `"<route>/<model>"` on the **first** separator, so `openrouter/anthropic/claude-sonnet-4` is route `openrouter` + model `anthropic/claude-sonnet-4`; a value without a separator is a bare model override
 - **`Tool`** struct: `Name`, `Description`, `Parameters map[string]any`, `Execute func(ctx, args) (string, error)`
 - **`MockProvider`** — test double with injectable `ChatFunc`
 
@@ -733,7 +738,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1117 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1131 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -779,7 +784,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1117 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1131 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

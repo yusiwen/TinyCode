@@ -30,7 +30,7 @@ func (m *mockTaskProvider) Name() string         { return "mock" }
 
 func TestTaskToolBasic(t *testing.T) {
 	deps := &TaskToolDeps{
-		Provider: &mockTaskProvider{},
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
 		AllTools: []agent.Tool{
 			{Name: "bash"},
 			{Name: "read_file"},
@@ -63,8 +63,8 @@ func TestTaskToolBasic(t *testing.T) {
 
 func TestTaskToolUnknownAgent(t *testing.T) {
 	deps := &TaskToolDeps{
-		Provider: &mockTaskProvider{},
-		AllTools: []agent.Tool{{Name: "bash"}},
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
+		AllTools:        []agent.Tool{{Name: "bash"}},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
 			return nil // unknown agent
 		},
@@ -82,9 +82,9 @@ func TestTaskToolUnknownAgent(t *testing.T) {
 
 func TestTaskToolEmptyArgs(t *testing.T) {
 	deps := &TaskToolDeps{
-		Provider:       &mockTaskProvider{},
-		AllTools:       []agent.Tool{{Name: "bash"}},
-		GetAgentConfig: func(name string) *agent.AgentConfig { return nil },
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
+		AllTools:        []agent.Tool{{Name: "bash"}},
+		GetAgentConfig:  func(name string) *agent.AgentConfig { return nil },
 	}
 
 	tool := TaskTool(deps)
@@ -97,7 +97,7 @@ func TestTaskToolEmptyArgs(t *testing.T) {
 func TestTaskToolToolFiltering(t *testing.T) {
 	// Verify that denied tools are not passed to sub-agent
 	deps := &TaskToolDeps{
-		Provider: &mockTaskProvider{},
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
 		AllTools: []agent.Tool{
 			{Name: "bash"},
 			{Name: "read_file"},
@@ -129,7 +129,7 @@ func TestTaskToolToolFiltering(t *testing.T) {
 func TestTaskToolTimeout(t *testing.T) {
 	// Use a provider that hangs to test timeout
 	deps := &TaskToolDeps{
-		Provider: &mockTaskProvider{},
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
 		AllTools: []agent.Tool{
 			{Name: "bash"},
 		},
@@ -169,8 +169,8 @@ func TestTaskCollectBasic(t *testing.T) {
 	processed := make(chan string, 1)
 
 	taskID := mgr.Start(&TaskToolDeps{
-		Provider: &mockTaskProvider{},
-		AllTools: []agent.Tool{{Name: "bash"}, {Name: "read_file"}},
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
+		AllTools:        []agent.Tool{{Name: "bash"}, {Name: "read_file"}},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
 			return &agent.AgentConfig{
 				Name:        name,
@@ -214,8 +214,8 @@ func TestTaskCollectUnknownTask(t *testing.T) {
 func TestBgTaskStatus(t *testing.T) {
 	mgr := NewBackgroundTaskManager()
 	taskID := mgr.Start(&TaskToolDeps{
-		Provider: &mockTaskProvider{},
-		AllTools: []agent.Tool{{Name: "bash"}},
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
+		AllTools:        []agent.Tool{{Name: "bash"}},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
 			return &agent.AgentConfig{
 				Name:        name,
@@ -280,8 +280,8 @@ func (p *blockingProvider) Name() string         { return "blocking" }
 // subagentDeps returns deps with a permissive config for the given provider.
 func subagentDeps(provider agent.LLMProvider) *TaskToolDeps {
 	return &TaskToolDeps{
-		Provider: provider,
-		AllTools: []agent.Tool{{Name: "bash"}},
+		ResolveProvider: fixedProvider(provider),
+		AllTools:        []agent.Tool{{Name: "bash"}},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
 			return &agent.AgentConfig{
 				Name:     name,
@@ -435,8 +435,8 @@ func TestBgTaskCollectContextCancellation(t *testing.T) {
 func TestBgTaskUnknownAgentConcurrentStatus(t *testing.T) {
 	mgr := NewBackgroundTaskManager()
 	id := mgr.Start(&TaskToolDeps{
-		Provider:       &mockTaskProvider{},
-		GetAgentConfig: func(string) *agent.AgentConfig { return nil },
+		ResolveProvider: fixedProvider(&mockTaskProvider{}),
+		GetAgentConfig:  func(string) *agent.AgentConfig { return nil },
 	}, "nope", "goal")
 
 	stop := make(chan struct{})
@@ -463,5 +463,91 @@ func TestBgTaskUnknownAgentConcurrentStatus(t *testing.T) {
 	}
 	if status := mgr.Status(id); status != "failed" {
 		t.Fatalf("expected 'failed' status, got: %q", status)
+	}
+}
+
+// fixedProvider adapts one provider to the resolver shape: every route, named or
+// empty, resolves to it. Tests that care about which route was asked for use a
+// resolver of their own.
+func fixedProvider(p agent.LLMProvider) func(string) (agent.LLMProvider, error) {
+	return func(string) (agent.LLMProvider, error) { return p, nil }
+}
+
+// TestTaskSubAgentUsesItsConfiguredRoute: a delegated agent's route selects its
+// provider, and the lookup happens when the task starts rather than at startup
+// (roadmap A5).
+func TestTaskSubAgentUsesItsConfiguredRoute(t *testing.T) {
+	var mu sync.Mutex
+	var asked []string
+	first := &mockTaskProvider{}
+	second := &mockTaskProvider{}
+	deps := &TaskToolDeps{
+		ResolveProvider: func(route string) (agent.LLMProvider, error) {
+			mu.Lock()
+			asked = append(asked, route)
+			mu.Unlock()
+			if route == "second" {
+				return second, nil
+			}
+			return first, nil
+		},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{Name: name, Mode: agent.AgentModeSubagent, MaxSteps: 5, Route: "second"}
+		},
+	}
+	out, err := TaskTool(deps).Execute(context.Background(), map[string]any{"agent": "general", "goal": "x"})
+	if err != nil {
+		t.Fatalf("task: %v", err)
+	}
+	if !strings.Contains(out, "mock result") {
+		t.Fatalf("task output = %q", out)
+	}
+	if second.calls != 1 || first.calls != 0 {
+		t.Errorf("calls = first:%d second:%d, want the pinned provider only", first.calls, second.calls)
+	}
+	if len(asked) != 1 || asked[0] != "second" {
+		t.Errorf("resolver asked for %v, want [second]", asked)
+	}
+}
+
+// TestTaskSubAgentWithoutARouteFollowsTheSession: no pin means the resolver's
+// active provider, asked as the empty route.
+func TestTaskSubAgentWithoutARouteFollowsTheSession(t *testing.T) {
+	var asked []string
+	active := &mockTaskProvider{}
+	deps := &TaskToolDeps{
+		ResolveProvider: func(route string) (agent.LLMProvider, error) {
+			asked = append(asked, route)
+			return active, nil
+		},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{Name: name, Mode: agent.AgentModeSubagent, MaxSteps: 5}
+		},
+	}
+	if _, err := TaskTool(deps).Execute(context.Background(), map[string]any{"agent": "general", "goal": "x"}); err != nil {
+		t.Fatalf("task: %v", err)
+	}
+	if len(asked) != 1 || asked[0] != "" {
+		t.Errorf("resolver asked for %v, want [\"\"] so the session decides", asked)
+	}
+	if active.calls != 1 {
+		t.Errorf("active provider calls = %d, want 1", active.calls)
+	}
+}
+
+// TestTaskSubAgentRouteErrorIsReported keeps a bad pin from turning into a task
+// that silently uses another provider.
+func TestTaskSubAgentRouteErrorIsReported(t *testing.T) {
+	deps := &TaskToolDeps{
+		ResolveProvider: func(string) (agent.LLMProvider, error) {
+			return nil, fmt.Errorf(`no provider named "gone"`)
+		},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{Name: name, Mode: agent.AgentModeSubagent, MaxSteps: 5, Route: "gone"}
+		},
+	}
+	_, err := TaskTool(deps).Execute(context.Background(), map[string]any{"agent": "general", "goal": "x"})
+	if err == nil || !strings.Contains(err.Error(), `no provider named "gone"`) {
+		t.Fatalf("error = %v, want the resolver's refusal", err)
 	}
 }

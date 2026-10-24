@@ -177,6 +177,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err := m.provReg.SwitchTo(idx); err == nil {
 						m.agent.Provider = m.provReg.Current()
 						m.ShowStatus(m.provReg.CurrentName())
+						// A pin outranks the session picker. Say so rather than
+						// letting the switch look effective when it is not
+						// (roadmap A5).
+						if m.agent.Config != nil && m.agent.Config.Route != "" && m.agent.Config.Route != m.provReg.CurrentRoute() {
+							m.ShowStatus(fmt.Sprintf("%s — agent %q keeps route %s",
+								m.provReg.CurrentName(), m.agent.Config.Name, m.agent.Config.Route))
+						}
 					}
 				}
 				m.selectingProvider = false
@@ -986,7 +993,11 @@ func (m *TuiModel) persistSession() {
 		})
 	}
 	if m.provReg != nil {
+		// Two names, two purposes: ModelName is what the session list shows, and
+		// ProviderName is the configuration route a resume can restore (roadmap
+		// A5, issue #284).
 		s.ModelName = m.provReg.Current().Name()
+		s.ProviderName = m.provReg.CurrentRoute()
 	}
 	if m.sessionTitle != "" {
 		s.Title = m.sessionTitle
