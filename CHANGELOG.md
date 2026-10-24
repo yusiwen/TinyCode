@@ -9,6 +9,28 @@ back to its change and tests.
 
 ## Unreleased
 
+### An agent can be routed to the provider it names
+
+A5, S1. `agents.<name>.model` now reads the whole `"<route>/<model>"` value instead of dropping
+everything before the first slash. The route half selects the configured provider; the model half
+overrides that provider's default. A prefix that names no configured route, an empty half, and two
+providers sharing a name are startup errors naming the configuration key, because a pin that silently
+went to another provider is the behaviour this removes.
+
+The route is resolved when a call is made, through a resolver on the agent, so a session-wide
+`/model` switch does not override a pin and an agent with no pin follows the switch. `task` and
+background sub-agents resolve their route when they start instead of inheriting the provider captured
+at startup, and the `web_extract` summarizer follows the active route for the same reason.
+
+A session file now stores `provider_name` — the configuration route — separately from `model_name`,
+which remains the provider's display value (`openai/<model>`). Resuming restores the saved route; a
+route that no longer exists warns once and keeps the default. Before this, restore matched the
+display name against configuration names, which never matched, so a resumed session silently used the
+default provider (issue #284).
+
+What this does not do yet: no automatic failover between routes (S2), and no failover is recorded or
+shown (S3).
+
 ### Prompt caching can be asked for, and a cache hit is visible
 
 A4. `providers[].prompt_cache` selects `off` (the default), `auto` or `explicit`; `auto` sends a

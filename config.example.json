@@ -112,7 +112,7 @@
   },
 
   "agents": {
-    "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), permissions (an explicit ruleset that REPLACES both the built-in ruleset and the two tool lists: [{action, resource, effect: allow|deny}], last match wins), model.",
+    "$comment": "Per-agent overrides. Supported keys: max_steps, system_prompt, allowed_tools (whitelist), denied_tools (added on top of the agent's built-in rules), permissions (an explicit ruleset that REPLACES both the built-in ruleset and the two tool lists: [{action, resource, effect: allow|deny}], last match wins), model. A model of the form \"<route>/<model>\" selects the provider as well: the route must be one of the names in providers[] above, the model half overrides that route's own model, and an unknown route stops startup. A value without a slash is a bare model override on the session's active provider. A sub-agent inherits its own pin, not the session's provider.",
     "plan": {
       "max_steps": 20,
       "denied_tools": ["write_file", "git_commit", "sandbox_allow", "task", "skill_manage"]

@@ -130,7 +130,7 @@ func newRootCmd() *cobra.Command {
 			}
 
 			reg := agent.NewRegistry()
-			if err := applyAgentOverrides(reg, &cfg); err != nil {
+			if err := applyAgentOverrides(reg, &cfg, provReg); err != nil {
 				return err
 			}
 			if cfg.DefaultMode != "" {
@@ -138,6 +138,10 @@ func newRootCmd() *cobra.Command {
 			}
 
 			ag := agent.New(provReg.Current())
+			// A route pinned on an agent is resolved through the registry at call
+			// time, so a session-wide switch does not silently override the pin
+			// (roadmap A5).
+			ag.Resolver = provReg
 			aCfg := reg.Current()
 			ag.Config = aCfg
 			ag.ShowThinking = true
@@ -316,9 +320,12 @@ func newRootCmd() *cobra.Command {
 			bgTaskMgr := tool.NewBackgroundTaskManager()
 			allToolList := ag.Tools // snapshot of tools registered so far
 			taskTool := tool.TaskTool(&tool.TaskToolDeps{
-				Provider:  provReg.Current(),
-				AllTools:  allToolList,
-				BgTaskMgr: bgTaskMgr,
+				// A sub-agent resolves its own route (or the active provider when
+				// it has none) at the moment it starts, rather than inheriting a
+				// provider captured here at startup (roadmap A5).
+				ResolveProvider: provReg.Resolve,
+				AllTools:        allToolList,
+				BgTaskMgr:       bgTaskMgr,
 				// Sub-agents enforce the same limits against their own spend.
 				BudgetTokensPerRun:     ag.BudgetTokensPerRun,
 				BudgetTokensPerSession: ag.BudgetTokensPerSession,
@@ -360,9 +367,14 @@ func newRootCmd() *cobra.Command {
 
 			// Sandbox
 			ag.AddTool(tool.SandboxAllowTool())
-			// Wire LLM summarizer for web_extract (content >5000 chars)
-			provider := provReg.Current()
+			// Wire LLM summarizer for web_extract (content >5000 chars). It
+			// resolves the active route per call: a provider switch made after
+			// startup must reach it (roadmap A5).
 			tool.SetSummarizer(func(ctx context.Context, content string) (string, error) {
+				provider, err := provReg.Resolve("")
+				if err != nil {
+					return "", err
+				}
 				resp, err := provider.Chat(ctx, types.ChatRequest{
 					Messages: []types.Message{
 						{Role: types.RoleSystem, Content: "Summarize the following web page content in 3-5 sentences. Focus on key facts, data, and conclusions."},
@@ -840,6 +852,21 @@ func providerRuntime(pc config.ProviderRecordConfig, primary bool, model, baseUR
 // prefix is cached. The error names the route and, through ResolvePromptCache,
 // the accepted values (roadmap A4).
 func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) (*agent.ProviderRegistry, error) {
+	// A route is referenced by name (an agent pin, a failover entry, a restored
+	// session), so two entries sharing one name would make every such reference
+	// ambiguous. Unnamed entries stay legal: they simply cannot be referenced.
+	named := make(map[string]int, len(cfg.Providers))
+	for i, pc := range cfg.Providers {
+		if pc.Name == "" {
+			continue
+		}
+		if first, ok := named[pc.Name]; ok {
+			return nil, fmt.Errorf("providers: %q is declared twice (entries #%d and #%d)",
+				pc.Name, first+1, i+1)
+		}
+		named[pc.Name] = i
+	}
+
 	var records []agent.ProviderRecord
 	for i, pc := range cfg.Providers {
 		primary := i == 0
@@ -964,7 +991,11 @@ func windowPrice(entry config.PriceWindowEntry) agent.Price {
 // Unknown agent names are ignored so a stale config entry cannot break startup,
 // but an invalid permission effect is an error: silently dropping it would grant
 // or deny the wrong tools.
-func applyAgentOverrides(reg *agent.Registry, cfg *config.Config) error {
+//
+// A model of the form "<route>/<model>" also selects the provider: the route half
+// is resolved against the registry here so a typo is a startup error rather than a
+// run that quietly uses another provider (roadmap A5).
+func applyAgentOverrides(reg *agent.Registry, cfg *config.Config, routes agent.RouteResolver) error {
 	for name, override := range cfg.Agents {
 		aCfg, err := reg.Get(name)
 		if err != nil {
@@ -1002,12 +1033,21 @@ func applyAgentOverrides(reg *agent.Registry, cfg *config.Config) error {
 			aCfg.Permissions = agent.TranslateToolLists(aCfg.Permissions, override.AllowedTools, override.DeniedTools)
 		}
 		if override.Model != "" {
-			// Support "<provider>/<model>" and bare "<model>" formats
-			if _, after, ok := strings.Cut(override.Model, "/"); ok {
-				aCfg.Model = after // use model part, ignore provider for now
-			} else {
-				aCfg.Model = override.Model
+			route, model, err := agent.ParseRoute(override.Model)
+			if err != nil {
+				return fmt.Errorf("agents.%s.model: %w", name, err)
 			}
+			if route != "" {
+				if routes == nil {
+					return fmt.Errorf("agents.%s.model: route %q cannot be resolved without a provider registry",
+						name, route)
+				}
+				if _, err := routes.Resolve(route); err != nil {
+					return fmt.Errorf("agents.%s.model: %w", name, err)
+				}
+			}
+			aCfg.Route = route
+			aCfg.Model = model
 		}
 	}
 	return nil

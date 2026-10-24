@@ -134,8 +134,15 @@ Conversation to summarize:
 
 Provide a concise summary in 3-5 sentences.`, middleText.String())
 
+	// The summarizer runs on the same route the agent's calls go to: a pinned
+	// agent should not summarize through a different provider than the one it
+	// works on (roadmap A5).
+	summarizerProvider, err := a.chatProvider()
+	if err != nil {
+		return nil, err
+	}
 	summarizer := &Agent{
-		Provider: a.Provider,
+		Provider: summarizerProvider,
 		Config: &AgentConfig{
 			Name:     "compact",
 			Mode:     AgentModePrimary,

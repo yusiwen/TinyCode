@@ -21,8 +21,11 @@ var taskTimeout = syncTaskTimeoutDefault
 
 // TaskToolDeps holds the dependencies the task tool needs to create sub-agents.
 type TaskToolDeps struct {
-	// Provider is the shared LLM provider for sub-agents.
-	Provider agent.LLMProvider
+	// ResolveProvider names the provider a route refers to; the empty route is the
+	// session's active provider. It is resolved when a sub-agent starts rather
+	// than captured at startup, so a provider switch made in the session reaches
+	// the sub-agents too (roadmap A5).
+	ResolveProvider func(route string) (agent.LLMProvider, error)
 	// AllTools is the full list of registered tools available for sub-agents.
 	AllTools []agent.Tool
 	// GetAgentConfig returns a sub-agent config by name (from DefaultAgents).
@@ -45,6 +48,24 @@ type TaskToolDeps struct {
 	// cost attribution problem, and a record that pooled it into the parent's
 	// file could not answer which agent spent it.
 	ParentRun func() *agent.TrajectoryRun
+}
+
+// resolveTaskProvider picks the provider a sub-agent's configured route names. An
+// agent with no route uses the session's active provider, which is why the lookup
+// happens here rather than at startup.
+func resolveTaskProvider(deps *TaskToolDeps, cfg *agent.AgentConfig) (agent.LLMProvider, error) {
+	if deps.ResolveProvider == nil {
+		return nil, fmt.Errorf("task: no provider resolver is attached")
+	}
+	route := ""
+	if cfg != nil {
+		route = cfg.Route
+	}
+	provider, err := deps.ResolveProvider(route)
+	if err != nil {
+		return nil, fmt.Errorf("task: %w", err)
+	}
+	return provider, nil
 }
 
 // TaskTool creates the task tool for delegating to sub-agents.
@@ -109,8 +130,18 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			}
 			tlog.Debug("task", "agent_label", "agent", name)
 			SetAgentLabel(name)
-			sub := agent.New(deps.Provider)
-			sub.Config = cfg
+			provider, err := resolveTaskProvider(deps, cfg)
+			if err != nil {
+				return "", err
+			}
+			sub := agent.New(provider)
+			// The route was resolved into the provider above, so the sub-agent
+			// must not try to resolve it again: it has no registry, and keeping
+			// the route would make every call fail. The config is copied because
+			// the registry's entry is shared with other agents (roadmap A5).
+			subCfg := *cfg
+			subCfg.Route = ""
+			sub.Config = &subCfg
 			sub.Tools = subTools
 			sub.MaxSteps = cfg.MaxSteps
 			sub.ShowThinking = false

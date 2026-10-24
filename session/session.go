@@ -17,11 +17,16 @@ import (
 
 // Session stores conversation history.
 type Session struct {
-	mu           sync.Mutex
-	ID           string    `json:"id"`
-	Title        string    `json:"title,omitempty"`
-	Preview      string    `json:"preview,omitempty"`
+	mu      sync.Mutex
+	ID      string `json:"id"`
+	Title   string `json:"title,omitempty"`
+	Preview string `json:"preview,omitempty"`
+	// ModelName is the display name of the provider the session ran on
+	// ("openai/<model>"). ProviderName is the configuration route that can be
+	// restored: the two are different namespaces, and matching one against the
+	// other silently restored nothing (roadmap A5, issue #284).
 	ModelName    string    `json:"model_name,omitempty"`
+	ProviderName string    `json:"provider_name,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	MessageCount int       `json:"message_count"`
@@ -298,6 +303,7 @@ func (st *Store) Fork(parentID string, forkAt int, label string) (*Session, erro
 		UpdatedAt:       time.Now(),
 		Title:           parent.Title,
 		ModelName:       parent.ModelName,
+		ProviderName:    parent.ProviderName,
 		MessageCount:    forkAt,
 		// The objective and the rounds already spent travel with the branch: a
 		// fork is a different attempt at the same work, not a fresh one. The

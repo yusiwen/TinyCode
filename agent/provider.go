@@ -98,6 +98,45 @@ func (r *ProviderRegistry) SwitchToName(name string) error {
 	return fmt.Errorf("provider %q not found", name)
 }
 
+// CurrentRoute returns the configuration name of the active provider, which is
+// the name a route reference and a saved session use. It is not the provider's
+// own Name(): that one describes the backend and model ("openai/<model>"), and
+// the two must not be confused when a session is restored (roadmap A5).
+func (r *ProviderRegistry) CurrentRoute() string {
+	if r == nil || len(r.records) == 0 {
+		return ""
+	}
+	return r.records[r.current].Name
+}
+
+// RouteResolver names the provider a configured route refers to.
+//
+// An empty route means the session's active provider, which is what an agent
+// without a pin uses. The resolver is consulted at call time rather than when an
+// agent is built, because the session can switch provider while the same agent
+// stays in use (roadmap A5).
+type RouteResolver interface {
+	Resolve(route string) (LLMProvider, error)
+}
+
+// Resolve returns the provider a route names, or the active one when route is
+// empty. An unknown name is an error: a typo in a pin must be visible at
+// startup, not silently replaced by whichever route happens to be active.
+func (r *ProviderRegistry) Resolve(route string) (LLMProvider, error) {
+	if r == nil || len(r.records) == 0 {
+		return nil, fmt.Errorf("no provider is configured")
+	}
+	if route == "" {
+		return r.records[r.current].Provider, nil
+	}
+	for _, rec := range r.records {
+		if rec.Name == route {
+			return rec.Provider, nil
+		}
+	}
+	return nil, fmt.Errorf("no provider named %q", route)
+}
+
 // Tool is a single action the agent can invoke.
 type Tool struct {
 	Name        string

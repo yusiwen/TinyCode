@@ -15,8 +15,14 @@ type AgentConfig struct {
 	Hidden       bool // hidden from Tab switching and user-facing lists
 	Description  string
 	SystemPrompt string
-	MaxSteps     int      // 0 = unlimited
-	Model        string   // "<provider>/<model>", e.g. "deepseek/deepseek-v4-pro"
+	MaxSteps     int // 0 = unlimited
+	// Route is the configured provider this agent's calls go to, and Model is
+	// the model asked of it. They are parsed from a "<route>/<model>" override:
+	// the route half selects the provider, the model half overrides that
+	// provider's own default. An empty Route means the session's active
+	// provider, with Model as an override for it (roadmap A5).
+	Route        string
+	Model        string
 	AllowedTools []string // tool names allowed ("*" = all)
 	DeniedTools  []string // tool names explicitly denied
 	Permissions  Ruleset  // permission rules (replaces DeniedTools, Phase 3)

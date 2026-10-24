@@ -161,12 +161,18 @@ func splitPriceKey(key string) (route, model string, ok bool) {
 
 // priceKey names the route and model a call is priced against.
 //
-// The model is whatever the request actually used: an agent-level override when
-// it has one, otherwise the provider's own default. It comes from the provider
-// at call time rather than from a value captured when the agent was built,
-// because the route can be switched mid-session.
+// The provider is resolved from the agent's route first: an agent pinned to a
+// route is billed by that route, not by the session's active one. The model is
+// whatever the request actually used: an agent-level override when it has one,
+// otherwise the provider's own default. It comes from the provider at call time
+// rather than from a value captured when the agent was built, because the route
+// can be switched mid-session.
 func (a *Agent) priceKey() (string, bool) {
-	info, ok := a.Provider.(RouteInfo)
+	provider, err := a.chatProvider()
+	if err != nil || provider == nil {
+		return "", false
+	}
+	info, ok := provider.(RouteInfo)
 	if !ok {
 		return "", false
 	}

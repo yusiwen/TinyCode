@@ -685,7 +685,10 @@ func TestApplyAgentOverrides(t *testing.T) {
 	}}
 
 	reg := agent.NewRegistry()
-	if err := applyAgentOverrides(reg, cfg); err != nil {
+	routes := agent.NewProviderRegistry([]agent.ProviderRecord{
+		{Name: "deepseek", Provider: &agent.MockProvider{}},
+	})
+	if err := applyAgentOverrides(reg, cfg, routes); err != nil {
 		t.Fatalf("applyAgentOverrides: %v", err)
 	}
 
@@ -696,8 +699,8 @@ func TestApplyAgentOverrides(t *testing.T) {
 	if build.MaxSteps != 7 || build.SystemPrompt != "be terse" {
 		t.Fatalf("build = %+v, want the configured steps and prompt", build)
 	}
-	if build.Model != "deepseek-v4-pro" {
-		t.Fatalf("build model = %q, want the model part of provider/model", build.Model)
+	if build.Route != "deepseek" || build.Model != "deepseek-v4-pro" {
+		t.Fatalf("build route/model = %q/%q, want the two halves of provider/model", build.Route, build.Model)
 	}
 	if len(build.Permissions) != 1 {
 		t.Fatalf("build permissions = %#v, want exactly the configured ruleset", build.Permissions)
@@ -729,7 +732,7 @@ func TestApplyAgentOverrides(t *testing.T) {
 	bad := &config.Config{Agents: map[string]config.AgentOverride{
 		"build": {Permissions: []config.AgentRule{{Action: "bash", Effect: "maybe"}}},
 	}}
-	if err := applyAgentOverrides(agent.NewRegistry(), bad); err == nil {
+	if err := applyAgentOverrides(agent.NewRegistry(), bad, nil); err == nil {
 		t.Fatal("expected an error for an unknown permission effect")
 	}
 }
@@ -889,5 +892,122 @@ func TestUndoCommandRestoresTheLastToolCall(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(target); string(got) != "before\n" {
 		t.Errorf("the second --undo changed the file to %q", got)
+	}
+}
+
+// TestApplyAgentOverridesRejectsAnUnknownRoute: a pin that names no configured
+// provider is a startup error, not a silent route change (roadmap A5).
+func TestApplyAgentOverridesRejectsAnUnknownRoute(t *testing.T) {
+	cfg := &config.Config{Agents: map[string]config.AgentOverride{
+		"build": {Model: "nowhere/m"},
+	}}
+	routes := agent.NewProviderRegistry([]agent.ProviderRecord{
+		{Name: "deepseek", Provider: &agent.MockProvider{}},
+	})
+	err := applyAgentOverrides(agent.NewRegistry(), cfg, routes)
+	if err == nil ||
+		!strings.Contains(err.Error(), "agents.build.model") ||
+		!strings.Contains(err.Error(), `no provider named "nowhere"`) {
+		t.Fatalf("error = %v, want the configuration key and the unknown route", err)
+	}
+}
+
+// TestApplyAgentOverridesRejectsAnEmptyHalf: "route/" and "/model" are refused
+// rather than read as a bare model.
+func TestApplyAgentOverridesRejectsAnEmptyHalf(t *testing.T) {
+	routes := agent.NewProviderRegistry([]agent.ProviderRecord{
+		{Name: "deepseek", Provider: &agent.MockProvider{}},
+	})
+	for _, value := range []string{"deepseek/", "/m"} {
+		cfg := &config.Config{Agents: map[string]config.AgentOverride{"build": {Model: value}}}
+		if err := applyAgentOverrides(agent.NewRegistry(), cfg, routes); err == nil ||
+			!strings.Contains(err.Error(), "agents.build.model") {
+			t.Errorf("model %q error = %v, want a refusal naming agents.build.model", value, err)
+		}
+	}
+}
+
+// TestBuildProviderRegistryRejectsDuplicateNames: every route reference is by
+// name, so two entries sharing one would be ambiguous.
+func TestBuildProviderRegistryRejectsDuplicateNames(t *testing.T) {
+	cfg := &config.Config{Providers: []config.ProviderRecordConfig{
+		{Name: "deepseek", Type: "openai", Model: "m"},
+		{Name: "deepseek", Type: "openai", Model: "n"},
+	}}
+	_, err := buildProviderRegistry(cfg, "", "", "")
+	if err == nil || !strings.Contains(err.Error(), `"deepseek" is declared twice`) {
+		t.Fatalf("error = %v, want a duplicate-name refusal", err)
+	}
+}
+
+// TestAgentRouteReachesTheConfiguredProvider is the wiring check: the route from
+// `agents.build.model` survives buildProviderRegistry and applyAgentOverrides and
+// decides which server the request reaches.
+func TestAgentRouteReachesTheConfiguredProvider(t *testing.T) {
+	var mu sync.Mutex
+	var hits [2]int
+	var models []string
+	server := func(answer string, slot int) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			hits[slot]++
+			if m, ok := body["model"].(string); ok {
+				models = append(models, m)
+			}
+			mu.Unlock()
+			// The agent loop always passes callbacks, so the provider streams.
+			// Answer in SSE; a batch body would be read as an empty stream and
+			// the loop would keep asking until its step limit.
+			if stream, _ := body["stream"].(bool); stream {
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":%q}}]}\n\n", answer)
+				_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+				_, _ = io.WriteString(w, "data: [DONE]\n\n")
+				return
+			}
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"`+answer+`"}}]}`)
+		}))
+	}
+	first := server("first", 0)
+	defer first.Close()
+	second := server("second", 1)
+	defer second.Close()
+
+	cfg := &config.Config{
+		Providers: []config.ProviderRecordConfig{
+			{Name: "first", Type: "openai", Model: "m1", BaseURL: first.URL},
+			{Name: "second", Type: "openai", Model: "m2", BaseURL: second.URL},
+		},
+		Agents: map[string]config.AgentOverride{"build": {Model: "second/m2-pinned"}},
+	}
+	provReg, err := buildProviderRegistry(cfg, "sk-test", "", "")
+	if err != nil {
+		t.Fatalf("buildProviderRegistry: %v", err)
+	}
+	reg := agent.NewRegistry()
+	if err := applyAgentOverrides(reg, cfg, provReg); err != nil {
+		t.Fatalf("applyAgentOverrides: %v", err)
+	}
+	build, err := reg.Get("build")
+	if err != nil {
+		t.Fatalf("get build: %v", err)
+	}
+
+	ag := agent.New(provReg.Current())
+	ag.Resolver = provReg
+	ag.Config = build
+	if _, err := ag.Run(context.Background(), "hi"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if hits[0] != 0 || hits[1] != 1 {
+		t.Fatalf("server hits = %v, want only the pinned route", hits)
+	}
+	if len(models) != 1 || models[0] != "m2-pinned" {
+		t.Fatalf("models = %v, want the model half of the pin", models)
 	}
 }

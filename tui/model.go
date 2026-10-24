@@ -392,9 +392,24 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 			// Everything the session owns — transcript, model context, todos,
 			// goal, counters — changes in one place (issue #270).
 			m.adoptSession(sess)
-			// Restore provider/model from session
-			if sess.ModelName != "" && m.provReg != nil {
-				m.provReg.SwitchToName(sess.ModelName)
+			// Restore the route this session ran on. ModelName is the provider's
+			// own display name ("openai/<model>") and cannot be matched against a
+			// configuration name, so the route is stored separately (roadmap A5,
+			// issue #284). An old file has no route and keeps the process
+			// default, as it always effectively did.
+			if sess.ProviderName != "" && m.provReg != nil {
+				if err := m.provReg.SwitchToName(sess.ProviderName); err != nil {
+					m.messages = append(m.messages, chatMessage{
+						Role: "system",
+						Content: fmt.Sprintf("Route %q from this session is no longer configured; using %s.",
+							sess.ProviderName, m.provReg.CurrentRoute()),
+					})
+				}
+				// The agent follows the restored route, exactly as it follows a
+				// picker switch. A pinned route still wins at call time.
+				if m.agent != nil {
+					m.agent.Provider = m.provReg.Current()
+				}
 			}
 			// Restore allowed paths from session (Allow session)
 			for _, p := range sess.AllowedPaths {
