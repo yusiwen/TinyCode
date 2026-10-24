@@ -122,6 +122,7 @@ func TestRetryableErrorClassification(t *testing.T) {
 		{"transport", context.Background(), errors.New("dial tcp: connection refused"), true},
 		{"idle bound", context.Background(), errOpenAISilent, true},
 		{"ollama idle bound", context.Background(), errOllamaSilent, true},
+		{"native idle bound", context.Background(), errStreamSilent, true},
 		{"protocol", context.Background(), errors.New("parse response: unexpected end of JSON"), false},
 		{"no choices", context.Background(), errors.New("no choices returned"), false},
 		{"caller cancelled", cancelled, errors.New("dial tcp: connection refused"), false},

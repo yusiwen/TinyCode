@@ -19,11 +19,30 @@ import (
 
 // ProviderRecordConfig holds one provider definition.
 type ProviderRecordConfig struct {
-	Name      string `json:"name,omitempty"`
-	Type      string `json:"type,omitempty"` // "openai" or "ollama"
+	Name string `json:"name,omitempty"`
+	// Type selects the wire protocol: "openai" (the default, and the shape every
+	// OpenAI-compatible gateway speaks), "ollama", "anthropic", "gemini",
+	// "bedrock" or "azure". A native type exists because the compatible shape
+	// drops the vendor's own reasoning stream and its own billing lanes; an
+	// unknown type falls back to "openai", which is what the single-provider
+	// release did before any other backend existed (roadmap A6).
+	Type      string `json:"type,omitempty"`
 	Model     string `json:"model,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`
 	APIKeyEnv string `json:"api_key_env,omitempty"` // env var name for API key
+	// APIVersion is the Azure OpenAI REST version, for type "azure" only. It
+	// defaults to the pinned stable version when absent.
+	APIVersion string `json:"api_version,omitempty"`
+	// Region is the AWS region for type "bedrock". It wins over AWS_REGION and
+	// AWS_DEFAULT_REGION, which are read when it is absent.
+	Region string `json:"region,omitempty"`
+	// ThinkingBudgetTokens asks the route to reason before answering, in the
+	// vendors that charge for it (Anthropic, Gemini, Bedrock). Zero means the
+	// route's own default: no thinking request is sent. The value is passed
+	// through unchanged — each vendor has its own minimum and maximum — and a
+	// vendor that rejects it fails the call with the API's message, because
+	// guessing a budget would spend money on a value nobody chose.
+	ThinkingBudgetTokens int `json:"thinking_budget_tokens,omitempty"`
 	// PromptCache tells this route how to cache its prompt prefix (roadmap A4).
 	// Absent means "send no cache hints": DeepSeek, OpenAI and Gemini cache a
 	// stable prefix automatically, while Anthropic-style routes only cache what
@@ -327,8 +346,10 @@ type AgentOverride struct {
 }
 
 // APIKey returns the env var name to look up for this provider's API key.
-// Priority: api_key_env (if set) → UPPER(NAME)_API_KEY
-// Callers should fallback to OPENAI_API_KEY when this returns empty.
+// Priority: api_key_env (if set) → UPPER(NAME)_API_KEY → the type's convention.
+// A native backend falls back to its vendor's own variable, so an Anthropic
+// route named "claude" does not silently offer an OpenAI key to api.anthropic.com
+// (roadmap A6).
 func (p ProviderRecordConfig) APIKey() string {
 	if p.APIKeyEnv != "" {
 		return p.APIKeyEnv
@@ -336,7 +357,22 @@ func (p ProviderRecordConfig) APIKey() string {
 	if p.Name != "" {
 		return strings.ToUpper(p.Name) + "_API_KEY"
 	}
-	return "OPENAI_API_KEY"
+	return p.DefaultAPIKeyEnv()
+}
+
+// DefaultAPIKeyEnv is the conventional credential variable for this provider
+// type, used when the route has no name and no explicit api_key_env.
+func (p ProviderRecordConfig) DefaultAPIKeyEnv() string {
+	switch p.Type {
+	case "anthropic":
+		return "ANTHROPIC_API_KEY"
+	case "gemini":
+		return "GEMINI_API_KEY"
+	case "azure":
+		return "AZURE_OPENAI_API_KEY"
+	default:
+		return "OPENAI_API_KEY"
+	}
 }
 
 type LSPConfig struct {

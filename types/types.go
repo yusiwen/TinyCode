@@ -23,6 +23,13 @@ type Message struct {
 	ToolCallID       string     `json:"tool_call_id,omitempty"`
 	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	ReasoningContent string     `json:"reasoning_content,omitempty"` // DeepSeek thinking mode
+	// ReasoningSignature is the vendor's receipt for the reasoning block, when
+	// the vendor issues one. Anthropic and Bedrock require a thinking block to be
+	// sent back unmodified — signature included — on the next step of a
+	// tool-using turn, so the agent carries it from the response onto the
+	// assistant message (roadmap A6). Providers that do not sign reasoning leave
+	// it empty.
+	ReasoningSignature string `json:"reasoning_signature,omitempty"`
 }
 
 // Memory represents a remembered fact.
@@ -193,8 +200,12 @@ type ChatResponse struct {
 	Content          string
 	ToolCalls        []ToolCall
 	ReasoningContent string // DeepSeek thinking mode
-	Usage            *Usage // provider-reported token usage; nil when the endpoint reported none
-	Cost             *Cost  // provider-reported charge; nil when the endpoint reported none
+	// ReasoningSignature is the signature the vendor attached to the reasoning
+	// block. It must travel back with the text on the next step of a tool-using
+	// turn, which is why the agent copies it onto the assistant message.
+	ReasoningSignature string
+	Usage              *Usage // provider-reported token usage; nil when the endpoint reported none
+	Cost               *Cost  // provider-reported charge; nil when the endpoint reported none
 	// Route and Model name the route that actually served the call, which is not
 	// always the one the request was sent to: a caller may fail over to another
 	// route. They let the call be priced and recorded against the route that

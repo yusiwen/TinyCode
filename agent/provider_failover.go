@@ -187,7 +187,7 @@ func failureKind(err error) string {
 			return "status"
 		}
 	}
-	if errors.Is(err, errOpenAISilent) || errors.Is(err, errOllamaSilent) {
+	if isSilentStream(err) {
 		return "timeout"
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

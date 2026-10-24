@@ -272,6 +272,7 @@ func TestFailureKind(t *testing.T) {
 		{&statusError{status: 408}, "timeout"},
 		{&statusError{status: 400}, "status"},
 		{errOpenAISilent, "timeout"},
+		{errStreamSilent, "timeout"},
 		{errors.New("parse response: bad json"), "protocol"},
 		{errors.New("dial tcp: connection refused"), "network"},
 	}
