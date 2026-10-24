@@ -106,7 +106,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **1147 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
+- **1174 test functions + 10 fuzz targets** in the main module — the one `go test ./... -count=1` runs, since `tuiprobe/` is a nested module — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally
@@ -244,6 +244,17 @@ type LLMProvider interface {
 ```
 
 - **DeepSeek** (default): streaming SSE support, `deepseek-flash`
+- **Native vendor backends**: `type` selects the wire protocol rather than a translation layer —
+  `"anthropic"` (Messages API, extended thinking with a replayed signature, `cache_control`),
+  `"gemini"` (`generateContent`, `thought` parts, `usageMetadata` lanes), `"bedrock"` (Converse and
+  ConverseStream, SigV4 from the environment) and `"azure"` (a deployment path with `api-key`
+  auth). `"openai"` stays the compatible default for DeepSeek, OpenAI, OpenRouter, Groq and the
+  vendors' own compatible endpoints. Each native backend reports the vendor's reasoning stream and
+  its cache/thought billing lanes on the same `types.Usage` the compatible route fills, so pricing,
+  budgets and failover work unchanged. Credentials fall back to the vendor's own variable
+  (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `AZURE_OPENAI_API_KEY`, or the AWS pair
+  for Bedrock) and never to `OPENAI_API_KEY`.
+- **Ollama**: `"ollama"` for the native `/api/chat` endpoint, or `"openai"` against `/v1`
 - **MockLLM**: step-by-step scripted responses for agent loop testing
 - **ProviderRegistry**: switch providers at runtime via Tab
 
@@ -255,6 +266,13 @@ type LLMProvider interface {
   a prefix that names no configured route is a startup error rather than a silent fallback.
 - The same names key `pricing.prices` (`"<route>/<model>"`), and a session remembers the route it
   ran on.
+
+A route's cache policy is per backend: `off` always; `auto` on the compatible route (a routing
+key) and Gemini (its automatic caching); `explicit` on the compatible route's `cache_control`,
+Anthropic and Bedrock's `cachePoint`. Azure and native Ollama accept only `off` because their caching
+happens without a request hint. A mode the backend cannot honour stops startup instead of being
+dropped. `thinking_budget_tokens` is opt-in and only accepted by the three reasoning
+backends; the value is passed through unchanged.
 
 A route can declare where to go when it fails: `providers[].failover: ["openrouter", "ollama"]` is
 tried in order after the primary's own retry budget is spent, and only for a transient failure
