@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -38,7 +39,7 @@ var (
 // opaque transport error a cancelled context produces.
 var errOpenAISilent = errors.New("stream went silent")
 
-// openAIRequestError prefers the bound that fired over the transport error it
+// contextRequestError prefers the bound that fired over the transport error it
 // produced: a cancelled request surfaces as "context canceled" or a closed
 // connection, neither of which says why.
 //
@@ -46,7 +47,7 @@ var errOpenAISilent = errors.New("stream went silent")
 // classifies its own cancellation with errors.Is(err, context.Canceled) — a TUI
 // run shows "Interrupted" that way — while the transport error still explains
 // what the read saw.
-func openAIRequestError(ctx context.Context, err error) error {
+func contextRequestError(ctx context.Context, err error) error {
 	cause := context.Cause(ctx)
 	if cause == nil {
 		return err
@@ -63,6 +64,16 @@ type OpenAIProvider struct {
 	model   string
 	apiKey  string
 	baseURL string
+
+	// chatURL, authHeader and authValue describe where one request goes and how
+	// it is authenticated. They exist so the Azure route can reuse this provider's
+	// entire body, stream and usage code while addressing a deployment path with
+	// the api-key header (roadmap A6). A provider built by NewOpenAIProvider gets
+	// the OpenAI-compatible values.
+	chatURL    func(model string) string
+	authHeader string
+	authValue  string
+	namePrefix string
 
 	// route is the name the user gave this provider in config.json, and
 	// costCurrency is the unit its route bills a reported cost in. Both are set
@@ -120,15 +131,71 @@ func NewOpenAIProvider(apiKey, baseURL, model string) *OpenAIProvider {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = baseURL
 	return &OpenAIProvider{
-		client:  openai.NewClientWithConfig(config),
-		model:   model,
-		apiKey:  apiKey,
-		baseURL: baseURL,
+		client:     openai.NewClientWithConfig(config),
+		model:      model,
+		apiKey:     apiKey,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		chatURL:    func(string) string { return strings.TrimRight(baseURL, "/") + "/chat/completions" },
+		authHeader: "Authorization",
+		authValue:  "Bearer " + apiKey,
+		namePrefix: "openai",
 	}
 }
 
+// NewAzureOpenAIProvider creates a route that speaks the OpenAI-compatible shape
+// against an Azure OpenAI deployment.
+//
+// Azure differs from the compatible route in three small ways, none of which
+// touches the request body: the deployment is part of the path, the API version
+// is a query parameter, and the credential travels in an api-key header. Reusing
+// this provider is deliberate — retry, prompt caching, streaming, usage and tool
+// calls are the same protocol, and a second copy would drift.
+func NewAzureOpenAIProvider(apiKey, baseURL, deployment, apiVersion string) *OpenAIProvider {
+	base := strings.TrimRight(baseURL, "/")
+	if strings.TrimSpace(apiVersion) == "" {
+		apiVersion = azureAPIVersion
+	}
+	endpoint := func(model string) string {
+		if model == "" {
+			model = deployment
+		}
+		return base + "/openai/deployments/" + url.PathEscape(model) +
+			"/chat/completions?api-version=" + url.QueryEscape(apiVersion)
+	}
+	config := openai.DefaultConfig(apiKey)
+	config.BaseURL = base
+	return &OpenAIProvider{
+		client:     openai.NewClientWithConfig(config),
+		model:      deployment,
+		apiKey:     apiKey,
+		baseURL:    base,
+		chatURL:    endpoint,
+		authHeader: "api-key",
+		authValue:  apiKey,
+		namePrefix: "azure",
+	}
+}
+
+// azureAPIVersion is the stable Azure OpenAI REST version used when a route does
+// not name one. It is pinned rather than "latest" so a request's shape does not
+// change under a user between runs.
+const azureAPIVersion = "2024-10-21"
+
 func (p *OpenAIProvider) Name() string {
-	return fmt.Sprintf("openai/%s", p.model)
+	prefix := p.namePrefix
+	if prefix == "" {
+		prefix = "openai"
+	}
+	return fmt.Sprintf("%s/%s", prefix, p.model)
+}
+
+// requestURL is where one request goes. A provider built by a struct literal (a
+// parser-level test) has no function and keeps the old path.
+func (p *OpenAIProvider) requestURL(model string) string {
+	if p.chatURL != nil {
+		return p.chatURL(model)
+	}
+	return strings.TrimRight(p.baseURL, "/") + "/chat/completions"
 }
 
 func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
@@ -248,7 +315,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		attempts = attempt
 		tracker := trackedCallbacks(req.StreamCallbacks)
-		resp, err := p.attempt(ctx, body, tracker.callbacks())
+		resp, err := p.attempt(ctx, model, body, tracker.callbacks())
 		if err == nil {
 			// Name the route and model that served the call: a caller may have
 			// failed over to this provider, and pricing must follow the route
@@ -281,7 +348,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 // and no bound lives on the client (issues #185, #186). Both are per-attempt: a
 // retry deserves a fresh clock rather than the remainder of the one its
 // predecessor spent.
-func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
+func (p *OpenAIProvider) attempt(ctx context.Context, model string, body []byte, cb *types.StreamCallbacks) (*types.ChatResponse, error) {
 	reqCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
@@ -306,14 +373,17 @@ func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.Str
 	defer watchdog.Stop()
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost,
-		p.baseURL+"/chat/completions",
+		p.requestURL(model),
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	authVal := fmt.Sprintf("Bearer %s", p.apiKey)
-	httpReq.Header.Set("Authorization", authVal)
+	if p.authHeader != "" {
+		httpReq.Header.Set(p.authHeader, p.authValue)
+	} else {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 
 	// No http.Client.Timeout: it would bound the streaming path's whole
 	// generation too. The request context above bounds both shapes, and the
@@ -323,7 +393,7 @@ func (p *OpenAIProvider) attempt(ctx context.Context, body []byte, cb *types.Str
 	start := time.Now()
 	if err != nil {
 		tlog.Error("llm.provider", "api error", "error", err)
-		return nil, fmt.Errorf("api call: %w", openAIRequestError(reqCtx, err))
+		return nil, fmt.Errorf("api call: %w", contextRequestError(reqCtx, err))
 	}
 	defer httpResp.Body.Close()
 
@@ -513,7 +583,7 @@ func (p *OpenAIProvider) chatStream(ctx context.Context, body io.ReadCloser, sta
 
 	if err := scanner.Err(); err != nil {
 		tlog.Warn("llm.provider", "sse_scan_error", "error", err.Error())
-		return nil, fmt.Errorf("openai stream: %w", openAIRequestError(ctx, err))
+		return nil, fmt.Errorf("openai stream: %w", contextRequestError(ctx, err))
 	}
 
 	result.ReasoningContent = reasoning.String()

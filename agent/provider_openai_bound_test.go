@@ -25,7 +25,7 @@ func TestOpenAIRequestErrorClassifiesCallerCancellation(t *testing.T) {
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	got := openAIRequestError(cancelled, transportErr)
+	got := contextRequestError(cancelled, transportErr)
 	if !errors.Is(got, context.Canceled) {
 		t.Errorf("on a cancelled context, error = %v, want errors.Is(err, context.Canceled)", got)
 	}
@@ -37,7 +37,7 @@ func TestOpenAIRequestErrorClassifiesCallerCancellation(t *testing.T) {
 	// reader needs, and it is what the error message has to name.
 	silent, silence := context.WithCancelCause(context.Background())
 	silence(errOpenAISilent)
-	if got := openAIRequestError(silent, transportErr); !errors.Is(got, errOpenAISilent) {
+	if got := contextRequestError(silent, transportErr); !errors.Is(got, errOpenAISilent) {
 		t.Errorf("on a bound cancellation, error = %v, want the bound", got)
 	}
 }
