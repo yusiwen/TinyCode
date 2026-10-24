@@ -138,6 +138,14 @@ mode the stub answers identically every time and the agent loops until the step 
 that is what the first capture of this path showed, steps 6 through 19 all
 "calling tools: bash".
 
+`failover-counted` uses two stubs — a primary in `down` mode that answers every request
+with 429, and a fallback that answers once — against a committed two-route configuration
+(`tui/testdata/scenarios/config/failover.json`, since `--base-url` overrides the primary
+only). It asserts the answer drawn once, the route-change notice once, the primary's full
+retry budget (`requests=3`) and exactly one request on the fallback. The policy is the
+provider's to decide; this scenario is the end-to-end consequence, in one-shot mode where a
+repaint cannot hide a duplicated answer (roadmap A5).
+
 Two scenarios cover the approval dialog, which only appears in **build** mode — plan mode
 does not ask about writes at all (measured: the same write in plan mode just loops
 `calling tools`). `permission-allow` answers `1` (Allow once) and `permission-deny`
