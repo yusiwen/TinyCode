@@ -810,14 +810,19 @@ func loadProjectContext() string {
 }
 
 // resolveProviderKey returns the API key for one configured provider. An
-// explicit api_key_env wins; otherwise UPPER(name)_API_KEY is used. When no
-// explicit env var is configured and the derived one is empty, OPENAI_API_KEY is
-// the generic fallback. The --api-key flag overrides the primary provider only,
-// which preserves the single-provider behaviour without affecting the others.
+// explicit api_key_env wins; otherwise UPPER(name)_API_KEY is used, then the
+// type's own conventional variable. The type matters: an Anthropic route named
+// "claude" must not quietly hand OPENAI_API_KEY to api.anthropic.com. The
+// --api-key flag overrides the primary provider only, which preserves the
+// single-provider behaviour without affecting the others.
 func resolveProviderKey(pc config.ProviderRecordConfig, primary bool, apiKeyFlag string, getenv func(string) string) string {
 	key := getenv(pc.APIKey())
 	if key == "" && pc.APIKeyEnv == "" {
-		key = getenv("OPENAI_API_KEY")
+		for _, name := range providerKeyFallbacks(pc.Type) {
+			if key = getenv(name); key != "" {
+				break
+			}
+		}
 	}
 	if primary && apiKeyFlag != "" {
 		key = apiKeyFlag
@@ -825,9 +830,30 @@ func resolveProviderKey(pc config.ProviderRecordConfig, primary bool, apiKeyFlag
 	return key
 }
 
+// providerKeyFallbacks names the variables a backend's own documentation uses,
+// tried in order after the route-derived one is empty.
+func providerKeyFallbacks(typ string) []string {
+	switch strings.ToLower(strings.TrimSpace(typ)) {
+	case "anthropic":
+		return []string{"ANTHROPIC_API_KEY"}
+	case "gemini":
+		return []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}
+	case "azure":
+		return []string{"AZURE_OPENAI_API_KEY"}
+	case "bedrock":
+		return nil
+	default:
+		return []string{"OPENAI_API_KEY"}
+	}
+}
+
 // providerRuntime resolves a provider's model and base URL. Only the primary
-// provider accepts the --model/--base-url overrides, and an empty base URL falls
-// back to the DeepSeek endpoint.
+// provider accepts the --model/--base-url overrides. An empty base URL takes the
+// backend's documented endpoint: DeepSeek is the historical default for an
+// OpenAI-compatible route, while each native backend knows its own host. Bedrock
+// and Azure are deliberately left empty when unconfigured — the first derives the
+// host from its region, and the second cannot guess a resource name, so the
+// builder refuses it.
 func providerRuntime(pc config.ProviderRecordConfig, primary bool, model, baseURL string) (string, string) {
 	modelName := pc.Model
 	if primary && model != "" {
@@ -838,9 +864,69 @@ func providerRuntime(pc config.ProviderRecordConfig, primary bool, model, baseUR
 		base = baseURL
 	}
 	if base == "" {
-		base = "https://api.deepseek.com"
+		switch strings.ToLower(strings.TrimSpace(pc.Type)) {
+		case "anthropic":
+			base = "https://api.anthropic.com"
+		case "gemini":
+			base = "https://generativelanguage.googleapis.com/v1beta"
+		case "azure", "bedrock":
+			// Resolved by the builder: Azure needs a resource endpoint, Bedrock
+			// derives one from its region.
+		default:
+			base = "https://api.deepseek.com"
+		}
 	}
 	return modelName, base
+}
+
+// validateBackendOptions refuses a per-route option the chosen wire protocol
+// cannot honour.
+//
+// A silently dropped option is worse than a refused one: a cache mode read as
+// "off" leaves the user believing tokens are cached, and a thinking budget read
+// as zero leaves them believing the model reasoned. The message names the route,
+// the backend and the accepted values (roadmap A6).
+func validateBackendOptions(typ, label string, policy agent.PromptCachePolicy, pc config.ProviderRecordConfig) error {
+	if pc.ThinkingBudgetTokens < 0 {
+		return fmt.Errorf("provider %q: thinking_budget_tokens must not be negative", label)
+	}
+	if pc.ThinkingBudgetTokens > 0 {
+		switch typ {
+		case "anthropic", "gemini", "bedrock":
+		default:
+			return fmt.Errorf("provider %q: thinking_budget_tokens is not supported by the %s backend (want 0 there)",
+				label, typ)
+		}
+	}
+
+	switch typ {
+	case "ollama":
+		if policy.Mode != agent.PromptCacheOff {
+			return fmt.Errorf("provider %q: prompt_cache mode %q is not supported by the native ollama backend (want \"off\"; its endpoint accepts no cache hint)",
+				label, policy.Mode)
+		}
+	case "azure":
+		if policy.Mode != agent.PromptCacheOff {
+			return fmt.Errorf("provider %q: prompt_cache mode %q is not supported by the azure backend (want \"off\"; it caches automatically)",
+				label, policy.Mode)
+		}
+	case "anthropic":
+		if policy.Mode == agent.PromptCacheAuto {
+			return fmt.Errorf(`provider %q: prompt_cache "auto" is not supported by the anthropic backend (want "off" or "explicit")`, label)
+		}
+	case "gemini":
+		if policy.Mode == agent.PromptCacheExplicit {
+			return fmt.Errorf(`provider %q: prompt_cache "explicit" is not supported by the gemini backend (want "off" or "auto"; it caches automatically)`, label)
+		}
+	case "bedrock":
+		if policy.Mode == agent.PromptCacheAuto {
+			return fmt.Errorf(`provider %q: prompt_cache "auto" is not supported by the bedrock backend (want "off" or "explicit")`, label)
+		}
+		if policy.Mode == agent.PromptCacheExplicit && policy.TTL == "1h" {
+			return fmt.Errorf(`provider %q: prompt_cache ttl "1h" is not supported by the bedrock backend (its cachePoint has no ttl)`, label)
+		}
+	}
+	return nil
 }
 
 // buildProviderRegistry turns the configured providers into a runtime registry.
@@ -882,23 +968,83 @@ func buildProviderRegistry(cfg *config.Config, apiKey, model, baseURL string) (*
 			}
 		}
 
+		typ := strings.ToLower(strings.TrimSpace(pc.Type))
+		if typ == "" {
+			typ = "openai"
+		}
+		if err := validateBackendOptions(typ, providerLabel(pc, i), policy, pc); err != nil {
+			return nil, err
+		}
+
 		var prov agent.LLMProvider
-		switch pc.Type {
+		switch typ {
 		case "ollama":
 			// The native endpoint accepts neither a routing key nor a
 			// cache_control block, so an enabled policy there is a configuration
-			// error, not something to ignore.
-			if policy.Mode != agent.PromptCacheOff {
-				return nil, fmt.Errorf("provider %q: prompt_cache is not supported by the native ollama backend",
-					providerLabel(pc, i))
-			}
+			// error, not something to ignore. validateBackendOptions has already
+			// refused it; the branch stays explicit for a reader.
 			prov = agent.NewOllamaProvider(base, modelName)
-		default:
-			// "openai" or unknown — use an OpenAI-compatible provider
+
+		case "anthropic":
+			if modelName == "" {
+				return nil, fmt.Errorf("provider %q: the anthropic backend needs a model", providerLabel(pc, i))
+			}
+			p := agent.NewAnthropicProvider(key, base, modelName)
+			p.SetPromptCache(policy)
+			prov = p
+
+		case "gemini":
+			if modelName == "" {
+				return nil, fmt.Errorf("provider %q: the gemini backend needs a model", providerLabel(pc, i))
+			}
+			p := agent.NewGeminiProvider(key, base, modelName)
+			p.SetPromptCache(policy)
+			prov = p
+
+		case "bedrock":
+			if modelName == "" {
+				return nil, fmt.Errorf("provider %q: the bedrock backend needs a model", providerLabel(pc, i))
+			}
+			region := strings.TrimSpace(pc.Region)
+			if region == "" {
+				region = os.Getenv("AWS_REGION")
+			}
+			if region == "" {
+				region = os.Getenv("AWS_DEFAULT_REGION")
+			}
+			p := agent.NewBedrockProvider(
+				os.Getenv("AWS_ACCESS_KEY_ID"),
+				os.Getenv("AWS_SECRET_ACCESS_KEY"),
+				os.Getenv("AWS_SESSION_TOKEN"),
+				region, base, modelName)
+			p.SetPromptCache(policy)
+			prov = p
+
+		case "azure":
+			if base == "" {
+				return nil, fmt.Errorf("provider %q: the azure backend needs base_url (the resource endpoint)", providerLabel(pc, i))
+			}
+			if modelName == "" {
+				return nil, fmt.Errorf("provider %q: the azure backend needs model (the deployment name)", providerLabel(pc, i))
+			}
+			prov = agent.NewAzureOpenAIProvider(key, base, modelName, pc.APIVersion)
+
+		case "openai":
 			p := agent.NewOpenAIProvider(key, base, modelName)
 			p.SetPromptCache(policy)
 			prov = p
+
+		default:
+			return nil, fmt.Errorf("provider %q: unknown type %q (want \"openai\", \"ollama\", \"anthropic\", \"gemini\", \"bedrock\" or \"azure\")",
+				providerLabel(pc, i), pc.Type)
 		}
+
+		// A thinking budget is a request field only the native reasoning backends
+		// have; validateBackendOptions refused it on the others.
+		if tb, ok := prov.(interface{ SetThinkingBudget(int) }); ok {
+			tb.SetThinkingBudget(pc.ThinkingBudgetTokens)
+		}
+
 		// A route is what a price is keyed on: the same model costs differently
 		// through different routes, so the provider has to carry the name the
 		// user gave it rather than only its type and model.
