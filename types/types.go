@@ -58,6 +58,7 @@ type StreamCallbacks struct {
 	OnUsage          func(usage Usage)                         // called once per LLM call that reported token usage
 	OnCost           func(event CostEvent)                     // called once per LLM call, including one whose cost is unknown
 	OnRetry          func(attempt, maxAttempts int, err error) // called before a provider request is re-sent after a transient failure
+	OnFailover       func(from, to string, err error)          // called before a request is sent to another route, once per failed route
 }
 
 // Usage is the token accounting a provider reported for one request.
@@ -194,6 +195,13 @@ type ChatResponse struct {
 	ReasoningContent string // DeepSeek thinking mode
 	Usage            *Usage // provider-reported token usage; nil when the endpoint reported none
 	Cost             *Cost  // provider-reported charge; nil when the endpoint reported none
+	// Route and Model name the route that actually served the call, which is not
+	// always the one the request was sent to: a caller may fail over to another
+	// route. They let the call be priced and recorded against the route that
+	// answered instead of the one that was planned. A provider that cannot name
+	// itself leaves them empty, and the caller falls back to its planned route.
+	Route string
+	Model string
 }
 
 // ToolDef describes one tool to the LLM (function calling schema).

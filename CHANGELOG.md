@@ -9,6 +9,33 @@ back to its change and tests.
 
 ## Unreleased
 
+### A failed call can move to another route
+
+A5, S2. `providers[].failover` lists the routes to try when one fails in a way another route could
+survive: 408/429/5xx, a transport error, or a stream that went silent. The primary first spends its
+own retry budget (A1); the chain is then tried in order, flattened through each listed route's own
+list so two entries can describe one chain. Nothing moves after any text or reasoning has reached the
+caller — the same safe-replay rule retry already uses — and a non-transient failure (400/401/404, a
+parse error) is returned instead of being hidden behind another route, because a rejected key is a
+configuration error the user has to see.
+
+A fallback is asked for its own configured model, never the model the primary was asked for. Every
+response now names the route and model that served it, so a call moved by failover is priced against
+the route that answered — its declared rate or its reported charge — and recorded the same way. Each
+failover fires one `OnFailover` event naming both routes and the failure kind (`rate_limit`,
+`server_error`, `timeout`, `network`, `protocol`).
+
+Validation is at startup: an unknown name, a self-reference, a name listed twice in one list, and a
+cycle are errors naming the provider. A route follows its own list; the default, an empty one, means
+no failover at all.
+
+Also fixed: the native Ollama route ignored `ChatRequest.Model`, so a model override on an ollama
+route silently did nothing. It now wins over the route's configured model, as it does on the
+OpenAI-compatible route.
+
+What this does not do: no health probing, no load balancing, no failover on 4xx, no circuit breaker.
+Showing the failover in the TUI and the run record is S3.
+
 ### An agent can be routed to the provider it names
 
 A5, S1. `agents.<name>.model` now reads the whole `"<route>/<model>"` value instead of dropping

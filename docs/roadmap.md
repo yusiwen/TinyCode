@@ -235,7 +235,11 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   S3 (visibility and the record), S4 (documents and the status row). **S1 delivered 2026-10-24**: a
   `"<route>/<model>"` override now selects the configured provider, an unknown route is a startup
   error, `task` sub-agents resolve their route when they start, and the session file stores the route
-  name it can restore instead of the provider's display name (#284).
+  name it can restore instead of the provider's display name (#284). **S2 delivered 2026-10-24**:
+  `providers[].failover` is validated at startup (unknown name, self-reference, duplicate, cycle),
+  flattened through each listed route's own list, and followed only for a transient failure with
+  nothing streamed; each response names the route that served it, so a moved call is priced by that
+  route. The native Ollama route now honours the model override it used to ignore.
 - **Gap**: a provider cannot be failed over automatically, and the provider half of a
   `"<provider>/<model>"` setting is ignored.
 - **Evidence**: `SwitchTo`/`SwitchToName` are called only from the `/model` picker

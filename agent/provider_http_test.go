@@ -201,3 +201,23 @@ func TestOpenAIErrors(t *testing.T) {
 		t.Error("a cancelled context must fail the call")
 	}
 }
+
+// TestOpenAIStampsTheServingRoute: the response names the route and model that
+// answered, so a call moved by failover is priced and recorded against them
+// (roadmap A5, S2).
+func TestOpenAIStampsTheServingRoute(t *testing.T) {
+	srv := stubProviderServer(t, 200, `{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`)
+	p := NewOpenAIProvider("sk-test", srv.URL, "default-model")
+	p.SetRouteInfo("deepseek", "", "")
+
+	resp, err := p.Chat(context.Background(), types.ChatRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Model:    "override-model",
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Route != "deepseek" || resp.Model != "override-model" {
+		t.Errorf("served route/model = %q/%q, want deepseek/override-model", resp.Route, resp.Model)
+	}
+}

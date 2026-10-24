@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1131 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1144 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -139,6 +139,13 @@
 - `Chat()` — SSE streaming via `net/http` (not go-openai SDK's streaming); accumulates reasoning/content deltas and tool calls by index; 64KB→256KB scanner buffer; `stream_options: {include_usage: true}`. The parse runs to `data: [DONE]` rather than stopping at `finish_reason`, because the usage chunk that answers that option comes *after* the finish chunk with an empty `choices` array; both it and the batch body's `usage` object land in `ChatResponse.Usage` (a pointer: "not reported" is not "zero"), and a `total_tokens` the endpoint omits is derived from the two halves
 - Bounded (issue #176), with the same two-bounds shape as the Ollama provider: `openAIRequestTimeout` (120 s) covers one non-streaming request, while `openAIIdleTimeout` (2 min) is the silence allowed between lines of a stream and is reset by every line, so a long generation is not killed while a stalled one fails. Before that bound existed, reading past `finish_reason` (which is what makes the usage chunk reachable) meant an endpoint that went quiet after a complete answer stalled for the whole request timeout — and `chatStream` handed back the text it had with a nil error. A read that fails now returns `openai stream: …` instead, with `openAIRequestError` naming the bound that fired; a caller cancellation keeps `errors.Is(err, context.Canceled)` so a TUI run still reads as interrupted. Both bounds are package variables (tests shrink them), and **neither is armed on the `http.Client`**: a client timer also covers reading the body, where on a streaming call it is a total limit on the generation (issue #185) and, because its clock starts at the request while the idle watchdog rebases on every line, it fired first once a line had arrived and made the idle bound's own message unreachable at the shipped equal defaults (issue #186). The batch bound is therefore a watchdog on the request context, and the streaming path's only bound is the idle watchdog, which also covers the wait for response headers. A stream that *closes* without `[DONE]` is still accepted as complete: OpenAI-compatible servers vary here, and turning their working answers into errors would cost more than the truncation it would catch
 
+### `provider_failover.go` — One Route, Then Its Fallbacks
+
+- **`FailoverProvider`** — wraps a route with the routes its `providers[].failover` list names. `Chat` runs the primary (which already retries through `retry.go`), then each flattened fallback while the failure is one `retryableError` accepts and **nothing has been streamed** (one `deliveryTracker` spans the chain, so a delta from any attempt forbids the next). A fallback attempt clears `req.Model`: the fallback's own configured model is the one it knows.
+- `NewFailoverProvider(primary, fallbacks)`, `Fallbacks()` (the flattened chain, for display and tests), `Name`/`Route`/`DefaultModel`/`CostCurrency` delegate to the primary — the wrapper is still the route a plan, a price key and a run record name.
+- `failoverError` names every route that was tried and unwraps to the last failure; `failureKind` classifies an error (`rate_limit`, `server_error`, `timeout`, `network`, `protocol`, `status`) for the event and the log; `notifyFailover` calls `StreamCallbacks.OnFailover(from, to, err)` once per route change.
+- Wired in `main.go`'s `wireFailover`, which flattens each declared list through the listed routes' own lists (a diamond dedupes, a cycle is refused), validates unknown names, self-references, a name listed twice, and wraps each route around its **raw** provider so a chain is followed once.
+
 ### `provider_ollama.go` — Ollama Provider
 
 - **`OllamaProvider`** struct (unexported: baseURL, model, http client, route)
@@ -146,7 +153,7 @@
   builds its own cancel-cause context and idle watchdog, so a retry gets a fresh clock rather than the
   remainder of the one its predecessor spent
 - **`NewOllamaProvider(baseURL, model string) *OllamaProvider`** — default baseURL: `http://localhost:11434`
-- `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call. A local route reports no charge, so `CostCurrency()` is empty and its calls are priced from the declared table or counted as unknown
+- `Chat()` — line-delimited JSON (not SSE); tool results mapped to `role: "user"`; `thinking` field for reasoning; `prompt_eval_count`/`eval_count` are read into `ChatResponse.Usage` — from the stream's `{"done":true,…}` line (read before the loop breaks) and from the batch body's top level. Both are optional counters, so a server that reports neither leaves `Usage` nil instead of claiming a zero-token call. A local route reports no charge, so `CostCurrency()` is empty and its calls are priced from the declared table or counted as unknown. `ChatRequest.Model` wins over the route's configured model (it was ignored before A5, S2); every response is stamped with the route and model that served it
 - `SetRouteInfo(route, model, _)` names the configuration route, so a price lookup keys on the route rather than on a model name several routes share; the cost currency is ignored because this route bills in none
 - Bounded (issue #1): `ollamaRequestTimeout` (10 min) covers a whole non-streaming request, `ollamaIdleTimeout` (2 min) covers the silence between tokens on a stream and is reset by every line, so a long generation is not killed while a stalled one fails. Both are package variables (tests shrink them), and the cancel cause names the bound that fired instead of surfacing "context canceled". A stream that ends without its `{"done":true}` line is now an error rather than the partial text it managed to send.
 
@@ -676,9 +683,9 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 - **`ToolCall`** struct: `ID`, `Name`, `Arguments string` (raw JSON)
 - **`ToolDef`** struct: `Name`, `Description`, `Parameters map[string]any`
 - **`ChatRequest`** struct: `Messages []Message`, `Tools []ToolDef`, `MaxTokens int`, `Model string`, `StreamCallbacks *StreamCallbacks`
-- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage`, `Cost *Cost` (both nil when the endpoint reported none)
+- **`ChatResponse`** struct: `Content`, `ToolCalls []ToolCall`, `ReasoningContent`, `Usage *Usage`, `Cost *Cost` (both nil when the endpoint reported none), `Route`/`Model` (the route and model that **served** the call, stamped by the provider, so a failed-over call is priced against the route that answered)
 - **`Usage`** struct: `PromptTokens`, `CompletionTokens`, `TotalTokens`; `Add(v Usage) Usage` sums two records
-- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown), `OnRetry` (fired before a request is re-sent, carrying the attempt and its cap so a caller renders `2/3` without knowing the policy)
+- **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown), `OnRetry` (fired before a request is re-sent, carrying the attempt and its cap so a caller renders `2/3` without knowing the policy), `OnFailover` (fired once per failed route before the next one is tried, carrying both route names and the failure)
 - **`Usage`** detail fields: `CachedPromptTokens`, `CacheWriteTokens`, `ReasoningTokens` — one per *billing lane*, so OpenAI's `prompt_tokens_details` shape and DeepSeek's `prompt_cache_hit_tokens` land in the same field. They are subsets of the counts beside them, not extra tokens
 - **`Cost`** struct: `Amount`, `Currency`; **`CostSource`** (`unknown`/`reported`/`declared`); **`CostEvent`**; **`CostTotals map[string]float64`** with `Add` and a `String()` ordered case-insensitively by unit — two routes billing in different units are accumulated apart, never added together
 - **`Memory`** struct: `Key`, `Value`
@@ -738,7 +745,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1131 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1144 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -784,7 +791,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1131 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1144 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

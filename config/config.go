@@ -36,6 +36,16 @@ type ProviderRecordConfig struct {
 	// route's unit is unknown, and an amount is then displayed without one
 	// rather than labelled with a unit nobody stated.
 	CostCurrency string `json:"cost_currency,omitempty"`
+	// Failover lists the routes to try, in order, when this one fails in a way
+	// another route could survive: a rate limit, a server error, a timeout, a
+	// network error, or a stream that went silent. It is off when empty, which is
+	// the default, because moving a call to another route spends money on a
+	// decision the user did not make. Names are validated when the providers are
+	// built: an unknown name, a self-reference, a duplicate and a cycle are
+	// startup errors. A listed route's own list follows it, so two entries can
+	// describe one chain; the fallback attempt asks for the fallback's own
+	// configured model, never the model the primary was asked for (roadmap A5).
+	Failover []string `json:"failover,omitempty"`
 }
 
 // PromptCacheConfig is one route's prompt-cache policy.
