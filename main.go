@@ -186,6 +186,34 @@ func newRootCmd() *cobra.Command {
 				ag.TrajectoryMaxRuns = spec.MaxRuns
 				ag.TrajectoryMaxBytes = spec.MaxBytes
 			}
+			// Memory: recall reads a store at the top of every run, so the store
+			// is built once here. The local backend is the default, and its
+			// directory is registered with the tool layer before anything can
+			// recall from it — the same treatment the checkpoint and trajectory
+			// stores get, for the same reason: a fact the agent could rewrite is
+			// not one. A network backend is honoured only from the user's own
+			// config file (see UserLayer.ResolveMemory); a project-local request
+			// is dropped and says so, because it would send every prompt away.
+			memSpec, memEgressIgnored := layers.User.ResolveMemory(&cfg)
+			if memEgressIgnored {
+				tlog.Warn("config", "project_local_memory_egress_ignored",
+					"reason", "a network memory backend sends prompt text off the machine; only the user's own config may ask for it")
+			}
+			if memSpec.Enabled {
+				store, err := memoryStore(memSpec, tool.DefaultSandbox.ProjectRoot)
+				if err != nil {
+					// A store that cannot be opened is not a reason to refuse to
+					// start: memory is an aid, and the run works without it.
+					tlog.Warn("config", "memory unavailable", "error", err)
+				} else {
+					ag.Memory = store
+					ag.MemoryMode = agent.MemoryModeAuto
+					ag.MemoryRecallLimit = memSpec.RecallLimit
+					if memSpec.Backend == config.MemoryBackendLocal {
+						tool.SetMemoryRoot(memSpec.Dir)
+					}
+				}
+			}
 			if cfg.Truncation != nil {
 				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
 			}
@@ -1174,6 +1202,21 @@ func providerLabel(pc config.ProviderRecordConfig, index int) string {
 		return pc.Name
 	}
 	return fmt.Sprintf("#%d", index+1)
+}
+
+// memoryStore builds the store the resolved configuration names.
+//
+// The local backend is one file per project, under the directory the config
+// chose; the shard is the project root's digest, so two repositories never read
+// each other's facts. The remote backend is the Hindsight adapter pointed at the
+// endpoint the user wrote — there is deliberately no default endpoint, because a
+// default would be a decision to send someone's prompts to a service they never
+// configured.
+func memoryStore(spec config.MemorySpec, projectRoot string) (types.MemoryStore, error) {
+	if spec.Backend == config.MemoryBackendHindsight {
+		return agent.NewHTTPMemoryClient(spec.BaseURL), nil
+	}
+	return agent.NewLocalMemory(spec.Dir, agent.MemoryScopeFor(projectRoot), spec.MaxEntries, spec.MaxBytes)
 }
 
 // priceTable turns the declared rates in the configuration into the table the

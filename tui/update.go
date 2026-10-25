@@ -1223,6 +1223,8 @@ Commands:
   /diagnostics   Show LSP diagnostics
   /undo          Restore the files the last tool call wrote
   /goal          View the goal; /goal <objective>, edit, pause, resume, clear
+  /remember      Store a fact for later sessions (/remember <label>: <fact>)
+  /memory        List stored facts; /memory forget <id> deletes one
   /model         Switch provider/model
 
 Keyboard:
@@ -1455,6 +1457,12 @@ Mouse:
 		// Creating or resuming a goal while the session is idle starts working
 		// on it after the grace period; pausing or clearing schedules nothing.
 		return m, m.scheduleGoalRound()
+	case "/remember":
+		m.handleRemember(strings.TrimSpace(strings.TrimPrefix(cmd, "/remember")))
+		return m, nil
+	case "/memory":
+		m.handleMemory(strings.TrimSpace(strings.TrimPrefix(cmd, "/memory")))
+		return m, nil
 	case "/skill":
 		parts := strings.Fields(cmd)
 		skills := skill.Discover(".")

@@ -22,6 +22,9 @@
   /goal
     View, create, pause or resume the
     goal
+  /remember
+    Store a fact for later sessions
+  /memory  List or forget stored facts
   /sandbox  Sandbox status
   /model  Switch model
   /fork  Create session branch

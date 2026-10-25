@@ -397,8 +397,8 @@ func TestMemoryBoundsMatchConfig(t *testing.T) {
 		t.Fatalf("bytes fallback = %d, config default = %d",
 			defaultLocalMemoryMaxBytes, config.DefaultMemoryMaxBytes)
 	}
-	if defaultLocalMemoryRecall != config.DefaultMemoryRecallLimit {
+	if DefaultMemoryRecallLimit != config.DefaultMemoryRecallLimit {
 		t.Fatalf("recall fallback = %d, config default = %d",
-			defaultLocalMemoryRecall, config.DefaultMemoryRecallLimit)
+			DefaultMemoryRecallLimit, config.DefaultMemoryRecallLimit)
 	}
 }
