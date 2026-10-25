@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1174 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1192 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -34,7 +34,7 @@
   - `Provider LLMProvider`
   - `Resolver RouteResolver` — resolves a configured route to its provider; nil means the agent never routes. A route on `Config` is resolved at call time, so a session-wide switch does not override a pin (roadmap A5)
   - `Tools []Tool`
-  - `Memory types.MemoryStore` — **never assigned**: no caller sets it, so the recall step below is inert; `memory.go` is internal and unwired
+  - `Memory types.MemoryStore` — **never assigned**: no caller sets it, so the recall step below is inert; `memory.go` and `memory_local.go` are internal and unwired (issue #293, S3)
   - `MemoryMode int` — 0=none, 1=auto, 2=on-demand; `MemoryModeNone` is the only value ever in effect today
   - `SessionStore` — interface `{Append(msg types.Message) error; Flush() error}`
   - `History []types.Message` — multi-turn conversation; restored from the session on `--resume` (user and assistant turns only — command output and prior reasoning stay out) and appended by every ending through `recordTurn`
@@ -268,20 +268,28 @@ provider is implemented — reaching IMDS from an agent process is a separate se
 
 ### `memory.go` — Long-term Memory *(internal, unwired)*
 
-This is **not a tool and not a shipped feature**. `HTTPMemoryClient` is the only `MemoryStore`
-implementation, `NewHTTPMemoryClient` has no non-test caller, and `Agent.Memory` is never assigned —
-so nothing recalls anything in a build from this tree. Recall is an agent-layer step
-(`MemoryModeAuto`, at the top of `Run`), never a model-callable function, which is why `memory` is
-absent from the Complete Tool Name Registry above and from every permission whitelist.
+This is **not a tool and not a shipped feature**. Recall is an agent-layer step (`MemoryModeAuto`, at
+the top of `Run`), never a model-callable function, which is why `memory` is absent from the Complete
+Tool Name Registry above and from every permission whitelist.
 
-It is unwired deliberately rather than forgotten: wiring it (B1) and choosing a local backend (B2)
-are tracked in `docs/roadmap.md` and are waiting on a privacy decision, so read this section as the
-shape of a capability on the shelf, not as behaviour to rely on. `Forget` is a no-op that returns
-nil for every key.
+`Agent.Memory` is still never assigned, so nothing recalls anything in a build from this tree: the
+composition root that would set it is step S3 of issue #293. What landed ahead of it is the store and
+its policy:
+
+- **`LocalMemory`** (`memory_local.go`) — one JSON object per line under `dir` (default
+  `~/.tinycode/memory`), sharded per project by `MemoryScopeFor`, bounded by `max_entries` / `max_bytes`,
+  deduplicated by an id derived from `(key, value)`, recalled by lexical scoring (ASCII words and Han
+  bigrams — embeddings are roadmap B3). `Forget` rewrites the file without the fact, and the directory is
+  refused to tools (`tool.SetMemoryRoot`, wired in S3).
+- **`HTTPMemoryClient`** — the Hindsight adapter. `Forget` reports `ErrMemoryDeleteUnsupported` rather
+  than returning nil: the service has no per-memory delete, and the adapter's recall/list decoders
+  predate the current API (issue #293, S4).
+- **`docs/memory-decision.md`** — the policy: `/remember` is the only writer in v1, recall reads a local
+  store by default, and a network backend is honoured only from the user's own config file.
 
 - **`HTTPMemoryClient`** struct: `BaseURL string`
 - **`NewHTTPMemoryClient(baseURL string) *HTTPMemoryClient`**
-- Methods: `Remember(key, value string) error`, `Recall(query string, limit int) ([]types.Memory, error)`, `Forget(key string) error`, `List() ([]types.Memory, error)`
+- Methods: `Remember(key, value string) error`, `Recall(query string, limit int) ([]types.Memory, error)`, `Forget(id string) error`, `List() ([]types.Memory, error)`
 - Hindsight API: `https://memory.yusiwen.cn/dp-api`, bank "hermes", 15s timeout, auth via `HINDSIGHT_API_KEY` or `OPENAI_API_KEY`
 
 ### `truncate.go` — Output Truncation
@@ -771,8 +779,8 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 - **`StreamCallbacks`** struct: `OnReasoningDelta`, `OnTextDelta`, `OnToolCall`, `OnToolResult`, `OnStepDone`, `OnUsage` (fired once per LLM call that reported usage), `OnCost` (fired once per call, including a call whose cost is unknown), `OnRetry` (fired before a request is re-sent, carrying the attempt and its cap so a caller renders `2/3` without knowing the policy), `OnFailover` (fired once per failed route before the next one is tried, carrying both route names and the failure)
 - **`Usage`** detail fields: `CachedPromptTokens`, `CacheWriteTokens`, `ReasoningTokens` — one per *billing lane*, so OpenAI's `prompt_tokens_details` shape and DeepSeek's `prompt_cache_hit_tokens` land in the same field. They are subsets of the counts beside them, not extra tokens
 - **`Cost`** struct: `Amount`, `Currency`; **`CostSource`** (`unknown`/`reported`/`declared`); **`CostEvent`**; **`CostTotals map[string]float64`** with `Add` and a `String()` ordered case-insensitively by unit — two routes billing in different units are accumulated apart, never added together
-- **`Memory`** struct: `Key`, `Value`
-- **`MemoryStore`** interface: `Remember`, `Recall`, `Forget`, `List` — internal; the only implementation (`agent.HTTPMemoryClient`) is unwired, so nothing in a shipped build holds one (see `agent/memory.go`)
+- **`Memory`** struct: `ID`, `Key`, `Value`, `Source`, `CreatedAt`
+- **`MemoryStore`** interface: `Remember`, `Recall`, `Forget`, `List` — internal; both implementations (`agent.HTTPMemoryClient`, `agent.LocalMemory`) are unwired, so nothing in a shipped build holds one (see `agent/memory.go`)
 - **`WithPlanWriteRestriction(ctx, bool)` / `PlanWriteRestricted(ctx)`** — plan-mode write restriction travels on the run context, so concurrent sub-agents cannot flip it for each other
 
 ---
@@ -828,7 +836,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1174 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1192 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -874,7 +882,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1174 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1192 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
