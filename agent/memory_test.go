@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,9 +91,9 @@ func TestHTTPMemoryClient(t *testing.T) {
 		t.Fatalf("List = %+v", list)
 	}
 
-	// Forget is a documented no-op for this backend.
-	if err := c.Forget("k"); err != nil {
-		t.Fatalf("Forget: %v", err)
+	// A backend that cannot delete reports it instead of pretending it worked.
+	if err := c.Forget("k"); !errors.Is(err, ErrMemoryDeleteUnsupported) {
+		t.Fatalf("Forget = %v, want ErrMemoryDeleteUnsupported", err)
 	}
 
 	// An empty base URL falls back to the built-in Hindsight endpoint, and the

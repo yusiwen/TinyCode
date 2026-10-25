@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,11 @@ import (
 
 	"github.com/yusiwen/tinycode/types"
 )
+
+// ErrMemoryDeleteUnsupported reports a backend with no delete of its own. It is
+// an error rather than a quiet nil because the user asked for a fact to be gone
+// and it is not (docs/memory-decision.md).
+var ErrMemoryDeleteUnsupported = errors.New("memory: this backend cannot delete a fact")
 
 const hindsightBase = "https://memory.yusiwen.cn/dp-api"
 const hindsightBank = "hermes"
@@ -99,9 +105,12 @@ func (c *HTTPMemoryClient) Recall(query string, limit int) ([]types.Memory, erro
 	return out, nil
 }
 
-func (c *HTTPMemoryClient) Forget(key string) error {
-	// Not implemented by Hindsight API
-	return nil
+func (c *HTTPMemoryClient) Forget(id string) error {
+	// Hindsight has no per-memory DELETE; curation is a PATCH that invalidates a
+	// memory by id, and this adapter does not carry ids yet (issue #293, S4). It
+	// reports that rather than returning nil: a delete that silently does nothing
+	// is indistinguishable from one that worked.
+	return ErrMemoryDeleteUnsupported
 }
 
 func (c *HTTPMemoryClient) List() ([]types.Memory, error) {

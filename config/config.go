@@ -324,6 +324,114 @@ func (c Config) TrajectorySpec() TrajectorySpec {
 	return spec
 }
 
+// MemoryConfig declares the long-term memory store.
+//
+// Recall reads it at the top of every run, so the defaults are chosen so that
+// nothing leaves the machine: the local backend, on, and only a person's own
+// `/remember` able to add to it (docs/memory-decision.md). A network backend is
+// an egress request and is honoured only from the user's own file — see
+// UserLayer.ResolveMemory.
+type MemoryConfig struct {
+	// Enabled is a pointer so "off" can be said out loud: an absent field means
+	// the default, which is on.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Backend is "local" or "hindsight". An unknown value resolves to local
+	// rather than failing a start: a typo must not move text off the machine.
+	Backend string `json:"backend,omitempty"`
+	// Dir is where the local store lives. The default is ~/.tinycode/memory,
+	// deliberately outside the project root: a store the agent can rewrite is
+	// not a memory, the same argument the checkpoint and trajectory stores carry.
+	Dir string `json:"dir,omitempty"`
+	// BaseURL and Bank address a network backend. Setting either is an egress
+	// request.
+	BaseURL string `json:"base_url,omitempty"`
+	Bank    string `json:"bank,omitempty"`
+	// MaxEntries and MaxBytes bound the local store; zero means the defaults.
+	MaxEntries int   `json:"max_entries,omitempty"`
+	MaxBytes   int64 `json:"max_bytes,omitempty"`
+	// RecallLimit is how many facts one run may inject; zero means the default.
+	RecallLimit int `json:"recall_limit,omitempty"`
+}
+
+// Backends and bounds for the memory section. The numbers are also what the
+// agent package falls back to when it is handed zero, and they are asserted
+// equal in a test so the pair cannot drift (as the trajectory pair is).
+const (
+	MemoryBackendLocal     = "local"
+	MemoryBackendHindsight = "hindsight"
+
+	DefaultMemoryMaxEntries  = 2000
+	DefaultMemoryMaxBytes    = 8 << 20
+	DefaultMemoryRecallLimit = 5
+)
+
+// MemorySpec is the effective memory configuration, with every default applied
+// and every unknown value resolved.
+type MemorySpec struct {
+	Enabled     bool
+	Backend     string
+	Dir         string
+	BaseURL     string
+	Bank        string
+	MaxEntries  int
+	MaxBytes    int64
+	RecallLimit int
+}
+
+// WantsNetwork reports whether this specification sends text off the machine.
+// It is what makes the backend an egress decision rather than a storage choice.
+func (s MemorySpec) WantsNetwork() bool {
+	return s.Backend == MemoryBackendHindsight || s.BaseURL != ""
+}
+
+// MemorySpec resolves the section, filling in the defaults.
+func (c Config) MemorySpec() MemorySpec {
+	spec := MemorySpec{
+		Enabled:     true,
+		Backend:     MemoryBackendLocal,
+		MaxEntries:  DefaultMemoryMaxEntries,
+		MaxBytes:    DefaultMemoryMaxBytes,
+		RecallLimit: DefaultMemoryRecallLimit,
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		spec.Dir = filepath.Join(home, ".tinycode", "memory")
+	}
+	if c.Memory == nil {
+		return spec
+	}
+	section := c.Memory
+	if section.Enabled != nil {
+		spec.Enabled = *section.Enabled
+	}
+	// Only hindsight is a name; everything else reads as local, including a typo.
+	if strings.EqualFold(section.Backend, MemoryBackendHindsight) {
+		spec.Backend = MemoryBackendHindsight
+	}
+	if section.Dir != "" {
+		spec.Dir = section.Dir
+	}
+	if section.BaseURL != "" {
+		spec.BaseURL = section.BaseURL
+	}
+	if section.Bank != "" {
+		spec.Bank = section.Bank
+	}
+	if section.MaxEntries > 0 {
+		spec.MaxEntries = section.MaxEntries
+	}
+	if section.MaxBytes > 0 {
+		spec.MaxBytes = section.MaxBytes
+	}
+	if section.RecallLimit > 0 {
+		spec.RecallLimit = section.RecallLimit
+	}
+	if spec.Dir == "" && !spec.WantsNetwork() {
+		// No directory and nowhere to send anything: there is no store to read.
+		spec.Enabled = false
+	}
+	return spec
+}
+
 // AgentRule mirrors agent.Rule for configuration files. Keeping a local copy
 // avoids a config → agent dependency; main.go translates it.
 type AgentRule struct {
@@ -414,20 +522,23 @@ type MCPServerConfig struct {
 
 // Config is the top-level configuration structure.
 type Config struct {
-	DefaultMode  string                   `json:"default_mode,omitempty"`
-	ShowThinking *bool                    `json:"show_thinking,omitempty"`
-	Verbose      *bool                    `json:"verbose,omitempty"`
-	Providers    []ProviderRecordConfig   `json:"providers,omitempty"`
-	Truncation   *TruncationConfig        `json:"truncation,omitempty"`
-	Budget       *BudgetConfig            `json:"budget,omitempty"`
-	Goal         *GoalConfig              `json:"goal,omitempty"`
-	Notify       *NotifyConfig            `json:"notify,omitempty"`
-	Pricing      *PricingConfig           `json:"pricing,omitempty"`
-	Trajectory   *TrajectoryConfig        `json:"trajectory,omitempty"`
-	Agents       map[string]AgentOverride `json:"agents,omitempty"`
-	Sandbox      *SandboxConfig           `json:"sandbox,omitempty"`
-	Theme        string                   `json:"theme,omitempty"`
-	SessionDir   string                   `json:"session_dir,omitempty"`
+	DefaultMode  string                 `json:"default_mode,omitempty"`
+	ShowThinking *bool                  `json:"show_thinking,omitempty"`
+	Verbose      *bool                  `json:"verbose,omitempty"`
+	Providers    []ProviderRecordConfig `json:"providers,omitempty"`
+	Truncation   *TruncationConfig      `json:"truncation,omitempty"`
+	Budget       *BudgetConfig          `json:"budget,omitempty"`
+	Goal         *GoalConfig            `json:"goal,omitempty"`
+	Notify       *NotifyConfig          `json:"notify,omitempty"`
+	Pricing      *PricingConfig         `json:"pricing,omitempty"`
+	Trajectory   *TrajectoryConfig      `json:"trajectory,omitempty"`
+	// Memory is the long-term store: local by default, network only when the
+	// user's own file asks for it (docs/memory-decision.md).
+	Memory     *MemoryConfig            `json:"memory,omitempty"`
+	Agents     map[string]AgentOverride `json:"agents,omitempty"`
+	Sandbox    *SandboxConfig           `json:"sandbox,omitempty"`
+	Theme      string                   `json:"theme,omitempty"`
+	SessionDir string                   `json:"session_dir,omitempty"`
 	// CheckpointDir is where the pre-images of tool writes are kept, so a write
 	// can be undone. It is deliberately outside the project root: the fence that
 	// confines every tool write then confines the store as well.
@@ -736,6 +847,38 @@ func merge(dst, src Config) Config {
 			dst.Trajectory.MaxBytes = src.Trajectory.MaxBytes
 		}
 	}
+	if src.Memory != nil {
+		if dst.Memory == nil {
+			dst.Memory = &MemoryConfig{}
+		}
+		// The pointer carries "off" across layers; the network keys merge here and
+		// are filtered by UserLayer.ResolveMemory, which is the only place that
+		// knows which file asked for the egress.
+		if src.Memory.Enabled != nil {
+			dst.Memory.Enabled = src.Memory.Enabled
+		}
+		if src.Memory.Backend != "" {
+			dst.Memory.Backend = src.Memory.Backend
+		}
+		if src.Memory.Dir != "" {
+			dst.Memory.Dir = src.Memory.Dir
+		}
+		if src.Memory.BaseURL != "" {
+			dst.Memory.BaseURL = src.Memory.BaseURL
+		}
+		if src.Memory.Bank != "" {
+			dst.Memory.Bank = src.Memory.Bank
+		}
+		if src.Memory.MaxEntries > 0 {
+			dst.Memory.MaxEntries = src.Memory.MaxEntries
+		}
+		if src.Memory.MaxBytes > 0 {
+			dst.Memory.MaxBytes = src.Memory.MaxBytes
+		}
+		if src.Memory.RecallLimit > 0 {
+			dst.Memory.RecallLimit = src.Memory.RecallLimit
+		}
+	}
 	if src.SessionDir != "" {
 		dst.SessionDir = src.SessionDir
 	}
@@ -943,6 +1086,47 @@ func (l UserLayer) wantsFullCapture() bool {
 	}
 	capture, ok := section["capture"].(string)
 	return ok && strings.EqualFold(capture, TrajectoryCaptureFull)
+}
+
+// ResolveMemory decides the effective memory section from the layers that may
+// speak to it.
+//
+// Recall sends the prompt to whatever store is configured, so a **network**
+// backend is a privacy decision and is honoured only when the user's own file
+// asks for it. A project-local `.tinycode/config.json` that names a backend or a
+// `base_url` is ignored and the fallback is reported, for the same reason the
+// sandbox refuses a boundary key a cloned repository tries to widen: the person
+// who wrote it can see it did not take effect. Switching memory off, or pointing
+// the local store at another directory, is not a widening and is honoured from
+// any layer.
+//
+// The second result reports that an egress request was ignored, so the caller can
+// say so rather than silently reading a different store than the file named.
+func (l UserLayer) ResolveMemory(cfg *Config) (MemorySpec, bool) {
+	spec := cfg.MemorySpec()
+	if !spec.WantsNetwork() {
+		return spec, false
+	}
+	if l.wantsNetworkMemory() {
+		return spec, false
+	}
+	local := spec
+	local.Backend = MemoryBackendLocal
+	local.BaseURL = ""
+	return local, true
+}
+
+// wantsNetworkMemory reports whether this layer's own file asks for egress.
+func (l UserLayer) wantsNetworkMemory() bool {
+	section, _ := l.raw["memory"].(map[string]any)
+	if section == nil {
+		return false
+	}
+	if backend, ok := section["backend"].(string); ok && strings.EqualFold(backend, MemoryBackendHindsight) {
+		return true
+	}
+	base, ok := section["base_url"].(string)
+	return ok && base != ""
 }
 
 // AllowedPathGrants is the grants this layer carries, with the raw file's own

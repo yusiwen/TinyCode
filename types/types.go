@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Role constants for messages.
@@ -34,15 +35,29 @@ type Message struct {
 
 // Memory represents a remembered fact.
 type Memory struct {
+	// ID identifies the fact within its store. It is what Forget takes, and the
+	// local store derives it from the content so remembering the same fact twice
+	// is idempotent rather than a duplicate (docs/memory-decision.md).
+	ID string `json:"id,omitempty"`
+	// Key is a human-readable label — what the fact is about, not its identity.
 	Key   string `json:"key"`
 	Value string `json:"value"`
+	// Source records who wrote it: "user" for a fact the person typed, "auto"
+	// for a summarised one when that exists. Empty when the backend cannot say.
+	Source string `json:"source,omitempty"`
+	// CreatedAt is when the fact entered the store.
+	CreatedAt time.Time `json:"created_at,omitzero"`
 }
 
 // MemoryStore is the abstraction for long-term knowledge.
 type MemoryStore interface {
 	Remember(key, value string) error
 	Recall(query string, limit int) ([]Memory, error)
-	Forget(key string) error
+	// Forget removes the fact with this id, as returned by List. A backend that
+	// cannot delete reports an error: a delete that silently does nothing is
+	// indistinguishable from one that worked, which is not a state a user can
+	// consent to.
+	Forget(id string) error
 	List() ([]Memory, error)
 }
 
