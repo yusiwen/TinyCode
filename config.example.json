@@ -180,6 +180,15 @@
     "enabled": false
   },
 
+  "memory": {
+    "$comment": "Long-term memory. ON by default, local, and it stores nothing unless you ask: /remember is the only writer, and recall reads one file per project under dir (default ~/.tinycode/memory, deliberately outside the project root and refused to tools, because a fact the agent can rewrite is not one). backend is 'local' or 'hindsight'; a network backend, or any base_url, sends each run's prompt to that service, so it is honoured only when it comes from your own ~/.tinycode/config.json — a project-local .tinycode/config.json that names one is ignored and the ignore is logged. max_entries and max_bytes bound the store (oldest facts dropped first); recall_limit is how many facts one run may inject. The store is lexical today: embeddings are roadmap B3, so an absent keyword is an absent fact. See docs/memory-decision.md.",
+    "enabled": true,
+    "backend": "local",
+    "max_entries": 2000,
+    "max_bytes": 8388608,
+    "recall_limit": 5
+  },
+
   "mcp_servers": [
     {
       "name": "example-stdio",
@@ -223,6 +232,7 @@
     "session_dir": "Where sessions are stored. A leading ~ is expanded to $HOME.",
     "checkpoint_dir": "Where the bytes a file tool replaced are kept, so /undo and --undo can restore them. Deliberately outside the project root: the fence that confines a tool write then confines the recovery store. It is not a tool path — no permission grants a model access to it. A bash command's writes are recorded too, from a snapshot of the project tree taken before it, bounded per file (2 MiB) and per snapshot (32 MiB / 4000 files); paths outside the project root are not captured. See docs/checkpoints.md.",
     "trajectory": "Where a run's record goes (dir), how much of it keeps text (capture: metadata|full), and the store's bounds (max_runs, max_bytes). enabled: false turns recording off. capture: full is honoured only from your own config file, never from a project-local one.",
+    "memory": "Long-term memory: enabled, backend (local|hindsight), dir, base_url, bank, max_entries, max_bytes, recall_limit. Local by default and written only by /remember; a network backend or a base_url is an egress request honoured only from your own config file.",
     "truncation": "Tool-output truncation limits: max_lines, max_bytes, output_dir (used only when the output exceeds a limit).",
     "agents": "allowed_tools replaces the agent's ruleset with a whitelist; denied_tools is applied on top of the built-in rules."
   }

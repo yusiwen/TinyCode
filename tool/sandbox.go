@@ -652,6 +652,13 @@ func CheckPathAccess(ctx context.Context, path string) (safePath, denied string,
 	if refusal := trajectoryStoreRefusal(ctx, path); refusal != "" {
 		return "", refusal, nil
 	}
+	// And for the store a person fills by hand: the memories every later run may
+	// recall. A tool that could write it would be able to seed the next session,
+	// which is exactly the channel docs/memory-decision.md keeps under the user's
+	// hand.
+	if refusal := memoryStoreRefusal(ctx, path); refusal != "" {
+		return "", refusal, nil
+	}
 	// The run's frozen policy decides this call. Nothing here consults the live
 	// configuration for a mode or a root, so a concurrent run with a different
 	// policy cannot change what this one is allowed to touch.
