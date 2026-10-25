@@ -16,19 +16,17 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 12 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 14 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 26 | verified gaps, no issue opened |
+| Not started | 24 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
 [#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a run streams), which is
 not a roadmap entry.
 
-**Next, by the reading order**: B1/B2 (memory — the write path is decided: explicit only, see
-[memory-decision.md](memory-decision.md); what a network backend may send is still the open half, which
-is why the pair is not already done), C6 (a second isolation tier, since C7's macOS fence is delivered),
+**Next, by the reading order**: C6 (a second isolation tier, since C7's macOS fence is delivered),
 B4 (repository index), F1, then the larger D and E items.
 
 ### Status by entry
@@ -41,8 +39,8 @@ B4 (repository index), F1, then the larger D and E items.
 | A4 | No prompt caching | Delivered — #279 |
 | A5 | No failover and no provider routing | Delivered — #285 |
 | A6 | Only two provider backends | Delivered — #290 |
-| B1 | The memory capability exists but is never called | Not started |
-| B2 | No local memory backend | Not started |
+| B1 | The memory capability exists but is never called | Delivered — #293 |
+| B2 | No local memory backend | Delivered — #293 |
 | B3 | No embeddings, vector search or rerank | Not started |
 | B4 | No repository index or repo map | Not started |
 | B5 | Context management has a single strategy | Not started |
@@ -295,6 +293,14 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### B1 — The memory capability exists but is never called
 
+- **Picked up**: [#293](https://github.com/yusiwen/TinyCode/issues/293) — S1 (the config section and
+  the user-layer egress gate), S2 (the local store and the tool-layer refusal), S3 (the composition
+  root, `/remember` and `/memory`, recall hardening). S4 — the Hindsight adapter's contract — is still
+  open: the remote backend is reachable by configuration, but its decoders predate the service's
+  current API.
+- **Delivered (2026-10-25)**: `Agent.Memory` is assigned in `main.go` from the resolved section, and the
+  recall step injects one system message per run. The gap this entry records — a capability nobody
+  called — no longer exists in the tree; the adapter's contract does, and is S4 above.
 - **Gap**: no cross-session memory in practice. The client is dead code: not registered as a tool,
   not instantiated on any path.
 - **Decision (issue #188)**: `memory` is not a tool and is not meant to become one. Recall is an
@@ -315,6 +321,14 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### B2 — No local memory backend
 
+- **Picked up**: [#293](https://github.com/yusiwen/TinyCode/issues/293) — `agent/memory_local.go`
+  (JSONL, one shard per project, bounded by entries and bytes, real delete), the tool-layer refusal,
+  and `/memory` to list and remove.
+- **Delivered (2026-10-25)**: the local backend exists and is the default; `/memory` lists what it
+  holds with the id `Forget` takes, and `/memory forget <id>` removes a fact. "Approve what is
+  remembered" is list-and-delete rather than an approval queue, because the only writer is the user
+  ([memory-decision.md](memory-decision.md)). Deleting on the remote backend still reports an
+  unsupported error (S4).
 - **Gap**: the only backend is a remote HTTP service, so offline, self-hosted and
   privacy-sensitive use is impossible; there is also no way to see, review or approve what is
   remembered.

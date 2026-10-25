@@ -19,12 +19,11 @@ import (
 	"github.com/yusiwen/tinycode/types"
 )
 
-// Bounds for the local store. The config layer carries the same three numbers
-// and a test asserts the pair equal, so the two cannot drift.
+// Bounds for the local store. The config layer carries the same numbers and a
+// test asserts the pair equal, so the two cannot drift.
 const (
 	defaultLocalMemoryMaxEntries = 2000
 	defaultLocalMemoryMaxBytes   = 8 << 20
-	defaultLocalMemoryRecall     = 5
 )
 
 // ErrMemoryNotFound reports a Forget for an id the store does not hold, so a
@@ -155,7 +154,7 @@ func (m *LocalMemory) Recall(query string, limit int) ([]types.Memory, error) {
 		return nil, nil
 	}
 	if limit <= 0 {
-		limit = defaultLocalMemoryRecall
+		limit = DefaultMemoryRecallLimit
 	}
 
 	m.mu.Lock()

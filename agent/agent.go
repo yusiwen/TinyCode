@@ -26,6 +26,9 @@ type Agent struct {
 	Tools      []Tool
 	Memory     types.MemoryStore
 	MemoryMode int // 0=none, 1=auto, 2=on-demand
+	// MemoryRecallLimit is how many facts the recall step injects; zero means
+	// DefaultMemoryRecallLimit. It comes from memory.recall_limit.
+	MemoryRecallLimit int
 	// Session persistence
 	SessionStore interface {
 		Append(msg types.Message) error
@@ -453,18 +456,24 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		messages = append(messages, msg)
 	}
 
-	// Inject long-term memory if enabled
+	// Inject long-term memory if enabled. The query is the prompt, capped: a
+	// pasted file is not a search query. A failure to reach the store is logged
+	// and skipped — a run must not fail because a memory did not load.
 	if a.Memory != nil && a.MemoryMode == MemoryModeAuto {
-		memories, err := a.Memory.Recall(prompt, 5)
-		if err == nil && len(memories) > 0 {
-			var sb string
-			for _, m := range memories {
-				sb += fmt.Sprintf("- %s: %s\n", m.Key, m.Value)
-			}
+		limit := a.MemoryRecallLimit
+		if limit <= 0 {
+			limit = DefaultMemoryRecallLimit
+		}
+		memories, err := a.Memory.Recall(memoryQuery(prompt), limit)
+		switch {
+		case err != nil:
+			tlog.Warn("agent.memory", "recall failed", "error", err)
+		case len(memories) > 0:
 			messages = append(messages, types.Message{
 				Role:    types.RoleSystem,
-				Content: "Relevant memories:\n" + sb,
+				Content: memoryMessage(memories),
 			})
+			tlog.Debug("agent.memory", "recalled", "count", len(memories), "mode", a.agentPrefix())
 		}
 	}
 
