@@ -26,9 +26,10 @@ after it (see *Provenance and method*).
 [#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a run streams), which is
 not a roadmap entry.
 
-**Next, by the reading order**: B1/B2 (memory — blocked on a privacy decision, which is why it is
-not already done), C6 (a second isolation tier, since C7's macOS fence is delivered), B4 (repository
-index), F1, then the larger D and E items.
+**Next, by the reading order**: B1/B2 (memory — the write path is decided: explicit only, see
+[memory-decision.md](memory-decision.md); what a network backend may send is still the open half, which
+is why the pair is not already done), C6 (a second isolation tier, since C7's macOS fence is delivered),
+B4 (repository index), F1, then the larger D and E items.
 
 ### Status by entry
 
@@ -300,6 +301,9 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   agent-layer step — `Agent.Memory` + `MemoryModeAuto`, at the top of `Run`, never a model-callable
   function — so no diagram, table or whitelist may list it among the tools. What is missing here is a
   caller, not a tool definition, and this entry is the record of that gap.
+- **Decision (2026-10-25)**: the caller being missing is deliberate for now. v1 gets one write path,
+  `/remember`, and automatic end-of-turn extraction waits for B3 — see
+  [memory-decision.md](memory-decision.md), which also names the reopen condition.
 - **Evidence**: `HTTPMemoryClient` is referenced only by its own file, its own test and `CODEBASE.md`;
   `Agent.Memory` (declared `agent/agent.go:21`, read at `agent/agent.go:264-265`) is never assigned
   outside that declaration, and `NewHTTPMemoryClient` has no non-test caller; no `memory` key exists in
@@ -318,6 +322,9 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   defaulting to `https://memory.yusiwen.cn/dp-api`, bank `hermes` (`agent/memory.go:15-16`);
   `Forget` is a no-op that returns nil (`agent/memory.go:102-105`), so deletion is not merely
   unexposed but unimplemented; `rg -il 'sqlite|local.?memory|memory.?backend'` → exit 1.
+- **Decision (2026-10-25)**: the local store is the only writer in v1, and its writer is the user
+  (`/remember`), so "approve what is remembered" means list and delete, not an approval queue — see
+  [memory-decision.md](memory-decision.md).
 - **Effort**: ~3–5 d.
 
 ### B3 — No embeddings, vector search or rerank
