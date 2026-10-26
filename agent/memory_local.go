@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -148,7 +149,7 @@ func (m *LocalMemory) Remember(key, value string) error {
 // Recall scores the store lexically and returns at most limit facts, best first.
 // It is deliberately not a semantic match: embeddings are roadmap B3, and a
 // keyword hit that says so is better than a similarity nobody measured.
-func (m *LocalMemory) Recall(query string, limit int) ([]types.Memory, error) {
+func (m *LocalMemory) Recall(_ context.Context, query string, limit int) ([]types.Memory, error) {
 	terms := memoryTerms(query)
 	if len(terms) == 0 {
 		return nil, nil

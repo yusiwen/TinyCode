@@ -25,7 +25,7 @@ func (s *stubMemory) Remember(key, value string) error { return nil }
 func (s *stubMemory) Forget(id string) error           { return nil }
 func (s *stubMemory) List() ([]types.Memory, error)    { return s.facts, nil }
 
-func (s *stubMemory) Recall(query string, limit int) ([]types.Memory, error) {
+func (s *stubMemory) Recall(_ context.Context, query string, limit int) ([]types.Memory, error) {
 	s.calls++
 	s.query, s.limit = query, limit
 	return s.facts, s.err

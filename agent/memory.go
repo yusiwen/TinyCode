@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +46,7 @@ func (c *HTTPMemoryClient) auth() string {
 	return os.Getenv("OPENAI_API_KEY")
 }
 
-func (c *HTTPMemoryClient) do(method, url string, body, dst any) error {
+func (c *HTTPMemoryClient) do(ctx context.Context, method, url string, body, dst any) error {
 	var r io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -54,7 +55,7 @@ func (c *HTTPMemoryClient) do(method, url string, body, dst any) error {
 		}
 		r = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, url, r)
+	req, err := http.NewRequestWithContext(ctx, method, url, r)
 	if err != nil {
 		return fmt.Errorf("request: %w", err)
 	}
@@ -80,10 +81,10 @@ func (c *HTTPMemoryClient) do(method, url string, body, dst any) error {
 func (c *HTTPMemoryClient) Remember(key, value string) error {
 	u := c.base() + "/v1/default/banks/" + hindsightBank + "/memories"
 	body := map[string]any{"items": []map[string]string{{"content": value, "context": key}}}
-	return c.do(http.MethodPost, u, body, nil)
+	return c.do(context.Background(), http.MethodPost, u, body, nil)
 }
 
-func (c *HTTPMemoryClient) Recall(query string, limit int) ([]types.Memory, error) {
+func (c *HTTPMemoryClient) Recall(ctx context.Context, query string, limit int) ([]types.Memory, error) {
 	u := c.base() + "/v1/default/banks/" + hindsightBank + "/memories/recall"
 	body := map[string]any{"query": query, "budget": "mid"}
 	var raw struct {
@@ -92,7 +93,7 @@ func (c *HTTPMemoryClient) Recall(query string, limit int) ([]types.Memory, erro
 			Context string `json:"context"`
 		} `json:"results"`
 	}
-	if err := c.do(http.MethodPost, u, body, &raw); err != nil {
+	if err := c.do(ctx, http.MethodPost, u, body, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]types.Memory, 0, len(raw.Results))
@@ -121,7 +122,7 @@ func (c *HTTPMemoryClient) List() ([]types.Memory, error) {
 			Context string `json:"context"`
 		} `json:"memory_units"`
 	}
-	if err := c.do(http.MethodGet, u, nil, &raw); err != nil {
+	if err := c.do(context.Background(), http.MethodGet, u, nil, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]types.Memory, 0, len(raw.MemoryUnits))

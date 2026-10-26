@@ -186,7 +186,18 @@
     "backend": "local",
     "max_entries": 2000,
     "max_bytes": 8388608,
-    "recall_limit": 5
+    "recall_limit": 5,
+    "embedding": {
+      "$comment": "OFF by default. Turns recall from keyword matching into vector similarity (roadmap B3). provider is 'ollama' (local, POST /api/embed) or 'openai' (any OpenAI-compatible /embeddings); base_url and model are required because there is no default endpoint. The endpoint receives each fact you remember and the prompt of every run, so — like a network backend — it is honoured only from your own ~/.tinycode/config.json. Vectors live in a sidecar next to the facts, keyed by model: changing model drops the old vectors and the next recall re-embeds the facts. min_score is the cosine floor, semantic_weight/lexical_weight blend the two rankings, backfill is how many facts one recall may embed.",
+      "enabled": false,
+      "provider": "ollama",
+      "base_url": "http://127.0.0.1:11434",
+      "model": "nomic-embed-text",
+      "min_score": 0.25,
+      "semantic_weight": 0.7,
+      "lexical_weight": 0.3,
+      "backfill": 16
+    }
   },
 
   "mcp_servers": [
@@ -232,7 +243,7 @@
     "session_dir": "Where sessions are stored. A leading ~ is expanded to $HOME.",
     "checkpoint_dir": "Where the bytes a file tool replaced are kept, so /undo and --undo can restore them. Deliberately outside the project root: the fence that confines a tool write then confines the recovery store. It is not a tool path — no permission grants a model access to it. A bash command's writes are recorded too, from a snapshot of the project tree taken before it, bounded per file (2 MiB) and per snapshot (32 MiB / 4000 files); paths outside the project root are not captured. See docs/checkpoints.md.",
     "trajectory": "Where a run's record goes (dir), how much of it keeps text (capture: metadata|full), and the store's bounds (max_runs, max_bytes). enabled: false turns recording off. capture: full is honoured only from your own config file, never from a project-local one.",
-    "memory": "Long-term memory: enabled, backend (local|hindsight), dir, base_url, bank, max_entries, max_bytes, recall_limit. Local by default and written only by /remember; a network backend or a base_url is an egress request honoured only from your own config file.",
+    "memory": "Long-term memory: enabled, backend (local|hindsight), dir, base_url, bank, max_entries, max_bytes, recall_limit, embedding {enabled, provider, base_url, model, api_key_env, min_score, semantic_weight, lexical_weight, backfill}. Local by default and written only by /remember; a network backend, a base_url or an embedding endpoint is an egress request honoured only from your own config file.",
     "truncation": "Tool-output truncation limits: max_lines, max_bytes, output_dir (used only when the output exceeds a limit).",
     "agents": "allowed_tools replaces the agent's ruleset with a whitelist; denied_tools is applied on top of the built-in rules."
   }

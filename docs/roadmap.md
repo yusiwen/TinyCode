@@ -16,10 +16,10 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 14 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 15 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 24 | verified gaps, no issue opened |
+| Not started | 23 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
@@ -41,7 +41,7 @@ B4 (repository index), F1, then the larger D and E items.
 | A6 | Only two provider backends | Delivered — #290 |
 | B1 | The memory capability exists but is never called | Delivered — #293 |
 | B2 | No local memory backend | Delivered — #293 |
-| B3 | No embeddings, vector search or rerank | Not started |
+| B3 | No embeddings, vector search or rerank | Delivered — #297 |
 | B4 | No repository index or repo map | Not started |
 | B5 | Context management has a single strategy | Not started |
 | B6 | Truncation is fixed, not budget-aware | Not started |
@@ -343,6 +343,15 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### B3 — No embeddings, vector search or rerank
 
+- **Picked up**: [#297](https://github.com/yusiwen/TinyCode/issues/297) — S1 (the `memory.embedding`
+  section and its egress rule, the OpenAI-compatible and Ollama embedder clients, the `SemanticMemory`
+  wrapper with backfill and the weighted rerank, and the fallback to lexical recall when the endpoint
+  fails).
+- **Delivered (2026-10-26)**: recall is semantic when `memory.embedding` names an endpoint, and the
+  machinery is general — an `Embedder` interface, cosine over stored unit vectors in a sidecar keyed by
+  model, and a rerank stage over the union of the semantic and lexical candidates. What it is wired to is
+  memory, the only store this repository has: applying it to **file** context needs the repository index
+  B4 records, and this entry adds none. Rerank here is a weighted blend, not a cross-encoder.
 - **Gap**: context can only be a whole file or a keyword hit; there is no semantic retrieval.
 - **Evidence**: `rg -il 'embedding'|'cosine'|'rerank'|'faiss'|'hnsw'|'knn'|'nearest neighbor'|'dot
   product'` → exit 1 each.

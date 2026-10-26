@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -217,7 +218,7 @@ func TestLocalMemoryRecallIsLexical(t *testing.T) {
 		}
 	}
 
-	hits, err := m.Recall("how do I run the go tests", 5)
+	hits, err := m.Recall(context.Background(), "how do I run the go tests", 5)
 	if err != nil {
 		t.Fatalf("recall: %v", err)
 	}
@@ -233,10 +234,10 @@ func TestLocalMemoryRecallIsLexical(t *testing.T) {
 		}
 	}
 
-	if hits, err = m.Recall("the of and to", 5); err != nil || len(hits) != 0 {
+	if hits, err = m.Recall(context.Background(), "the of and to", 5); err != nil || len(hits) != 0 {
 		t.Fatalf("a query of stopwords returned %d facts, %v", len(hits), err)
 	}
-	if hits, err = m.Recall("go", 1); err != nil || len(hits) > 1 {
+	if hits, err = m.Recall(context.Background(), "go", 1); err != nil || len(hits) > 1 {
 		t.Fatalf("limit 1 returned %d facts, %v", len(hits), err)
 	}
 }
@@ -252,7 +253,7 @@ func TestLocalMemoryRecallHandlesCJK(t *testing.T) {
 		t.Fatalf("remember: %v", err)
 	}
 
-	hits, err := m.Recall("我要怎么跑测试", 5)
+	hits, err := m.Recall(context.Background(), "我要怎么跑测试", 5)
 	if err != nil {
 		t.Fatalf("recall: %v", err)
 	}
@@ -280,7 +281,7 @@ func TestLocalMemoryRecallPrefersNewerOnATie(t *testing.T) {
 		t.Fatalf("remember: %v", err)
 	}
 
-	hits, err := m.Recall("staging deploy", 5)
+	hits, err := m.Recall(context.Background(), "staging deploy", 5)
 	if err != nil {
 		t.Fatalf("recall: %v", err)
 	}

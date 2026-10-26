@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -68,14 +69,14 @@ func TestHTTPMemoryClient(t *testing.T) {
 		t.Fatalf("Remember body = %s, want the value and key", lastBody)
 	}
 
-	got, err := c.Recall("query", 1)
+	got, err := c.Recall(context.Background(), "query", 1)
 	if err != nil {
 		t.Fatalf("Recall: %v", err)
 	}
 	if len(got) != 1 || got[0].Key != "k1" || got[0].Value != "v1" {
 		t.Fatalf("Recall(limit 1) = %+v", got)
 	}
-	got, err = c.Recall("query", 5)
+	got, err = c.Recall(context.Background(), "query", 5)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("Recall(limit 5) = %+v, %v", got, err)
 	}
@@ -138,10 +139,10 @@ func TestHTTPMemoryClientErrors(t *testing.T) {
 		want string
 	}{
 		{"remember non-2xx", func(c *HTTPMemoryClient) error { return c.Remember("k", "v") }, "500"},
-		{"recall non-2xx", func(c *HTTPMemoryClient) error { _, err := c.Recall("q", 1); return err }, "500"},
+		{"recall non-2xx", func(c *HTTPMemoryClient) error { _, err := c.Recall(context.Background(), "q", 1); return err }, "500"},
 		{"list non-2xx", func(c *HTTPMemoryClient) error { _, err := c.List(); return err }, "500"},
 		{"recall bad json", func(c *HTTPMemoryClient) error {
-			_, err := NewHTTPMemoryClient(broken.URL).Recall("q", 1)
+			_, err := NewHTTPMemoryClient(broken.URL).Recall(context.Background(), "q", 1)
 			return err
 		}, "invalid"},
 		{"list bad json", func(c *HTTPMemoryClient) error {
@@ -160,10 +161,10 @@ func TestHTTPMemoryClientErrors(t *testing.T) {
 	}
 
 	c := NewHTTPMemoryClient(failing.URL)
-	if err := c.do(http.MethodPost, failing.URL, make(chan int), nil); err == nil || !strings.Contains(err.Error(), "marshal") {
+	if err := c.do(context.Background(), http.MethodPost, failing.URL, make(chan int), nil); err == nil || !strings.Contains(err.Error(), "marshal") {
 		t.Errorf("unmarshalable body: error = %v, want a marshal error", err)
 	}
-	if err := c.do("BAD METHOD", failing.URL, nil, nil); err == nil || !strings.Contains(err.Error(), "request") {
+	if err := c.do(context.Background(), "BAD METHOD", failing.URL, nil, nil); err == nil || !strings.Contains(err.Error(), "request") {
 		t.Errorf("invalid method: error = %v, want a request error", err)
 	}
 }
