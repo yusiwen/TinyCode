@@ -64,3 +64,39 @@ func TestMemoryStoreReportsAnUnusableDirectory(t *testing.T) {
 		t.Fatal("a store under a regular file was accepted")
 	}
 }
+
+// TestMemoryStoreWrapsLocalWithEmbeddings pins the B3 wiring: an embedding
+// section turns the local store into semantic recall, and a section the client
+// cannot build falls back to the lexical store rather than failing the start.
+func TestMemoryStoreWrapsLocalWithEmbeddings(t *testing.T) {
+	spec := config.MemorySpec{
+		Enabled:    true,
+		Backend:    config.MemoryBackendLocal,
+		Dir:        t.TempDir(),
+		MaxEntries: 10,
+		MaxBytes:   4096,
+		Embedding: config.EmbeddingSpec{
+			Enabled:  true,
+			Provider: config.EmbeddingProviderOllama,
+			BaseURL:  "http://127.0.0.1:11434",
+			Model:    "nomic-embed-text",
+			Backfill: 4,
+		},
+	}
+	store, err := memoryStore(spec, "/repo/a")
+	if err != nil {
+		t.Fatalf("semantic store: %v", err)
+	}
+	if _, ok := store.(*agent.SemanticMemory); !ok {
+		t.Fatalf("an embedding section built %T, want the semantic wrapper", store)
+	}
+
+	spec.Embedding.Provider = "hinsight" // a typo the client cannot build
+	store, err = memoryStore(spec, "/repo/a")
+	if err != nil {
+		t.Fatalf("a bad provider must not fail the store: %v", err)
+	}
+	if _, ok := store.(*agent.LocalMemory); !ok {
+		t.Fatalf("a bad provider built %T, want the plain local store", store)
+	}
+}

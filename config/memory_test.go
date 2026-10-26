@@ -125,3 +125,83 @@ func TestResolveMemoryHonoursNarrowingFromAnyLayer(t *testing.T) {
 		t.Fatalf("a project directory was not honoured: %+v ignored=%v", spec, ignored)
 	}
 }
+
+// TestEmbeddingSectionResolves pins what the embedding section means: off unless
+// asked for, and an enabled section without an endpoint and a model is off too —
+// half a configuration is a mistake to report, not to paper over with a default
+// endpoint nobody named.
+func TestEmbeddingSectionResolves(t *testing.T) {
+	on := true
+	full := Config{Memory: &MemoryConfig{Embedding: &EmbeddingConfig{
+		Enabled:  &on,
+		Provider: "ollama",
+		BaseURL:  "http://127.0.0.1:11434",
+		Model:    "nomic-embed-text",
+	}}}.MemorySpec()
+	if !full.Embedding.Enabled {
+		t.Fatal("a complete embedding section resolved to off")
+	}
+	if full.Embedding.MinScore != DefaultEmbeddingMinScore ||
+		full.Embedding.SemanticWeight != DefaultEmbeddingSemanticWeight ||
+		full.Embedding.LexicalWeight != DefaultEmbeddingLexicalWeight ||
+		full.Embedding.Backfill != DefaultEmbeddingBackfill {
+		t.Fatalf("embedding defaults = %+v", full.Embedding)
+	}
+
+	noEndpoint := Config{Memory: &MemoryConfig{Embedding: &EmbeddingConfig{
+		Enabled: &on, Provider: "ollama", Model: "nomic-embed-text",
+	}}}.MemorySpec()
+	if noEndpoint.Embedding.Enabled {
+		t.Fatal("an embedding section without a base_url was enabled")
+	}
+	noModel := Config{Memory: &MemoryConfig{Embedding: &EmbeddingConfig{
+		Enabled: &on, Provider: "ollama", BaseURL: "http://127.0.0.1:11434",
+	}}}.MemorySpec()
+	if noModel.Embedding.Enabled {
+		t.Fatal("an embedding section without a model was enabled")
+	}
+
+	typo := Config{Memory: &MemoryConfig{Embedding: &EmbeddingConfig{
+		Enabled: &on, Provider: "hinsight", BaseURL: "https://example.com", Model: "m",
+	}}}.MemorySpec()
+	if typo.Embedding.Enabled {
+		t.Fatal("a misspelled embedding provider was used anyway")
+	}
+
+	off := false
+	explicit := Config{Memory: &MemoryConfig{Embedding: &EmbeddingConfig{
+		Enabled: &off, Provider: "openai", BaseURL: "https://api.openai.com/v1", Model: "m",
+	}}}.MemorySpec()
+	if explicit.Embedding.Enabled {
+		t.Fatal("enabled: false was ignored")
+	}
+}
+
+// TestResolveMemoryDropsEmbeddingFromAProjectFile pins that the embedding
+// endpoint is egress like any other: a project-local file may not decide that
+// the prompt goes to it, and the user's own file may.
+func TestResolveMemoryDropsEmbeddingFromAProjectFile(t *testing.T) {
+	on := true
+	projectAsks := &Config{Memory: &MemoryConfig{Embedding: &EmbeddingConfig{
+		Enabled: &on, Provider: "openai", BaseURL: "https://api.openai.com/v1", Model: "text-embedding-3-small",
+	}}}
+
+	spec, ignored := UserLayer{raw: map[string]any{}}.ResolveMemory(projectAsks)
+	if !ignored {
+		t.Fatal("a project-local embedding request was not reported as ignored")
+	}
+	if spec.Embedding.Enabled {
+		t.Fatal("a project-local embedding endpoint was honoured")
+	}
+
+	userAsks := UserLayer{raw: map[string]any{
+		"memory": map[string]any{"embedding": map[string]any{"enabled": true}},
+	}}
+	spec, ignored = userAsks.ResolveMemory(projectAsks)
+	if ignored || !spec.Embedding.Enabled {
+		t.Fatalf("the user's own embedding request was dropped: enabled=%v ignored=%v", spec.Embedding.Enabled, ignored)
+	}
+	if spec.Embedding.Provider != EmbeddingProviderOpenAI || spec.Embedding.Model == "" {
+		t.Fatalf("embedding spec = %+v", spec.Embedding)
+	}
+}

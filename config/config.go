@@ -351,7 +351,66 @@ type MemoryConfig struct {
 	MaxBytes   int64 `json:"max_bytes,omitempty"`
 	// RecallLimit is how many facts one run may inject; zero means the default.
 	RecallLimit int `json:"recall_limit,omitempty"`
+	// Embedding turns recall semantic (roadmap B3). Off by default: it needs an
+	// endpoint, and the default route has no embeddings API. It sends text to
+	// that endpoint, so it is an egress request like a network backend.
+	Embedding *EmbeddingConfig `json:"embedding,omitempty"`
 }
+
+// EmbeddingConfig declares the model that turns text into vectors for semantic
+// recall (roadmap B3).
+type EmbeddingConfig struct {
+	// Enabled is a pointer so "off" can be said out loud; absent means off,
+	// because an embedding endpoint is something a person configures.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Provider is "ollama" or "openai" (any OpenAI-compatible /embeddings).
+	// An unknown value disables embedding rather than guessing.
+	Provider string `json:"provider,omitempty"`
+	// BaseURL is required when enabled: there is no default endpoint, for the
+	// same reason the network memory backend has none.
+	BaseURL string `json:"base_url,omitempty"`
+	// Model is the embedding model's name; it is stored with every vector, and
+	// changing it invalidates the vectors the previous model produced.
+	Model string `json:"model,omitempty"`
+	// APIKeyEnv names the variable the key is read from. Empty uses the
+	// provider's convention; Ollama usually needs no key at all.
+	APIKeyEnv string `json:"api_key_env,omitempty"`
+	// MinScore is the cosine floor a fact must clear to be a candidate.
+	MinScore float64 `json:"min_score,omitempty"`
+	// SemanticWeight and LexicalWeight blend the two rankings. They need not sum
+	// to one; the score is divided by their sum.
+	SemanticWeight float64 `json:"semantic_weight,omitempty"`
+	LexicalWeight  float64 `json:"lexical_weight,omitempty"`
+	// Backfill is how many un-embedded facts one recall may embed.
+	Backfill int `json:"backfill,omitempty"`
+}
+
+// Embedding providers and the defaults the spec applies.
+const (
+	EmbeddingProviderOllama = "ollama"
+	EmbeddingProviderOpenAI = "openai"
+
+	DefaultEmbeddingMinScore       = 0.25
+	DefaultEmbeddingSemanticWeight = 0.7
+	DefaultEmbeddingLexicalWeight  = 0.3
+	DefaultEmbeddingBackfill       = 16
+)
+
+// EmbeddingSpec is the effective embedding configuration.
+type EmbeddingSpec struct {
+	Enabled        bool
+	Provider       string
+	BaseURL        string
+	Model          string
+	APIKeyEnv      string
+	MinScore       float64
+	SemanticWeight float64
+	LexicalWeight  float64
+	Backfill       int
+}
+
+// Configured reports whether this specification asks for embeddings at all.
+func (s EmbeddingSpec) Configured() bool { return s.Enabled || s.BaseURL != "" || s.Model != "" }
 
 // Backends and bounds for the memory section. The numbers are also what the
 // agent package falls back to when it is handed zero, and they are asserted
@@ -376,6 +435,7 @@ type MemorySpec struct {
 	MaxEntries  int
 	MaxBytes    int64
 	RecallLimit int
+	Embedding   EmbeddingSpec
 }
 
 // WantsNetwork reports whether this specification sends text off the machine.
@@ -424,6 +484,44 @@ func (c Config) MemorySpec() MemorySpec {
 	}
 	if section.RecallLimit > 0 {
 		spec.RecallLimit = section.RecallLimit
+	}
+	if section.Embedding != nil {
+		emb := section.Embedding
+		on := emb.Enabled != nil && *emb.Enabled
+		provider := strings.ToLower(strings.TrimSpace(emb.Provider))
+		if provider == "" {
+			provider = EmbeddingProviderOllama
+		}
+		if provider != EmbeddingProviderOllama && provider != EmbeddingProviderOpenAI {
+			// A typo is not a reason to send text to an endpoint nobody meant.
+			on = false
+		}
+		// Enabled needs an endpoint and a model: there is no default for either,
+		// and half a configuration is a mistake to report, not to paper over.
+		on = on && emb.BaseURL != "" && emb.Model != ""
+		spec.Embedding = EmbeddingSpec{
+			Enabled:        on,
+			Provider:       provider,
+			BaseURL:        emb.BaseURL,
+			Model:          emb.Model,
+			APIKeyEnv:      emb.APIKeyEnv,
+			MinScore:       DefaultEmbeddingMinScore,
+			SemanticWeight: DefaultEmbeddingSemanticWeight,
+			LexicalWeight:  DefaultEmbeddingLexicalWeight,
+			Backfill:       DefaultEmbeddingBackfill,
+		}
+		if emb.MinScore > 0 {
+			spec.Embedding.MinScore = emb.MinScore
+		}
+		if emb.SemanticWeight > 0 {
+			spec.Embedding.SemanticWeight = emb.SemanticWeight
+		}
+		if emb.LexicalWeight > 0 {
+			spec.Embedding.LexicalWeight = emb.LexicalWeight
+		}
+		if emb.Backfill > 0 {
+			spec.Embedding.Backfill = emb.Backfill
+		}
 	}
 	if spec.Dir == "" && !spec.WantsNetwork() {
 		// No directory and nowhere to send anything: there is no store to read.
@@ -878,6 +976,39 @@ func merge(dst, src Config) Config {
 		if src.Memory.RecallLimit > 0 {
 			dst.Memory.RecallLimit = src.Memory.RecallLimit
 		}
+		if src.Memory.Embedding != nil {
+			if dst.Memory.Embedding == nil {
+				dst.Memory.Embedding = &EmbeddingConfig{}
+			}
+			srcEmb, dstEmb := src.Memory.Embedding, dst.Memory.Embedding
+			if srcEmb.Enabled != nil {
+				dstEmb.Enabled = srcEmb.Enabled
+			}
+			if srcEmb.Provider != "" {
+				dstEmb.Provider = srcEmb.Provider
+			}
+			if srcEmb.BaseURL != "" {
+				dstEmb.BaseURL = srcEmb.BaseURL
+			}
+			if srcEmb.Model != "" {
+				dstEmb.Model = srcEmb.Model
+			}
+			if srcEmb.APIKeyEnv != "" {
+				dstEmb.APIKeyEnv = srcEmb.APIKeyEnv
+			}
+			if srcEmb.MinScore > 0 {
+				dstEmb.MinScore = srcEmb.MinScore
+			}
+			if srcEmb.SemanticWeight > 0 {
+				dstEmb.SemanticWeight = srcEmb.SemanticWeight
+			}
+			if srcEmb.LexicalWeight > 0 {
+				dstEmb.LexicalWeight = srcEmb.LexicalWeight
+			}
+			if srcEmb.Backfill > 0 {
+				dstEmb.Backfill = srcEmb.Backfill
+			}
+		}
 	}
 	if src.SessionDir != "" {
 		dst.SessionDir = src.SessionDir
@@ -1104,19 +1235,30 @@ func (l UserLayer) wantsFullCapture() bool {
 // say so rather than silently reading a different store than the file named.
 func (l UserLayer) ResolveMemory(cfg *Config) (MemorySpec, bool) {
 	spec := cfg.MemorySpec()
-	if !spec.WantsNetwork() {
-		return spec, false
+	ignored := false
+	if spec.WantsNetwork() && !l.wantsNetworkMemory() {
+		spec.Backend = MemoryBackendLocal
+		spec.BaseURL = ""
+		ignored = true
 	}
-	if l.wantsNetworkMemory() {
-		return spec, false
-	}
-	local := spec
-	local.Backend = MemoryBackendLocal
-	local.BaseURL = ""
-	return local, true
+	spec, embIgnored := l.resolveEmbeddingEgress(spec)
+	return spec, ignored || embIgnored
 }
 
-// wantsNetworkMemory reports whether this layer's own file asks for egress.
+// resolveEmbeddingEgress drops an embedding configuration a project-local file
+// asked for. An embedding endpoint receives the prompt and the facts, so it is
+// the same decision as a network backend — and the same answer: only the user's
+// own file may make it.
+func (l UserLayer) resolveEmbeddingEgress(spec MemorySpec) (MemorySpec, bool) {
+	if !spec.Embedding.Enabled || l.wantsEmbeddingMemory() {
+		return spec, false
+	}
+	spec.Embedding.Enabled = false
+	return spec, true
+}
+
+// wantsNetworkMemory reports whether this layer's own file asks for a network
+// memory backend.
 func (l UserLayer) wantsNetworkMemory() bool {
 	section, _ := l.raw["memory"].(map[string]any)
 	if section == nil {
@@ -1127,6 +1269,18 @@ func (l UserLayer) wantsNetworkMemory() bool {
 	}
 	base, ok := section["base_url"].(string)
 	return ok && base != ""
+}
+
+// wantsEmbeddingMemory reports whether this layer's own file asks for an
+// embedding endpoint. Any embedding section counts: the endpoint receives text,
+// and which key inside it a repository used to ask first is not the question.
+func (l UserLayer) wantsEmbeddingMemory() bool {
+	section, _ := l.raw["memory"].(map[string]any)
+	if section == nil {
+		return false
+	}
+	embedding, _ := section["embedding"].(map[string]any)
+	return embedding != nil
 }
 
 // AllowedPathGrants is the grants this layer carries, with the raw file's own

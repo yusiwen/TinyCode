@@ -52,7 +52,10 @@ type Memory struct {
 // MemoryStore is the abstraction for long-term knowledge.
 type MemoryStore interface {
 	Remember(key, value string) error
-	Recall(query string, limit int) ([]Memory, error)
+	// Recall carries the run's context: it runs at the top of every run, so an
+	// endpoint that stops answering must be abandoned when the run is cancelled.
+	// The other three are user-initiated and bounded by the store's own timeout.
+	Recall(ctx context.Context, query string, limit int) ([]Memory, error)
 	// Forget removes the fact with this id, as returned by List. A backend that
 	// cannot delete reports an error: a delete that silently does nothing is
 	// indistinguishable from one that worked, which is not a state a user can

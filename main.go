@@ -1212,11 +1212,56 @@ func providerLabel(pc config.ProviderRecordConfig, index int) string {
 // endpoint the user wrote — there is deliberately no default endpoint, because a
 // default would be a decision to send someone's prompts to a service they never
 // configured.
+//
+// A local store with an embedding section is wrapped in vector recall (roadmap
+// B3). A wrapper that cannot open its vector file is logged and dropped rather
+// than returned as an error: the facts are still there and lexical recall still
+// reads them, which is the same rule the rest of memory follows.
 func memoryStore(spec config.MemorySpec, projectRoot string) (types.MemoryStore, error) {
 	if spec.Backend == config.MemoryBackendHindsight {
 		return agent.NewHTTPMemoryClient(spec.BaseURL), nil
 	}
-	return agent.NewLocalMemory(spec.Dir, agent.MemoryScopeFor(projectRoot), spec.MaxEntries, spec.MaxBytes)
+	local, err := agent.NewLocalMemory(spec.Dir, agent.MemoryScopeFor(projectRoot), spec.MaxEntries, spec.MaxBytes)
+	if err != nil {
+		return nil, err
+	}
+	if !spec.Embedding.Enabled {
+		return local, nil
+	}
+	embedder, err := memoryEmbedder(spec.Embedding)
+	if err != nil {
+		tlog.Warn("config", "embedding unavailable, recall stays lexical", "error", err)
+		return local, nil
+	}
+	semantic, err := agent.NewSemanticMemory(local, embedder, agent.SemanticOptions{
+		MinScore:       spec.Embedding.MinScore,
+		SemanticWeight: spec.Embedding.SemanticWeight,
+		LexicalWeight:  spec.Embedding.LexicalWeight,
+		Backfill:       spec.Embedding.Backfill,
+	})
+	if err != nil {
+		tlog.Warn("config", "vector recall unavailable, recall stays lexical", "error", err)
+		return local, nil
+	}
+	return semantic, nil
+}
+
+// memoryEmbedder builds the client for the configured embedding endpoint. The
+// key is read from the variable the section names, or from the provider's
+// conventional one; Ollama needs none.
+func memoryEmbedder(spec config.EmbeddingSpec) (agent.Embedder, error) {
+	switch spec.Provider {
+	case config.EmbeddingProviderOllama:
+		return agent.NewOllamaEmbedder(spec.BaseURL, spec.Model), nil
+	case config.EmbeddingProviderOpenAI:
+		env := spec.APIKeyEnv
+		if env == "" {
+			env = "OPENAI_API_KEY"
+		}
+		return agent.NewOpenAIEmbedder(spec.BaseURL, spec.Model, os.Getenv(env)), nil
+	default:
+		return nil, fmt.Errorf("embedding: unknown provider %q", spec.Provider)
+	}
 }
 
 // priceTable turns the declared rates in the configuration into the table the

@@ -464,7 +464,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		if limit <= 0 {
 			limit = DefaultMemoryRecallLimit
 		}
-		memories, err := a.Memory.Recall(memoryQuery(prompt), limit)
+		memories, err := a.Memory.Recall(ctx, memoryQuery(prompt), limit)
 		switch {
 		case err != nil:
 			tlog.Warn("agent.memory", "recall failed", "error", err)
