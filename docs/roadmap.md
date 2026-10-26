@@ -351,7 +351,9 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   machinery is general — an `Embedder` interface, cosine over stored unit vectors in a sidecar keyed by
   model, and a rerank stage over the union of the semantic and lexical candidates. What it is wired to is
   memory, the only store this repository has: applying it to **file** context needs the repository index
-  B4 records, and this entry adds none. Rerank here is a weighted blend, not a cross-encoder.
+  B4 records, and this entry adds none. Rerank here is a weighted blend, not a cross-encoder. Whether any
+  of it beats the lexical ranker on a real model is not claimed here —
+  [memory-bench.md](memory-bench.md) is the instrument that would say.
 - **Gap**: context can only be a whole file or a keyword hit; there is no semantic retrieval.
 - **Evidence**: `rg -il 'embedding'|'cosine'|'rerank'|'faiss'|'hnsw'|'knn'|'nearest neighbor'|'dot
   product'` → exit 1 each.

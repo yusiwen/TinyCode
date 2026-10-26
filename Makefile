@@ -46,6 +46,22 @@ test-race:
 test-repeat:
 	go test ./... -count=3
 
+# The memory recall benchmark (docs/memory-bench.md) measured against a real
+# embedding endpoint — Ollama's /api/embed by default, or any OpenAI-compatible
+# /embeddings with MEMORY_BENCH_PROVIDER=openai. Without a URL and a model the
+# test skips with the reason, like every other gate, so an ordinary `make test`
+# never needs a model.
+#
+#	make memory-bench MEMORY_BENCH_URL=http://127.0.0.1:11434 MEMORY_BENCH_MODEL=nomic-embed-text
+#
+# -v on purpose: the per-group numbers and the per-miss lines are the output.
+memory-bench:
+	TINYCODE_MEMORY_BENCH_URL=$(MEMORY_BENCH_URL) \
+	TINYCODE_MEMORY_BENCH_MODEL=$(MEMORY_BENCH_MODEL) \
+	TINYCODE_MEMORY_BENCH_PROVIDER=$(MEMORY_BENCH_PROVIDER) \
+	TINYCODE_MEMORY_BENCH_API_KEY=$(MEMORY_BENCH_API_KEY) \
+	go test -count=1 -v -run TestMemoryBenchRealEndpoint ./agent/
+
 # Language server used by the gated LSP integration tests. Keep this in step
 # with the flake's pkgs.gopls (0.23.0).
 GOPLS_VERSION ?= v0.23.0

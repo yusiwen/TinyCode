@@ -1,0 +1,53 @@
+{
+  "$comment": "A fixed corpus for the memory recall benchmark. Facts are what a person would actually /remember about a repository; queries name the fact they should bring back. kind=lexical shares a distinctive word with its fact on purpose (the local ranker's floor); kind=paraphrase and kind=crosslingual share no word with it, which is the case embedding recall exists for. docs/memory-bench.md explains the columns.",
+  "facts": [
+    {"key": "test command", "value": "run go test ./... -count=1 with HOME redirected under the sandbox"},
+    {"key": "race detector", "value": "go test -race runs in the CI Build and Lint job"},
+    {"key": "release", "value": "tag v0.x.y and push the tag; goreleaser is not used"},
+    {"key": "staging database", "value": "Postgres at 10.4.2.11:5432, read-only for everyone"},
+    {"key": "migrations", "value": "make migrate-up; never edit a migration that has been applied"},
+    {"key": "deploy path", "value": "production ships from the release branch, never a direct push to master"},
+    {"key": "editor", "value": "neovim with gopls; format on save is off"},
+    {"key": "language server", "value": "gopls comes from mise, not brew"},
+    {"key": "frontend packages", "value": "the web app uses pnpm, never npm"},
+    {"key": "secrets", "value": "tokens live in 1Password under gateway, never in .env"},
+    {"key": "seatbelt flake", "value": "the seatbelt probe fails inside a nested sandbox; it is tracked, not broken"},
+    {"key": "logging", "value": "logs go to stderr; the file logger exists for the TUI only"},
+    {"key": "api versioning", "value": "the public API is versioned in the path (/v1), never by header"},
+    {"key": "prompt cache", "value": "a cache hit is only counted when the prefix matches byte for byte"},
+    {"key": "default route", "value": "deepseek-flash is the default route; the older alias is retired"},
+    {"key": "token budget", "value": "budgets are per run and per session; zero means unlimited"},
+    {"key": "sessions", "value": "sessions are JSON files under ~/.tinycode/sessions, one per session"},
+    {"key": "checkpoints", "value": "checkpoints keep pre-images, so undo restores bytes rather than applying a diff"},
+    {"key": "sandbox fence", "value": "writes are fenced to the project root unless a grant widens it"},
+    {"key": "platform", "value": "Windows is unsupported; the build assumes unix"},
+    {"key": "ci jobs", "value": "CI runs nine jobs; annotations are not part of the pass criteria"},
+    {"key": "docs language", "value": "documentation is English; the README is the entry point"},
+    {"key": "error style", "value": "errors wrap with %w and the message reads lowercase"},
+    {"key": "memory storage", "value": "memory facts are per project and live outside the repository"}
+  ],
+  "queries": [
+    {"q": "where does gopls come from", "want": "language server", "kind": "lexical"},
+    {"q": "what is the staging Postgres address", "want": "staging database", "kind": "lexical"},
+    {"q": "does the web app use pnpm", "want": "frontend packages", "kind": "lexical"},
+    {"q": "where do tokens live", "want": "secrets", "kind": "lexical"},
+    {"q": "which branch does production ship from", "want": "deploy path", "kind": "lexical"},
+    {"q": "how are sessions stored", "want": "sessions", "kind": "lexical"},
+    {"q": "what do checkpoints keep", "want": "checkpoints", "kind": "lexical"},
+    {"q": "how do errors wrap", "want": "error style", "kind": "lexical"},
+    {"q": "is Windows supported", "want": "platform", "kind": "lexical"},
+    {"q": "what is the default route", "want": "default route", "kind": "lexical"},
+
+    {"q": "what is the one-liner that exercises everything", "want": "test command", "kind": "paraphrase"},
+    {"q": "how do I cut a version", "want": "release", "kind": "paraphrase"},
+    {"q": "what do I write code in", "want": "editor", "kind": "paraphrase"},
+    {"q": "where are the credentials kept", "want": "secrets", "kind": "paraphrase"},
+    {"q": "how do I cap my spending", "want": "token budget", "kind": "paraphrase"},
+    {"q": "what do I get back when I revert a tool call", "want": "checkpoints", "kind": "paraphrase"},
+
+    {"q": "预发布数据库在哪里", "want": "staging database", "kind": "crosslingual"},
+    {"q": "发布版本要做什么", "want": "release", "kind": "crosslingual"},
+    {"q": "怎么限制花费", "want": "token budget", "kind": "crosslingual"},
+    {"q": "会话保存在哪里", "want": "sessions", "kind": "crosslingual"}
+  ]
+}
