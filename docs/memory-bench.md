@@ -27,21 +27,50 @@ answer it and the column would stop measuring what it says), or when a `lexical`
 Ranked at depth 10, per group: `hit@1`, `hit@3`, `hit@5` (the wanted fact is in the top k) and `MRR`
 (mean reciprocal rank, 0 for a miss).
 
-Baseline, measured on this machine with the local ranker only — deterministic, so these are exact
-rather than a sample:
+Measured **2026-10-26** against a local Ollama 0.40.11 (`http://127.0.0.1:11434`), each model run twice
+and byte-identical both times. The lexical rows do not involve a model at all — they are the baseline
+the semantic rows are read against.
+
+| Ranker | Model (dims) | Group | n | hit@1 | hit@3 | hit@5 | MRR |
+| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| lexical | — | lexical | 10 | 1.00 | 1.00 | 1.00 | 1.00 |
+| lexical | — | paraphrase | 6 | 0.00 | 0.00 | 0.00 | 0.00 |
+| lexical | — | crosslingual | 4 | 0.00 | 0.00 | 0.00 | 0.00 |
+| semantic | nomic-embed-text (768) | lexical | 10 | 1.00 | 1.00 | 1.00 | 1.00 |
+| semantic | nomic-embed-text (768) | paraphrase | 6 | 0.33 | 0.67 | 0.83 | 0.49 |
+| semantic | nomic-embed-text (768) | crosslingual | 4 | 0.00 | 0.25 | 0.25 | 0.08 |
+| semantic | bge-m3 (1024) | lexical | 10 | 1.00 | 1.00 | 1.00 | 1.00 |
+| semantic | bge-m3 (1024) | paraphrase | 6 | 0.50 | 0.50 | 0.83 | 0.61 |
+| semantic | bge-m3 (1024) | crosslingual | 4 | 0.75 | 1.00 | 1.00 | 0.83 |
+
+What the numbers say:
+
+- **The premise holds for wording.** Lexical recall answers none of the six paraphrases. Either model
+  answers most of them within five, and the two differ by one query at hit@1 (two of six vs three).
+- **Cross-lingual recall is the model, not the store.** `nomic-embed-text` finds one of four Chinese
+  queries in the top three; `bge-m3` finds all four and three of them first. Same store, same corpus,
+  same code — the difference is entirely which model produced the vectors.
+- **Nothing was traded away.** Both models keep hit@1 at 1.00 on the queries that share a word. A
+  semantic model that lost the easy case would be a regression wearing a feature's name.
+- **The corpus is small.** One query is 17 points in the paraphrase column and 25 in the cross-lingual
+  one. Read the ordering, not the decimals.
+
+The `MEMBENCH` lines behind the table, verbatim:
 
 ```
-ranker=lexical  kind=lexical      n=10 hit1=1.00 hit3=1.00 hit5=1.00 mrr=1.00
-ranker=lexical  kind=paraphrase   n=6  hit1=0.00 hit3=0.00 hit5=0.00 mrr=0.00
-ranker=lexical  kind=crosslingual n=4  hit1=0.00 hit3=0.00 hit5=0.00 mrr=0.00
+model=nomic-embed-text endpoint=http://127.0.0.1:11434 dims=768 facts=24 queries=20
+ranker=semantic kind=lexical      n=10 hit1=1.00 hit3=1.00 hit5=1.00 mrr=1.00
+ranker=semantic kind=paraphrase   n=6  hit1=0.33 hit3=0.67 hit5=0.83 mrr=0.49
+ranker=semantic kind=crosslingual n=4  hit1=0.00 hit3=0.25 hit5=0.25 mrr=0.08
+
+model=bge-m3 endpoint=http://127.0.0.1:11434 dims=1024 facts=24 queries=20
+ranker=semantic kind=lexical      n=10 hit1=1.00 hit3=1.00 hit5=1.00 mrr=1.00
+ranker=semantic kind=paraphrase   n=6  hit1=0.50 hit3=0.50 hit5=0.83 mrr=0.61
+ranker=semantic kind=crosslingual n=4  hit1=0.75 hit3=1.00 hit5=1.00 mrr=0.83
 ```
 
-That is the shape of the gap B3 was opened for: perfect where a word is shared, nothing where the
-words differ.
-
-**A semantic model's numbers are not recorded here yet.** No embedding endpoint was configured when
-this page was written, and a number nobody ran is worse than an empty cell. Run the command below and
-put its `MEMBENCH` lines here with the model's name, the date and the endpoint.
+Both models were installed locally with Ollama (`nomic-embed-text` 274 MB, `bge-m3` 1.2 GB) and the run
+took seconds; the corpus is small enough that a laptop embeds it faster than the page took to write.
 
 ## Running it
 

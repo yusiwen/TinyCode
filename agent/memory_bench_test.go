@@ -192,6 +192,11 @@ func TestMemoryBenchRealEndpoint(t *testing.T) {
 	}
 	semantic.mu.Lock()
 	embedded := len(semantic.vectors)
+	dims := 0
+	for _, vec := range semantic.vectors {
+		dims = len(vec)
+		break
+	}
 	semantic.mu.Unlock()
 	if embedded == 0 {
 		t.Fatalf("the endpoint at %s returned no vectors for %q; recall would silently fall back to lexical", base, model)
@@ -200,7 +205,7 @@ func TestMemoryBenchRealEndpoint(t *testing.T) {
 		t.Fatalf("%d of %d facts were embedded; a partial corpus misreports every column", embedded, len(corpus.Facts))
 	}
 
-	t.Logf("model=%s endpoint=%s facts=%d queries=%d", model, base, len(corpus.Facts), len(corpus.Queries))
+	t.Logf("model=%s endpoint=%s dims=%d facts=%d queries=%d", model, base, dims, len(corpus.Facts), len(corpus.Queries))
 	reportBench(t, "lexical", corpus, benchRanks(t, inner, corpus))
 	reportBench(t, "semantic", corpus, benchRanks(t, semantic, corpus))
 }
