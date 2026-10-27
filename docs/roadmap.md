@@ -295,12 +295,14 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 - **Picked up**: [#293](https://github.com/yusiwen/TinyCode/issues/293) — S1 (the config section and
   the user-layer egress gate), S2 (the local store and the tool-layer refusal), S3 (the composition
-  root, `/remember` and `/memory`, recall hardening). S4 — the Hindsight adapter's contract — is still
-  open: the remote backend is reachable by configuration, but its decoders predate the service's
-  current API.
+  root, `/remember` and `/memory`, recall hardening); the endpoint itself became required in #301. The
+  adapter's contract moved to its own issue when #293 closed:
+  [#302](https://github.com/yusiwen/TinyCode/issues/302) — a real deployment has never been probed, and
+  the decoders predate the service's current API.
 - **Delivered (2026-10-25)**: `Agent.Memory` is assigned in `main.go` from the resolved section, and the
   recall step injects one system message per run. The gap this entry records — a capability nobody
-  called — no longer exists in the tree; the adapter's contract does, and is S4 above.
+  called — no longer exists in the tree; the remote adapter's contract does, and is
+  [#302](https://github.com/yusiwen/TinyCode/issues/302).
 - **Gap**: no cross-session memory in practice. The client is dead code: not registered as a tool,
   not instantiated on any path.
 - **Decision (issue #188)**: `memory` is not a tool and is not meant to become one. Recall is an
