@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1228 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1230 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -275,7 +275,8 @@ from every permission whitelist. `docs/memory-decision.md` is the policy behind 
 What runs today, in order:
 
 1. `main.go` resolves the `memory` section with `UserLayer.ResolveMemory`, which honours a network
-   backend or a `base_url` only from the user's own config file.
+   backend or a `base_url` only from the user's own config file, and `memoryStore` refuses a
+   network backend that names no `base_url` — there is no default endpoint to fall back to.
 2. It builds the store with `memoryStore`: the local backend gets a per-project shard
    (`MemoryScopeFor`), the remote one gets the endpoint the user wrote — there is no default endpoint.
 3. For the local backend it registers the directory with the tool layer (`tool.SetMemoryRoot`), so a
@@ -303,7 +304,7 @@ What runs today, in order:
   `Forget` reports `ErrMemoryDeleteUnsupported` rather than returning nil: the service has no
   per-memory delete, and the adapter's recall/list decoders predate its current API (issue #293, S4).
 - Methods: `Remember(key, value string) error`, `Recall(query string, limit int) ([]types.Memory, error)`, `Forget(id string) error`, `List() ([]types.Memory, error)`
-- Hindsight API: bank "hermes", 15s timeout, auth via `HINDSIGHT_API_KEY` or `OPENAI_API_KEY`
+- Hindsight API: `base_url` is **required** (`memory.base_url`; there is no default endpoint and the client is not built without one), bank from `memory.bank` (default `default`), 15s timeout, auth via `HINDSIGHT_API_KEY` or `OPENAI_API_KEY`
 
 ### `truncate.go` — Output Truncation
 
@@ -849,7 +850,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1228 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1230 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -895,7 +896,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1228 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1230 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

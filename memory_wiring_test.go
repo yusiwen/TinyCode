@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusiwen/tinycode/agent"
@@ -48,6 +49,32 @@ func TestMemoryStoreBuildsTheConfiguredBackend(t *testing.T) {
 	}
 	if client.BaseURL != remote.BaseURL {
 		t.Fatalf("client base = %q, want %q", client.BaseURL, remote.BaseURL)
+	}
+	if client.Bank != "default" {
+		t.Fatalf("bank = %q, want the service default", client.Bank)
+	}
+
+	remote.Bank = "work"
+	if store, err = memoryStore(remote, ""); err != nil {
+		t.Fatalf("named bank: %v", err)
+	}
+	if got := store.(*agent.HTTPMemoryClient).Bank; got != "work" {
+		t.Fatalf("bank = %q, want work", got)
+	}
+}
+
+// TestMemoryStoreRefusesHindsightWithoutAnEndpoint pins the fix for the silently
+// defaulted endpoint: a network backend that names no base_url is an error, so
+// the caller logs it and runs without memory rather than sending the prompt to
+// a service nobody configured.
+func TestMemoryStoreRefusesHindsightWithoutAnEndpoint(t *testing.T) {
+	spec := config.MemorySpec{Enabled: true, Backend: config.MemoryBackendHindsight}
+	store, err := memoryStore(spec, "")
+	if err == nil {
+		t.Fatalf("a hindsight spec with no base_url built %T", store)
+	}
+	if !strings.Contains(err.Error(), "base_url") {
+		t.Fatalf("the error does not name the missing key: %v", err)
 	}
 }
 

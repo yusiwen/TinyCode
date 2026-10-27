@@ -1219,7 +1219,10 @@ func providerLabel(pc config.ProviderRecordConfig, index int) string {
 // reads them, which is the same rule the rest of memory follows.
 func memoryStore(spec config.MemorySpec, projectRoot string) (types.MemoryStore, error) {
 	if spec.Backend == config.MemoryBackendHindsight {
-		return agent.NewHTTPMemoryClient(spec.BaseURL), nil
+		// No default endpoint: a network backend that was not told where to send
+		// the prompt is not built at all (the caller logs the error and runs
+		// without memory).
+		return agent.NewHTTPMemoryClient(spec.BaseURL, spec.Bank)
 	}
 	local, err := agent.NewLocalMemory(spec.Dir, agent.MemoryScopeFor(projectRoot), spec.MaxEntries, spec.MaxBytes)
 	if err != nil {

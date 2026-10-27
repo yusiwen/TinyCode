@@ -47,7 +47,8 @@ on every run, and the difference is not a setting.
 - **`/memory`** lists what is stored and **`/memory forget <id>`** removes it, by the id the listing
   shows. A store without a way to read and delete it is not one a person can consent to.
 - **A network backend (Hindsight)** is reachable only by explicit configuration: an endpoint written in
-  the user's own config file. A project-local `.tinycode/config.json` may not enable egress — the same
+  the user's own config file, and nothing else — the client is not built without one, so a config that
+  names the backend and no endpoint is an error at startup rather than a default. A project-local `.tinycode/config.json` may not enable egress — the same
   rule `capture: full` follows in `config/config.go:928`. The adapter as it stands also predates the
   current Hindsight API: upstream recall results carry `text` (the client decodes `content`) and the
   listing returns `items` (the client decodes `memory_units`), while `Forget` is a documented no-op at
