@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/yusiwen/tinycode/types"
@@ -19,24 +20,37 @@ import (
 // and it is not (docs/memory-decision.md).
 var ErrMemoryDeleteUnsupported = errors.New("memory: this backend cannot delete a fact")
 
-const hindsightBase = "https://memory.yusiwen.cn/dp-api"
-const hindsightBank = "hermes"
+// defaultMemoryBank is the bank a client uses when the configuration names
+// none. Hindsight's own default tenant is called "default", so this is the
+// service's convention rather than a guess about one deployment.
+const defaultMemoryBank = "default"
 
 var hindsightHTTP = &http.Client{Timeout: 15 * time.Second}
 
+// HTTPMemoryClient is the adapter for a Hindsight deployment.
+//
+// There is no default endpoint and no default bank: an endpoint is where the
+// prompt goes, and a client that invents one sends someone's text to a service
+// they never configured. The bank is a name inside that deployment, so it falls
+// back to the service's own default.
 type HTTPMemoryClient struct {
 	BaseURL string
+	Bank    string
 }
 
-func NewHTTPMemoryClient(baseURL string) *HTTPMemoryClient {
-	return &HTTPMemoryClient{BaseURL: baseURL}
-}
-
-func (c *HTTPMemoryClient) base() string {
-	if c.BaseURL != "" {
-		return c.BaseURL
+// NewHTTPMemoryClient builds the adapter for one endpoint. A missing base URL is
+// an error rather than a fallback, because a fallback is the bug this signature
+// exists to prevent.
+func NewHTTPMemoryClient(baseURL, bank string) (*HTTPMemoryClient, error) {
+	base := strings.TrimSpace(baseURL)
+	if base == "" {
+		return nil, errors.New("memory: the hindsight backend needs a base_url")
 	}
-	return hindsightBase
+	bank = strings.TrimSpace(bank)
+	if bank == "" {
+		bank = defaultMemoryBank
+	}
+	return &HTTPMemoryClient{BaseURL: base, Bank: bank}, nil
 }
 
 func (c *HTTPMemoryClient) auth() string {
@@ -79,13 +93,13 @@ func (c *HTTPMemoryClient) do(ctx context.Context, method, url string, body, dst
 }
 
 func (c *HTTPMemoryClient) Remember(key, value string) error {
-	u := c.base() + "/v1/default/banks/" + hindsightBank + "/memories"
+	u := c.BaseURL + "/v1/default/banks/" + c.Bank + "/memories"
 	body := map[string]any{"items": []map[string]string{{"content": value, "context": key}}}
 	return c.do(context.Background(), http.MethodPost, u, body, nil)
 }
 
 func (c *HTTPMemoryClient) Recall(ctx context.Context, query string, limit int) ([]types.Memory, error) {
-	u := c.base() + "/v1/default/banks/" + hindsightBank + "/memories/recall"
+	u := c.BaseURL + "/v1/default/banks/" + c.Bank + "/memories/recall"
 	body := map[string]any{"query": query, "budget": "mid"}
 	var raw struct {
 		Results []struct {
@@ -115,7 +129,7 @@ func (c *HTTPMemoryClient) Forget(id string) error {
 }
 
 func (c *HTTPMemoryClient) List() ([]types.Memory, error) {
-	u := c.base() + "/v1/default/banks/" + hindsightBank + "/memories/list"
+	u := c.BaseURL + "/v1/default/banks/" + c.Bank + "/memories/list"
 	var raw struct {
 		MemoryUnits []struct {
 			Content string `json:"content"`

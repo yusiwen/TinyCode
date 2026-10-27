@@ -333,7 +333,9 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   privacy-sensitive use is impossible; there is also no way to see, review or approve what is
   remembered.
 - **Evidence**: `MemoryStore`'s only implementation is `HTTPMemoryClient` (`agent/memory.go:74-120`),
-  defaulting to `https://memory.yusiwen.cn/dp-api`, bank `hermes` (`agent/memory.go:15-16`);
+  defaulting to `https://memory.yusiwen.cn/dp-api`, bank `hermes` (`agent/memory.go:15-16`) — that
+  default no longer exists: `base_url` is required and the bank comes from config, see the
+  **Picked up** line above;
   `Forget` is a no-op that returns nil (`agent/memory.go:102-105`), so deletion is not merely
   unexposed but unimplemented; `rg -il 'sqlite|local.?memory|memory.?backend'` → exit 1.
 - **Decision (2026-10-25)**: the local store is the only writer in v1, and its writer is the user
