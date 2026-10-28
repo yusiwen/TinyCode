@@ -26,6 +26,15 @@
   /goal
     View, create, pause or
     resume the goal
+  /pin
+    Keep the last turn out of
+    compression
+  /unpin
+    Clear a pin on the last
+    turn
+  /drop
+    Drop the last turn from
+    this context
   /remember
     Store a fact for later
     sessions

@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1237 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1249 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -249,12 +249,23 @@ provider is implemented — reaching IMDS from an agent process is a separate se
   2. Need ≥4 user messages
   3. Head: first 2 user-message boundaries (+3 context after)
   4. Tail: last 2 user-message boundaries
-  5. Middle → LLM summarization under the caller's context → `[COMPRESSED HISTORY]` system message
+  5. Middle → LLM summarization under the caller's context → `[COMPRESSED HISTORY]` system message;
+     a **pinned** group is never fed to the summarizer and is re-inserted verbatim after the summary
+     (`groupPinned`), and a middle that is entirely pinned costs no provider call (roadmap B5)
   6. Tool output in middle truncated to 200 chars during serialization
   7. Active TODO items re-injected after compression
 
   A summarizer failure (including `context.Canceled`) returns `nil, err` rather than a no-op history, so a caller can tell a cancelled summary from a healthy "nothing to compress". The agent loop ignores the returned history in that case, exactly as it did when the error was swallowed, but `CompressHistory` surfaces it to the TUI.
 - **`(*Agent) HandleContextError(err error) bool`** — detects `context_length_exceeded`, lowers `discoveredCtxLen` (5 regex patterns, valid range 1024–10M, only lowers never raises)
+
+### `context.go` — Turn-level Context Control
+
+- **`(*Agent) PinLast(n)` / `UnpinLast(n)` / `DropLast(n)` / `PinnedTurns()`** — a *turn* is a user
+  message plus everything up to the next one, the grouping `compressHistory` works in. Pins ride on
+  `types.Message.Pinned` and are honoured by the compressor; `/drop` removes turns from the live history
+  only — the session file is what `--resume` reads and is left alone. The TUI commands are `/pin [n]`,
+  `/unpin [n]` and `/drop [n]`, refused while a run is active because they replace `Agent.History` while
+  the run goroutine may append to it.
 
 ### `ruleset.go` — Permission Rules
 
@@ -858,7 +869,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1237 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1249 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -904,7 +915,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1237 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1249 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

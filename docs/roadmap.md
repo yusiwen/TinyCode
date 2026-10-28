@@ -18,8 +18,8 @@ after it (see *Provenance and method*).
 | :--- | ---: | :--- |
 | Delivered | 16 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 22 | verified gaps, no issue opened |
+| In progress | 2 | F1 — three increments landed, the next one is not opened; B5 — S1 landed, S2 and S3 open |
+| Not started | 21 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
@@ -43,7 +43,7 @@ B4 (repository index), F1, then the larger D and E items.
 | B2 | No local memory backend | Delivered — #293 |
 | B3 | No embeddings, vector search or rerank | Delivered — #297 |
 | B4 | No repository index or repo map | Not started |
-| B5 | Context management has a single strategy | Not started |
+| B5 | Context management has a single strategy | In progress — #306 |
 | B6 | Truncation is fixed, not budget-aware | Delivered — #304 |
 | C1 | No checkpoint and no undo | Delivered — #234 |
 | C2 | No automatic change preview and commit loop, and no remote operations | Not started |
@@ -381,6 +381,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### B5 — Context management has a single strategy
 
+- **Picked up**: [#306](https://github.com/yusiwen/TinyCode/issues/306) — S1 (turn-level `/pin`,
+  `/unpin` and `/drop`, and a compressor that keeps pinned groups verbatim), S2 (compaction of the run's
+  own messages, where tool results — and so file contents — live; this is the part D7 depends on), S3 (a
+  compression preview that calls no model). **S1 landed 2026-10-28**; S2 and S3 are open.
 - **Gap**: compression is automatic and all-or-nothing. No `/drop`, no `/pin`, no unloading by
   message or by file, and no preview of what a compression would discard.
 - **Evidence**: one strategy, `compressHistory` (`agent/compression.go:59`) — head, LLM-summarized

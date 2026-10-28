@@ -1225,6 +1225,9 @@ Commands:
   /goal          View the goal; /goal <objective>, edit, pause, resume, clear
   /remember      Store a fact for later sessions (/remember <label>: <fact>)
   /memory        List stored facts; /memory forget <id> deletes one
+  /pin [n]       Keep the last n turns out of compression (default 1)
+  /unpin [n]     Clear the pin on the last n pinned turns
+  /drop [n]      Drop the last n turns from this context (default 1)
   /model         Switch provider/model
 
 Keyboard:
@@ -1457,6 +1460,8 @@ Mouse:
 		// Creating or resuming a goal while the session is idle starts working
 		// on it after the grace period; pausing or clearing schedules nothing.
 		return m, m.scheduleGoalRound()
+	case "/pin", "/unpin", "/drop":
+		return m.handleContextCommand(cmd, base)
 	case "/remember":
 		m.handleRemember(strings.TrimSpace(strings.TrimPrefix(cmd, "/remember")))
 		return m, nil
