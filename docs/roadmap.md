@@ -16,10 +16,10 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 15 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 16 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 23 | verified gaps, no issue opened |
+| Not started | 22 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
@@ -44,7 +44,7 @@ B4 (repository index), F1, then the larger D and E items.
 | B3 | No embeddings, vector search or rerank | Delivered — #297 |
 | B4 | No repository index or repo map | Not started |
 | B5 | Context management has a single strategy | Not started |
-| B6 | Truncation is fixed, not budget-aware | Not started |
+| B6 | Truncation is fixed, not budget-aware | Delivered — #304 |
 | C1 | No checkpoint and no undo | Delivered — #234 |
 | C2 | No automatic change preview and commit loop, and no remote operations | Not started |
 | C3 | No isolation for parallel execution | Not started |
@@ -395,6 +395,14 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### B6 — Truncation is fixed, not budget-aware
 
+- **Picked up**: [#304](https://github.com/yusiwen/TinyCode/issues/304) — one slice: a token budget
+  beside the line and byte caps, the output's last lines kept beside the head, and a deterministic count
+  of what fell between them.
+- **Delivered (2026-10-28)**: the preview is bounded by `truncation.max_tokens` (default 4000) as well as
+  by lines and bytes, keeps `tail_lines` (default 20) of the end, and replaces the old "N bytes
+  truncated" with "N of M lines omitted (E mention an error, W a warning)" — a `regexp` scan over the
+  dropped lines, not a model call. A head-only preview used to drop the panic at the end; it no longer
+  does.
 - **Gap**: truncation is a line/byte cap, not a token budget, and there is no structured summary in
   place of raw text.
 - **Evidence**: `config.example.json:53-57` sets `max_lines` 2000, `max_bytes` 204800,

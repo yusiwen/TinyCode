@@ -215,7 +215,8 @@ func newRootCmd() *cobra.Command {
 				}
 			}
 			if cfg.Truncation != nil {
-				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes, expandPath(cfg.Truncation.OutputDir))
+				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes,
+					cfg.Truncation.MaxTokens, cfg.Truncation.TailLines, expandPath(cfg.Truncation.OutputDir))
 			}
 			if cfg.SearXNGURL != "" {
 				tool.SetSearXNG(cfg.SearXNGURL)

@@ -81,8 +81,15 @@ type PromptCacheConfig struct {
 
 // TruncationConfig holds tool output truncation settings.
 type TruncationConfig struct {
-	MaxLines  int    `json:"max_lines,omitempty"`
-	MaxBytes  int    `json:"max_bytes,omitempty"`
+	MaxLines int `json:"max_lines,omitempty"`
+	MaxBytes int `json:"max_bytes,omitempty"`
+	// MaxTokens bounds the preview by what the model pays for. It is the bound
+	// that matters once the text is dense; zero means the default.
+	MaxTokens int `json:"max_tokens,omitempty"`
+	// TailLines is how many of the output's last lines the preview keeps beside
+	// the head, so a failure at the end survives truncation. Zero means the
+	// default.
+	TailLines int    `json:"tail_lines,omitempty"`
 	OutputDir string `json:"output_dir,omitempty"`
 }
 
@@ -698,6 +705,8 @@ func DefaultConfig() Config {
 		Truncation: &TruncationConfig{
 			MaxLines:  2000,
 			MaxBytes:  200 * 1024,
+			MaxTokens: 4000,
+			TailLines: 20,
 			OutputDir: "/tmp/tinycode/truncated",
 		},
 		Agents: map[string]AgentOverride{
