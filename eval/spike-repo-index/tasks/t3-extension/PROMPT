@@ -1,0 +1,8 @@
+This module converts temperatures. It has no tests: a hidden suite checks the behaviour below.
+
+Keep these names and signatures:
+- ToCelsius(f float64) int — the existing conversion, truncating toward zero. Its rounding must not
+  change: ToCelsius(32)==0, ToCelsius(212)==100, ToCelsius(98.6)==37, ToCelsius(0)==-17.
+- ToFahrenheit(c int) float64 — missing: returns c*9/5 + 32 (so 0→32, 100→212, 37→98.6, -17→1.4).
+
+Add what is missing without changing the behaviour that already exists.

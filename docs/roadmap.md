@@ -18,8 +18,8 @@ after it (see *Provenance and method*).
 | :--- | ---: | :--- |
 | Delivered | 16 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 3 | F1 — three increments landed, the next one is not opened; B5 — S1 landed, S2 and S3 open; B4 — the spike is open, no implementation |
-| Not started | 20 | verified gaps, no issue opened |
+| In progress | 2 | F1 — three increments landed, the next one is not opened; B5 — S1 landed, S2 and S3 open |
+| Not started | 21 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened, and
@@ -42,7 +42,7 @@ B4 (repository index), F1, then the larger D and E items.
 | B1 | The memory capability exists but is never called | Delivered — #293 |
 | B2 | No local memory backend | Delivered — #293 |
 | B3 | No embeddings, vector search or rerank | Delivered — #297 |
-| B4 | No repository index or repo map | In progress — #308 |
+| B4 | No repository index or repo map | Not started — spiked 2026-10-28, no-go (#308) |
 | B5 | Context management has a single strategy | In progress — #306 |
 | B6 | Truncation is fixed, not budget-aware | Delivered — #304 |
 | C1 | No checkpoint and no undo | Delivered — #234 |
@@ -369,10 +369,15 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### B4 — No repository index or repo map
 
-- **Picked up**: [#308](https://github.com/yusiwen/TinyCode/issues/308) — **S0, the spike**, and only
-  the spike: six cross-file tasks in `eval/tasks/`, three configurations (`build`, a repo map injected
-  into the prompt, a symbol query surface) and a pre-registered abandon condition. The implementation is
-  not started and becomes its own issue only if the numbers say go; the entry stays here until then.
+- **Spiked 2026-10-28** ([#308](https://github.com/yusiwen/TinyCode/issues/308)): **no-go for an
+  injected repo map**, under the condition the issue registered before the run. Six cross-file tasks with
+  hidden suites, ten packages of unrelated padding each, and two arms (`build`, `build` + a 2000-token
+  symbol map in the prompt): both solved 6/6, and the map arm raised tokens per solved task by 35%
+  (298,671 → 402,779). The verdict and its two qualifications — the corpus had no headroom left, and the
+  cost figure rests on one 35-step attempt while the median run got cheaper — are in
+  [repo-index-spike.md](repo-index-spike.md), which also states the three conditions under which this
+  entry reopens (a corpus that defeats the baseline, at least three reps per cell, and the callable
+  tool surface instead of the injected map, which was never built).
 - **Gap**: no tree-sitter, no symbol index, no call graph, no repo map. The agent cannot answer
   "who calls this symbol" or "what does changing this affect".
 - **Evidence**: searches for `tree-sitter`, `symbol.?index`, `call.?graph`, `codebase.?index`,

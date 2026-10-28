@@ -1,0 +1,14 @@
+This module renders a small report. It has no tests: a hidden suite checks the exact output below.
+
+Keep these names and signatures:
+- type Row struct { Name string; Scores []int }
+- Report(rows []Row) string
+
+Output contract:
+- One line per row: the name, a colon, a space, the row's arithmetic mean formatted with one decimal
+  place (fmt's %.1f), then a newline. For example: "amir: 5.0\n".
+- Rows are ordered by name, ascending (byte order).
+- A row with no scores renders "0.0".
+- No rows renders the empty string, not a newline.
+
+The behaviour is wrong across two files. Fix the code.

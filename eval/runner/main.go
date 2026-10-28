@@ -40,6 +40,10 @@ type configuration struct {
 	Mode string
 	// MaxTokensPerRun is the hard budget for one attempt; 0 leaves the default.
 	MaxTokensPerRun int
+	// RepoMap prepends a symbol digest of the work copy to the prompt. It is
+	// the treatment arm of the repository-index spike (roadmap B4): no new
+	// capability to call, just the map in hand.
+	RepoMap bool
 }
 
 var configurations = []configuration{
@@ -47,6 +51,11 @@ var configurations = []configuration{
 	{Name: "limited", Mode: "build", MaxTokensPerRun: 4000},
 	{Name: "plan", Mode: "plan"},
 }
+
+// mapConfiguration is the spike's treatment arm. It is deliberately not in the
+// default three: a run measures it only when -configurations names it, so the
+// committed baseline keeps describing the same experiment it always did.
+var mapConfiguration = configuration{Name: "map", Mode: "build", RepoMap: true}
 
 // task is one directory under eval/tasks.
 type task struct {
@@ -93,6 +102,7 @@ func main() {
 	timeout := flag.Duration("timeout", 180*time.Second, "wall-clock bound for one attempt")
 	work := flag.String("work", "", "scratch directory (default: a fresh temporary one)")
 	only := flag.String("configurations", "", "comma-separated subset of the configurations")
+	hidden := flag.String("hidden", "", "directory of hidden tests to install after each attempt (one subdirectory per task); empty grades the work copy as it is")
 	render := flag.Bool("render", false, "re-render <out>/BASELINE.md from <out>/baseline.json, running nothing")
 	limitedBudget := flag.Int("limited-budget", configurations[1].MaxTokensPerRun,
 		"token budget for the `limited` configuration; a middle rung is only a gradient if it is above the cliff")
@@ -127,7 +137,12 @@ func main() {
 		fail(fmt.Errorf("no binary at %s: run `make build` first: %w", absBinary, err))
 	}
 
-	tasks, err := loadTasks(*tasksDir)
+	var tasks []task
+	if *hidden != "" {
+		tasks, err = loadSpikeTasks(*tasksDir, *hidden)
+	} else {
+		tasks, err = loadTasks(*tasksDir)
+	}
 	if err != nil {
 		fail(err)
 	}
@@ -157,7 +172,7 @@ func main() {
 		for _, tk := range tasks {
 			line := fmt.Sprintf("  %-18s ", tk.Name)
 			for rep := 0; rep < *reps; rep++ {
-				result, err := attempt(scratch, absBinary, cfg, tk, rep, *timeout)
+				result, err := attempt(scratch, absBinary, cfg, tk, rep, *timeout, *hidden)
 				if err != nil {
 					fail(err)
 				}
@@ -187,7 +202,7 @@ func main() {
 }
 
 // attempt runs the agent once against one task and grades the result.
-func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeout time.Duration) (runResult, error) {
+func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeout time.Duration, hiddenDir string) (runResult, error) {
 	base := filepath.Join(scratch, cfg.Name, tk.Name, fmt.Sprintf("rep%d", rep))
 	workDir := filepath.Join(base, "work")
 	recordDir := filepath.Join(base, "records")
@@ -219,7 +234,7 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, tk.Prompt)
+	cmd := exec.CommandContext(ctx, binary, promptFor(cfg, tk, workDir))
 	cmd.Dir = workDir
 	logFile, err := os.Create(logPath)
 	if err != nil {
@@ -267,6 +282,15 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 		result.Note = fmt.Sprintf("the run left %d trajectories", len(summaries))
 	}
 
+	// A hidden suite is installed after the run, so the agent never saw the
+	// assertions it is graded by: that is what makes the task measure finding
+	// the defect rather than reading the test's file name.
+	if hiddenDir != "" {
+		if err := installHiddenTests(hiddenDir, tk.Name, workDir); err != nil {
+			return runResult{}, err
+		}
+	}
+
 	// Graded by the task's own test command, in the copy the agent was given.
 	result.Pass = gradeTask(workDir)
 	modified, err := testsModified(tk, workDir)
@@ -280,6 +304,39 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 		result.Pass = false
 	}
 	return result, nil
+}
+
+// copyTree copies a task subdirectory into the work copy, skipping the files
+// that describe the task rather than the code (PROMPT, and TIER where it sits).
+func copyTree(src, dst string) error {
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		from := filepath.Join(src, entry.Name())
+		to := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyTree(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		if entry.Name() == "PROMPT" || entry.Name() == "TIER" {
+			continue
+		}
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // gradeTask runs the task's own command and reports whether it passed.
@@ -396,7 +453,16 @@ func copyTask(tk task, dir string) error {
 		return err
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == "PROMPT" {
+		if entry.IsDir() {
+			// A task may carry subpackages: the spike's tasks pad their tree so
+			// that finding the defect is work, and the padding has to reach the
+			// work copy or the treatment measures nothing.
+			if err := copyTree(filepath.Join(src, entry.Name()), filepath.Join(dir, entry.Name())); err != nil {
+				return err
+			}
+			continue
+		}
+		if entry.Name() == "PROMPT" {
 			continue
 		}
 		in, err := os.Open(filepath.Join(src, entry.Name()))
@@ -458,7 +524,11 @@ func selectConfigurations(list string) ([]configuration, error) {
 	for _, name := range strings.Split(list, ",") {
 		name = strings.TrimSpace(name)
 		found := false
-		for _, cfg := range configurations {
+		pool := configurations
+		if mapConfiguration.Name == name {
+			pool = []configuration{mapConfiguration}
+		}
+		for _, cfg := range pool {
 			if cfg.Name == name {
 				chosen = append(chosen, cfg)
 				found = true
