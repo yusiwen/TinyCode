@@ -998,6 +998,7 @@ func (m *TuiModel) persistSession() {
 			Role:             chatMsg.Role,
 			Content:          chatMsg.Content,
 			ReasoningContent: chatMsg.ReasoningContent,
+			Pinned:           chatMsg.Pinned,
 		})
 	}
 	if m.provReg != nil {

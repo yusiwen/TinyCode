@@ -36,6 +36,9 @@ func (s *stubMemory) Recall(_ context.Context, query string, limit int) ([]types
 type recordingProvider struct {
 	requests []types.ChatRequest
 	content  string
+	// usage, when set, is reported on every response: accounting tests need a
+	// call that says what it cost.
+	usage *types.Usage
 }
 
 func (p *recordingProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
@@ -44,7 +47,7 @@ func (p *recordingProvider) Chat(ctx context.Context, req types.ChatRequest) (*t
 	if content == "" {
 		content = "done"
 	}
-	return &types.ChatResponse{Content: content}, nil
+	return &types.ChatResponse{Content: content, Usage: p.usage}, nil
 }
 
 func (p *recordingProvider) Name() string { return "recording" }

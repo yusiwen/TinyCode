@@ -60,7 +60,7 @@ func (a *Agent) PinLast(n int) (pinned, total int) {
 		}
 		pinned++
 	}
-	return pinned, a.PinnedTurns()
+	return pinned, a.PinnedTurnCount()
 }
 
 // UnpinLast clears the pin on the last n pinned turns, newest first, and returns
@@ -82,7 +82,7 @@ func (a *Agent) UnpinLast(n int) (unpinned, remaining int) {
 			unpinned++
 		}
 	}
-	return unpinned, a.PinnedTurns()
+	return unpinned, a.PinnedTurnCount()
 }
 
 // DropLast removes the last n turns from the live history and returns how many
@@ -98,8 +98,35 @@ func (a *Agent) DropLast(n int) (dropped int) {
 	return len(ranges)
 }
 
-// PinnedTurns reports how many turns carry a pin.
-func (a *Agent) PinnedTurns() int {
+// PinnedTurnTexts returns the user and assistant text of every pinned turn, in
+// order. A view that mirrors the history — the TUI transcript, or a session file
+// — marks the same turns from this, instead of guessing at indices.
+func (a *Agent) PinnedTurnTexts() [][2]string {
+	var out [][2]string
+	for _, r := range turns(a.History) {
+		pinned := false
+		var pair [2]string
+		for i := r[0]; i < r[1]; i++ {
+			msg := a.History[i]
+			if msg.Pinned {
+				pinned = true
+			}
+			switch msg.Role {
+			case types.RoleUser:
+				pair[0] += msg.Content
+			case types.RoleAssistant:
+				pair[1] = msg.Content
+			}
+		}
+		if pinned {
+			out = append(out, pair)
+		}
+	}
+	return out
+}
+
+// PinnedTurnCount reports how many turns carry a pin.
+func (a *Agent) PinnedTurnCount() int {
 	count := 0
 	for _, r := range turns(a.History) {
 		for i := r[0]; i < r[1]; i++ {

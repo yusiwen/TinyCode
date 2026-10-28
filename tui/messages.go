@@ -82,6 +82,9 @@ type chatMessage struct {
 	Blocks           []ContentBlock
 	TodoSnapshot     []tool.TodoItem // snapshot taken at StreamDone (for per-message TODO display)
 	Banner           *welcomeInfo    // non-nil: render as the styled startup banner
+	// Pinned mirrors types.Message.Pinned so the flag survives the session
+	// file: persistSession rebuilds the stored messages from this transcript.
+	Pinned bool
 }
 
 // ToolCallInfo records one tool invocation during a message.

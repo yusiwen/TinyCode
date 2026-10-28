@@ -37,6 +37,72 @@ func EstimateMessagesTokens(msgs []types.Message) int {
 	return total
 }
 
+// summarizeText asks the summarizer model for one summary and accounts for the
+// call. It is the only place the compression path talks to a provider, so the
+// spend it causes is counted in one place: before this, a summarizer call was
+// invisible to UsageTotal, the budgets and the status bar.
+func (a *Agent) summarizeText(ctx context.Context, instruction, text string, maxTokens, step int) (string, error) {
+	// The summarizer runs on the same route the agent's calls go to: a pinned
+	// agent should not summarize through a different provider than the one it
+	// works on (roadmap A5).
+	provider, err := a.chatProvider()
+	if err != nil {
+		return "", err
+	}
+	summarizer := &Agent{
+		Provider: provider,
+		Config: &AgentConfig{
+			Name:     "compact",
+			Mode:     AgentModePrimary,
+			MaxSteps: 1,
+		},
+		Tools: nil,
+	}
+	req := types.ChatRequest{
+		Messages: []types.Message{
+			{Role: types.RoleSystem, Content: "You are a helpful assistant that summarizes conversations concisely."},
+			{Role: types.RoleUser, Content: instruction + "\n\n" + text},
+		},
+		MaxTokens: maxTokens,
+	}
+	started := a.now()
+	resp, err := summarizer.Provider.Chat(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	a.recordCall(nil, resp, started, step)
+	return resp.Content, nil
+}
+
+// describeMessages renders messages for a summarizer, truncating tool output to
+// 200 characters: the point is the shape of what happened, not the bytes.
+func describeMessages(messages []types.Message) string {
+	var b strings.Builder
+	for _, m := range messages {
+		switch m.Role {
+		case types.RoleUser:
+			fmt.Fprintf(&b, "User: %s\n", m.Content)
+		case types.RoleAssistant:
+			if m.Content != "" {
+				fmt.Fprintf(&b, "Assistant: %s\n", m.Content)
+			}
+			for _, call := range m.ToolCalls {
+				fmt.Fprintf(&b, "Assistant called %s(%s)\n", call.Name, clipBytes(call.Arguments, 120))
+			}
+			if m.ReasoningContent != "" {
+				fmt.Fprintf(&b, "Reasoning: %s\n", m.ReasoningContent)
+			}
+		case types.RoleTool:
+			fmt.Fprintf(&b, "Tool (%s): %s\n", m.Name, clipBytes(m.Content, 200))
+		case types.RoleSystem:
+			// Preserve earlier summaries so compressing twice does not discard
+			// the context that was already distilled.
+			fmt.Fprintf(&b, "Context: %s\n", m.Content)
+		}
+	}
+	return b.String()
+}
+
 // groupPinned reports whether any message in a group carries a pin. One pinned
 // message pins the group: a user instruction whose answer was summarized away
 // is not useful on its own, and a turn split in half is not something the
@@ -127,29 +193,7 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 			i = end
 			continue
 		}
-		for _, m := range middle[i:end] {
-			switch m.Role {
-			case types.RoleUser:
-				middleText.WriteString(fmt.Sprintf("User: %s\n", m.Content))
-			case types.RoleAssistant:
-				if m.Content != "" {
-					middleText.WriteString(fmt.Sprintf("Assistant: %s\n", m.Content))
-				}
-				if m.ReasoningContent != "" {
-					middleText.WriteString(fmt.Sprintf("Reasoning: %s\n", m.ReasoningContent))
-				}
-			case types.RoleTool:
-				content := m.Content
-				if len(content) > 200 {
-					content = content[:200] + "..."
-				}
-				middleText.WriteString(fmt.Sprintf("Tool (%s): %s\n", m.Name, content))
-			case types.RoleSystem:
-				// Preserve earlier summaries so compressing twice does not discard
-				// the context that was already distilled.
-				middleText.WriteString(fmt.Sprintf("Context: %s\n", m.Content))
-			}
-		}
+		middleText.WriteString(describeMessages(middle[i:end]))
 		i = end
 	}
 	if strings.TrimSpace(middleText.String()) == "" {
@@ -158,48 +202,21 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 		return messages, nil
 	}
 
-	summaryPrompt := fmt.Sprintf(`Summarize the following conversation history. Focus on:
+	const instruction = `Summarize the following conversation history. Focus on:
 - What tasks were completed
 - What decisions were made
 - What files were modified or created
 - Any pending issues or remaining work
 
-Conversation to summarize:
-%s
+Conversation to summarize:`
 
-Provide a concise summary in 3-5 sentences.`, middleText.String())
-
-	// The summarizer runs on the same route the agent's calls go to: a pinned
-	// agent should not summarize through a different provider than the one it
-	// works on (roadmap A5).
-	summarizerProvider, err := a.chatProvider()
+	// A summarizer failure is reported rather than swallowed: the caller keeps
+	// its history either way, but only this way can it tell a cancelled run
+	// (context.Canceled) from a healthy no-op.
+	summary, err := a.summarizeText(ctx, instruction, middleText.String(), 1024, 0)
 	if err != nil {
 		return nil, err
 	}
-	summarizer := &Agent{
-		Provider: summarizerProvider,
-		Config: &AgentConfig{
-			Name:     "compact",
-			Mode:     AgentModePrimary,
-			MaxSteps: 1,
-		},
-		Tools: nil,
-	}
-	summarizerReq := types.ChatRequest{
-		Messages: []types.Message{
-			{Role: types.RoleSystem, Content: "You are a helpful assistant that summarizes conversations concisely."},
-			{Role: types.RoleUser, Content: summaryPrompt},
-		},
-		MaxTokens: 1024,
-	}
-	resp, err := summarizer.Provider.Chat(ctx, summarizerReq)
-	if err != nil {
-		// Report the failure instead of pretending there was nothing to do:
-		// the caller keeps its history either way, but only this way can it
-		// tell a cancelled run (context.Canceled) from a healthy no-op.
-		return nil, err
-	}
-	summary := resp.Content
 	if summary == "" {
 		return messages, nil
 	}

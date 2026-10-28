@@ -392,8 +392,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 - **Picked up**: [#306](https://github.com/yusiwen/TinyCode/issues/306) — S1 (turn-level `/pin`,
   `/unpin` and `/drop`, and a compressor that keeps pinned groups verbatim), S2 (compaction of the run's
-  own messages, where tool results — and so file contents — live; this is the part D7 depends on), S3 (a
-  compression preview that calls no model). **S1 landed 2026-10-28**; S2 and S3 are open.
+  own messages — the part D7 depends on — the summarizer's spend now counted, and pins carried through
+  the session file), S3 (a compression preview that calls no model), S4 (a path-targeted unload, split out
+  of S2 because the command channel it assumed does not exist). **S1 and S2 landed 2026-10-28**; S3 and
+  S4 are open.
 - **Gap**: compression is automatic and all-or-nothing. No `/drop`, no `/pin`, no unloading by
   message or by file, and no preview of what a compression would discard.
 - **Evidence**: one strategy, `compressHistory` (`agent/compression.go:59`) — head, LLM-summarized

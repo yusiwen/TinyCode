@@ -53,6 +53,8 @@ func (m *TuiModel) handleContextCommand(cmd, name string) (tea.Model, tea.Cmd) {
 			m.appendSystem("nothing to pin: the history is empty")
 			return m, nil
 		}
+		m.syncPinsToTranscript()
+		m.persistSession()
 		m.appendSystem(fmt.Sprintf(
 			"pinned %d turn(s); %d pinned in total. A pinned turn is kept verbatim — neither /compress nor the automatic compression summarizes it.",
 			pinned, total))
@@ -62,6 +64,8 @@ func (m *TuiModel) handleContextCommand(cmd, name string) (tea.Model, tea.Cmd) {
 			m.appendSystem("nothing to unpin: no turn carries a pin")
 			return m, nil
 		}
+		m.syncPinsToTranscript()
+		m.persistSession()
 		m.appendSystem(fmt.Sprintf("unpinned %d turn(s); %d pinned in total.", cleared, remaining))
 	case "/drop":
 		dropped := m.agent.DropLast(n)
@@ -74,4 +78,31 @@ func (m *TuiModel) handleContextCommand(cmd, name string) (tea.Model, tea.Cmd) {
 			dropped))
 	}
 	return m, nil
+}
+
+// syncPinsToTranscript mirrors the agent's pins into the visible transcript, so
+// persistSession writes them with the messages they protect (S2 of #306). The
+// transcript and the history grow together but are not index-aligned — system
+// and banner messages exist only in the transcript — so the match is by role and
+// content, newest first.
+func (m *TuiModel) syncPinsToTranscript() {
+	if m.agent == nil {
+		return
+	}
+	for i := range m.messages {
+		m.messages[i].Pinned = false
+	}
+	for _, turn := range m.agent.PinnedTurnTexts() {
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			if m.messages[i].Role != "user" || m.messages[i].Content != turn[0] {
+				continue
+			}
+			m.messages[i].Pinned = true
+			if i+1 < len(m.messages) && m.messages[i+1].Role == "assistant" &&
+				(turn[1] == "" || m.messages[i+1].Content == turn[1]) {
+				m.messages[i+1].Pinned = true
+			}
+			break
+		}
+	}
 }
