@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1230 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1237 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -308,10 +308,18 @@ What runs today, in order:
 
 ### `truncate.go` — Output Truncation
 
-- **`TruncationResult`** struct: `Content string` (preview + hint), `FullPath string`
-- **`TruncateOutput(output string) TruncationResult`** — limits come from `TruncMaxLines`/`TruncMaxBytes`/`truncDir`, overridable at startup with `SetTruncationConfig(maxLines, maxBytes, outputDir)`; the saved full output is written 0600 because tool output can contain secrets
-- Constants: `TruncMaxLines = 2000`, `TruncMaxBytes = 200KB`, `truncDir = "/tmp/tinycode/truncated"`
-- Saves full output to file, returns head preview with `[TRUNCATED]` hint
+- **`TruncationResult`** struct: `Content string` (preview + hint), `FullPath string`, `OmittedLines int`
+- **`TruncateOutput(output string) TruncationResult`** — the preview keeps the **head**, the **tail** and a
+  count of what fell between them: `... 18,431 of 20,000 lines omitted (4 mention an error, 9 a warning) ...`,
+  where the counts are a deterministic scan (`truncErrorSignal` / `truncWarningSignal`), never a model call.
+  A head-only slice lost the panic at the end, and a hint that said only "some bytes were dropped" could
+  not tell a reader whether the dropped part mattered.
+- Bounds: `TruncMaxLines` (2000), `TruncMaxBytes` (200KB), `TruncMaxTokens` (4000 — the bound that matters
+  once the text is dense; `bytesPerToken` is `EstimateTokens`' inverse and a test pins the pair) and
+  `TruncTailLines` (20). The token budget covers the whole preview: the tail is taken first, the head gets
+  the rest. Overridable at startup with
+  `SetTruncationConfig(maxLines, maxBytes, maxTokens, tailLines, outputDir)`; the saved full output is
+  written 0600 because tool output can contain secrets.
 
 ---
 
@@ -850,7 +858,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1230 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1237 test functions + 10 fuzz targets** in the main module — what `go test ./... -count=1` runs, since `tuiprobe/` is a nested module; each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -896,7 +904,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1230 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1237 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

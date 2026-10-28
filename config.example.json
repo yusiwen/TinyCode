@@ -89,6 +89,8 @@
   "truncation": {
     "max_lines": 2000,
     "max_bytes": 204800,
+    "max_tokens": 4000,
+    "tail_lines": 20,
     "output_dir": "/tmp/tinycode/truncated"
   },
 
@@ -244,7 +246,7 @@
     "checkpoint_dir": "Where the bytes a file tool replaced are kept, so /undo and --undo can restore them. Deliberately outside the project root: the fence that confines a tool write then confines the recovery store. It is not a tool path — no permission grants a model access to it. A bash command's writes are recorded too, from a snapshot of the project tree taken before it, bounded per file (2 MiB) and per snapshot (32 MiB / 4000 files); paths outside the project root are not captured. See docs/checkpoints.md.",
     "trajectory": "Where a run's record goes (dir), how much of it keeps text (capture: metadata|full), and the store's bounds (max_runs, max_bytes). enabled: false turns recording off. capture: full is honoured only from your own config file, never from a project-local one.",
     "memory": "Long-term memory: enabled, backend (local|hindsight), dir, base_url, bank, max_entries, max_bytes, recall_limit, embedding {enabled, provider, base_url, model, api_key_env, min_score, semantic_weight, lexical_weight, backfill}. Local by default and written only by /remember; a network backend, a base_url or an embedding endpoint is an egress request honoured only from your own config file.",
-    "truncation": "Tool-output truncation limits: max_lines, max_bytes, output_dir (used only when the output exceeds a limit).",
+    "truncation": "Tool-output truncation limits: max_lines, max_bytes, max_tokens (the bound that matters, since the preview is what the model pays for), tail_lines (how many of the last lines are kept beside the head, so a failure survives), output_dir (used only when the output exceeds a limit).",
     "agents": "allowed_tools replaces the agent's ruleset with a whitelist; denied_tools is applied on top of the built-in rules."
   }
 }
