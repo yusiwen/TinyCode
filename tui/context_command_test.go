@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -140,5 +141,46 @@ func TestContextPaletteListsTheCommands(t *testing.T) {
 		if !found {
 			t.Errorf("%s is missing from the command palette", name)
 		}
+	}
+}
+
+// TestPinSurvivesTheSessionFile pins S2's other half: the flag has to travel
+// through the transcript into the session file, or a resumed session loses it.
+func TestPinSurvivesTheSessionFile(t *testing.T) {
+	m := newTestTUI()
+	m.SessionDir = t.TempDir()
+	for _, pair := range [][2]string{{"first", "first answer"}, {"second", "second answer"}} {
+		m.agent.History = append(m.agent.History,
+			types.Message{Role: types.RoleUser, Content: pair[0]},
+			types.Message{Role: types.RoleAssistant, Content: pair[1]})
+		m.messages = append(m.messages,
+			chatMessage{Role: "user", Content: pair[0]},
+			chatMessage{Role: "assistant", Content: pair[1]})
+	}
+
+	m.handleCommand("/pin") // the last turn
+
+	if !m.messages[2].Pinned || !m.messages[3].Pinned {
+		t.Fatalf("the transcript was not marked: %+v", m.messages)
+	}
+	if m.messages[0].Pinned || m.messages[1].Pinned {
+		t.Fatalf("an older turn was marked: %+v", m.messages)
+	}
+
+	saved, err := session.Load(m.currentBranch, m.SessionDir)
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	if len(saved.Messages) != 4 {
+		t.Fatalf("session has %d messages, want 4", len(saved.Messages))
+	}
+	if !saved.Messages[2].Pinned || !saved.Messages[3].Pinned {
+		t.Fatalf("the pin did not reach the session file: %+v", saved.Messages)
+	}
+
+	// And the resume path restores it into the history the compressor reads.
+	restored := historyFromSession(saved.Messages)
+	if len(restored) != 4 || !restored[2].Pinned || restored[0].Pinned {
+		t.Fatalf("historyFromSession lost the pin: %+v", restored)
 	}
 }

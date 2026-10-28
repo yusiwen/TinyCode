@@ -175,3 +175,22 @@ func containsMessage(history []types.Message, text string) bool {
 	}
 	return false
 }
+
+// TestPinnedTurnTexts pins the view the TUI mirrors: the pinned turns' own text,
+// in order, so a transcript can mark the same ones without index guessing.
+func TestPinnedTurnTexts(t *testing.T) {
+	ag := New(nil)
+	ag.History = turnHistory(3)
+	ag.PinLast(1)
+
+	texts := ag.PinnedTurnTexts()
+	if len(texts) != 1 {
+		t.Fatalf("pinned texts = %+v, want one turn", texts)
+	}
+	if texts[0][0] != "question 2" || texts[0][1] != "answer 2" {
+		t.Fatalf("pinned turn = %+v, want the last one", texts[0])
+	}
+	if got := ag.PinnedTurnCount(); got != 1 {
+		t.Fatalf("PinnedTurnCount = %d, want 1", got)
+	}
+}

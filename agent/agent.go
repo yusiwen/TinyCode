@@ -576,6 +576,13 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			}
 		}
 
+		// Compaction of the run's own traffic happens here, at a step boundary and
+		// before the call that would spend the context: the cut snaps to a round
+		// boundary, so a tool_calls message never loses its results (roadmap B5).
+		if compacted, changed := a.compactRunMessages(ctx, messages, step); changed {
+			messages = compacted
+		}
+
 		// The step is timed and the first delta captured only when something is
 		// recording: a reader of the #225 invariant is entitled to the clock
 		// being read once per call when no trajectory is being written.

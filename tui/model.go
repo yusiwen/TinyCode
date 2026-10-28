@@ -293,7 +293,7 @@ func historyFromSession(msgs []types.Message) []types.Message {
 		if strings.TrimSpace(m.Content) == "" {
 			continue
 		}
-		history = append(history, types.Message{Role: m.Role, Content: m.Content})
+		history = append(history, types.Message{Role: m.Role, Content: m.Content, Pinned: m.Pinned})
 	}
 	return history
 }
