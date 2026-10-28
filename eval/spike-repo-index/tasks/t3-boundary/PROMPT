@@ -1,0 +1,16 @@
+This module records which ticks a route was asked at, and splits them into on-peak and off-peak. It has
+no tests: a hidden suite checks the behaviour below.
+
+Keep these names and signatures:
+- NewUsage(ticks ...int) *Usage
+- (*Usage).OffPeak(from, to int) int
+- (*Usage).Peak(from, to int) int
+- InWindow(tick, from, to int) bool
+
+Behaviour:
+- Usage holds tick numbers.
+- OffPeak(from, to) counts the ticks in the half-open window [from, to): a tick equal to from is inside,
+  a tick equal to to is outside. A window with from >= to counts zero.
+- Peak(from, to) counts every tick that is not in [from, to).
+
+The behaviour is wrong in more than one file. Fix the code.

@@ -8,7 +8,9 @@ unbuilt, on purpose: building it before knowing the signal exists would have bee
 ## What it measures
 
 Eighteen tasks, each a directory under [`eval/tasks/`](../eval/tasks) with a `go.mod`, a failing test, a
-`PROMPT` and a declared `TIER`. An attempt copies the task to a scratch directory, runs
+`PROMPT` and a declared `TIER`. (A separate corpus under `eval/spike-repo-index/` exists for the
+repository-index spike: six tasks whose tests are **hidden** until grading, and a `map` configuration the
+default runs never select. [repo-index-spike.md](repo-index-spike.md) is its result.) An attempt copies the task to a scratch directory, runs
 `tinycode "<prompt>"` there, and is graded by the task's own `go test ./...` exit code — no judge model, no
 rubric, no text comparison.
 

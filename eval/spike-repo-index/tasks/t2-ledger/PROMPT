@@ -1,0 +1,13 @@
+This module is a small double-entry ledger. It has no tests: a hidden suite checks the behaviour below.
+
+Keep these names and signatures:
+- NewLedger() *Ledger, (*Ledger).Open(name string, balance int), (*Ledger).Account(name string) (*Account, bool)
+- (*Account).Balance() int, (*Ledger).Transfer(from, to string, amount int) error
+
+Behaviour:
+- Open creates an account with a starting balance.
+- Transfer moves amount from one open account to another, atomically: when it returns an error, nothing moved.
+- It refuses when either account is unknown, when the source cannot cover the amount, and when amount is not positive.
+- Balances never go negative, and a refused transfer leaves both balances exactly as they were.
+
+The behaviour is wrong in more than one file. Fix the code.

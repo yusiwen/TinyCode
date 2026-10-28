@@ -1,0 +1,16 @@
+This module is a small stock and order library. It has no tests: a hidden suite checks the behaviour
+below, and it will be run in this directory afterwards.
+
+Keep these names and signatures:
+- NewStock(n int) *Stock, (*Stock).Reserve(k int) error, (*Stock).Available() int
+- NewOrder(s *Stock) *Order, (*Order).Place(k int) error
+
+Behaviour:
+- NewStock(n) starts with n available.
+- Reserve(k) fails when k exceeds Available(), and a refused Reserve leaves Available() unchanged.
+- A successful Reserve(k) reduces Available() by exactly k.
+- Place(k) reserves k through the stock and returns its error.
+- A refused Place must not leave the order or the stock in a state where a later, affordable Place fails.
+
+The behaviour is wrong in more than one file. Fix the code. Do not fabricate a test file with the hidden
+suite's names; explore however you like.

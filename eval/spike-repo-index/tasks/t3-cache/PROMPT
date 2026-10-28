@@ -1,0 +1,17 @@
+This module is a tick-driven cache. It has no tests: a hidden suite checks the behaviour below.
+
+Keep these names and signatures:
+- type Clock with a Tick() method, as the module already defines it
+- NewCache(clock *Clock, capacity, ttl int) *Cache
+- (*Cache).Put(key string, value int), (*Cache).Get(key string) int
+
+Behaviour:
+- Get returns the stored value, and 0 for an absent or expired key (0 is never a stored value's
+  sentinel problem here: values are compared as the suite writes them).
+- A value expires exactly ttl ticks after it was written: after ttl-1 ticks it is still there, at ttl
+  ticks it is gone.
+- Writing the same key again refreshes its deadline and its value.
+- capacity 0 stores nothing.
+- ttl 0 never expires.
+
+The behaviour is wrong in more than one file. Fix the code.
