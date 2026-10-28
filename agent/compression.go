@@ -37,6 +37,19 @@ func EstimateMessagesTokens(msgs []types.Message) int {
 	return total
 }
 
+// groupPinned reports whether any message in a group carries a pin. One pinned
+// message pins the group: a user instruction whose answer was summarized away
+// is not useful on its own, and a turn split in half is not something the
+// compressor can reason about.
+func groupPinned(msgs []types.Message) bool {
+	for _, m := range msgs {
+		if m.Pinned {
+			return true
+		}
+	}
+	return false
+}
+
 // groupEnd returns the index just past the message group containing idx. A
 // group starts at a user message and runs until the next user message, so an
 // assistant message with tool_calls always stays together with its tool
@@ -98,29 +111,51 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 		return messages, nil
 	}
 
-	var middleText strings.Builder
-	for _, m := range middle {
-		switch m.Role {
-		case types.RoleUser:
-			middleText.WriteString(fmt.Sprintf("User: %s\n", m.Content))
-		case types.RoleAssistant:
-			if m.Content != "" {
-				middleText.WriteString(fmt.Sprintf("Assistant: %s\n", m.Content))
-			}
-			if m.ReasoningContent != "" {
-				middleText.WriteString(fmt.Sprintf("Reasoning: %s\n", m.ReasoningContent))
-			}
-		case types.RoleTool:
-			content := m.Content
-			if len(content) > 200 {
-				content = content[:200] + "..."
-			}
-			middleText.WriteString(fmt.Sprintf("Tool (%s): %s\n", m.Name, content))
-		case types.RoleSystem:
-			// Preserve earlier summaries so compressing twice does not discard
-			// the context that was already distilled.
-			middleText.WriteString(fmt.Sprintf("Context: %s\n", m.Content))
+	// A pinned group is context the user asked to keep verbatim: it is never
+	// fed to the summarizer, and it is put back after the summary and before the
+	// tail. The order is therefore head, summary, pinned, recent tail — a
+	// summary is already a lossy stand-in, and keeping the pinned text at all
+	// matters more than where in the stand-in it sits (roadmap B5).
+	var (
+		middleText strings.Builder
+		pinned     []types.Message
+	)
+	for i := 0; i < len(middle); {
+		end := groupEnd(middle, i)
+		if groupPinned(middle[i:end]) {
+			pinned = append(pinned, middle[i:end]...)
+			i = end
+			continue
 		}
+		for _, m := range middle[i:end] {
+			switch m.Role {
+			case types.RoleUser:
+				middleText.WriteString(fmt.Sprintf("User: %s\n", m.Content))
+			case types.RoleAssistant:
+				if m.Content != "" {
+					middleText.WriteString(fmt.Sprintf("Assistant: %s\n", m.Content))
+				}
+				if m.ReasoningContent != "" {
+					middleText.WriteString(fmt.Sprintf("Reasoning: %s\n", m.ReasoningContent))
+				}
+			case types.RoleTool:
+				content := m.Content
+				if len(content) > 200 {
+					content = content[:200] + "..."
+				}
+				middleText.WriteString(fmt.Sprintf("Tool (%s): %s\n", m.Name, content))
+			case types.RoleSystem:
+				// Preserve earlier summaries so compressing twice does not discard
+				// the context that was already distilled.
+				middleText.WriteString(fmt.Sprintf("Context: %s\n", m.Content))
+			}
+		}
+		i = end
+	}
+	if strings.TrimSpace(middleText.String()) == "" {
+		// Everything worth compressing is pinned. Compressing it would mean
+		// paying for a summary of nothing, so leave the history alone.
+		return messages, nil
 	}
 
 	summaryPrompt := fmt.Sprintf(`Summarize the following conversation history. Focus on:
@@ -174,9 +209,10 @@ Provide a concise summary in 3-5 sentences.`, middleText.String())
 		Content: fmt.Sprintf("[COMPRESSED HISTORY — REFERENCE ONLY]\n%s\n[END COMPRESSED HISTORY]", summary),
 	}
 
-	compressed := make([]types.Message, 0, len(head)+1+len(tail))
+	compressed := make([]types.Message, 0, len(head)+1+len(pinned)+len(tail))
 	compressed = append(compressed, head...)
 	compressed = append(compressed, summaryMsg)
+	compressed = append(compressed, pinned...)
 	compressed = append(compressed, tail...)
 
 	// Inject active todo items after compression so LLM doesn't redo completed work

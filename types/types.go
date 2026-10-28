@@ -31,6 +31,10 @@ type Message struct {
 	// assistant message (roadmap A6). Providers that do not sign reasoning leave
 	// it empty.
 	ReasoningSignature string `json:"reasoning_signature,omitempty"`
+	// Pinned keeps this message out of compression. A pin is written to the
+	// session file with the message it protects, so a resumed conversation
+	// still honours it (roadmap B5).
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // Memory represents a remembered fact.
