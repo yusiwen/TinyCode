@@ -107,7 +107,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **1285 test functions + 10 fuzz targets** across the repository — the main module plus the evaluation corpora, with `tuiprobe/` a nested module the command below excludes — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
+- **1291 test functions + 10 fuzz targets** across the repository — the main module plus the evaluation corpora, with `tuiprobe/` a nested module the command below excludes — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally

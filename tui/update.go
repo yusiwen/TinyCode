@@ -993,6 +993,9 @@ func (m *TuiModel) persistSession() {
 		s = session.New(id, m.SessionDir)
 	}
 	s.Containment = tool.ContainmentInfo().String()
+	if m.agent != nil {
+		s.KeptPaths = append([]string(nil), m.agent.KeptPaths...)
+	}
 	for _, chatMsg := range m.messages {
 		s.Append(types.Message{
 			Role:             chatMsg.Role,
@@ -1240,6 +1243,8 @@ Commands:
   /pin [n]       Keep the last n turns out of compression (default 1)
   /unpin [n]     Clear the pin on the last n pinned turns
   /drop [n]      Drop the last n turns from this context (default 1)
+  /keep <path>   Keep a file's reads out of run compaction (/keep alone lists)
+  /unkeep <path> Drop a kept path
   /model         Switch provider/model
 
 Keyboard:
@@ -1472,7 +1477,7 @@ Mouse:
 		// Creating or resuming a goal while the session is idle starts working
 		// on it after the grace period; pausing or clearing schedules nothing.
 		return m, m.scheduleGoalRound()
-	case "/pin", "/unpin", "/drop":
+	case "/pin", "/unpin", "/drop", "/keep", "/unkeep":
 		return m.handleContextCommand(cmd, base)
 	case "/remember":
 		m.handleRemember(strings.TrimSpace(strings.TrimPrefix(cmd, "/remember")))
