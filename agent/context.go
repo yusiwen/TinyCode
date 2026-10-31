@@ -1,6 +1,62 @@
 package agent
 
-import "github.com/yusiwen/tinycode/types"
+import (
+	"path/filepath"
+	"strings"
+
+	"github.com/yusiwen/tinycode/types"
+)
+
+// Path-level control over compaction (roadmap B5, S4).
+//
+// A run's messages hold the tool results, so "unload this file" is a decision
+// about those. `/drop <path>` cannot make it — the messages live inside Run and
+// the TUI refuses commands while a run is active — so the decision is made
+// before the run instead: a kept path's reads survive compaction verbatim, and
+// every other read is summarized away as usual.
+
+// KeepPath adds a path whose tool reads must survive compaction. The path is
+// cleaned and stored once; an empty path is ignored.
+func (a *Agent) KeepPath(path string) (added bool) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return false
+	}
+	for _, kept := range a.KeptPaths {
+		if kept == path {
+			return false
+		}
+	}
+	a.KeptPaths = append(a.KeptPaths, path)
+	return true
+}
+
+// UnkeepPath removes a path, reporting whether it was there.
+func (a *Agent) UnkeepPath(path string) (removed bool) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	for i, kept := range a.KeptPaths {
+		if kept != path {
+			continue
+		}
+		a.KeptPaths = append(a.KeptPaths[:i], a.KeptPaths[i+1:]...)
+		return true
+	}
+	return false
+}
+
+// keepsPath reports whether a tool call's arguments name a kept path. Arguments
+// are the signal because that is where a read names the file it reads.
+func (a *Agent) keepsPath(arguments string) bool {
+	if arguments == "" {
+		return false
+	}
+	for _, kept := range a.KeptPaths {
+		if kept != "" && strings.Contains(arguments, kept) {
+			return true
+		}
+	}
+	return false
+}
 
 // Turn-level control over the live history (roadmap B5).
 //

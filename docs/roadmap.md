@@ -16,9 +16,9 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 16 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 17 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 2 | F1 — three increments landed, the next one is not opened; B5 — S1 landed, S2 and S3 open |
+| In progress | 1 | F1 — three increments landed, the next one is not opened |
 | Not started | 21 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
@@ -43,7 +43,7 @@ B4 (repository index), F1, then the larger D and E items.
 | B2 | No local memory backend | Delivered — #293 |
 | B3 | No embeddings, vector search or rerank | Delivered — #297 |
 | B4 | No repository index or repo map | Not started — spiked 2026-10-28, no-go (#308) |
-| B5 | Context management has a single strategy | In progress — #306 |
+| B5 | Context management has a single strategy | Delivered — #306 |
 | B6 | Truncation is fixed, not budget-aware | Delivered — #304 |
 | C1 | No checkpoint and no undo | Delivered — #234 |
 | C2 | No automatic change preview and commit loop, and no remote operations | Not started |
@@ -395,7 +395,14 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   own messages — the part D7 depends on — the summarizer's spend now counted, and pins carried through
   the session file), S3 (a compression preview that calls no model — it reads the same partition
   `compressHistory` executes), S4 (a path-targeted unload, split out of S2 because the command channel it
-  assumed does not exist). **S1–S3 landed** (2026-10-28, 2026-10-31); S4 is open.
+  assumed does not exist). **S1–S4 landed** (2026-10-28 … 2026-10-31); the entry is delivered.
+- **Delivered (2026-10-31)**: the single strategy is now four surfaces — turn-level `/pin`, `/unpin` and
+  `/drop` (pins survive compression and a resume), compaction of the run's own messages at a step
+  boundary, `/compress preview` (it reads the same plan the compression executes, and makes no model
+  call), and `/keep <path>`, which keeps a file's tool reads verbatim through a compaction. The
+  summarizer's spend, which used to be invisible to the budgets, is counted. The one thing not built is a
+  *mid-run* command to unload a file: the run owns its messages and the TUI refuses commands while it
+  runs, so the rule is set before the run instead — recorded in #306's S4.
 - **Gap**: compression is automatic and all-or-nothing. No `/drop`, no `/pin`, no unloading by
   message or by file, and no preview of what a compression would discard.
 - **Evidence**: one strategy, `compressHistory` (`agent/compression.go:59`) — head, LLM-summarized

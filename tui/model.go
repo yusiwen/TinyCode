@@ -249,6 +249,8 @@ func commandList() []cmdEntry {
 		{"/pin", "Keep the last turn out of compression"},
 		{"/unpin", "Clear a pin on the last turn"},
 		{"/drop", "Drop the last turn from this context"},
+		{"/keep", "Keep a file's reads out of compaction"},
+		{"/unkeep", "Drop a kept path"},
 		{"/remember", "Store a fact for later sessions"},
 		{"/memory", "List or forget stored facts"},
 		{"/sandbox", "Sandbox status"},
@@ -322,6 +324,8 @@ func (m *TuiModel) adoptSession(branch *session.Session) {
 	// The model's copy is rebuilt with the same rule a resume uses: user and
 	// assistant turns only, never command output and never prior reasoning.
 	m.agent.History = historyFromSession(branch.Messages)
+	// The kept-path rule is the user's, and it survives the file with the turns.
+	m.agent.KeptPaths = append([]string(nil), branch.KeptPaths...)
 	if m.todoStore != nil {
 		// Replace, never merge: an empty list has to clear the previous
 		// session's items, which is exactly what a merge would keep.

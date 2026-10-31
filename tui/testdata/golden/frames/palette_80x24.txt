@@ -34,6 +34,8 @@
   /pin  Keep the last turn out of compression
   /unpin  Clear a pin on the last turn
   /drop  Drop the last turn from this context
+  /keep  Keep a file's reads out of compaction
+  /unkeep  Drop a kept path
   /remember  Store a fact for later sessions
   /memory  List or forget stored facts
   /sandbox  Sandbox status

@@ -40,6 +40,11 @@ func (m *TuiModel) handleContextCommand(cmd, name string) (tea.Model, tea.Cmd) {
 		m.ShowStatus("Cannot " + strings.TrimPrefix(name, "/") + ": a run is in progress")
 		return m, nil
 	}
+	if name == "/keep" || name == "/unkeep" {
+		m.handleKeep(cmd, name)
+		return m, nil
+	}
+
 	n, err := contextTurns(cmd, name)
 	if err != nil {
 		m.appendSystem(err.Error())
@@ -105,4 +110,38 @@ func (m *TuiModel) syncPinsToTranscript() {
 			break
 		}
 	}
+}
+
+// handleKeep manages the paths whose tool reads survive compaction (S4 of #306).
+// The rule is set before a run — that is why it is a command and not something a
+// mid-run model call decides — and it is persisted with the session.
+func (m *TuiModel) handleKeep(cmd, name string) {
+	arg := strings.TrimSpace(strings.TrimPrefix(cmd, name))
+	if name == "/keep" && arg == "" {
+		if len(m.agent.KeptPaths) == 0 {
+			m.appendSystem("no kept paths; /keep <path> keeps a file's reads in context across a compaction")
+			return
+		}
+		m.appendSystem("kept paths (their reads survive compaction):\n  " + strings.Join(m.agent.KeptPaths, "\n  "))
+		return
+	}
+	if arg == "" {
+		m.appendSystem("usage: /unkeep <path>")
+		return
+	}
+	if name == "/keep" {
+		if !m.agent.KeepPath(arg) {
+			m.appendSystem("already kept: " + arg)
+			return
+		}
+		m.persistSession()
+		m.appendSystem("kept " + arg + ": a tool call that names it is kept verbatim when the run is compacted")
+		return
+	}
+	if !m.agent.UnkeepPath(arg) {
+		m.appendSystem("not kept: " + arg)
+		return
+	}
+	m.persistSession()
+	m.appendSystem("dropped " + arg + " from the kept paths")
 }

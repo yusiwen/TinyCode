@@ -29,6 +29,10 @@ type Agent struct {
 	// MemoryRecallLimit is how many facts the recall step injects; zero means
 	// DefaultMemoryRecallLimit. It comes from memory.recall_limit.
 	MemoryRecallLimit int
+	// KeptPaths name files whose tool reads survive the compaction of a run
+	// (roadmap B5, S4). Set before a run; the TUI persists the list with the
+	// session so a resume keeps the rule.
+	KeptPaths []string
 	// Session persistence
 	SessionStore interface {
 		Append(msg types.Message) error
