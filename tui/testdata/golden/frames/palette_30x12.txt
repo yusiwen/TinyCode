@@ -35,6 +35,10 @@
   /drop
     Drop the last turn from
     this context
+  /keep
+    Keep a file's reads out of
+    compaction
+  /unkeep  Drop a kept path
   /remember
     Store a fact for later
     sessions

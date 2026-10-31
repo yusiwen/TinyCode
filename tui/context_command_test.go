@@ -229,3 +229,88 @@ func TestCompressPreviewRefusedDuringARun(t *testing.T) {
 		t.Fatalf("status = %q", m.statusMsg)
 	}
 }
+
+// TestKeepCommands pins the path rule's commands: add, list, drop, and the
+// message a user gets for each.
+func TestKeepCommands(t *testing.T) {
+	m := newTestTUI()
+
+	m.handleCommand("/keep internal/store.go")
+	if !strings.Contains(lastMessage(m), "kept internal/store.go") {
+		t.Fatalf("reply = %q", lastMessage(m))
+	}
+	if len(m.agent.KeptPaths) != 1 || m.agent.KeptPaths[0] != "internal/store.go" {
+		t.Fatalf("kept paths = %v", m.agent.KeptPaths)
+	}
+
+	m.handleCommand("/keep")
+	if !strings.Contains(lastMessage(m), "internal/store.go") {
+		t.Fatalf("listing = %q", lastMessage(m))
+	}
+
+	m.handleCommand("/keep internal/store.go")
+	if !strings.Contains(lastMessage(m), "already kept") {
+		t.Fatalf("duplicate reply = %q", lastMessage(m))
+	}
+
+	m.handleCommand("/unkeep internal/store.go")
+	if !strings.Contains(lastMessage(m), "dropped internal/store.go") {
+		t.Fatalf("unkeep reply = %q", lastMessage(m))
+	}
+	if len(m.agent.KeptPaths) != 0 {
+		t.Fatalf("kept paths after unkeep = %v", m.agent.KeptPaths)
+	}
+	m.handleCommand("/unkeep internal/store.go")
+	if !strings.Contains(lastMessage(m), "not kept") {
+		t.Fatalf("unkeep twice reply = %q", lastMessage(m))
+	}
+}
+
+// TestKeepPathSurvivesTheSessionFile pins S4's persistence acceptance: the rule
+// is the user's, so it travels with the session and comes back on resume.
+func TestKeepPathSurvivesTheSessionFile(t *testing.T) {
+	m := newTestTUI()
+	m.SessionDir = t.TempDir()
+	m.messages = append(m.messages, chatMessage{Role: "user", Content: "hello"})
+	m.agent.History = append(m.agent.History, types.Message{Role: types.RoleUser, Content: "hello"})
+
+	m.handleCommand("/keep internal/store.go")
+
+	saved, err := session.Load(m.currentBranch, m.SessionDir)
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	if len(saved.KeptPaths) != 1 || saved.KeptPaths[0] != "internal/store.go" {
+		t.Fatalf("the session kept %v", saved.KeptPaths)
+	}
+
+	// The resume path restores it into the agent.
+	next := newTestTUI()
+	next.adoptSession(saved)
+	if len(next.agent.KeptPaths) != 1 || next.agent.KeptPaths[0] != "internal/store.go" {
+		t.Fatalf("adoptSession restored %v", next.agent.KeptPaths)
+	}
+}
+
+// TestKeepRefusedDuringARun pins the guard: the rule is read by the run's
+// compaction, so it must not change under one.
+func TestKeepRefusedDuringARun(t *testing.T) {
+	m := newTestTUI()
+	m.runMu.Lock()
+	m.runActive = true
+	m.runMu.Unlock()
+	t.Cleanup(func() {
+		m.runMu.Lock()
+		m.runActive = false
+		m.runMu.Unlock()
+	})
+
+	m.handleCommand("/keep internal/store.go")
+
+	if !strings.Contains(m.statusMsg, "a run is in progress") {
+		t.Fatalf("status = %q", m.statusMsg)
+	}
+	if len(m.agent.KeptPaths) != 0 {
+		t.Fatalf("the rule changed during a run: %v", m.agent.KeptPaths)
+	}
+}

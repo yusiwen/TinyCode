@@ -194,3 +194,27 @@ func TestPinnedTurnTexts(t *testing.T) {
 		t.Fatalf("PinnedTurnCount = %d, want 1", got)
 	}
 }
+
+// TestKeepPathCleansAndDeduplicates pins the list's shape: cleaned, stored once,
+// and empty values ignored.
+func TestKeepPathCleansAndDeduplicates(t *testing.T) {
+	ag := New(nil)
+	if !ag.KeepPath("  internal/store.go ") {
+		t.Fatal("a path was not kept")
+	}
+	if ag.KeepPath("internal/store.go") {
+		t.Fatal("the same path was kept twice")
+	}
+	if ag.KeepPath("   ") {
+		t.Fatal("an empty path was kept")
+	}
+	if len(ag.KeptPaths) != 1 || ag.KeptPaths[0] != "internal/store.go" {
+		t.Fatalf("kept paths = %v", ag.KeptPaths)
+	}
+	if !ag.UnkeepPath("internal/store.go") {
+		t.Fatal("the path was not dropped")
+	}
+	if ag.UnkeepPath("internal/store.go") {
+		t.Fatal("dropping a path twice reported success")
+	}
+}

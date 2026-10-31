@@ -38,6 +38,11 @@ type Session struct {
 	// Permission paths allowed for this session (Allow session)
 	AllowedPaths []string `json:"allowed_paths,omitempty"`
 
+	// KeptPaths are files whose tool reads must survive compaction of a run
+	// (roadmap B5, S4). They live with the session because the rule is the
+	// user's, and a resume has to keep it.
+	KeptPaths []string `json:"kept_paths,omitempty"`
+
 	// Containment records what enforced file boundaries when this session ran,
 	// as reported by the tool package at creation ("kernel (…)",
 	// "userspace (…)"). It is recorded once because it is a property of the

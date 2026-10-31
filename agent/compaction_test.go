@@ -190,3 +190,77 @@ func TestRunCompactsItsOwnMessages(t *testing.T) {
 		t.Fatalf("no provider request carried a compacted run across %d calls", len(provider.requests))
 	}
 }
+
+// keptRunMessages builds a run whose second round reads a file the test keeps,
+// followed by filler rounds and a recent tail.
+func keptRunMessages() []types.Message {
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "system prompt"},
+		{Role: types.RoleUser, Content: "do the thing"},
+	}
+	round := func(id, path, output string) []types.Message {
+		return []types.Message{
+			{Role: types.RoleAssistant, ToolCalls: []types.ToolCall{{
+				ID: id, Name: "read_file", Arguments: `{"path":"` + path + `"}`,
+			}}},
+			{Role: types.RoleTool, ToolCallID: id, Name: "read_file", Content: output},
+		}
+	}
+	messages = append(messages, round("1", "internal/filler.go", "filler one")...)
+	messages = append(messages, round("2", "internal/kept.go", "KEPT CONTENT")...)
+	for i := 0; i < 4; i++ {
+		messages = append(messages, round(string(rune('3'+i)), "internal/filler.go", "filler round")...)
+	}
+	return messages
+}
+
+// TestCompactRunMessagesKeepsPathsTheUserKept is S4's acceptance: a read of a
+// kept path survives compaction verbatim and the summary does not absorb it,
+// while a read of any other path is summarized away as before.
+func TestCompactRunMessagesKeepsPathsTheUserKept(t *testing.T) {
+	provider := &recordingProvider{content: "RUN SUMMARY"}
+	ag := New(provider)
+	ag.ContextLength = 1000
+	ag.CompressionThreshold = 1
+	if !ag.KeepPath("internal/kept.go") {
+		t.Fatal("the path was not kept")
+	}
+
+	in := keptRunMessages()
+	out, changed := ag.compactRunMessages(context.Background(), in, 2)
+	if !changed {
+		t.Fatal("the run was not compacted")
+	}
+	if !containsMessage(out, "KEPT CONTENT") {
+		t.Fatal("the kept read was summarized away")
+	}
+	if containsMessage(out, "filler one") {
+		t.Fatal("an unkept read survived the summary")
+	}
+	if !containsMessage(out, "RUN SUMMARY") {
+		t.Fatal("the summary is missing")
+	}
+	if prompt := provider.requests[0].Messages[1].Content; strings.Contains(prompt, "KEPT CONTENT") {
+		t.Fatalf("the summarizer was given the kept read:\n%s", prompt)
+	}
+}
+
+// TestCompactRunMessagesDoesNothingWhenEveryRoundIsKept: if every read is kept,
+// a summary would be of nothing, so the run is left alone and no call is paid.
+func TestCompactRunMessagesDoesNothingWhenEveryRoundIsKept(t *testing.T) {
+	provider := &recordingProvider{content: "RUN SUMMARY"}
+	ag := New(provider)
+	ag.ContextLength = 1000
+	ag.CompressionThreshold = 1
+	ag.KeepPath("internal/filler.go")
+	ag.KeepPath("internal/kept.go")
+
+	in := keptRunMessages()
+	out, changed := ag.compactRunMessages(context.Background(), in, 2)
+	if changed {
+		t.Fatalf("a fully kept run was compacted: %d -> %d messages", len(in), len(out))
+	}
+	if len(provider.requests) != 0 {
+		t.Fatalf("the summarizer was called %d times for nothing", len(provider.requests))
+	}
+}
