@@ -1166,6 +1166,17 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 			m.ShowStatus("No agent available")
 			return m, nil
 		}
+		// `/compress preview` reads the history without replacing it. It is still
+		// refused while a run is active: the run goroutine appends to that slice,
+		// and reading it concurrently is a data race even when nothing is written.
+		if strings.TrimSpace(strings.TrimPrefix(cmd, "/compress")) == "preview" {
+			if m.runIsActive() {
+				m.ShowStatus("Cannot preview: a run is in progress")
+				return m, nil
+			}
+			m.appendSystem(m.agent.CompressionPreview())
+			return m, nil
+		}
 		// CompressHistory replaces a.History while the agent goroutine may be
 		// appending to it, so it must never run concurrently with an active
 		// run. Refusing while runIsActive() is sufficient: the run lifecycle
