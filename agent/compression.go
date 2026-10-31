@@ -132,18 +132,37 @@ func groupEnd(messages []types.Message, idx int) int {
 	return len(messages)
 }
 
-// compressHistory compresses a.History when it exceeds the threshold. It
-// returns the history unchanged (and nil error) when there is nothing to
-// compress, and a nil history plus the summarizer's error when the provider
-// call fails or the context is cancelled.
-func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) ([]types.Message, error) {
+// compressionPlan is the partition compressHistory makes, computed without a
+// model call. The preview and the compression both read it, so they cannot
+// disagree about what is kept (roadmap B5, S3).
+type compressionPlan struct {
+	// Head and Tail are kept verbatim: the first two user groups and the last two.
+	Head []types.Message
+	Tail []types.Message
+	// Middle is the unpinned middle — what a summarizer would be given.
+	Middle []types.Message
+	// Pinned are middle groups the user asked to keep verbatim.
+	Pinned []types.Message
+	// Tokens is the history's estimated size and Threshold the bound that decides
+	// whether automatic compression fires.
+	Tokens    int
+	Threshold int
+}
+
+// OverThreshold reports whether automatic compression would fire.
+func (p compressionPlan) OverThreshold() bool {
+	return p.Threshold > 0 && p.Tokens >= p.Threshold
+}
+
+// planCompression works out what a compression of these messages would keep and
+// what it would summarize. The second result is the reason there is no plan, so
+// a caller can say why instead of "nothing to do".
+func (a *Agent) planCompression(messages []types.Message) (compressionPlan, string) {
 	if a.CompressionThreshold <= 0 || a.ContextLength <= 0 {
-		return messages, nil
+		return compressionPlan{}, "compression is disabled"
 	}
-	estimatedTokens := EstimateMessagesTokens(messages)
-	if estimatedTokens < a.CompressionThreshold {
-		return messages, nil
-	}
+	plan := compressionPlan{Tokens: EstimateMessagesTokens(messages), Threshold: a.CompressionThreshold}
+
 	var userMsgIndices []int
 	for i, m := range messages {
 		if m.Role == types.RoleUser {
@@ -151,7 +170,7 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 		}
 	}
 	if len(userMsgIndices) < 4 {
-		return messages, nil
+		return compressionPlan{}, "the history has fewer than four user turns"
 	}
 	protectFirst := 2
 	if protectFirst > len(userMsgIndices) {
@@ -168,39 +187,46 @@ func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) (
 	tailBudget := 2
 	tailStart := userMsgIndices[len(userMsgIndices)-tailBudget]
 	if tailStart <= headEnd {
-		return messages, nil
+		return compressionPlan{}, "the head and the tail overlap: there is no middle to compress"
 	}
-	head := messages[:headEnd]
 	middle := messages[headEnd:tailStart]
-	tail := messages[tailStart:]
 	if len(middle) < 2 {
-		return messages, nil
+		return compressionPlan{}, "the middle is too small to be worth a summary"
 	}
+	plan.Head = messages[:headEnd]
+	plan.Tail = messages[tailStart:]
 
 	// A pinned group is context the user asked to keep verbatim: it is never
 	// fed to the summarizer, and it is put back after the summary and before the
 	// tail. The order is therefore head, summary, pinned, recent tail — a
 	// summary is already a lossy stand-in, and keeping the pinned text at all
 	// matters more than where in the stand-in it sits (roadmap B5).
-	var (
-		middleText strings.Builder
-		pinned     []types.Message
-	)
 	for i := 0; i < len(middle); {
 		end := groupEnd(middle, i)
 		if groupPinned(middle[i:end]) {
-			pinned = append(pinned, middle[i:end]...)
+			plan.Pinned = append(plan.Pinned, middle[i:end]...)
 			i = end
 			continue
 		}
-		middleText.WriteString(describeMessages(middle[i:end]))
+		plan.Middle = append(plan.Middle, middle[i:end]...)
 		i = end
 	}
-	if strings.TrimSpace(middleText.String()) == "" {
-		// Everything worth compressing is pinned. Compressing it would mean
-		// paying for a summary of nothing, so leave the history alone.
+	if len(plan.Middle) == 0 {
+		return compressionPlan{}, "every turn in the middle is pinned, so a summary would be of nothing"
+	}
+	return plan, ""
+}
+
+// compressHistory compresses a.History when it exceeds the threshold. It
+// returns the history unchanged (and nil error) when there is nothing to
+// compress, and a nil history plus the summarizer's error when the provider
+// call fails or the context is cancelled.
+func (a *Agent) compressHistory(ctx context.Context, messages []types.Message) ([]types.Message, error) {
+	plan, _ := a.planCompression(messages)
+	if plan.Threshold == 0 || !plan.OverThreshold() {
 		return messages, nil
 	}
+	head, middleText, pinned, tail := plan.Head, describeMessages(plan.Middle), plan.Pinned, plan.Tail
 
 	const instruction = `Summarize the following conversation history. Focus on:
 - What tasks were completed
@@ -213,7 +239,7 @@ Conversation to summarize:`
 	// A summarizer failure is reported rather than swallowed: the caller keeps
 	// its history either way, but only this way can it tell a cancelled run
 	// (context.Canceled) from a healthy no-op.
-	summary, err := a.summarizeText(ctx, instruction, middleText.String(), 1024, 0)
+	summary, err := a.summarizeText(ctx, instruction, middleText, 1024, 0)
 	if err != nil {
 		return nil, err
 	}

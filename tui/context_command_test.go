@@ -184,3 +184,48 @@ func TestPinSurvivesTheSessionFile(t *testing.T) {
 		t.Fatalf("historyFromSession lost the pin: %+v", restored)
 	}
 }
+
+// TestCompressPreviewCommand prints the partition without compressing: the
+// history must be untouched and the output must name the kept regions.
+func TestCompressPreviewCommand(t *testing.T) {
+	m := newTestTUI()
+	m.agent.ContextLength = 1000
+	m.agent.CompressionThreshold = 1
+	seedHistory(m, 6)
+	before := len(m.agent.History)
+
+	m.handleCommand("/compress preview")
+
+	reply := lastMessage(m)
+	for _, want := range []string{"Compression preview", "kept: head", "summarized: middle", "kept: tail"} {
+		if !strings.Contains(reply, want) {
+			t.Fatalf("reply is missing %q:\n%s", want, reply)
+		}
+	}
+	if got := len(m.agent.History); got != before {
+		t.Fatalf("the preview changed the history: %d -> %d", before, got)
+	}
+}
+
+// TestCompressPreviewRefusedDuringARun pins the guard: reading the history while
+// the run goroutine appends to it is a data race even though nothing is written.
+func TestCompressPreviewRefusedDuringARun(t *testing.T) {
+	m := newTestTUI()
+	m.agent.ContextLength = 1000
+	m.agent.CompressionThreshold = 1
+	seedHistory(m, 6)
+	m.runMu.Lock()
+	m.runActive = true
+	m.runMu.Unlock()
+	t.Cleanup(func() {
+		m.runMu.Lock()
+		m.runActive = false
+		m.runMu.Unlock()
+	})
+
+	m.handleCommand("/compress preview")
+
+	if !strings.Contains(m.statusMsg, "a run is in progress") {
+		t.Fatalf("status = %q", m.statusMsg)
+	}
+}
