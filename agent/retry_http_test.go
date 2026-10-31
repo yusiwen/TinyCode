@@ -225,15 +225,19 @@ func TestCancelledRunMakesNoFurtherRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// A cancelled run must not announce a retry either: the guard is in the
-	// classification, and this is its observable effect (the request count alone
-	// would be satisfied by the backoff's own cancellation).
-	retries := 0
+	// What must hold either way is that no second request goes out. Whether a
+	// retry is *announced* depends on where the cancel lands: after the retry
+	// decision but before the backoff notices it, OnRetry reports the attempt the
+	// sleep then abandons — and no request follows, which is the property the
+	// name of this test is about. Asserting zero announcements made this fail on
+	// a loaded runner (issues #193 and #295); the counter is atomic because the
+	// retry path and the test goroutine both touch it.
+	var retries int32
 	errCh := make(chan error, 1)
 	go func() {
 		_, err := NewOpenAIProvider("k", srv.URL, "m").Chat(ctx, types.ChatRequest{
 			StreamCallbacks: &types.StreamCallbacks{
-				OnRetry: func(attempt, maxAttempts int, err error) { retries++ },
+				OnRetry: func(attempt, maxAttempts int, err error) { atomic.AddInt32(&retries, 1) },
 			},
 		})
 		errCh <- err
@@ -262,8 +266,8 @@ func TestCancelledRunMakesNoFurtherRequest(t *testing.T) {
 	if got := atomic.LoadInt32(&requests); got != 1 {
 		t.Errorf("requests = %d, want 1: a cancelled run must not be retried", got)
 	}
-	if retries != 0 {
-		t.Errorf("OnRetry fired %d times, want 0: a cancelled run has no next attempt to announce", retries)
+	if got := atomic.LoadInt32(&retries); got > 1 {
+		t.Errorf("OnRetry fired %d times; a cancelled run announces at most the attempt the backoff abandons", got)
 	}
 }
 
