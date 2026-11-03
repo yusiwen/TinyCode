@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yusiwen/tinycode/config"
@@ -82,6 +83,9 @@ type Runner struct {
 	// Dir is the working directory of every hook: the project root, so a hook
 	// like `gofmt -w .` means what it says.
 	Dir string
+	// sessionEndOnce makes SessionEnd fire at most once per process: every exit
+	// path calls it, and only the first call runs the hooks.
+	sessionEndOnce sync.Once
 }
 
 // New builds a runner from the resolved config. Nil lists mean no hooks.
@@ -124,6 +128,20 @@ func (r *Runner) Hooks(event Event) []Hook {
 		return nil
 	}
 	return r.hooks[event]
+}
+
+// FireSessionEnd runs the SessionEnd hooks once per process, whatever the exit
+// path. A second call does nothing: a session ends once, and a hook that
+// exported the transcript must not run twice because the TUI has three ways out.
+func (r *Runner) FireSessionEnd(session string) Result {
+	if r == nil {
+		return Result{}
+	}
+	var result Result
+	r.sessionEndOnce.Do(func() {
+		result = r.Fire(context.Background(), SessionEnd, Payload{Session: session})
+	})
+	return result
 }
 
 // Fire runs every hook of the event whose match accepts the payload.

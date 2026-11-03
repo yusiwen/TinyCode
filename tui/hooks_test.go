@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -47,3 +48,24 @@ func TestHooksCommandWithoutConfiguration(t *testing.T) {
 }
 
 var _ = types.RoleSystem
+
+// TestExitFiresSessionEnd: both ways out of the TUI report the session's end, and
+// the runner makes them one fire.
+func TestExitFiresSessionEnd(t *testing.T) {
+	dir := t.TempDir()
+	marker := dir + "/end.txt"
+	m := newTestTUI()
+	m.agent.Hooks = hook.New(config.HooksConfig{SessionEnd: []config.HookConfig{
+		{Command: "cat >> " + marker},
+	}}, dir)
+
+	m.handleCommand("/exit")
+
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("session_end did not fire: %v", err)
+	}
+	if !strings.Contains(string(data), `"event":"session_end"`) {
+		t.Fatalf("payload = %s", data)
+	}
+}

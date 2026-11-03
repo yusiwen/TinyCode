@@ -393,8 +393,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.autoScroll()
 				return m, nil
 			}
-			// Save session before quitting
-			m.persistSession()
+			// Save the session and report its end before quitting.
+			m.endSession()
 			return m, tea.Quit
 		}
 
@@ -1168,7 +1168,7 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 	switch base {
 	case "/exit", "/quit":
-		m.persistSession()
+		m.endSession()
 		return m, tea.Quit
 	case "/compress":
 		if m.agent == nil {
@@ -1851,6 +1851,18 @@ func (m *TuiModel) noteRunChanges(runErr error) {
 	m.appendSystem(fmt.Sprintf(
 		"This run's tool calls changed %d file(s), +%d/-%d — /changes for the whole tree, /commit <message> to land them.",
 		len(run), added, removed))
+}
+
+// endSession is the last thing every exit path does: save the transcript, then
+// fire the session_end hooks (roadmap C4). The runner guards the once-per-process
+// part, so a second exit path cannot run the hooks twice.
+func (m *TuiModel) endSession() {
+	m.persistSession()
+	if m.agent != nil && m.agent.Hooks != nil {
+		if fired := m.agent.Hooks.FireSessionEnd(m.currentBranch); fired.Err != nil {
+			m.appendSystem(fmt.Sprintf("session_end hook failed: %v", fired.Err))
+		}
+	}
 }
 
 func (m *TuiModel) appendSystem(text string) {

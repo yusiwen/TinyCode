@@ -631,6 +631,14 @@ func newRootCmd() *cobra.Command {
 				// One-shot mode
 				fmt.Printf("🤖 TinyCode (model: %s)\n", provReg.CurrentName())
 				result, err := ag.Run(ctx, prompt)
+				// A one-shot run ends its session here: there is no TUI exit path
+				// to report it, and a hook that exports the transcript should not
+				// depend on which mode the user chose (roadmap C4).
+				if ag.Hooks != nil {
+					if fired := ag.Hooks.FireSessionEnd(""); fired.Err != nil {
+						tlog.Warn("config", "session_end hook failed", "error", fired.Err)
+					}
+				}
 				if err != nil {
 					return fmt.Errorf("agent error: %w", err)
 				}

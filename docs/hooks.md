@@ -32,6 +32,10 @@ becomes a setting instead of a habit.
 | `stop` | when a run returns, success or failure | nothing; logged |
 | `session_end` | once, when the process is done with the session | nothing; logged |
 
+`session_end` fires **once per process**, from whichever way the process ends: `/exit`, `/quit`, the
+double Ctrl+C, or a one-shot run finishing. A hook that exports the transcript therefore runs once, not
+once per exit path and not once per save.
+
 ## What a hook receives
 
 One JSON object on stdin:

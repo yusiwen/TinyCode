@@ -159,3 +159,36 @@ func TestTimeoutIsBoundedByConfig(t *testing.T) {
 		t.Fatalf("clamped timeout = %s", got)
 	}
 }
+
+// TestSessionEndFiresOncePerProcess: three exit paths and one hook that appends a
+// line — the file must hold one line, not three.
+func TestSessionEndFiresOncePerProcess(t *testing.T) {
+	r, dir := runner(t, config.HooksConfig{SessionEnd: []config.HookConfig{
+		{Command: "cat >> ends.txt"},
+	}})
+
+	for i := 0; i < 3; i++ {
+		if result := r.FireSessionEnd("s1"); result.Err != nil {
+			t.Fatalf("FireSessionEnd: %v", result.Err)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "ends.txt"))
+	if err != nil {
+		t.Fatalf("the hook did not run: %v", err)
+	}
+	if lines := strings.Count(strings.TrimSpace(string(data)), "\n") + 1; lines != 1 {
+		t.Fatalf("the hook ran %d times, want once:\n%s", lines, data)
+	}
+	if !strings.Contains(string(data), `"event":"session_end"`) || !strings.Contains(string(data), `"session":"s1"`) {
+		t.Fatalf("payload = %s", data)
+	}
+}
+
+// TestSessionEndOnANilRunnerIsSafe: a session without hooks must not need a check
+// at the exit path.
+func TestSessionEndOnANilRunnerIsSafe(t *testing.T) {
+	var r *Runner
+	if result := r.FireSessionEnd("s1"); result.Ran != 0 || result.Err != nil {
+		t.Fatalf("result = %+v", result)
+	}
+}
