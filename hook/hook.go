@@ -190,6 +190,11 @@ func (r *Runner) run(ctx context.Context, h Hook, payload Payload) (string, erro
 	cmd := exec.CommandContext(runCtx, "sh", "-c", h.Command)
 	cmd.Dir = r.Dir
 	cmd.Stdin = bytes.NewReader(data)
+	// Killing the shell is not enough to end the call: a child it spawned (a
+	// `sleep`, a compiler) inherits the output pipe, and Wait would sit on it
+	// until the child finished — which is exactly the timeout it was supposed to
+	// enforce. WaitDelay bounds that wait after the kill.
+	cmd.WaitDelay = 200 * time.Millisecond
 	out, err := cmd.CombinedOutput()
 	text := truncate(string(out))
 	if runCtx.Err() == context.DeadlineExceeded {

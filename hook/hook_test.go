@@ -63,7 +63,11 @@ func TestPreToolUseDeniesOnANonZeroExit(t *testing.T) {
 // a guard.
 func TestPreToolUseDeniesWhenTheHookCannotRunOrHangs(t *testing.T) {
 	r, _ := runner(t, config.HooksConfig{PreToolUse: []config.HookConfig{
-		{Command: "sleep 5", TimeoutMS: 50},
+		// The trailing command keeps the shell alive, so the `sleep` is a child
+		// that inherits the output pipe — the case WaitDelay exists for, and the
+		// one that failed on Linux while passing on macOS (where `sh -c` execs a
+		// single command and the kill reaches it).
+		{Command: "sleep 5; true", TimeoutMS: 50},
 	}})
 	start := time.Now()
 	result := r.Fire(context.Background(), PreToolUse, Payload{Tool: "bash"})
