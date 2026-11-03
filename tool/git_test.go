@@ -140,3 +140,79 @@ func TestGitDiff(t *testing.T) {
 		t.Errorf("expected diff with println, got:\n%s", result)
 	}
 }
+
+// TestCommitChangesStagesOnlyTheGivenPaths is C2's core safety property: a scoped
+// commit leaves the user's unrelated work uncommitted.
+func TestCommitChangesStagesOnlyTheGivenPaths(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, dir+"/base.txt", "base\n")
+	gitCommit(t, dir, "init")
+
+	writeFile(t, dir+"/mine.go", "mine\n")
+	writeFile(t, dir+"/theirs.txt", "theirs\n")
+
+	wd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(wd)
+
+	if _, err := CommitChanges(context.Background(), "feat: mine", []string{"mine.go"}); err != nil {
+		t.Fatalf("CommitChanges: %v", err)
+	}
+
+	out, err := exec.Command("git", "-C", dir, "show", "--name-only", "--format=", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "mine.go" {
+		t.Fatalf("commit contains %q, want only mine.go", got)
+	}
+	status, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(string(status), "theirs.txt") {
+		t.Fatalf("the unrelated change was swept in:\n%s", status)
+	}
+}
+
+// TestGitCommitWithoutPathsKeepsItsContract: the tool's historic behaviour is
+// still there for a caller that passes no paths.
+func TestGitCommitWithoutPathsKeepsItsContract(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, dir+"/one.txt", "one\n")
+	writeFile(t, dir+"/two.txt", "two\n")
+
+	wd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(wd)
+
+	if _, err := GitCommit().Execute(context.Background(), map[string]any{"message": "both"}); err != nil {
+		t.Fatalf("git_commit: %v", err)
+	}
+	out, err := exec.Command("git", "-C", dir, "show", "--name-only", "--format=", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("show: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); !strings.Contains(got, "one.txt") || !strings.Contains(got, "two.txt") {
+		t.Fatalf("commit contains %q, want both files", got)
+	}
+}
+
+// TestCommitChangesRefusesAnEmptyMessage: no message, no commit.
+func TestCommitChangesRefusesAnEmptyMessage(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	writeFile(t, dir+"/one.txt", "one\n")
+	gitCommit(t, dir, "init")
+	writeFile(t, dir+"/two.txt", "two\n")
+
+	wd, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(wd)
+
+	if _, err := CommitChanges(context.Background(), "  ", nil); err == nil {
+		t.Fatal("an empty message was accepted")
+	}
+}

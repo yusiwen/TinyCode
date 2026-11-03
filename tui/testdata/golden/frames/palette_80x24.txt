@@ -29,6 +29,10 @@
   /theme  Switch theme
   /skill  Load a skill
   /diagnostics  LSP diagnostics
+  /changes  Show what changed since the last run
+  /commit  Commit the files this run wrote
+  /push  Push the current branch to origin
+  /pr  Open a pull request for the current branch
   /undo  Restore the last tool call's files
   /goal  View, create, pause or resume the goal
   /pin  Keep the last turn out of compression
