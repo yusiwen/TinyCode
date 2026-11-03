@@ -1254,7 +1254,6 @@ Commands:
   /drop [n]      Drop the last n turns from this context (default 1)
   /keep <path>   Keep a file's reads out of run compaction (/keep alone lists)
   /unkeep <path> Drop a kept path
-  /model         Switch provider/model
 
 Keyboard:
   Enter          Submit message
