@@ -18,17 +18,20 @@ after it (see *Provenance and method*).
 | :--- | ---: | :--- |
 | Delivered | 18 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 20 | verified gaps, no issue opened |
+| In progress | 2 | F1 — three increments landed, the next one is not opened; C4 — S1 landed, S2's session_end open |
+| Not started | 19 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: F1, whose next increment (a task set with headroom) is not opened,
+**Open work**: C4 ([#318](https://github.com/yusiwen/TinyCode/issues/318) — S2's `session_end` is the
+last piece), F1, whose next increment (a task set with headroom) is not opened,
 [#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
 contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
 (steering input while a run streams), which is not a roadmap entry.
 
-**Next, by the reading order**: C6 (a second isolation tier, since C7's macOS fence is delivered),
-then F1, then the larger D and E items. B4 is **not** next: it was measured on 2026-10-28 and the
+**Next, by the reading order**: C4 (the hooks bundle; then C5, C3, C6 — reordered on 2026-11-03 because
+hooks are the smallest item and two entries need them: C5 can fire a test command from one, and D7 needs a
+turn-end seam), then C6 (a second isolation tier, since C7's macOS fence is delivered), then F1, then the
+larger D and E items. B4 is **not** next: it was measured on 2026-10-28 and the
 injected map lost, so it reopens only under the three conditions its entry names.
 
 ### Status by entry
@@ -50,7 +53,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | C1 | No checkpoint and no undo | Delivered — #234 |
 | C2 | No automatic change preview and commit loop, and no remote operations | Delivered — #316 |
 | C3 | No isolation for parallel execution | Not started |
-| C4 | No user-configurable hooks and no session lifecycle events | Not started |
+| C4 | No user-configurable hooks and no session lifecycle events | In progress — #318 |
 | C5 | No test feedback loop | Not started |
 | C6 | Isolation has only one tier | Not started |
 | C7 | No command confinement on macOS | Delivered — #247 |
@@ -530,6 +533,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### C4 — No user-configurable hooks and no session lifecycle events
 
+- **Picked up**: [#318](https://github.com/yusiwen/TinyCode/issues/318) — S1 (the runner, `pre_tool_use`
+  and `post_tool_use`, and the user-layer-only config rule), S2 (`stop`, `session_end`, `/hooks`), S3 (the
+  documents). **S1 landed 2026-11-03**, together with `stop`, `/hooks` and [hooks.md](hooks.md); S2's
+  `session_end` — one fire per process, from the TUI exit paths and the one-shot path — is open.
 - **Gap**: a user cannot declare "run gofmt after a `.go` write", "run the gate before a commit" or
   "export the trace at session end".
 - **Evidence**: no `PreToolUse`/`PostToolUse`; no `hook` key in `config/config.go` or

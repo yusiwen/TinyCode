@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/goal"
+	"github.com/yusiwen/tinycode/hook"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -1242,6 +1243,7 @@ Commands:
   /theme         Switch theme (nord, default)
   /diagnostics   Show LSP diagnostics
   /changes       Show what changed since the last run
+  /hooks         List the hooks configured in your own config
   /commit <msg>  Commit the files this run wrote (/commit --all for everything)
   /push          Push the current branch to origin (never the default branch)
   /pr <title>    Open a pull request for the current branch (push first)
@@ -1439,6 +1441,32 @@ Mouse:
 
 	case "/commit":
 		m.handleCommit(cmd)
+		return m, nil
+
+	case "/hooks":
+		if m.agent == nil || m.agent.Hooks == nil || m.agent.Hooks.Empty() {
+			m.appendSystem(`No hooks configured. Declare them in ~/.tinycode/config.json:
+  "hooks": {"post_tool_use": [{"command": "gofmt -w .", "match": "*.go"}]}
+A project-local .tinycode/config.json cannot declare hooks.`)
+			return m, nil
+		}
+		var b strings.Builder
+		b.WriteString("Hooks (from your own config; a project-local file cannot declare them):")
+		for _, event := range hook.Events() {
+			list := m.agent.Hooks.Hooks(event)
+			if len(list) == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "\n  %s:", event)
+			for _, h := range list {
+				match := h.Match
+				if match == "" {
+					match = "*"
+				}
+				fmt.Fprintf(&b, "\n    [%s] %s (timeout %s)", match, h.Command, h.Timeout)
+			}
+		}
+		m.appendSystem(b.String())
 		return m, nil
 
 	case "/changes":

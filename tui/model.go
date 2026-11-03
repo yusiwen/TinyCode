@@ -245,6 +245,7 @@ func commandList() []cmdEntry {
 		{"/skill", "Load a skill"},
 		{"/diagnostics", "LSP diagnostics"},
 		{"/changes", "Show what changed since the last run"},
+		{"/hooks", "List the configured hooks"},
 		{"/commit", "Commit the files this run wrote"},
 		{"/push", "Push the current branch to origin"},
 		{"/pr", "Open a pull request for the current branch"},

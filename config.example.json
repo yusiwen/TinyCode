@@ -1,6 +1,11 @@
 {
   "$comment": "Copy to config.json. API keys are read from env vars, not stored here. A key beginning with $ is documentation, not configuration: it is ignored wherever it appears, at any depth, so notes like this one can sit next to the values they describe (including inside agents and prices, which decode into maps).",
 
+  "hooks": {
+    "$comment": "Commands that run at tool and run boundaries (docs/hooks.md). Only this file may declare them: a project-local .tinycode/config.json is ignored. Events: pre_tool_use, post_tool_use, stop, session_end. Each entry: {command, timeout_ms?, match?}; match is a glob over the tool name. Example: {\"command\": \"gofmt -w .\", \"match\": \"write_file\"}.",
+    "post_tool_use": []
+  },
+
   "default_mode": "plan",
   "show_thinking": true,
   "verbose": false,
