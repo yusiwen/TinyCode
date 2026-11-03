@@ -638,6 +638,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// What this run means for the goal is decided before the session is
 		// written, so a pause or a blocker is durable at the same moment.
 		goalNotice := m.settleGoalRound(msg.Error)
+		// A run that wrote files says so, in one line: an invitation to
+		// /changes and /commit, never a dialog and never a commit. The idle
+		// continuation driver (roadmap D7) can finish a round with nobody
+		// watching, and a prompt would stall it (roadmap C2).
+		m.noteRunChanges(msg.Error)
 		// The session file is the durable log: a finished run — and whatever
 		// it did to the goal — is written now, not only when the user quits.
 		m.persistSession()
@@ -1236,6 +1241,10 @@ Commands:
   /skill         Load a skill's instructions (e.g. /skill code-review)
   /theme         Switch theme (nord, default)
   /diagnostics   Show LSP diagnostics
+  /changes       Show what changed since the last run
+  /commit <msg>  Commit the files this run wrote (/commit --all for everything)
+  /push          Push the current branch to origin (never the default branch)
+  /pr <title>    Open a pull request for the current branch (push first)
   /undo          Restore the files the last tool call wrote
   /goal          View the goal; /goal <objective>, edit, pause, resume, clear
   /remember      Store a fact for later sessions (/remember <label>: <fact>)
@@ -1421,6 +1430,31 @@ Mouse:
 		m.messages = append(m.messages, chatMessage{Role: "system", Content: sandboxReport()})
 		m.autoScroll()
 		return m, nil
+	case "/pr":
+		m.handlePullRequest(cmd)
+		return m, nil
+
+	case "/push":
+		m.handlePush(cmd)
+		return m, nil
+
+	case "/commit":
+		m.handleCommit(cmd)
+		return m, nil
+
+	case "/changes":
+		if m.agent == nil {
+			m.ShowStatus("No agent available")
+			return m, nil
+		}
+		changes, err := tool.RunChanges(context.Background(), m.currentBranch, m.runStart)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("Changes: %v", err))
+			return m, nil
+		}
+		m.appendSystem(changes.Report())
+		return m, nil
+
 	case "/undo":
 		// The files are listed in the transcript rather than in the dialog: a
 		// dialog heading wraps but is meant to be one question, and a user
@@ -1623,6 +1657,175 @@ func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, go
 // It is not dialogue: the resumed-history rebuild skips "system" entries, so a
 // command's output never becomes a turn the model reads. persistSession keeps it
 // for display, which is why a resumed session still shows what the user ran.
+// handlePullRequest opens a pull request for the current branch, after naming the
+// branch and the base in the confirmation dialog. A branch with no upstream, or
+// commits the remote does not have, is refused by the tool before any external
+// call — the dialog is about consent, not about re-checking.
+func (m *TuiModel) handlePullRequest(cmd string) {
+	title := strings.TrimSpace(strings.TrimPrefix(cmd, "/pr"))
+	m.runMu.Lock()
+	active := m.runActive
+	m.runMu.Unlock()
+	if active {
+		m.ShowStatus("Cannot open a pull request: a run is in progress")
+		return
+	}
+	if title == "" {
+		m.appendSystem("usage: /pr <title> — opens a pull request for the current branch (push first)")
+		return
+	}
+	ctx := context.Background()
+	branch, err := tool.CurrentBranch(ctx)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("Pull request: %v", err))
+		return
+	}
+	base := tool.DefaultBranch(ctx)
+	if base == "" {
+		base = "main"
+	}
+	if def := tool.DefaultBranch(ctx); def != "" && branch == def {
+		m.appendSystem(fmt.Sprintf("Pull request refused: %s is the default branch. Create a branch first.", branch))
+		return
+	}
+	m.showDialog(fmt.Sprintf("Open a pull request from %s into %s?", branch, base), []string{"Create", "Cancel"}, func(sel string) {
+		if sel != "Create" {
+			m.appendSystem("Pull request cancelled.")
+			return
+		}
+		out, err := tool.OpenPullRequest(context.Background(), tool.PullRequestOptions{Title: title})
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("Pull request failed: %v", err))
+			return
+		}
+		m.appendSystem(out)
+	})
+}
+
+// handlePush is the remote half of C2: it names the branch, asks once, and runs
+// the push. It refuses while a run is active — a run is writing the tree, and a
+// push in the middle of it would publish a half-finished commit — and it never
+// pushes the default branch (that refusal lives in the tool, so it cannot be
+// bypassed here).
+func (m *TuiModel) handlePush(cmd string) {
+	force := strings.Contains(cmd, "--force")
+	m.runMu.Lock()
+	active := m.runActive
+	m.runMu.Unlock()
+	if active {
+		m.ShowStatus("Cannot push: a run is in progress")
+		return
+	}
+	ctx := context.Background()
+	branch, err := tool.CurrentBranch(ctx)
+	if err != nil {
+		m.appendSystem(fmt.Sprintf("Push: %v", err))
+		return
+	}
+	if def := tool.DefaultBranch(ctx); def != "" && branch == def {
+		m.appendSystem(fmt.Sprintf("Push refused: %s is the default branch. Create a branch first (/push never publishes the default branch).", branch))
+		return
+	}
+	question := fmt.Sprintf("Push %s to origin?", branch)
+	if force {
+		question = fmt.Sprintf("Force-push %s to origin (--force-with-lease)?", branch)
+	}
+	m.showDialog(question, []string{"Push", "Cancel"}, func(sel string) {
+		if sel != "Push" {
+			m.appendSystem("Push cancelled.")
+			return
+		}
+		out, err := tool.PushBranch(context.Background(), force)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("Push failed: %v", err))
+			return
+		}
+		m.appendSystem(out)
+	})
+}
+
+// handleCommit is the commit half of the C2 loop: it stages what this run wrote
+// (or, with --all, the whole working tree), shows exactly which paths those are,
+// and asks once before running git.
+//
+// The stage is scoped by default because `git add -A` would take the user's
+// unrelated work with it — the one failure mode a loop like this must not have.
+func (m *TuiModel) handleCommit(cmd string) {
+	if m.agent == nil {
+		m.ShowStatus("No agent available")
+		return
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(cmd, "/commit"))
+	all := rest == "--all" || strings.HasPrefix(rest, "--all ")
+	if all {
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, "--all"))
+	}
+	if rest == "" {
+		m.appendSystem("usage: /commit <message> — stages the files this run's tool calls wrote; /commit --all <message> stages the whole working tree")
+		return
+	}
+
+	var paths []string
+	what := "the whole working tree"
+	if !all {
+		changes, err := tool.RunChanges(context.Background(), m.currentBranch, m.runStart)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("Commit: %v", err))
+			return
+		}
+		for _, file := range changes.Run() {
+			paths = append(paths, file.Path)
+		}
+		if len(paths) == 0 {
+			m.appendSystem("Nothing this run's tool calls wrote; /commit --all <message> stages the whole working tree.")
+			return
+		}
+		what = fmt.Sprintf("%d file(s) this run wrote", len(paths))
+		m.appendSystem(fmt.Sprintf("Staging %d file(s):\n  %s", len(paths), strings.Join(paths, "\n  ")))
+	} else {
+		m.appendSystem("--all stages every working-tree change, including ones this run did not make.")
+	}
+
+	prompt := fmt.Sprintf("Commit %s?", what)
+	m.showDialog(prompt, []string{"Commit", "Cancel"}, func(sel string) {
+		if sel != "Commit" {
+			m.appendSystem("Commit cancelled.")
+			return
+		}
+		out, err := tool.CommitChanges(context.Background(), rest, paths)
+		if err != nil {
+			m.appendSystem(fmt.Sprintf("Commit failed: %v", err))
+			return
+		}
+		m.appendSystem(out)
+	})
+}
+
+// noteRunChanges appends one line when this run's tool calls wrote files. It
+// reports the run group only: a hand edit or a shell write is not this run's
+// work to announce, and /changes shows the whole tree for a reader who asks.
+func (m *TuiModel) noteRunChanges(runErr error) {
+	if runErr != nil || m.agent == nil {
+		return
+	}
+	changes, err := tool.RunChanges(context.Background(), m.currentBranch, m.runStart)
+	if err != nil {
+		return // no git, or not a repository: silence beats an error line here
+	}
+	run := changes.Run()
+	if len(run) == 0 {
+		return
+	}
+	added, removed := 0, 0
+	for _, file := range run {
+		added += file.Added
+		removed += file.Removed
+	}
+	m.appendSystem(fmt.Sprintf(
+		"This run's tool calls changed %d file(s), +%d/-%d — /changes for the whole tree, /commit <message> to land them.",
+		len(run), added, removed))
+}
+
 func (m *TuiModel) appendSystem(text string) {
 	m.messages = append(m.messages, chatMessage{Role: "system", Content: text})
 	m.autoScroll()

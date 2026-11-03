@@ -8,10 +8,11 @@ open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256colo
 wait --text "Type your request" --timeout 20s
 wait --text TinyCode --timeout 30s
 send --text /
-# Wait for the first entry, not the "Commands:" heading: the palette grows, and at
-# 80x24 the heading scrolls off before the list does. The first entry is what
-# "the palette is open" means here.
-wait --text "Show help" --timeout 10s
+# Wait for the palette's own footer, not a row: the list scrolls as it grows, so
+# neither the "Commands:" heading nor any one entry stays on screen at every
+# size (both have scrolled away by the time a dozen commands exist at 80x24).
+# The footer is part of the palette at every size and says what it is.
+wait --text "navigate" --timeout 10s
 send --text theme
 wait --text theme --timeout 10s
 screenshot /tmp/tinyscen-shots/palette-80x24.png --scale 2

@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1291 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1324 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -414,7 +414,7 @@ rather than for a tool. The table and the code are held together by
 | `apply_patch` | editing | `apply_patch.go` |
 | `git_status` | git | `git.go` |
 | `git_diff` | git | `git.go` |
-| `git_commit` | git | `git.go` |
+| `git_commit` | git | `git.go` (optional `paths` scopes the stage) |
 | `git_branch` | git | `git.go` |
 | `git_log` | git | `git.go` |
 | `web_search` | web | `web_search.go` |
@@ -748,11 +748,19 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - Each row is placed with `AppendInline` (see `view.go`) so the art and column alignment are never word-wrapped; over-wide rows degrade to wrapped plain text
 - `flattenWelcomeLines` collapses rows to one chunk per row for chunk-per-row callers
 
+### `tool/changes.go`, `tool/git_remote.go`, `tool/git_pr.go` (roadmap C2)
+- **`RunChanges(ctx, session, since) (ChangeSet, error)`** — the working tree from `git status` ∪ `git diff --numstat HEAD`, each file labelled *this run* (a checkpoint of this session at or after `since` names it) or *other*. The working tree is the full set on purpose: `bash` writes leave no checkpoint, and the report says so instead of pretending. `since` is the run's start time, not the run number, which restarts per process.
+- **`CommitChanges(ctx, message, paths)`** — `git add -- <paths>` then commit; an empty `paths` keeps the tool's historic `git add -A`. The scoped form is what lets a run land only its own files.
+- **`PushBranch(ctx, force)`** — refuses the default branch (a flag cannot unlock it), pushes `-u origin HEAD`, uses `--force-with-lease`, and classifies authentication/rejection/unreachable in the error while keeping git's own text.
+- **`OpenPullRequest(ctx, opts)`** — requires a non-default branch with nothing unpushed; runs `gh pr create` when `gh` exists, otherwise returns the compare URL and runs nothing.
+- Push and pull request are **not registered as tools**: the model prepares the branch, the user spends the credentials.
+
 ### `update.go`
 - **`(*TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd)`** — central event loop
 - Handles: mouse (scroll, click, char-level selection), key presses, window resize, stream messages, tool calls, LSP diagnostics, todo updates, permission dialogs
 - `tea.WindowSizeMsg` clamps every dimension to at least one cell (`minTerminalWidth`/`minTerminalHeight`) and never lets the viewport height or the input width go negative. A pty that was never given a window size reports `0 0`, and a zero-area `CellGrid` used to panic on its first `Append`; for a real terminal the clamp is a no-op, and the floor is one cell rather than a comfortable layout size so a genuinely narrow terminal is not laid out wider than the renderer's truncation width.
-- 18 slash commands (19 names; `/exit` and `/quit` share one arm): `/exit`, `/quit`, `/compress`, `/dialog`, `/help`, `/verbose`, `/fork`, `/session`, `/sessions`, `/thinking`, `/model`, `/theme`, `/diagnostics`, `/sandbox`, `/undo`, `/goal`, `/skill`, `/plan`, `/build`. `/goal` takes the rest of the line: empty shows the goal, a bare `pause`/`resume`/`clear` performs it, `edit <objective>` replaces the objective, and anything else creates one — so `/goal pause after verification` is an objective, not a pause plus discarded text
+- 30 slash commands across 25 arms — `/exit` and `/quit` share one, and `/pin`, `/unpin`, `/drop`, `/keep` and `/unkeep` share another: `/exit`, `/quit`, `/compress`, `/dialog`, `/help`, `/verbose`, `/fork`, `/session`, `/sessions`, `/thinking`, `/model`, `/theme`, `/diagnostics`, `/sandbox`, `/changes`, `/commit`, `/push`, `/pr`, `/undo`, `/goal`, `/pin`, `/unpin`, `/drop`, `/keep`, `/unkeep`, `/remember`, `/memory`, `/skill`, `/plan`, `/build`. `/goal` takes the rest of the line: empty shows the goal, a bare `pause`/`resume`/`clear` performs it, `edit <objective>` replaces the objective, and anything else creates one — so `/goal pause after verification` is an objective, not a pause plus discarded text
+- `noteRunChanges(runErr)` — one transcript line after a run that wrote files: the run group only, never a dialog (the idle driver can finish a round with nobody watching); `handleCommit`, `handlePush` and `handlePullRequest` are the three confirmed actions of the git loop, each showing what it will do before doing it (`docs/git-loop.md`)
 - `notifyFinishedCmd(elapsed, what)` — a `tea.Cmd` (never an inline call: the desktop channel spawns a process) that announces a run which outlived `notify`'s threshold; `runStart` is stamped in `beginRun` and is what the elapsed time is measured from
 - `beginRun()`/`finishRun(id)`/`cancelRun()` — one run at a time; Ctrl+C cancels the run's context (and any pending permission) while the status stays streaming until that run's terminal message; every stream message carries a `RunID` and superseded runs are dropped
 - `runAgent(ctx, id, prompt)` — sets StreamCallbacks, runs agent in goroutine, stamps all messages with the run id
@@ -874,7 +882,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1291 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1324 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -920,7 +928,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1291 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1324 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

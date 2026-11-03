@@ -60,16 +60,46 @@ func GitDiff() Tool {
 	}
 }
 
+// CommitChanges stages paths — or everything when paths is empty, which is the
+// tool's historic behaviour — and creates a commit with message.
+//
+// Scoping the stage is what lets the commit loop land only the files a run wrote
+// instead of sweeping the user's unrelated work into the commit (roadmap C2).
+// An empty paths slice keeps `git add -A`, because that is the contract the
+// existing tool had and a caller that passes nothing asked for all of it.
+func CommitChanges(ctx context.Context, message string, paths []string) (string, error) {
+	if strings.TrimSpace(message) == "" {
+		return "", fmt.Errorf("a commit needs a message")
+	}
+	if len(paths) > 0 {
+		if _, err := gitExec(ctx, append([]string{"add", "--"}, paths...)...); err != nil {
+			return "", err
+		}
+	} else if _, err := gitExec(ctx, "add", "-A"); err != nil {
+		return "", err
+	}
+	out, err := gitExec(ctx, "commit", "-m", message)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Committed:\n%s", out), nil
+}
+
 func GitCommit() Tool {
 	return Tool{
 		Name:        "git_commit",
-		Description: "Stage all changes and create a commit with the given message.",
+		Description: "Stage files and create a commit with the given message. With `paths`, stages exactly those files; without it, stages everything (`git add -A`).",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"message": map[string]any{
 					"type":        "string",
 					"description": "Commit message",
+				},
+				"paths": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Files to stage. Omit to stage everything in the working tree.",
 				},
 			},
 			"required": []string{"message"},
@@ -79,14 +109,15 @@ func GitCommit() Tool {
 			if msg == "" {
 				return "", fmt.Errorf("message is required")
 			}
-			if _, err := gitExec(ctx, "add", "-A"); err != nil {
-				return "", err
+			var paths []string
+			if raw, ok := args["paths"].([]any); ok {
+				for _, entry := range raw {
+					if path, ok := entry.(string); ok && path != "" {
+						paths = append(paths, path)
+					}
+				}
 			}
-			out, err := gitExec(ctx, "commit", "-m", msg)
-			if err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("Committed:\n%s", out), nil
+			return CommitChanges(ctx, msg, paths)
 		},
 	}
 }

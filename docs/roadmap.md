@@ -16,10 +16,10 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 17 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 18 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 21 | verified gaps, no issue opened |
+| Not started | 20 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened,
@@ -48,7 +48,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | B5 | Context management has a single strategy | Delivered — #306 |
 | B6 | Truncation is fixed, not budget-aware | Delivered — #304 |
 | C1 | No checkpoint and no undo | Delivered — #234 |
-| C2 | No automatic change preview and commit loop, and no remote operations | Not started |
+| C2 | No automatic change preview and commit loop, and no remote operations | Delivered — #316 |
 | C3 | No isolation for parallel execution | Not started |
 | C4 | No user-configurable hooks and no session lifecycle events | Not started |
 | C5 | No test feedback loop | Not started |
@@ -497,6 +497,17 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### C2 — No automatic change preview and commit loop, and no remote operations
 
+- **Picked up**: [#316](https://github.com/yusiwen/TinyCode/issues/316) — S1 (a run-scoped change report
+  and the run-end line), S2 (`/commit` with a scoped stage, and `git_commit paths`), S3 (`/push`), S4
+  (`/pr`), S5 (the documents). Push and pull request are **user commands**, not model-callable tools: the
+  model prepares the branch and the commit, and the user spends the credentials.
+- **Delivered (2026-11-03)**: `/changes` reports the working tree with each file labelled by whether this
+  run's tool calls wrote it (checkpoint manifests filtered by session and by the run's start time);
+  `/commit` stages exactly those files behind one confirmation, and `/commit --all` is the explicit
+  everything-form; `/push` refuses the default branch and uses `--force-with-lease`; `/pr` runs
+  `gh pr create` or prints the compare URL when `gh` is absent. The run-end line names the run's own
+  files and nothing else, and it is a line rather than a dialog because the idle driver can finish a
+  round unattended. [git-loop.md](git-loop.md) is the user's page.
 - **Gap**: no run-end diff summary with a prompt to commit, and the git toolset cannot push or open
   a pull request.
 - **Evidence**: exactly five git tools, all in `tool/git.go` — `git_status`, `git_diff`,
