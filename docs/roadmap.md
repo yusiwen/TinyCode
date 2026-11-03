@@ -22,12 +22,14 @@ after it (see *Provenance and method*).
 | Not started | 21 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: F1, whose next increment (a task set with headroom) is not opened, and
-[#269](https://github.com/yusiwen/TinyCode/issues/269) (steering input while a run streams), which is
-not a roadmap entry.
+**Open work**: F1, whose next increment (a task set with headroom) is not opened,
+[#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
+contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
+(steering input while a run streams), which is not a roadmap entry.
 
 **Next, by the reading order**: C6 (a second isolation tier, since C7's macOS fence is delivered),
-B4 (repository index), F1, then the larger D and E items.
+then F1, then the larger D and E items. B4 is **not** next: it was measured on 2026-10-28 and the
+injected map lost, so it reopens only under the three conditions its entry names.
 
 ### Status by entry
 
@@ -107,6 +109,12 @@ go test ./... -count=1 && go test ./... -count=1 -race         # both green, 13 
 Each entry carries a code, the gap, the evidence as a file and line, and — where the source
 report described a mechanism as absent while a narrower one exists — that mechanism, so it is not
 built twice.
+
+A **Delivered** entry keeps its original **Gap** and **Evidence** as the baseline record: they say what
+was missing and how that was checked, in the past tense of the commit they were written against. The
+**Picked up** and **Delivered** lines are the entry's current state, and the status table is the
+authority; read a delivered entry's Gap as the reason it was worth building, not as a claim about the
+tree.
 
 Every reference was checked against `7e6b017` (83 references, none missing, verified by a sweep
 that was itself mutation-tested: a renamed file and an out-of-range line each make it fail). The
@@ -312,6 +320,11 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 - **Decision (2026-10-25)**: the caller being missing is deliberate for now. v1 gets one write path,
   `/remember`, and automatic end-of-turn extraction waits for B3 — see
   [memory-decision.md](memory-decision.md), which also names the reopen condition.
+- **Where the deferred write path stands (2026-11-03)**: B3 landed on 2026-10-26, so one half of that
+  document's reopen condition is met. The other half — F1 comparing a run with memory against one
+  without — is still open, so the decision has not been revisited and nothing in the tree changed:
+  `/remember` is still the only writer, and automatic extraction has no issue. When F1 can run that
+  comparison, the reopen is a measurement, not a re-litigation.
 - **Evidence**: `HTTPMemoryClient` is referenced only by its own file, its own test and `CODEBASE.md`;
   `Agent.Memory` (declared `agent/agent.go:21`, read at `agent/agent.go:264-265`) is never assigned
   outside that declaration, and `NewHTTPMemoryClient` has no non-test caller; no `memory` key exists in
@@ -330,7 +343,8 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   holds with the id `Forget` takes, and `/memory forget <id>` removes a fact. "Approve what is
   remembered" is list-and-delete rather than an approval queue, because the only writer is the user
   ([memory-decision.md](memory-decision.md)). Deleting on the remote backend still reports an
-  unsupported error (S4).
+  unsupported error, which belongs to
+  [#302](https://github.com/yusiwen/TinyCode/issues/302)'s contract work.
 - **Gap**: the only backend is a remote HTTP service, so offline, self-hosted and
   privacy-sensitive use is impossible; there is also no way to see, review or approve what is
   remembered.
@@ -381,7 +395,11 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 - **Gap**: no tree-sitter, no symbol index, no call graph, no repo map. The agent cannot answer
   "who calls this symbol" or "what does changing this affect".
 - **Evidence**: searches for `tree-sitter`, `symbol.?index`, `call.?graph`, `codebase.?index`,
-  `repo.?map`, `go/parser`, `go/ast` → exit 1 each; `search_files` ladders `rg` → `grep` → Go
+  `repo.?map`, `go/parser`, `go/ast` → exit 1 each at the baseline — **(2026-11-03)** the last two no
+  longer hold: the spike's map digest parses with `go/parser` and `go/ast`
+  (`eval/runner/spike.go`). That is evaluation tooling under `eval/`, not a surface the agent can call;
+  the product still has no symbol index or call graph, which is what this entry records;
+  `search_files` ladders `rg` → `grep` → Go
   `filepath.Walk` (`tool/filesystem.go:196,243-262,370`), i.e. text search; the four LSP tools are
   per-file point queries (`lsp/tools.go:17-20` — definition, references, hover, document symbols).
 - **Already present**: gopls maintains its own index, but this repository builds none and exposes no
@@ -411,8 +429,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   re-derived as `limit/2` after a context-length downgrade (`agent/compression.go:238`);
   `rg '"/drop"|"/pin"|unload'` → exit 1.
 - **Already present**: `/compress` triggers the same strategy by hand (`tui/update.go:1050`).
-  **Needed by D7**: continuation round after round depends on compaction running *inside* a run, not
-  only before one starts — that is the part this entry records as missing.
+  **Needed by D7**: continuation round after round depended on compaction running *inside* a run, not
+  only before one starts. S2 supplies it (`compactRunMessages`), so that part of D7's prerequisite is no
+  longer missing; what remains outside this entry is mid-run steering
+  ([#269](https://github.com/yusiwen/TinyCode/issues/269)).
 - **Effort**: ~3–5 d.
 
 ### B6 — Truncation is fixed, not budget-aware
