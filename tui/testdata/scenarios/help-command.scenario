@@ -8,8 +8,11 @@ wait --text "Get started" --timeout 20s
 wait --text "Type your request" --timeout 20s
 send --text /help
 send --key enter
-wait --text "Available commands and shortcuts:" --timeout 10s
-wait --text "/exit, /quit" --timeout 10s
+# The help block is taller than a 120x40 window, so its heading scrolls off the top
+# while the bottom stays pinned: wait for a line in the part that stays visible.
+# The heading is asserted by the frame golden; this scenario is about the command
+# dispatch and the scrollback, which "Keyboard:" appearing after /help proves.
+wait --text "Keyboard:" --timeout 10s
 screenshot /tmp/tinyscen-shots/help-120x40.png --scale 2
 send --key ctrl+c --key ctrl+c
 wait-exit 15s
