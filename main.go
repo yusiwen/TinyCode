@@ -14,6 +14,7 @@ import (
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/goal"
+	"github.com/yusiwen/tinycode/hook"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -214,6 +215,19 @@ func newRootCmd() *cobra.Command {
 					}
 				}
 			}
+			// Hooks are commands that run automatically, so only the user's own
+			// file may declare them: a cloned repository that could add a
+			// post_tool_use hook would run its command on every write (roadmap
+			// C4). A project-local section is dropped here and says so.
+			hooks, hooksIgnored := layers.ResolveHooks()
+			if hooksIgnored {
+				tlog.Warn("config", "project_local_hooks_ignored",
+					"reason", "hooks run commands automatically; only the user's own config may declare them")
+			}
+			if runner := hook.New(hooks, tool.DefaultSandbox.ProjectRoot); !runner.Empty() {
+				ag.Hooks = runner
+			}
+
 			if cfg.Truncation != nil {
 				agent.SetTruncationConfig(cfg.Truncation.MaxLines, cfg.Truncation.MaxBytes,
 					cfg.Truncation.MaxTokens, cfg.Truncation.TailLines, expandPath(cfg.Truncation.OutputDir))

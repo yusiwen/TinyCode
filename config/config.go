@@ -639,7 +639,11 @@ type Config struct {
 	Trajectory   *TrajectoryConfig      `json:"trajectory,omitempty"`
 	// Memory is the long-term store: local by default, network only when the
 	// user's own file asks for it (docs/memory-decision.md).
-	Memory     *MemoryConfig            `json:"memory,omitempty"`
+	Memory *MemoryConfig `json:"memory,omitempty"`
+	// Hooks are commands that run automatically at the tool and run boundaries.
+	// They are merged here and filtered by Layers.ResolveHooks, which is the only
+	// place that knows which file asked for them (roadmap C4).
+	Hooks      *HooksConfig             `json:"hooks,omitempty"`
 	Agents     map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox    *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme      string                   `json:"theme,omitempty"`
@@ -1226,6 +1230,82 @@ func (l UserLayer) wantsFullCapture() bool {
 	}
 	capture, ok := section["capture"].(string)
 	return ok && strings.EqualFold(capture, TrajectoryCaptureFull)
+}
+
+// HookConfig is one user-configured command that runs on an event.
+type HookConfig struct {
+	// Command is run with `sh -c` in the project root, so a pipeline is allowed:
+	// it is the user's own command, not model output.
+	Command string `json:"command"`
+	// TimeoutMS bounds the command; 0 means DefaultHookTimeoutMS and anything
+	// above MaxHookTimeoutMS is clamped.
+	TimeoutMS int `json:"timeout_ms,omitempty"`
+	// Match is a glob over the tool name for the two tool events; empty matches
+	// every tool.
+	Match string `json:"match,omitempty"`
+}
+
+// HooksConfig is the hooks section: one list per event.
+type HooksConfig struct {
+	PreToolUse  []HookConfig `json:"pre_tool_use,omitempty"`
+	PostToolUse []HookConfig `json:"post_tool_use,omitempty"`
+	Stop        []HookConfig `json:"stop,omitempty"`
+	SessionEnd  []HookConfig `json:"session_end,omitempty"`
+}
+
+const (
+	// DefaultHookTimeoutMS bounds a hook that did not say how long it needs.
+	DefaultHookTimeoutMS = 5000
+	// MaxHookTimeoutMS is the ceiling: a hook is a convenience, not a job engine,
+	// and one that hangs the agent is worse than one that does not run.
+	MaxHookTimeoutMS = 60000
+)
+
+// Timeout returns the hook's bounded timeout.
+func (h HookConfig) Timeout() time.Duration {
+	ms := h.TimeoutMS
+	if ms <= 0 {
+		ms = DefaultHookTimeoutMS
+	}
+	if ms > MaxHookTimeoutMS {
+		ms = MaxHookTimeoutMS
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// ResolveHooks decides the effective hooks section.
+//
+// A hook is a command that runs automatically, so only the user's own file may
+// declare one: a cloned repository that could add a `post_tool_use` hook would
+// run its command on every write. A project-local section is dropped and
+// reported, for the same reason a project may not widen the sandbox boundary or
+// point memory at a network backend (roadmap C4).
+func (l Layers) ResolveHooks() (HooksConfig, bool) {
+	hooks := HooksConfig{}
+	if user := l.User.Config(); user.Hooks != nil {
+		hooks = *user.Hooks
+	}
+	return hooks.sanitized(), l.Project.Config().Hooks != nil
+}
+
+// sanitized drops entries that could never run and keeps the config order.
+func (h HooksConfig) sanitized() HooksConfig {
+	clean := func(list []HookConfig) []HookConfig {
+		var out []HookConfig
+		for _, hook := range list {
+			if strings.TrimSpace(hook.Command) == "" {
+				continue
+			}
+			out = append(out, hook)
+		}
+		return out
+	}
+	return HooksConfig{
+		PreToolUse:  clean(h.PreToolUse),
+		PostToolUse: clean(h.PostToolUse),
+		Stop:        clean(h.Stop),
+		SessionEnd:  clean(h.SessionEnd),
+	}
 }
 
 // ResolveMemory decides the effective memory section from the layers that may

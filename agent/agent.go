@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusiwen/tinycode/hook"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -33,6 +34,10 @@ type Agent struct {
 	// (roadmap B5, S4). Set before a run; the TUI persists the list with the
 	// session so a resume keeps the rule.
 	KeptPaths []string
+	// Hooks runs the user's configured commands at the tool and run boundaries
+	// (roadmap C4). Nil means none were configured, and every call site treats
+	// that way rather than guarding twice.
+	Hooks *hook.Runner
 	// Session persistence
 	SessionStore interface {
 		Append(msg types.Message) error
@@ -394,6 +399,12 @@ func (a *Agent) recordTurn(user, assistant, reasoning string) {
 
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr error) {
+	// A run that ends — whatever the outcome — is a fact a user hook may want
+	// (roadmap C4). The report is deferred so every exit path has one, and it
+	// gets its own context: the run's may be cancelled by the time it fires.
+	if a.Hooks != nil && !a.Hooks.Empty() {
+		defer func() { a.stopHook(answer, runErr) }()
+	}
 	a.runSerial++
 
 	// A run is recorded from its first instant, so the file's duration covers
@@ -773,7 +784,6 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 								a.noteCallFailure(key)
 								result = InvalidArgsMessage(t.Name, problems)
 							} else {
-								var execErr error
 								// The call's own scope travels with it: a layer below
 								// that records what a tool touched (the checkpoint
 								// store) needs to attribute it to this call, and two
@@ -786,10 +796,20 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 								// fields below are the ones only the loop can fill.
 								scope, _ := types.ToolCallScopeFrom(ctx)
 								scope.Tool, scope.Run, scope.Step, scope.Call = t.Name, a.runSerial, step, idx
-								result, execErr = t.Execute(types.WithToolCallScope(ctx, scope), args)
-								if execErr != nil {
+								// A user hook may refuse the call before it runs
+								// (roadmap C4). The refusal is the tool result, so the
+								// model reads it and can choose another way.
+								if refusal := a.preToolHook(ctx, t.Name, tc.Arguments, scope, step); refusal != "" {
 									a.noteCallFailure(key)
-									result = fmt.Sprintf("error: %v", execErr)
+									result = refusal
+								} else {
+									var execErr error
+									result, execErr = t.Execute(types.WithToolCallScope(ctx, scope), args)
+									if execErr != nil {
+										a.noteCallFailure(key)
+										result = fmt.Sprintf("error: %v", execErr)
+									}
+									a.postToolHook(ctx, t.Name, tc.Arguments, result, execErr, scope, step)
 								}
 							}
 							break

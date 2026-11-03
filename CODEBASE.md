@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1324 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1344 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -272,6 +272,14 @@ provider is implemented — reaching IMDS from an agent process is a separate se
   `/unpin [n]` and `/drop [n]`, refused while a run is active because they replace `Agent.History` while
   the run goroutine may append to it.
 
+### `hooks.go` — User-configured Hooks (roadmap C4)
+
+- **`Agent.Hooks *hook.Runner`** — nil means none configured.
+- **`preToolHook`** — fires `pre_tool_use`; a denial (non-zero exit, spawn failure or timeout) becomes the tool's result (`tool call refused by a hook (…)`) and counts as a failed call for the repeat guard.
+- **`postToolHook`** — fires `post_tool_use` with the result and any error; a hook failure is logged and never changes the tool's result.
+- **`stopHook`** — deferred at the top of `Run`, so every exit path reports; it gets `context.Background()` because the run's context may already be cancelled.
+- The payload is one JSON object on stdin (`event`, `tool`, `args`, `result`, `error`, `session`, `step`), with `args` clipped to 500 bytes and `result` to 1000.
+
 ### `ruleset.go` — Permission Rules
 
 - **`Effect`** (string): `EffectAllow = "allow"`, `EffectDeny = "deny"`
@@ -338,6 +346,14 @@ What runs today, in order:
   written 0600 because tool output can contain secrets.
 
 ---
+
+## Package: `hook`
+
+- **`Runner`** — built by `hook.New(config.HooksConfig, dir)`. `Fire(ctx, event, payload)` runs every hook of the event whose `match` glob accepts the tool name, in config order.
+- **`Event`** — `pre_tool_use`, `post_tool_use`, `stop`, `session_end`.
+- **`Result`** — `Denied`, `Reason`, `Output`, `Ran`, `Err`. `pre_tool_use` treats a non-zero exit, a spawn failure and a timeout as a denial; every other event reports and continues.
+- **Limits** — `timeout_ms` (default 5 s, clamped to 60 s) enforced through the command's context; output truncated at 2000 bytes; `sh -c` in the project root.
+- **Config rule** — `config.Layers.ResolveHooks` honours only the user's own file; a project-local `hooks` section is dropped and reported (`docs/hooks.md`).
 
 ## Package: `config`
 
@@ -759,7 +775,7 @@ Not product code, and deliberately small: it answers whether an evaluation signa
 - **`(*TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd)`** — central event loop
 - Handles: mouse (scroll, click, char-level selection), key presses, window resize, stream messages, tool calls, LSP diagnostics, todo updates, permission dialogs
 - `tea.WindowSizeMsg` clamps every dimension to at least one cell (`minTerminalWidth`/`minTerminalHeight`) and never lets the viewport height or the input width go negative. A pty that was never given a window size reports `0 0`, and a zero-area `CellGrid` used to panic on its first `Append`; for a real terminal the clamp is a no-op, and the floor is one cell rather than a comfortable layout size so a genuinely narrow terminal is not laid out wider than the renderer's truncation width.
-- 30 slash commands across 25 arms — `/exit` and `/quit` share one, and `/pin`, `/unpin`, `/drop`, `/keep` and `/unkeep` share another: `/exit`, `/quit`, `/compress`, `/dialog`, `/help`, `/verbose`, `/fork`, `/session`, `/sessions`, `/thinking`, `/model`, `/theme`, `/diagnostics`, `/sandbox`, `/changes`, `/commit`, `/push`, `/pr`, `/undo`, `/goal`, `/pin`, `/unpin`, `/drop`, `/keep`, `/unkeep`, `/remember`, `/memory`, `/skill`, `/plan`, `/build`. `/goal` takes the rest of the line: empty shows the goal, a bare `pause`/`resume`/`clear` performs it, `edit <objective>` replaces the objective, and anything else creates one — so `/goal pause after verification` is an objective, not a pause plus discarded text
+- 31 slash commands across 26 arms — `/exit` and `/quit` share one, and `/pin`, `/unpin`, `/drop`, `/keep` and `/unkeep` share another: `/exit`, `/quit`, `/compress`, `/dialog`, `/help`, `/verbose`, `/fork`, `/session`, `/sessions`, `/thinking`, `/model`, `/theme`, `/diagnostics`, `/sandbox`, `/changes`, `/hooks`, `/commit`, `/push`, `/pr`, `/undo`, `/goal`, `/pin`, `/unpin`, `/drop`, `/keep`, `/unkeep`, `/remember`, `/memory`, `/skill`, `/plan`, `/build`. `/goal` takes the rest of the line: empty shows the goal, a bare `pause`/`resume`/`clear` performs it, `edit <objective>` replaces the objective, and anything else creates one — so `/goal pause after verification` is an objective, not a pause plus discarded text
 - `noteRunChanges(runErr)` — one transcript line after a run that wrote files: the run group only, never a dialog (the idle driver can finish a round with nobody watching); `handleCommit`, `handlePush` and `handlePullRequest` are the three confirmed actions of the git loop, each showing what it will do before doing it (`docs/git-loop.md`)
 - `notifyFinishedCmd(elapsed, what)` — a `tea.Cmd` (never an inline call: the desktop channel spawns a process) that announces a run which outlived `notify`'s threshold; `runStart` is stamped in `beginRun` and is what the elapsed time is measured from
 - `beginRun()`/`finishRun(id)`/`cancelRun()` — one run at a time; Ctrl+C cancels the run's context (and any pending permission) while the status stays streaming until that run's terminal message; every stream message carries a `RunID` and superseded runs are dropped
@@ -882,7 +898,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1324 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1344 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -928,7 +944,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1324 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1344 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

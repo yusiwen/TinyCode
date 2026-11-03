@@ -143,12 +143,17 @@ func TestCompressHistoryAccountsForItsCall(t *testing.T) {
 type scriptedProvider struct {
 	steps    []types.ChatResponse
 	requests []types.ChatRequest
+	// fail makes every call return an error, for a run that ends badly.
+	fail bool
 }
 
 func (p *scriptedProvider) Name() string { return "scripted" }
 
 func (p *scriptedProvider) Chat(_ context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	p.requests = append(p.requests, req)
+	if p.fail {
+		return nil, context.DeadlineExceeded
+	}
 	if i := len(p.requests) - 1; i < len(p.steps) {
 		resp := p.steps[i]
 		return &resp, nil
