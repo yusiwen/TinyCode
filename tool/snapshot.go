@@ -92,7 +92,7 @@ func beginCommandSnapshot(ctx context.Context) *treeSnapshot {
 		tlog.Warn("checkpoint", "snapshot_unavailable", "err", err)
 		return nil
 	}
-	root := DefaultSandbox.projectRootResolved()
+	root := rootFor(ctx)
 	if root == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -115,7 +115,7 @@ func beginCommandSnapshot(ctx context.Context) *treeSnapshot {
 				len(snap.files), sizeLabel(checkpointSnapshotMaxBytes))
 			return fs.SkipAll
 		}
-		data, err := readSandboxed(path)
+		data, err := readSandboxed(ctx, path)
 		if err != nil {
 			// A file that cannot be read is not a reason to lose the rest of the
 			// snapshot; it is one more thing the record does not cover.

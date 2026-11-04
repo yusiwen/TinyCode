@@ -34,7 +34,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 	if err := writeSandboxed(context.Background(), inside, []byte("hello"), 0644); err != nil {
 		t.Fatalf("writeSandboxed: %v", err)
 	}
-	got, err := readSandboxed(inside)
+	got, err := readSandboxed(context.Background(), inside)
 	if err != nil || string(got) != "hello" {
 		t.Fatalf("readSandboxed = %q, %v", got, err)
 	}
@@ -50,12 +50,12 @@ func TestSandboxedReadWrite(t *testing.T) {
 	if err := writeSandboxed(context.Background(), inside, []byte("x"), 0644); err != nil {
 		t.Fatalf("overwrite: %v", err)
 	}
-	if got, _ := readSandboxed(inside); string(got) != "x" {
+	if got, _ := readSandboxed(context.Background(), inside); string(got) != "x" {
 		t.Fatalf("content after overwrite = %q, want x", got)
 	}
 
 	// A missing file reports the error, as os.ReadFile did.
-	if _, err := readSandboxed(resolve(filepath.Join(root, "missing.txt"))); err == nil {
+	if _, err := readSandboxed(context.Background(), resolve(filepath.Join(root, "missing.txt"))); err == nil {
 		t.Error("reading a missing file must fail")
 	}
 
@@ -65,7 +65,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 	if err := os.Symlink(inside, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
-	if data, err := readSandboxed(resolve(link)); err != nil || string(data) != "x" {
+	if data, err := readSandboxed(context.Background(), resolve(link)); err != nil || string(data) != "x" {
 		t.Fatalf("in-root symlink read = %q, %v", data, err)
 	}
 
@@ -76,7 +76,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 	if err := writeSandboxed(context.Background(), outside, []byte("out"), 0644); err != nil {
 		t.Fatalf("writeSandboxed outside: %v", err)
 	}
-	if data, err := readSandboxed(outside); err != nil || string(data) != "out" {
+	if data, err := readSandboxed(context.Background(), outside); err != nil || string(data) != "out" {
 		t.Fatalf("readSandboxed outside = %q, %v", data, err)
 	}
 
@@ -85,13 +85,13 @@ func TestSandboxedReadWrite(t *testing.T) {
 	if err := writeSandboxed(context.Background(), created, []byte("new"), 0644); err != nil {
 		t.Fatalf("writeSandboxed create: %v", err)
 	}
-	if data, err := readSandboxed(created); err != nil || string(data) != "new" {
+	if data, err := readSandboxed(context.Background(), created); err != nil || string(data) != "new" {
 		t.Fatalf("created file = %q, %v", data, err)
 	}
 
 	// Without a project root every path is a plain open.
 	DefaultSandbox.ProjectRoot = ""
-	if data, err := readSandboxed(outside); err != nil || string(data) != "out" {
+	if data, err := readSandboxed(context.Background(), outside); err != nil || string(data) != "out" {
 		t.Fatalf("plain read = %q, %v", data, err)
 	}
 }
@@ -115,7 +115,7 @@ func TestSandboxedOpenRefusesAStaleResolution(t *testing.T) {
 	if err := os.WriteFile(approved, []byte("approved"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if data, err := readSandboxed(approved); err != nil || string(data) != "approved" {
+	if data, err := readSandboxed(context.Background(), approved); err != nil || string(data) != "approved" {
 		t.Fatalf("readSandboxed of the approved path = %q, %v", data, err)
 	}
 
@@ -136,7 +136,7 @@ func TestSandboxedOpenRefusesAStaleResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := readSandboxed(approved)
+	data, err := readSandboxed(context.Background(), approved)
 	if err == nil {
 		t.Fatalf("readSandboxed followed the swapped component and returned %q", data)
 	}

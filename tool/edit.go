@@ -93,7 +93,7 @@ func Edit() Tool {
 				return "", fmt.Errorf("at least one edit is required")
 			}
 
-			data, err := readSandboxedCtx(ctx, safePath)
+			data, err := readSandboxed(ctx, safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}

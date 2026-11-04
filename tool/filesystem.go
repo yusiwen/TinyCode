@@ -54,7 +54,7 @@ func ReadFile() Tool {
 				return denied, nil
 			}
 
-			data, err := readSandboxedCtx(ctx, safePath)
+			data, err := readSandboxed(ctx, safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
 			}
@@ -161,7 +161,7 @@ func WriteFile() Tool {
 				// Snapshot baseline BEFORE write, from the pre-write bytes read
 				// through the sandbox. A file that does not exist yet has no
 				// baseline, which is what a failed read means here.
-				if previous, readErr := readSandboxedCtx(ctx, safePath); readErr == nil {
+				if previous, readErr := readSandboxed(ctx, safePath); readErr == nil {
 					lsp.SnapshotBaseline(safePath, string(previous))
 				}
 			}

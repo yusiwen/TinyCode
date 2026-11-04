@@ -175,7 +175,7 @@ func recordPreImage(ctx context.Context, path string) error {
 		return fmt.Errorf("checkpoint %s: %w", path, err)
 	}
 
-	prev, readErr := readSandboxedCtx(ctx, path)
+	prev, readErr := readSandboxed(ctx, path)
 	if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
 		return fmt.Errorf("checkpoint %s: the pre-image cannot be read, so the write is refused: %w", path, readErr)
 	}
@@ -538,7 +538,7 @@ func RestoreCall(ctx context.Context, call CheckpointCall) ([]string, error) {
 		if err != nil {
 			return restored, fmt.Errorf("checkpoint restore %s: the pre-image is missing: %w", path, err)
 		}
-		if err := writeFileThroughFenceCtx(ctx, path, data, entry.Mode.Perm()); err != nil {
+		if err := writeFileThroughFence(ctx, path, data, entry.Mode.Perm()); err != nil {
 			return restored, fmt.Errorf("checkpoint restore %s: %w", path, err)
 		}
 		restored = append(restored, path)
