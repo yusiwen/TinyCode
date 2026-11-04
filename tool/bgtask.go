@@ -60,8 +60,17 @@ func NewBackgroundTaskManager() *BackgroundTaskManager {
 }
 
 // Start launches a background task and returns immediately with a task ID.
-func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) string {
+//
+// ctx is the call that started it: the task outlives that call, so only the
+// values describing the session are taken from it — the sandbox policy and the
+// run number — while the task's own deadline starts when it runs (roadmap C3).
+func (mgr *BackgroundTaskManager) Start(ctx context.Context, deps *TaskToolDeps, name, goal string) string {
 	id := fmt.Sprintf("task_%d", nextTaskID.Add(1))
+	parentPolicy, hasPolicy := types.SandboxPolicyFrom(ctx)
+	parentRun := 0
+	if scope, ok := types.ToolCallScopeFrom(ctx); ok {
+		parentRun = scope.Run
+	}
 
 	task := &BgTask{
 		ID:      id,
@@ -101,8 +110,10 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 			return
 		}
 		// A background task is a delegated task too: the label keeps its
-		// manifests apart from its parent's (roadmap C3).
+		// manifests apart from its parent's (roadmap C3), and it names the
+		// worktree when isolation is on.
 		label := TaskLabelFor(name)
+		tree, wtNote := prepareSubagentWorktree(ctx, deps, cfg, label)
 		sub := agent.New(provider)
 		sub.ScopeTask = label
 		// The route is already in the provider; a copy without it keeps the
@@ -128,9 +139,18 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		// deadline even if it ignores ctx and blocks. The watchdog settles the
 		// task state and releases Collect waiters at the hard timeout; the
 		// once-guarded completion path below is idempotent with it.
-		// A background child is still a delegated agent: no goal authority.
-		ctx, cancel := context.WithTimeout(types.WithSubagent(context.Background()), bgTaskTimeout)
+		// A background child is still a delegated agent: no goal authority. The
+		// session's policy rides along so its tools are fenced as the session's
+		// are, and its own worktree (when isolation is on) replaces the root.
+		base := context.Background()
+		if hasPolicy {
+			base = types.WithSandboxPolicy(base, parentPolicy)
+		}
+		ctx, cancel := context.WithTimeout(types.WithSubagent(base), bgTaskTimeout)
 		defer cancel()
+		if tree.path != "" {
+			ctx = types.WithSandboxPolicy(ctx, policyWithRoot(base, tree.path))
+		}
 
 		watchdog := time.AfterFunc(bgTaskTimeout, func() {
 			cancel()
@@ -143,6 +163,17 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		// call), so its collisions are reported within the background bucket.
 		if note := ConflictNote(ctx, label); note != "" {
 			out = strings.TrimSpace(out + "\n" + note)
+		}
+		if tree.path != "" {
+			apply := applyWorktree(tree.toplevel, tree.path, label, parentRun)
+			if apply.Err == nil && len(apply.Conflict) == 0 {
+				if err := RemoveWorktree(tree.toplevel, tree.path); err != nil {
+					tlog.Warn("task.worktree", "remove_failed", "path", tree.path, "error", err)
+				}
+			}
+			out = strings.TrimSpace(out + "\n" + applyNote(tree.path, apply))
+		} else if wtNote != "" {
+			out = strings.TrimSpace(out + "\n" + wtNote)
 		}
 
 		if err != nil {

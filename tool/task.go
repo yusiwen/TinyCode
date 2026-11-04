@@ -116,7 +116,7 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 
 			// Background mode
 			if bg, _ := args["bg"].(bool); bg && deps.BgTaskMgr != nil {
-				taskID := deps.BgTaskMgr.Start(deps, name, goal)
+				taskID := deps.BgTaskMgr.Start(ctx, deps, name, goal)
 				return fmt.Sprintf("[task %s started] %s — %s\nUse task_collect({id: %q}) to retrieve the result.",
 					taskID, name, goal, taskID), nil
 			}
@@ -147,7 +147,11 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// A writing sub-agent works in its own tree when isolation is on
 			// (roadmap C3, S2). The policy that governs its tools comes from the
 			// worktree's root, so its opens and its `bash` agree with the fence.
-			worktree, wtNote := prepareSubagentWorktree(ctx, deps, cfg, label)
+			tree, wtNote := prepareSubagentWorktree(ctx, deps, cfg, label)
+			parentRun := 0
+			if scope, ok := types.ToolCallScopeFrom(ctx); ok {
+				parentRun = scope.Run
+			}
 			// The route was resolved into the provider above, so the sub-agent
 			// must not try to resolve it again: it has no registry, and keeping
 			// the route would make every call fail. The config is copied because
@@ -180,8 +184,8 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// A delegated agent has no authority over the session's goal; the
 			// marker is what the goal tool checks (types.InSubagent).
 			runCtx, cancel := context.WithCancel(types.WithSubagent(ctx))
-			if worktree != "" {
-				runCtx = types.WithSandboxPolicy(runCtx, policyWithRoot(ctx, worktree))
+			if tree.path != "" {
+				runCtx = types.WithSandboxPolicy(runCtx, policyWithRoot(ctx, tree.path))
 			}
 			defer cancel()
 			ch := make(chan result, 1)
@@ -212,6 +216,19 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// update (roadmap C3).
 			if note := ConflictNote(ctx, label); note != "" {
 				r.output = strings.TrimSpace(r.output + "\n" + note)
+			}
+			// A task that worked in its own tree is merged back here: the diff is
+			// applied to the main tree, a path another task already applied is
+			// refused, and a tree is kept whenever the apply could not finish
+			// (roadmap C3, S3).
+			if tree.path != "" {
+				apply := applyWorktree(tree.toplevel, tree.path, label, parentRun)
+				if apply.Err == nil && len(apply.Conflict) == 0 {
+					if err := RemoveWorktree(tree.toplevel, tree.path); err != nil {
+						tlog.Warn("task.worktree", "remove_failed", "path", tree.path, "error", err)
+					}
+				}
+				wtNote = applyNote(tree.path, apply)
 			}
 			if wtNote != "" {
 				r.output = strings.TrimSpace(r.output + "\n" + wtNote)
