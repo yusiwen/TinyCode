@@ -28,6 +28,11 @@ type ToolCallScope struct {
 	// indexes, which is what separates their checkpoints.
 	Step int
 	Call int
+	// Task labels the delegated task this call belongs to (`general#7`), empty
+	// for the session's own work. It is what keeps a sub-agent's run numbers
+	// from colliding with its parent's, and what lets a conflict between two
+	// delegated tasks be reported by name (roadmap C3).
+	Task string
 }
 
 // toolCallScopeKey is unexported so only this package's constructors can set the

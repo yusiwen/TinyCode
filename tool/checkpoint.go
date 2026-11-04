@@ -130,6 +130,10 @@ type CheckpointCall struct {
 	Step    int       `json:"step"`
 	Call    int       `json:"call"`
 	Time    time.Time `json:"time"`
+	// Task labels the delegated task that made this call, empty for the
+	// session's own work (roadmap C3). It is part of the manifest's identity, so
+	// a sub-agent's run counter cannot collide with its parent's.
+	Task string `json:"task,omitempty"`
 	// RestoredAt is when an undo returned this call's files to their pre-call
 	// state. A non-zero value takes the call out of LastCall's reach, which is
 	// what makes a second /undo reach the call before it rather than repeat this
@@ -383,8 +387,8 @@ func checkpointStoreDir() (string, error) {
 // run group on first use. The name sorts by run and then by call, which is what
 // makes "the last tool call" a file listing rather than a guess.
 func manifestFor(store string, scope types.ToolCallScope) string {
-	runKey := fmt.Sprintf("%s|%d|%d", store, os.Getpid(), scope.Run)
-	callKey := fmt.Sprintf("%d-%d", scope.Step, scope.Call)
+	runKey := fmt.Sprintf("%s|%d|%d|%s", store, os.Getpid(), scope.Run, scope.Task)
+	callKey := fmt.Sprintf("%s|%d-%d", scope.Task, scope.Step, scope.Call)
 	run, ok := checkpointRuns[runKey]
 	if !ok {
 		run = &checkpointRun{prefix: fmt.Sprintf("%020d", time.Now().UnixNano()), calls: map[string]string{}}
@@ -410,7 +414,7 @@ func appendManifest(store string, scope types.ToolCallScope, entries ...Checkpoi
 	checkpointMu.Unlock()
 
 	call := CheckpointCall{
-		Tool: scope.Tool, Session: scope.Session,
+		Tool: scope.Tool, Session: scope.Session, Task: scope.Task,
 		Run: scope.Run, Step: scope.Step, Call: scope.Call, Time: time.Now(),
 	}
 	if data, err := os.ReadFile(manifest); err == nil {

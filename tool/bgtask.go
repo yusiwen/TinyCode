@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,7 +100,11 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 			mgr.finalize(task, TaskFailed, err.Error(), "")
 			return
 		}
+		// A background task is a delegated task too: the label keeps its
+		// manifests apart from its parent's (roadmap C3).
+		label := TaskLabelFor(name)
 		sub := agent.New(provider)
+		sub.ScopeTask = label
 		// The route is already in the provider; a copy without it keeps the
 		// sub-agent from trying to resolve the name again (roadmap A5).
 		subCfg := *cfg
@@ -134,6 +139,11 @@ func (mgr *BackgroundTaskManager) Start(deps *TaskToolDeps, name, goal string) s
 		defer watchdog.Stop()
 
 		out, err := sub.Run(ctx, goal)
+		// A background task's parent run is not on its context (it outlives the
+		// call), so its collisions are reported within the background bucket.
+		if note := ConflictNote(ctx, label); note != "" {
+			out = strings.TrimSpace(out + "\n" + note)
+		}
 
 		if err != nil {
 			tlog.Debug("task.bg", "error", "id", id, "err", err)

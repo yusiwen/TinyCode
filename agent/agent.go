@@ -46,6 +46,10 @@ type Agent struct {
 	// appends the summary to that call's result. Off unless test.auto_after_write
 	// says otherwise: it spends the project's time on every write.
 	TestAfterWrite bool
+	// ScopeTask labels every tool call this agent makes. The task tool sets it on
+	// a sub-agent so its writes are attributable to that delegation; empty for a
+	// session's own agent (roadmap C3).
+	ScopeTask string
 	// Session persistence
 	SessionStore interface {
 		Append(msg types.Message) error
@@ -804,6 +808,10 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 								// fields below are the ones only the loop can fill.
 								scope, _ := types.ToolCallScopeFrom(ctx)
 								scope.Tool, scope.Run, scope.Step, scope.Call = t.Name, a.runSerial, step, idx
+								// The task label is set, not inherited: a sub-agent's
+								// calls must not carry the parent's label, and the
+								// default (empty) is the session's own work.
+								scope.Task = a.ScopeTask
 								// A user hook may refuse the call before it runs
 								// (roadmap C4). The refusal is the tool result, so the
 								// model reads it and can choose another way.
