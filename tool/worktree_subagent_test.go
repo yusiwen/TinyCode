@@ -74,29 +74,115 @@ func writeDeps(t *testing.T, provider agent.LLMProvider, worktrees bool, allowed
 }
 
 // TestWritingTaskGetsItsOwnWorktree is S2's core: the write lands in the task's
-// tree and the session's tree stays clean.
+// tree while it runs, and the session's tree stays clean until the merge.
 func TestWritingTaskGetsItsOwnWorktree(t *testing.T) {
 	repo := worktreeRepo(t)
-	tool := TaskTool(writeDeps(t, writingProvider("made.txt"), true, "write_file"))
+	deps := writeDeps(t, writingProvider("made.txt"), true, "write_file")
+
+	// The isolation half, without a model in the way: the task's tree gets the
+	// write, the repository does not, and only the apply brings it over.
+	cfg := deps.GetAgentConfig("general")
+	tree, note := prepareSubagentWorktree(types.WithToolCallScope(context.Background(),
+		types.ToolCallScope{Run: 1}), deps, cfg, "general#1")
+	if tree.path == "" {
+		t.Fatalf("no worktree was created: %q", note)
+	}
+	t.Cleanup(func() { _ = RemoveWorktree(tree.toplevel, tree.path) })
+	if _, err := WriteFile().Execute(types.WithSandboxPolicy(context.Background(), policyWithRoot(context.Background(), tree.path)), map[string]any{
+		"path": "made.txt", "content": "from the task\n",
+	}); err != nil {
+		t.Fatalf("write in the task's tree: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "made.txt")); err == nil {
+		t.Fatal("the write landed in the session's tree before the merge")
+	}
+	apply := applyWorktree(tree.toplevel, tree.path, "general#1", 1)
+	if apply.Err != nil || len(apply.Merged) != 1 {
+		t.Fatalf("apply = %+v", apply)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "made.txt")); err != nil {
+		t.Fatalf("the merge did not land: %v", err)
+	}
+}
+
+// TestWritingTaskMergesAndRemovesItsTree: the tool's path — a writing task's
+// work is in the repository afterwards and its tree is gone.
+func TestWritingTaskMergesAndRemovesItsTree(t *testing.T) {
+	repo := worktreeRepo(t)
+	tool := TaskTool(writeDeps(t, writingProvider("merged.txt"), true, "write_file"))
 
 	out, err := tool.Execute(context.Background(), map[string]any{"agent": "general", "goal": "write it"})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
-	if !strings.Contains(out, "[worktree] this task worked in its own tree") {
-		t.Fatalf("result does not name the worktree: %q", out)
+	if !strings.Contains(out, "[merged] 1 file(s)") || !strings.Contains(out, "merged.txt") {
+		t.Fatalf("result = %q", out)
 	}
-	path := worktreePathFrom(out)
-	if path == "" {
-		t.Fatalf("no worktree path in %q", out)
+	data, err := os.ReadFile(filepath.Join(repo, "merged.txt"))
+	if err != nil || !strings.Contains(string(data), "from the task") {
+		t.Fatalf("the merged file = %q, %v", data, err)
 	}
-	t.Cleanup(func() { _ = RemoveWorktree(repo, path) })
+	if entries, _ := filepath.Glob(filepath.Join(filepath.Dir(repo), ".*-worktrees", "*")); len(entries) != 0 {
+		t.Fatalf("the worktree was not removed: %v", entries)
+	}
+}
 
-	if _, err := os.Stat(filepath.Join(path, "made.txt")); err != nil {
-		t.Fatalf("the write is not in the worktree: %v", err)
+// TestConflictKeepsTheSecondTasksTree: two tasks in one run writing the same file
+// must not silently overwrite each other.
+func TestConflictKeepsTheSecondTasksTree(t *testing.T) {
+	repo := worktreeRepo(t)
+	// One parent run for both calls: that is what the conflict registry keys on.
+	ctx := types.WithToolCallScope(context.Background(), types.ToolCallScope{Run: 42})
+	first := TaskTool(writeDeps(t, writingProvider("shared.txt"), true, "write_file"))
+	if _, err := first.Execute(ctx, map[string]any{"agent": "general", "goal": "write it"}); err != nil {
+		t.Fatalf("first task: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(repo, "made.txt")); err == nil {
-		t.Fatal("the write also landed in the session's tree")
+	second := TaskTool(writeDeps(t, writingProvider("shared.txt"), true, "write_file"))
+	out, err := second.Execute(ctx, map[string]any{"agent": "general", "goal": "write it too"})
+	if err != nil {
+		t.Fatalf("second task: %v", err)
+	}
+	if !strings.Contains(out, "[conflict]") || !strings.Contains(out, "shared.txt") {
+		t.Fatalf("result = %q", out)
+	}
+	if !strings.Contains(out, "was not applied") {
+		t.Fatalf("result does not say the work was kept: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "shared.txt")); err != nil {
+		t.Fatalf("the first task's file is missing: %v", err)
+	}
+}
+
+// TestMergeLeavesUnrelatedChangesAlone: the apply touches the task's paths only.
+func TestMergeLeavesUnrelatedChangesAlone(t *testing.T) {
+	repo := worktreeRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "unrelated.txt"), []byte("before\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("sh", "-c", "cd "+repo+" && git add -A && git commit -m unrelated").CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "unrelated.txt"), []byte("local edit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deps9 := writeDeps(t, writingProvider("x"), true, "write_file")
+	tree, _ := prepareSubagentWorktree(context.Background(), deps9, deps9.GetAgentConfig("general"), "general#9")
+	if tree.path == "" {
+		t.Fatal("no worktree created")
+	}
+	t.Cleanup(func() { _ = RemoveWorktree(tree.toplevel, tree.path) })
+	if _, err := WriteFile().Execute(types.WithSandboxPolicy(context.Background(), policyWithRoot(context.Background(), tree.path)), map[string]any{
+		"path": "task.txt", "content": "task\n",
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if apply := applyWorktree(tree.toplevel, tree.path, "general#9", 9); apply.Err != nil {
+		t.Fatalf("apply: %v", apply.Err)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, "unrelated.txt"))
+	if err != nil || string(data) != "local edit\n" {
+		t.Fatalf("the unrelated change was touched: %q, %v", data, err)
 	}
 }
 
@@ -161,4 +247,26 @@ func worktreePathFrom(out string) string {
 		rest = rest[:j]
 	}
 	return strings.TrimSpace(rest)
+}
+
+// TestBackgroundTaskGetsItsOwnWorktree: the same isolation for a background task,
+// whose context is gone by the time it runs — the policy and the run number ride
+// along from the call that started it.
+func TestBackgroundTaskGetsItsOwnWorktree(t *testing.T) {
+	repo := worktreeRepo(t)
+	mgr := NewBackgroundTaskManager()
+	deps := writeDeps(t, writingProvider("bg.txt"), true, "write_file")
+	ctx := types.WithToolCallScope(context.Background(), types.ToolCallScope{Run: 77})
+
+	id := mgr.Start(ctx, deps, "general", "write it in the background")
+	result, err := mgr.CollectContext(context.Background(), id)
+	if err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if !strings.Contains(result, "[merged] 1 file(s)") {
+		t.Fatalf("result = %q", result)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "bg.txt")); err != nil {
+		t.Fatalf("the background task's work was not merged: %v", err)
+	}
 }

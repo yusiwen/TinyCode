@@ -16,14 +16,13 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 20 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 21 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 2 | F1 — three increments landed, the next one is not opened; C3 — S1 landed, S2–S4 open |
+| In progress | 1 | F1 — three increments landed, the next one is not opened |
 | Not started | 17 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: C3 ([#322](https://github.com/yusiwen/TinyCode/issues/322) — S1 landed; a worktree per
-sub-task is S2), F1, whose next increment (a task set with headroom) is not opened,
+**Open work**: F1, whose next increment (a task set with headroom) is not opened,
 [#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
 contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
 (steering input while a run streams), which is not a roadmap entry.
@@ -52,7 +51,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | B6 | Truncation is fixed, not budget-aware | Delivered — #304 |
 | C1 | No checkpoint and no undo | Delivered — #234 |
 | C2 | No automatic change preview and commit loop, and no remote operations | Delivered — #316 |
-| C3 | No isolation for parallel execution | In progress — #322 |
+| C3 | No isolation for parallel execution | Delivered — #322 |
 | C4 | No user-configurable hooks and no session lifecycle events | Delivered — #318 |
 | C5 | No test feedback loop | Delivered — #320 |
 | C6 | Isolation has only one tier | Not started |
@@ -531,8 +530,12 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   fenced against travels with the call** (`rootFor(ctx)`, `bash` runs in it when no `workdir` is given, a
   relative path resolves against it, and the command snapshot captures it), and **a writing sub-task gets
   its own git worktree** beside the repository (`parallel.worktrees`, off by default) while read-only
-  agents get none and a non-git project says so in the result. The **merge-back is open** — that is S3, and
-  until it exists the worktree keeps the work.
+  agents get none and a non-git project says so in the result; and **the work is merged back**: the tree is
+  staged, diffed against `HEAD` and applied to the main tree, a path another task in the same run already
+  applied is refused and the tree is kept, and the result says which happened. The background path gets the
+  same treatment by carrying the starting call's policy and run number. [parallel.md](parallel.md) is the
+  user's page; the boundaries it names — no three-way merge, the language server still process-wide, kept
+  trees not garbage-collected — are the entry's honest edge.
 - **Gap**: sub-agents share one working directory, so two parallel `task` calls can write the same
   file. No worktree isolation, no file locks, no conflict detection or merge.
 - **Evidence**: sub-agents are in-process goroutines (`tool/task.go`, `tool/bgtask.go`) sharing the

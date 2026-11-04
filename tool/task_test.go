@@ -168,7 +168,7 @@ func TestTaskCollectBasic(t *testing.T) {
 	mgr := NewBackgroundTaskManager()
 	processed := make(chan string, 1)
 
-	taskID := mgr.Start(&TaskToolDeps{
+	taskID := mgr.Start(context.Background(), &TaskToolDeps{
 		ResolveProvider: fixedProvider(&mockTaskProvider{}),
 		AllTools:        []agent.Tool{{Name: "bash"}, {Name: "read_file"}},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
@@ -213,7 +213,7 @@ func TestTaskCollectUnknownTask(t *testing.T) {
 
 func TestBgTaskStatus(t *testing.T) {
 	mgr := NewBackgroundTaskManager()
-	taskID := mgr.Start(&TaskToolDeps{
+	taskID := mgr.Start(context.Background(), &TaskToolDeps{
 		ResolveProvider: fixedProvider(&mockTaskProvider{}),
 		AllTools:        []agent.Tool{{Name: "bash"}},
 		GetAgentConfig: func(name string) *agent.AgentConfig {
@@ -372,7 +372,7 @@ func TestBgTaskTimeoutCancelsSubAgent(t *testing.T) {
 
 	prov := newBlockingProvider()
 	mgr := NewBackgroundTaskManager()
-	id := mgr.Start(subagentDeps(prov), "explore", "block forever")
+	id := mgr.Start(context.Background(), subagentDeps(prov), "explore", "block forever")
 
 	if _, err := mgr.Collect(id); err == nil || !strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("expected timeout error, got: %v", err)
@@ -398,7 +398,7 @@ func TestBgTaskCollectContextCancellation(t *testing.T) {
 
 	prov := newBlockingProvider()
 	mgr := NewBackgroundTaskManager()
-	id := mgr.Start(subagentDeps(prov), "explore", "block forever")
+	id := mgr.Start(context.Background(), subagentDeps(prov), "explore", "block forever")
 
 	select {
 	case <-prov.started:
@@ -434,7 +434,7 @@ func TestBgTaskCollectContextCancellation(t *testing.T) {
 // without holding the manager lock).
 func TestBgTaskUnknownAgentConcurrentStatus(t *testing.T) {
 	mgr := NewBackgroundTaskManager()
-	id := mgr.Start(&TaskToolDeps{
+	id := mgr.Start(context.Background(), &TaskToolDeps{
 		ResolveProvider: fixedProvider(&mockTaskProvider{}),
 		GetAgentConfig:  func(string) *agent.AgentConfig { return nil },
 	}, "nope", "goal")
