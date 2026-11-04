@@ -235,20 +235,6 @@ func TestNotAGitRepositorySaysSo(t *testing.T) {
 	}
 }
 
-// worktreePathFrom pulls the path out of the note the task appends.
-func worktreePathFrom(out string) string {
-	const marker = "its own tree: "
-	i := strings.Index(out, marker)
-	if i < 0 {
-		return ""
-	}
-	rest := out[i+len(marker):]
-	if j := strings.Index(rest, " —"); j >= 0 {
-		rest = rest[:j]
-	}
-	return strings.TrimSpace(rest)
-}
-
 // TestBackgroundTaskGetsItsOwnWorktree: the same isolation for a background task,
 // whose context is gone by the time it runs — the policy and the run number ride
 // along from the call that started it.
