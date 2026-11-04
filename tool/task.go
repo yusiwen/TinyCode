@@ -43,6 +43,10 @@ type TaskToolDeps struct {
 	// delegated call is accounted the same way as one the parent made. Nil
 	// prices nothing, which is reported as an unknown cost rather than as zero.
 	PriceTable *agent.PriceTable
+	// Worktrees gives each writing sub-agent its own git worktree (roadmap C3,
+	// S2). Read-only agents never get one, and a project that is not a git
+	// repository falls back to sharing the tree and says so in the task result.
+	Worktrees bool
 	// ParentRun returns the run that is delegating, or nil when nothing is being
 	// recorded. A sub-agent hangs its own file off it: the delegated work is the
 	// cost attribution problem, and a record that pooled it into the parent's
@@ -140,6 +144,10 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			label := TaskLabelFor(name)
 			sub := agent.New(provider)
 			sub.ScopeTask = label
+			// A writing sub-agent works in its own tree when isolation is on
+			// (roadmap C3, S2). The policy that governs its tools comes from the
+			// worktree's root, so its opens and its `bash` agree with the fence.
+			worktree, wtNote := prepareSubagentWorktree(ctx, deps, cfg, label)
 			// The route was resolved into the provider above, so the sub-agent
 			// must not try to resolve it again: it has no registry, and keeping
 			// the route would make every call fail. The config is copied because
@@ -172,6 +180,9 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// A delegated agent has no authority over the session's goal; the
 			// marker is what the goal tool checks (types.InSubagent).
 			runCtx, cancel := context.WithCancel(types.WithSubagent(ctx))
+			if worktree != "" {
+				runCtx = types.WithSandboxPolicy(runCtx, policyWithRoot(ctx, worktree))
+			}
 			defer cancel()
 			ch := make(chan result, 1)
 			go func() {
@@ -201,6 +212,9 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// update (roadmap C3).
 			if note := ConflictNote(ctx, label); note != "" {
 				r.output = strings.TrimSpace(r.output + "\n" + note)
+			}
+			if wtNote != "" {
+				r.output = strings.TrimSpace(r.output + "\n" + wtNote)
 			}
 			if r.err != nil {
 				tlog.Debug("task", "error", "agent", name, "err", r.err)
