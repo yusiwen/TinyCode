@@ -31,16 +31,16 @@ type WorktreeApply struct {
 // first (roadmap C3, S3).
 var appliedPaths = struct {
 	mu    sync.Mutex
-	byRun map[int]map[string]string
-}{byRun: map[int]map[string]string{}}
+	byRun map[string]map[string]string
+}{byRun: map[string]map[string]string{}}
 
 // claimApplied records paths as merged by label and returns those another label
 // already merged in the same parent run.
-func claimApplied(parentRun int, label string, paths []string) []string {
+func claimApplied(parentRun string, label string, paths []string) []string {
 	appliedPaths.mu.Lock()
 	defer appliedPaths.mu.Unlock()
 	if appliedPaths.byRun == nil {
-		appliedPaths.byRun = map[int]map[string]string{}
+		appliedPaths.byRun = map[string]map[string]string{}
 	}
 	seen := appliedPaths.byRun[parentRun]
 	if seen == nil {
@@ -63,7 +63,7 @@ func claimApplied(parentRun int, label string, paths []string) []string {
 //
 // Staging first is what makes new files part of the diff: `git diff HEAD` alone
 // omits the files a task created, which is most of what a writing task does.
-func applyWorktree(toplevel, worktree, label string, parentRun int) WorktreeApply {
+func applyWorktree(toplevel, worktree, label string, parentRun string) WorktreeApply {
 	run := func(args ...string) (string, error) {
 		out, err := exec.Command("git", args...).CombinedOutput()
 		if err != nil {

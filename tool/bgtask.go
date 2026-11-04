@@ -67,10 +67,9 @@ func NewBackgroundTaskManager() *BackgroundTaskManager {
 func (mgr *BackgroundTaskManager) Start(ctx context.Context, deps *TaskToolDeps, name, goal string) string {
 	id := fmt.Sprintf("task_%d", nextTaskID.Add(1))
 	parentPolicy, hasPolicy := types.SandboxPolicyFrom(ctx)
-	parentRun := 0
-	if scope, ok := types.ToolCallScopeFrom(ctx); ok {
-		parentRun = scope.Run
-	}
+	// The parent run is the starting call's, captured before the task's own
+	// context replaces it: the conflict and apply registries key on it.
+	parentRun := runKey(ctx)
 
 	task := &BgTask{
 		ID:      id,
