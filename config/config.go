@@ -643,7 +643,9 @@ type Config struct {
 	// Hooks are commands that run automatically at the tool and run boundaries.
 	// They are merged here and filtered by Layers.ResolveHooks, which is the only
 	// place that knows which file asked for them (roadmap C4).
-	Hooks      *HooksConfig             `json:"hooks,omitempty"`
+	Hooks *HooksConfig `json:"hooks,omitempty"`
+	// Test is the project's test command and its bounds (roadmap C5).
+	Test       *TestConfig              `json:"test,omitempty"`
 	Agents     map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox    *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme      string                   `json:"theme,omitempty"`
@@ -1230,6 +1232,22 @@ func (l UserLayer) wantsFullCapture() bool {
 	}
 	capture, ok := section["capture"].(string)
 	return ok && strings.EqualFold(capture, TrajectoryCaptureFull)
+}
+
+// TestConfig is how the project's suite is run (roadmap C5).
+type TestConfig struct {
+	// Command overrides discovery. Empty means "look for go.mod, a package.json
+	// test script, or a Makefile test target".
+	Command string `json:"command,omitempty"`
+	// TimeoutMS bounds one run; 0 means the default, and anything above the cap
+	// is clamped.
+	TimeoutMS int `json:"timeout_ms,omitempty"`
+	// MaxOutputBytes caps the tail fed back to the model.
+	MaxOutputBytes int `json:"max_output_bytes,omitempty"`
+	// AutoAfterWrite runs the suite after a successful write tool call and
+	// appends the summary to that tool's result. Off by default: it spends the
+	// project's time and the model's tokens on every write.
+	AutoAfterWrite bool `json:"auto_after_write,omitempty"`
 }
 
 // HookConfig is one user-configured command that runs on an event.

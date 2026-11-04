@@ -663,6 +663,15 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case testDoneMsg:
+		switch {
+		case msg.err != nil:
+			m.appendSystem("[tests] " + msg.err.Error())
+		default:
+			m.appendSystem("[tests] " + msg.report.String())
+		}
+		return m, nil
+
 	case compressDoneMsg:
 		// The compression command reported back: History is settled again, so
 		// the next run may start.
@@ -1244,6 +1253,7 @@ Commands:
   /diagnostics   Show LSP diagnostics
   /changes       Show what changed since the last run
   /hooks         List the hooks configured in your own config
+  /test          Run the project's test suite and show the result
   /commit <msg>  Commit the files this run wrote (/commit --all for everything)
   /push          Push the current branch to origin (never the default branch)
   /pr <title>    Open a pull request for the current branch (push first)
@@ -1442,6 +1452,22 @@ Mouse:
 	case "/commit":
 		m.handleCommit(cmd)
 		return m, nil
+
+	case "/test":
+		if m.agent == nil || m.agent.Tests == nil {
+			m.appendSystem("No test settings: the project's suite is discovered at start-up.")
+			return m, nil
+		}
+		// The suite runs off the event loop (testDoneMsg), and it is refused while
+		// a run is active: the run is writing the tree the tests would read.
+		m.runMu.Lock()
+		active := m.runActive
+		m.runMu.Unlock()
+		if active {
+			m.ShowStatus("Cannot run tests: a run is in progress")
+			return m, nil
+		}
+		return m, m.testCmd()
 
 	case "/hooks":
 		if m.agent == nil || m.agent.Hooks == nil || m.agent.Hooks.Empty() {

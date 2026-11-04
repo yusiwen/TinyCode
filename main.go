@@ -23,6 +23,7 @@ import (
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/tui"
 	"github.com/yusiwen/tinycode/types"
+	"github.com/yusiwen/tinycode/verify"
 )
 
 // Build-time overrides (set via ldflags in Makefile)
@@ -320,6 +321,27 @@ func newRootCmd() *cobra.Command {
 			ag.AddTool(agent.Tool{
 				Name: gl.Name, Description: gl.Description,
 				Parameters: gl.Parameters, Execute: gl.Execute,
+			})
+
+			// The project's suite (roadmap C5). Registered always: discovery is
+			// what makes it work without configuration, and a project without a
+			// test command gets an answer that says how to add one. The auto mode
+			// is the opt-in half, because it spends the project's time on every
+			// write.
+			tests := verify.Settings{Dir: tool.DefaultSandbox.ProjectRoot}
+			if cfg.Test != nil {
+				tests.Config = verify.Config{
+					Command:        cfg.Test.Command,
+					TimeoutMS:      cfg.Test.TimeoutMS,
+					MaxOutputBytes: cfg.Test.MaxOutputBytes,
+				}
+				ag.TestAfterWrite = cfg.Test.AutoAfterWrite
+			}
+			ag.Tests = &tests
+			rt := tool.RunTests(tests)
+			ag.AddTool(agent.Tool{
+				Name: rt.Name, Description: rt.Description,
+				Parameters: rt.Parameters, Execute: rt.Execute,
 			})
 
 			// Web tools
