@@ -6,6 +6,11 @@
     "post_tool_use": []
   },
 
+  "test": {
+    "$comment": "The project's test suite (docs/tests.md). Without test.command it is discovered: go.mod, a package.json test script, or a Makefile test target. auto_after_write runs it after every successful write and appends the summary to that tool result.",
+    "auto_after_write": false
+  },
+
   "default_mode": "plan",
   "show_thinking": true,
   "verbose": false,

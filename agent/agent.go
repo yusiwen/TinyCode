@@ -12,6 +12,7 @@ import (
 	"github.com/yusiwen/tinycode/hook"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
+	"github.com/yusiwen/tinycode/verify"
 )
 
 // Agent is the core ReAct loop.
@@ -38,6 +39,13 @@ type Agent struct {
 	// (roadmap C4). Nil means none were configured, and every call site treats
 	// that way rather than guarding twice.
 	Hooks *hook.Runner
+	// Tests is the project's suite and its bounds (roadmap C5). Nil means the
+	// loop never runs it.
+	Tests *verify.Settings
+	// TestAfterWrite runs the suite after a successful write tool call and
+	// appends the summary to that call's result. Off unless test.auto_after_write
+	// says otherwise: it spends the project's time on every write.
+	TestAfterWrite bool
 	// Session persistence
 	SessionStore interface {
 		Append(msg types.Message) error
@@ -810,6 +818,14 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 										result = fmt.Sprintf("error: %v", execErr)
 									}
 									a.postToolHook(ctx, t.Name, tc.Arguments, result, execErr, scope, step)
+									// A write invalidates what the last test run said, so
+									// the suite runs here when the user asked for it
+									// (roadmap C5). `bash` is out of the set: its
+									// effects are not one file, and running the suite
+									// after every command would be unbounded.
+									if a.TestAfterWrite && execErr == nil && verify.IsWriteTool(t.Name) {
+										result = a.runTestsForResult(ctx, result)
+									}
 								}
 							}
 							break

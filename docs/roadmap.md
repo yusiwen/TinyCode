@@ -16,10 +16,10 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 19 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 20 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 19 | verified gaps, no issue opened |
+| Not started | 18 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: F1, whose next increment (a task set with headroom) is not opened,
@@ -53,7 +53,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | C2 | No automatic change preview and commit loop, and no remote operations | Delivered — #316 |
 | C3 | No isolation for parallel execution | Not started |
 | C4 | No user-configurable hooks and no session lifecycle events | Delivered — #318 |
-| C5 | No test feedback loop | Not started |
+| C5 | No test feedback loop | Delivered — #320 |
 | C6 | Isolation has only one tier | Not started |
 | C7 | No command confinement on macOS | Delivered — #247 |
 | C8 | No Windows support | Not started |
@@ -552,6 +552,15 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### C5 — No test feedback loop
 
+- **Picked up**: [#320](https://github.com/yusiwen/TinyCode/issues/320) — S1 (the `verify` package:
+  discovery, a bounded run, a report), S2 (the `run_tests` tool, `test.auto_after_write`, `/test`), S3
+  (the documents).
+- **Delivered (2026-11-04)**: the project's suite is discovered (`test.command`, then `go.mod`,
+  `package.json`'s test script, a `Makefile` target) and run within bounds — a timeout that survives a
+  child holding the output pipe, and a tail of the output instead of the whole thing. The model asks with
+  `run_tests`; the loop appends the summary to a successful write when `test.auto_after_write` is on, which
+  is the feedback the entry asked for; `/test` runs it on demand off the event loop. [tests.md](tests.md)
+  is the user's page.
 - **Gap**: after a change, nothing discovers and runs the project's tests, and a test failure is
   never fed back to the model.
 - **Evidence**: no product-source reference to `go test`, `runTests` or `testCommand`; only

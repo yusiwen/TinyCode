@@ -20,6 +20,7 @@
   /changes
     Show what changed since the last run
   /hooks  List the configured hooks
+  /test  Run the project's test suite
   /commit
     Commit the files this run wrote
   /push
