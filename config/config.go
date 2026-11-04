@@ -645,7 +645,10 @@ type Config struct {
 	// place that knows which file asked for them (roadmap C4).
 	Hooks *HooksConfig `json:"hooks,omitempty"`
 	// Test is the project's test command and its bounds (roadmap C5).
-	Test       *TestConfig              `json:"test,omitempty"`
+	Test *TestConfig `json:"test,omitempty"`
+	// Parallel controls how delegated tasks are isolated from one another
+	// (roadmap C3).
+	Parallel   *ParallelConfig          `json:"parallel,omitempty"`
 	Agents     map[string]AgentOverride `json:"agents,omitempty"`
 	Sandbox    *SandboxConfig           `json:"sandbox,omitempty"`
 	Theme      string                   `json:"theme,omitempty"`
@@ -1232,6 +1235,15 @@ func (l UserLayer) wantsFullCapture() bool {
 	}
 	capture, ok := section["capture"].(string)
 	return ok && strings.EqualFold(capture, TrajectoryCaptureFull)
+}
+
+// ParallelConfig is how parallel sub-agents are kept apart (roadmap C3).
+type ParallelConfig struct {
+	// Worktrees gives each writing sub-task its own git worktree, so two tasks
+	// writing the same file cannot overwrite each other. Off by default: a
+	// worktree is only useful once the merge-back exists, and that is the next
+	// increment.
+	Worktrees bool `json:"worktrees,omitempty"`
 }
 
 // TestConfig is how the project's suite is run (roadmap C5).

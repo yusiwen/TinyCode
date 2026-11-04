@@ -113,6 +113,23 @@ func escapes(rel string) bool {
 // filepath.Abs (which calls Clean) would. That matters for security: the OS
 // resolves ".." against the already-resolved prefix, so "link/../outside" is
 // NOT the same as the lexically cleaned path once "link" points elsewhere.
+// resolveAgainstRunRoot joins a relative path to the run's root when that root is
+// not the configured one — which is the case for a sub-agent in a worktree, and
+// only for it.
+func resolveAgainstRunRoot(ctx context.Context, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	policy, ok := types.SandboxPolicyFrom(ctx)
+	if !ok || policy.ProjectRoot == "" {
+		return path
+	}
+	if filepath.Clean(resolveRealPath(absoluteNoClean(policy.ProjectRoot))) == DefaultSandbox.projectRootResolved() {
+		return path
+	}
+	return filepath.Join(policy.ProjectRoot, path)
+}
+
 func absoluteNoClean(path string) string {
 	if filepath.IsAbs(path) {
 		return path
@@ -636,6 +653,12 @@ func (sc *SandboxConfig) ResolvePath(path string) string {
 // user-facing denial message when access is refused, and an error when the
 // request was cancelled or could not be evaluated. On success denied is empty.
 func CheckPathAccess(ctx context.Context, path string) (safePath, denied string, err error) {
+	// A delegated task works in its own tree (roadmap C3), so a relative path it
+	// is given means "under that tree", not "under the session's working
+	// directory". The rewrite happens only when the run's root differs from the
+	// configured one: a session started in a subdirectory keeps resolving
+	// relative paths from there, exactly as it did before.
+	path = resolveAgainstRunRoot(ctx, path)
 	// The checkpoint store is not a tool path, and this check comes before the
 	// fence decides. The store holds the bytes a tool write replaced — it is
 	// what makes an undo possible — so a model that can delete or rewrite it

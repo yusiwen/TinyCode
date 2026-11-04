@@ -391,6 +391,7 @@ func newRootCmd() *cobra.Command {
 				ResolveProvider: provReg.Resolve,
 				AllTools:        allToolList,
 				BgTaskMgr:       bgTaskMgr,
+				Worktrees:       cfg.Parallel != nil && cfg.Parallel.Worktrees,
 				// Sub-agents enforce the same limits against their own spend.
 				BudgetTokensPerRun:     ag.BudgetTokensPerRun,
 				BudgetTokensPerSession: ag.BudgetTokensPerSession,

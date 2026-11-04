@@ -11,6 +11,11 @@
     "auto_after_write": false
   },
 
+  "parallel": {
+    "$comment": "How parallel sub-agents are kept apart (docs/parallel.md). worktrees gives each WRITING sub-task its own git worktree beside the repository, so two tasks cannot overwrite each other; read-only agents never get one. Off by default until the merge-back exists.",
+    "worktrees": false
+  },
+
   "default_mode": "plan",
   "show_thinking": true,
   "verbose": false,
