@@ -134,7 +134,12 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			if err != nil {
 				return "", err
 			}
+			// The label goes on the sub-agent's scope, so its checkpoint
+			// manifests are distinct from the parent's even though both count
+			// runs from 1 (roadmap C3).
+			label := TaskLabelFor(name)
 			sub := agent.New(provider)
+			sub.ScopeTask = label
 			// The route was resolved into the provider above, so the sub-agent
 			// must not try to resolve it again: it has no registry, and keeping
 			// the route would make every call fail. The config is copied because
@@ -191,6 +196,12 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 				}
 			}
 
+			// Two delegated tasks in one run can write the same file; the note
+			// is what makes the collision visible instead of a silent lost
+			// update (roadmap C3).
+			if note := ConflictNote(ctx, label); note != "" {
+				r.output = strings.TrimSpace(r.output + "\n" + note)
+			}
 			if r.err != nil {
 				tlog.Debug("task", "error", "agent", name, "err", r.err)
 				if strings.Contains(r.err.Error(), "max steps") {
