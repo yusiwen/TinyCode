@@ -81,7 +81,8 @@ func TestParentAndSubagentManifestsDoNotMix(t *testing.T) {
 // TestNoteTaskWritesReportsTheSecondWriter: the registry is per parent run, and a
 // path is reported by whoever arrives second.
 func TestNoteTaskWritesReportsTheSecondWriter(t *testing.T) {
-	run := 4242 // a number no other test uses: the registry is process-wide
+	run := "test-run-attribution" // the registry is process-wide: name it here
+	other := "test-run-attribution-2"
 	if got := NoteTaskWrites(run, "general#1", []string{"a.go", "b.go"}); len(got) != 0 {
 		t.Fatalf("the first task reported a conflict: %v", got)
 	}
@@ -89,7 +90,7 @@ func TestNoteTaskWritesReportsTheSecondWriter(t *testing.T) {
 	if len(got) != 1 || got[0] != "b.go" {
 		t.Fatalf("conflicts = %v, want [b.go]", got)
 	}
-	if got := NoteTaskWrites(run+1, "general#3", []string{"b.go"}); len(got) != 0 {
+	if got := NoteTaskWrites(other, "general#3", []string{"b.go"}); len(got) != 0 {
 		t.Fatalf("another parent run reported a conflict: %v", got)
 	}
 }

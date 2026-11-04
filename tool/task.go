@@ -148,10 +148,7 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			// (roadmap C3, S2). The policy that governs its tools comes from the
 			// worktree's root, so its opens and its `bash` agree with the fence.
 			tree, wtNote := prepareSubagentWorktree(ctx, deps, cfg, label)
-			parentRun := 0
-			if scope, ok := types.ToolCallScopeFrom(ctx); ok {
-				parentRun = scope.Run
-			}
+			parentRun := runKey(ctx)
 			// The route was resolved into the provider above, so the sub-agent
 			// must not try to resolve it again: it has no registry, and keeping
 			// the route would make every call fail. The config is copied because

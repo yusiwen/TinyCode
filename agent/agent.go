@@ -7,6 +7,7 @@ import (
 	"log"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/yusiwen/tinycode/hook"
@@ -46,6 +47,10 @@ type Agent struct {
 	// appends the summary to that call's result. Off unless test.auto_after_write
 	// says otherwise: it spends the project's time on every write.
 	TestAfterWrite bool
+	// runID names the run in progress, minted at its start. It is the identity
+	// the delegate registries key on: Run alone restarts per agent, so two agents
+	// in one process would share it (roadmap C3).
+	runID string
 	// ScopeTask labels every tool call this agent makes. The task tool sets it on
 	// a sub-agent so its writes are attributable to that delegation; empty for a
 	// session's own agent (roadmap C3).
@@ -409,6 +414,10 @@ func (a *Agent) recordTurn(user, assistant, reasoning string) {
 	}
 }
 
+// runIDSeq numbers runs within this process, so a registry of delegated work can
+// tell two agents' run 1 apart.
+var runIDSeq atomic.Int64
+
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr error) {
 	// A run that ends — whatever the outcome — is a fact a user hook may want
@@ -418,6 +427,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		defer func() { a.stopHook(answer, runErr) }()
 	}
 	a.runSerial++
+	a.runID = fmt.Sprintf("%s-%d", "run", runIDSeq.Add(1))
 
 	// A run is recorded from its first instant, so the file's duration covers
 	// everything it did — compression included — rather than only the model
@@ -812,6 +822,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 								// calls must not carry the parent's label, and the
 								// default (empty) is the session's own work.
 								scope.Task = a.ScopeTask
+								scope.RunID = a.runID
 								// A user hook may refuse the call before it runs
 								// (roadmap C4). The refusal is the tool result, so the
 								// model reads it and can choose another way.

@@ -28,6 +28,11 @@ type ToolCallScope struct {
 	// indexes, which is what separates their checkpoints.
 	Step int
 	Call int
+	// RunID identifies the run this call belongs to, unique within the process.
+	// It exists because Run is a per-agent counter: two agents in one process (a
+	// resumed session, a repeated evaluation) both start at 1, and a registry that
+	// keyed on it would confuse their runs (roadmap C3).
+	RunID string
 	// Task labels the delegated task this call belongs to (`general#7`), empty
 	// for the session's own work. It is what keeps a sub-agent's run numbers
 	// from colliding with its parent's, and what lets a conflict between two

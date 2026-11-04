@@ -2,15 +2,29 @@ package tool
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/types"
 )
+
+// taskCtxSeq numbers the contexts this file builds, so a test's parent run is not
+// confused with the previous iteration's: the conflict and apply registries are
+// process-wide and keyed on the run id (roadmap C3).
+var taskCtxSeq atomic.Int64
+
+// taskCtx is one parent run's context, unique per call.
+func taskCtx() context.Context {
+	return types.WithToolCallScope(context.Background(), types.ToolCallScope{
+		RunID: fmt.Sprintf("test-run-%d", taskCtxSeq.Add(1)),
+	})
+}
 
 // worktreeRepo makes a git repository with one commit and points the sandbox at
 // it, and returns its path.
@@ -96,7 +110,7 @@ func TestWritingTaskGetsItsOwnWorktree(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo, "made.txt")); err == nil {
 		t.Fatal("the write landed in the session's tree before the merge")
 	}
-	apply := applyWorktree(tree.toplevel, tree.path, "general#1", 1)
+	apply := applyWorktree(tree.toplevel, tree.path, "general#1", "test-run-1")
 	if apply.Err != nil || len(apply.Merged) != 1 {
 		t.Fatalf("apply = %+v", apply)
 	}
@@ -111,7 +125,7 @@ func TestWritingTaskMergesAndRemovesItsTree(t *testing.T) {
 	repo := worktreeRepo(t)
 	tool := TaskTool(writeDeps(t, writingProvider("merged.txt"), true, "write_file"))
 
-	out, err := tool.Execute(context.Background(), map[string]any{"agent": "general", "goal": "write it"})
+	out, err := tool.Execute(taskCtx(), map[string]any{"agent": "general", "goal": "write it"})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
@@ -132,7 +146,7 @@ func TestWritingTaskMergesAndRemovesItsTree(t *testing.T) {
 func TestConflictKeepsTheSecondTasksTree(t *testing.T) {
 	repo := worktreeRepo(t)
 	// One parent run for both calls: that is what the conflict registry keys on.
-	ctx := types.WithToolCallScope(context.Background(), types.ToolCallScope{Run: 42})
+	ctx := taskCtx()
 	first := TaskTool(writeDeps(t, writingProvider("shared.txt"), true, "write_file"))
 	if _, err := first.Execute(ctx, map[string]any{"agent": "general", "goal": "write it"}); err != nil {
 		t.Fatalf("first task: %v", err)
@@ -177,7 +191,7 @@ func TestMergeLeavesUnrelatedChangesAlone(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if apply := applyWorktree(tree.toplevel, tree.path, "general#9", 9); apply.Err != nil {
+	if apply := applyWorktree(tree.toplevel, tree.path, "general#9", "test-run-9"); apply.Err != nil {
 		t.Fatalf("apply: %v", apply.Err)
 	}
 	data, err := os.ReadFile(filepath.Join(repo, "unrelated.txt"))
@@ -191,7 +205,7 @@ func TestReadOnlyTaskGetsNoWorktree(t *testing.T) {
 	worktreeRepo(t)
 	tool := TaskTool(writeDeps(t, writingProvider("ignored.txt"), true, "read_file"))
 
-	out, err := tool.Execute(context.Background(), map[string]any{"agent": "explore", "goal": "look"})
+	out, err := tool.Execute(taskCtx(), map[string]any{"agent": "explore", "goal": "look"})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
@@ -205,7 +219,7 @@ func TestWorktreesOffSharesTheTree(t *testing.T) {
 	repo := worktreeRepo(t)
 	tool := TaskTool(writeDeps(t, writingProvider("shared.txt"), false, "write_file"))
 
-	out, err := tool.Execute(context.Background(), map[string]any{"agent": "general", "goal": "write it"})
+	out, err := tool.Execute(taskCtx(), map[string]any{"agent": "general", "goal": "write it"})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
@@ -223,7 +237,7 @@ func TestNotAGitRepositorySaysSo(t *testing.T) {
 	t.Chdir(project)
 	tool := TaskTool(writeDeps(t, writingProvider("plain.txt"), true, "write_file"))
 
-	out, err := tool.Execute(context.Background(), map[string]any{"agent": "general", "goal": "write it"})
+	out, err := tool.Execute(taskCtx(), map[string]any{"agent": "general", "goal": "write it"})
 	if err != nil {
 		t.Fatalf("task: %v", err)
 	}
@@ -242,9 +256,7 @@ func TestBackgroundTaskGetsItsOwnWorktree(t *testing.T) {
 	repo := worktreeRepo(t)
 	mgr := NewBackgroundTaskManager()
 	deps := writeDeps(t, writingProvider("bg.txt"), true, "write_file")
-	ctx := types.WithToolCallScope(context.Background(), types.ToolCallScope{Run: 77})
-
-	id := mgr.Start(ctx, deps, "general", "write it in the background")
+	id := mgr.Start(taskCtx(), deps, "general", "write it in the background")
 	result, err := mgr.CollectContext(context.Background(), id)
 	if err != nil {
 		t.Fatalf("collect: %v", err)

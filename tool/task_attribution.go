@@ -49,6 +49,19 @@ func TaskPaths(label string) []string {
 	return paths
 }
 
+// runKey names the parent run a delegate registry keys on: the run's process-unique
+// id when the loop supplied one, and the agent's own counter otherwise (a
+// hand-built scope in a test, or a caller that predates the id).
+func runKey(ctx context.Context) string {
+	if scope, ok := types.ToolCallScopeFrom(ctx); ok {
+		if scope.RunID != "" {
+			return scope.RunID
+		}
+		return fmt.Sprintf("run:%d", scope.Run)
+	}
+	return "run:0"
+}
+
 // taskWrites remembers, per parent run, which delegated task wrote which path.
 //
 // It is in memory on purpose: the question it answers ("did two tasks in this run
@@ -56,18 +69,18 @@ func TaskPaths(label string) []string {
 // a run that has to be reconciled.
 var taskWrites = struct {
 	mu    sync.Mutex
-	byRun map[int]map[string]string
-}{byRun: map[int]map[string]string{}}
+	byRun map[string]map[string]string
+}{byRun: map[string]map[string]string{}}
 
 // NoteTaskWrites records one task's paths and returns those another task in the
 // same parent run already wrote. A path is reported by whichever task arrives
 // second: the later write is the one on disk, and the earlier agent's reasoning
 // was about content that no longer exists (roadmap C3).
-func NoteTaskWrites(parentRun int, label string, paths []string) []string {
+func NoteTaskWrites(parentRun string, label string, paths []string) []string {
 	taskWrites.mu.Lock()
 	defer taskWrites.mu.Unlock()
 	if taskWrites.byRun == nil {
-		taskWrites.byRun = map[int]map[string]string{}
+		taskWrites.byRun = map[string]map[string]string{}
 	}
 	seen := taskWrites.byRun[parentRun]
 	if seen == nil {
@@ -96,11 +109,7 @@ func ConflictNote(ctx context.Context, label string) string {
 	if len(paths) == 0 {
 		return ""
 	}
-	parentRun := 0
-	if scope, ok := types.ToolCallScopeFrom(ctx); ok {
-		parentRun = scope.Run
-	}
-	conflicts := NoteTaskWrites(parentRun, label, paths)
+	conflicts := NoteTaskWrites(runKey(ctx), label, paths)
 	if len(conflicts) == 0 {
 		return ""
 	}
