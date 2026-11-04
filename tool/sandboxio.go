@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/yusiwen/tinycode/types"
 )
 
 // errBeneathUnsupported reports that the kernel cannot enforce containment for
@@ -21,8 +23,18 @@ var errPathChanged = errors.New("path changed after the sandbox check")
 
 // readSandboxed reads a file through the sandbox root, so containment is
 // enforced by the same open that produces the data.
+//
+// This form has no run context: it is what a caller that is not the tool loop
+// uses (a test, a helper), and it resolves against the configured root exactly
+// as before. The tools call readSandboxedCtx so a run's own policy — which may
+// name a different root, as a delegated task's worktree does — governs the open.
 func readSandboxed(path string) ([]byte, error) {
-	f, err := openSandboxed(path, os.O_RDONLY, 0)
+	return readSandboxedCtx(context.Background(), path)
+}
+
+// readSandboxedCtx is readSandboxed under one run's policy.
+func readSandboxedCtx(ctx context.Context, path string) ([]byte, error) {
+	f, err := openSandboxedCtx(ctx, path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +73,7 @@ func writeSandboxed(ctx context.Context, path string, data []byte, perm os.FileM
 	if err := recordPreImage(ctx, path); err != nil {
 		return err
 	}
-	return writeFileThroughFence(path, data, perm)
+	return writeFileThroughFenceCtx(ctx, path, data, perm)
 }
 
 // writeFileThroughFence is the replacement itself. The bytes go into a temp file
@@ -79,6 +91,12 @@ func writeSandboxed(ctx context.Context, path string, data []byte, perm os.FileM
 // writeSandboxed: recording and replacing are separate so that undoing a write
 // does not record a pre-image of the undo.
 func writeFileThroughFence(path string, data []byte, perm os.FileMode) error {
+	return writeFileThroughFenceCtx(context.Background(), path, data, perm)
+}
+
+// writeFileThroughFenceCtx is the replacement under one run's policy: the temp
+// file and the target are both opened through that policy's root.
+func writeFileThroughFenceCtx(ctx context.Context, path string, data []byte, perm os.FileMode) error {
 	dir, base := filepath.Split(path)
 	if base == "" || dir == "" {
 		return &os.PathError{Op: "write", Path: path, Err: errors.New("not a file path")}
@@ -92,7 +110,7 @@ func writeFileThroughFence(path string, data []byte, perm os.FileMode) error {
 		mode = info.Mode().Perm()
 	}
 
-	tmp, file, err := createTempSandboxed(dir, base, mode)
+	tmp, file, err := createTempSandboxedCtx(ctx, dir, base, mode)
 	if err != nil {
 		return err
 	}
@@ -125,10 +143,15 @@ func writeFileThroughFence(path string, data []byte, perm os.FileMode) error {
 // sandbox-aware open, trying a few names before giving up. It returns the path and
 // the open file.
 func createTempSandboxed(dir, base string, perm os.FileMode) (string, *os.File, error) {
+	return createTempSandboxedCtx(context.Background(), dir, base, perm)
+}
+
+// createTempSandboxedCtx is createTempSandboxed under one run's policy.
+func createTempSandboxedCtx(ctx context.Context, dir, base string, perm os.FileMode) (string, *os.File, error) {
 	var lastErr error
 	for attempt := 0; attempt < 8; attempt++ {
 		tmp := filepath.Join(dir, fmt.Sprintf(".%s.tinycode-%d-%d.tmp", base, os.Getpid(), attempt))
-		file, err := openSandboxed(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+		file, err := openSandboxedCtx(ctx, tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 		if err == nil {
 			return tmp, file, nil
 		}
@@ -158,6 +181,22 @@ func createTempSandboxed(dir, base string, perm os.FileMode) (string, *os.File, 
 // is refused, because that difference is exactly the swap this layer exists to
 // catch.
 func openSandboxed(path string, flags int, perm os.FileMode) (*os.File, error) {
+	return openSandboxedCtx(context.Background(), path, flags, perm)
+}
+
+// rootFor is the root one call is fenced against: the run's frozen policy when
+// the context carries one, and the live configuration otherwise. A delegated task
+// can run with a different root (a worktree) without the process-global
+// configuration changing under a concurrent run (roadmap C3).
+func rootFor(ctx context.Context) string {
+	if policy, ok := types.SandboxPolicyFrom(ctx); ok && policy.ProjectRoot != "" {
+		return filepath.Clean(resolveRealPath(absoluteNoClean(policy.ProjectRoot)))
+	}
+	return DefaultSandbox.projectRootResolved()
+}
+
+// openSandboxedCtx is openSandboxed under one run's policy.
+func openSandboxedCtx(ctx context.Context, path string, flags int, perm os.FileMode) (*os.File, error) {
 	// The project root comes from the same derivation the fence uses, so the
 	// root this layer hands to the kernel is the root CheckPath approved
 	// against. Before, the two computed it with different expressions: this one
@@ -165,7 +204,7 @@ func openSandboxed(path string, flags int, perm os.FileMode) (*os.File, error) {
 	// They agreed for every ordinary path and could differ for a root written
 	// with ".." or redundant separators — precisely the kind of divergence a
 	// second derivation invites.
-	realRoot := DefaultSandbox.projectRootResolved()
+	realRoot := rootFor(ctx)
 	if realRoot == "" {
 		return os.OpenFile(path, flags, perm)
 	}

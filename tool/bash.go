@@ -316,6 +316,11 @@ func Bash() Tool {
 
 			if wd, ok := args["workdir"].(string); ok && wd != "" {
 				cmd.Dir = wd
+			} else if root := rootFor(ctx); root != "" {
+				// A delegated task can run with its own root (roadmap C3): a
+				// command with no explicit workdir belongs to that root, not to
+				// the process's working directory.
+				cmd.Dir = root
 			}
 
 			var stdout, stderr limitedBuffer

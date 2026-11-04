@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1370 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1374 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -497,6 +497,10 @@ rather than for a tool. The table and the code are held together by
 - **`openResolvedNoFollow(path, flags, perm)`** (Linux + macOS, `pathbeneath_walk.go`) — walks an already-resolved absolute path component by component with `O_NOFOLLOW`, so a component that is a symlink at open time is refused with `ELOOP`; `openDirFlags` is `O_PATH` on Linux (`pathbeneath_linux.go`, works without read permission on the directory) and `O_RDONLY` on macOS (`pathbeneath_darwin.go`, where `O_PATH` does not exist — the same choice the standard library's `os.Root` makes). Unsupported platforms return `errBeneathUnsupported` (`pathbeneath_walk_other.go`)
 - `RESOLVE_BENEATH` rejects absolute symlinks wherever they point, so `CheckPath` probes the OS-resolved form (`realAbs`), never the raw path; probing the raw path denied in-root symlinks
 
+### `sandboxio.go` — the root a call is fenced against
+
+- **`rootFor(ctx)`** — the root one call resolves and opens against: the run's frozen `types.SandboxPolicy` when the context carries one, and the live `DefaultSandbox` otherwise. `CheckPathAccess` already read the policy; the ctx-aware `openSandboxedCtx` / `writeFileThroughFenceCtx` / `readSandboxedCtx` make the open agree with it, and `bash` runs in that root when no `workdir` is given (roadmap C3: a delegated task can work in its own tree without the process-global configuration changing under a concurrent run). The context-less forms (`readSandboxed`, `openSandboxed`, …) remain for callers that are not the tool loop and resolve exactly as before.
+
 ### `confinement_*.go` — the command boundary
 
 The fence above confines the agent's own opens. A command the agent spawns is a
@@ -908,7 +912,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1370 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1374 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -954,7 +958,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1370 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1374 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

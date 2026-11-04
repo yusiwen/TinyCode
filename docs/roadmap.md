@@ -527,8 +527,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   documents). **S1 landed 2026-11-04**: a delegated task's writes carry its label in the checkpoint
   manifest (the label is part of the manifest's identity, which also fixes a collision between a
   sub-agent's run numbers and its parent's), and a task whose files another task in the same parent run
-  wrote reports the overlap instead of leaving a silent lost update. Worktree isolation and the merge-back
-  are open.
+  wrote reports the overlap instead of leaving a silent lost update. S2 is split: **the root a call is
+  fenced against now travels with the call** (`rootFor(ctx)`, and `bash` runs in it when no `workdir` is
+  given), which is what a worktree needs; **creating the worktree per writing sub-task is open**, as is the
+  merge-back.
 - **Gap**: sub-agents share one working directory, so two parallel `task` calls can write the same
   file. No worktree isolation, no file locks, no conflict detection or merge.
 - **Evidence**: sub-agents are in-process goroutines (`tool/task.go`, `tool/bgtask.go`) sharing the

@@ -84,7 +84,7 @@ func ApplyPatch() Tool {
 			for _, op := range ops {
 				switch op.typ {
 				case opUpdate:
-					data, err := readSandboxed(op.path)
+					data, err := readSandboxedCtx(ctx, op.path)
 					if err != nil {
 						return "", fmt.Errorf("validate %s: %w", op.path, err)
 					}
@@ -163,7 +163,7 @@ func ApplyPatch() Tool {
 					// between, permissions changed, a sandbox refusal, a symlink
 					// swapped for an escaping one - is a failed operation: report it
 					// and write nothing.
-					data, err := readSandboxed(op.path)
+					data, err := readSandboxedCtx(ctx, op.path)
 					if err != nil {
 						return fmt.Sprintf("Partial failure after %d ops: %v", len(results), err), nil
 					}
