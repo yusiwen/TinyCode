@@ -195,14 +195,6 @@ func containerUnavailableError(probe ContainerTier) error {
 	return fmt.Errorf("this run requires the container tier, but %s: refusing rather than running the command in a weaker tier (roadmap C6)", probe.Reason)
 }
 
-// containerImage is the image a container tier runs in, from the configuration.
-func containerImage() string {
-	if DefaultSandbox.Container != nil {
-		return DefaultSandbox.Container.Image
-	}
-	return ""
-}
-
 // ContainerInvocation builds the argv that runs one shell command inside the
 // image (roadmap C6, S2).
 //
