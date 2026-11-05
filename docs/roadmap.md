@@ -596,7 +596,11 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   per agent: `explore` read-only on the container), S4 (the documents). **S1 landed 2026-11-05**: the tier is
   a policy field resolved once per run (`kernel` by default, `auto` falls back, a named `container` refuses
   when the host cannot provide it), the probe is a bounded `docker info` cached per runtime and injectable in
-  tests, and `/sandbox` reports the tier with the reason. The spawn is S2.
+  tests, and `/sandbox` reports the tier with the reason. **S2 landed too**: the command spawns as
+  `run --rm --init --pull never --network <none|bridge>`, as the caller's uid/gid, with the project mounted at
+  `/work` (read-only when the run's mode is) and a tmpfs for scratch and the toolchain caches; the argv is
+  built from the configuration and the policy alone, and a gated test (`CONTAINER_TEST=1`) proves it against
+  a real runtime. Per-agent tiers (S3) and `docs/tiers.md` (S4) remain.
 - **Gap**: no container, VM or remote execution backend, and no way to escalate to a deliberately
   wider or narrower confinement tier.
 - **Evidence**: no `docker`, `podman`, `ssh`, `qemu`, `firecracker` or `nsenter`; `SandboxFullAccess`

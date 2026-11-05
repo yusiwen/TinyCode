@@ -99,7 +99,7 @@
   "sandbox": {
     "tier": "kernel",
     "container": {
-      "$comment": "The container tier runs commands in an image (roadmap C6). tier: kernel (default), container, none, or auto (container when this host has a runtime). A required tier that is unavailable refuses the command instead of falling back. Note: tier: container is detected and reported here; the spawn is the next increment, and a run that requires it refuses rather than running in the weaker tier.",
+      "$comment": "The container tier runs commands in an image (roadmap C6). tier: kernel (default), container, none, or auto (container when this host has a runtime). A required tier that is unavailable refuses the command instead of falling back. The container runs each command in the image with the project mounted at /work (read-only when the run mode is), the network off unless set, and a disposable /tmp for scratch and caches.",
       "runtime": "docker",
       "image": "golang:1.27",
       "network": "none"

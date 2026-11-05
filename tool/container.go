@@ -1,7 +1,9 @@
 package tool
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -191,4 +193,83 @@ func TierStatus() string {
 // the container tier and this host cannot provide it.
 func containerUnavailableError(probe ContainerTier) error {
 	return fmt.Errorf("this run requires the container tier, but %s: refusing rather than running the command in a weaker tier (roadmap C6)", probe.Reason)
+}
+
+// containerImage is the image a container tier runs in, from the configuration.
+func containerImage() string {
+	if DefaultSandbox.Container != nil {
+		return DefaultSandbox.Container.Image
+	}
+	return ""
+}
+
+// ContainerInvocation builds the argv that runs one shell command inside the
+// image (roadmap C6, S2).
+//
+// Every argument comes from the configuration or the run's policy; none comes
+// from the model. The shape is deliberately the smallest one that is useful: the
+// project mounted where the command expects it, a writable /tmp for scratch and
+// the toolchain caches, no environment pass-through, no docker socket, and no
+// implicit pull — a missing image is an error a person fixes, not a download this
+// function starts.
+func ContainerInvocation(policy types.SandboxPolicy, cfg *ContainerConfig, cmdStr string) ([]string, error) {
+	if cfg == nil || strings.TrimSpace(cfg.Image) == "" {
+		return nil, fmt.Errorf("the container tier needs an image: set sandbox.container.image (the container's security is the image's)")
+	}
+	root := policy.ProjectRoot
+	if root == "" {
+		return nil, fmt.Errorf("the container tier needs a project root to mount; none is configured")
+	}
+	runtime := cfg.Runtime
+	if runtime == "" {
+		runtime = "docker"
+	}
+	network := cfg.Network
+	if network == "" {
+		network = "none"
+	}
+
+	target := "/work"
+	argv := []string{runtime, "run", "--rm", "--init", "--pull", "never", "--network", network}
+	// The same uid/gid as the caller, so a file the command writes is owned by the
+	// person who asked for it rather than by root.
+	argv = append(argv, "--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()))
+	argv = append(argv, "--workdir", target)
+	mount := root + ":" + target
+	if policy.Mode == types.SandboxReadOnly {
+		mount += ":ro"
+	}
+	argv = append(argv, "-v", mount)
+	// Scratch and the toolchain caches live in a tmpfs: writable, disposable, and
+	// unable to reach the host's cache. The cost is a cold cache per command,
+	// which is honest for a tier whose point is not to touch the host.
+	argv = append(argv, "--tmpfs", "/tmp:rw,exec")
+	argv = append(argv,
+		"-e", "HOME=/tmp/home",
+		"-e", "TMPDIR=/tmp",
+		"-e", "GOCACHE=/tmp/gocache",
+		"-e", "GOMODCACHE=/tmp/gomodcache",
+		"-e", "GOPATH=/tmp/gopath",
+	)
+	if cfg.Memory != "" {
+		argv = append(argv, "--memory", cfg.Memory)
+	}
+	if cfg.CPUs != "" {
+		argv = append(argv, "--cpus", cfg.CPUs)
+	}
+	if cfg.PIDs > 0 {
+		argv = append(argv, "--pids-limit", fmt.Sprintf("%d", cfg.PIDs))
+	}
+	argv = append(argv, cfg.Image, "bash", "-c", cmdStr)
+	return argv, nil
+}
+
+// containerInvocationFor is bashInvocation's decision, split out so the tier's
+// errors and the fallbacks live in one place.
+func containerInvocationFor(ctx context.Context, policy types.SandboxPolicy, cmdStr string) ([]string, error) {
+	probe := ProbeContainer(containerRuntime())
+	if !probe.Available {
+		return nil, containerUnavailableError(probe)
+	}
+	return ContainerInvocation(policy, DefaultSandbox.Container, cmdStr)
 }
