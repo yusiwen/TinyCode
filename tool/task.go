@@ -183,6 +183,13 @@ func TaskTool(deps *TaskToolDeps) agent.Tool {
 			runCtx, cancel := context.WithCancel(types.WithSubagent(ctx))
 			if tree.path != "" {
 				runCtx = types.WithSandboxPolicy(runCtx, policyWithRoot(ctx, tree.path))
+			} else if !mayWrite(cfg) {
+				// A read-only agent narrows to the container when the host has one:
+				// its commands lose the network and the host's filesystem, and
+				// nothing it could do is granted (roadmap C6, S3).
+				if narrowed, ok := ReadOnlyTier(runPolicy(ctx)); ok {
+					runCtx = types.WithSandboxPolicy(runCtx, narrowed)
+				}
 			}
 			defer cancel()
 			ch := make(chan result, 1)

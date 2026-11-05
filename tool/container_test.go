@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -274,5 +275,122 @@ func TestContainerSpawnRunsWhenTheHostHasARuntime(t *testing.T) {
 	}
 	if _, err := os.Stat(project + "/file.txt"); err != nil {
 		t.Fatalf("the write did not reach the project mount: %v", err)
+	}
+}
+
+// TestReadOnlyTierNarrowsWhenTheHostCan: an explorer's commands lose the network
+// and the writable project, and nothing it could do is granted.
+func TestReadOnlyTierNarrowsWhenTheHostCan(t *testing.T) {
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	stubRuntime(t, "fakedocker", "27.1.1")
+	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker", Image: "img"}, "kernel")
+
+	policy := types.SandboxPolicy{Mode: types.SandboxWorkspaceWrite, Tier: types.SandboxTierKernel, ProjectRoot: "/tmp/p"}
+	narrowed, ok := ReadOnlyTier(policy)
+	if !ok {
+		t.Fatal("a read-only agent was not narrowed")
+	}
+	if narrowed.Tier != types.SandboxTierContainer {
+		t.Fatalf("tier = %q", narrowed.Tier)
+	}
+	if narrowed.Mode != types.SandboxReadOnly {
+		t.Fatalf("mode = %q, want read-only so the project mount is :ro", narrowed.Mode)
+	}
+	if policy.Tier != types.SandboxTierKernel {
+		t.Fatal("the caller's policy was modified")
+	}
+}
+
+// TestReadOnlyTierKeepsTheSessionTierWhenItCannot: a host without a runtime must
+// not fail a task that could have run.
+func TestReadOnlyTierKeepsTheSessionTierWhenItCannot(t *testing.T) {
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	containerProbe = func(runtime string) ContainerTier {
+		return ContainerTier{Runtime: runtime, Reason: "stub unavailable"}
+	}
+	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker", Image: "img"}, "kernel")
+
+	policy := types.SandboxPolicy{Mode: types.SandboxWorkspaceWrite, Tier: types.SandboxTierKernel, ProjectRoot: "/tmp/p"}
+	got, ok := ReadOnlyTier(policy)
+	if ok || got.Tier != types.SandboxTierKernel || got.Mode != types.SandboxWorkspaceWrite {
+		t.Fatalf("narrowed without a runtime: ok=%v policy=%+v", ok, got)
+	}
+}
+
+// TestReadOnlyTierDoesNothingWithoutAnImage: a runtime with no image is not a
+// container tier.
+func TestReadOnlyTierDoesNothingWithoutAnImage(t *testing.T) {
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	stubRuntime(t, "fakedocker", "27.1.1")
+	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker"}, "kernel")
+
+	if _, ok := ReadOnlyTier(types.SandboxPolicy{Tier: types.SandboxTierKernel}); ok {
+		t.Fatal("narrowed without an image")
+	}
+}
+
+// TestReadOnlySubagentRunsInTheContainer is the integration half: a read-only
+// sub-agent's `bash` reaches the runtime, which records the argv.
+func TestReadOnlySubagentRunsInTheContainer(t *testing.T) {
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	argsFile := filepath.Join(t.TempDir(), "argv.txt")
+	dir := t.TempDir()
+	script := filepath.Join(dir, "fakedocker")
+	body := "#!/bin/sh\necho \"$@\" > " + argsFile + "\necho ran-in-container\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker", Image: "img"}, "kernel")
+	// A container tier mounts the project; without a root there is nothing to run in.
+	project, _ := checkpointTestSetup(t)
+	t.Cleanup(func() { DefaultSandbox.ProjectRoot = project })
+
+	// The sub-agent calls bash; the fake runtime records what it was asked to run.
+	provider := &agent.MockProvider{ChatFunc: func(_ context.Context, _ types.ChatRequest) (*types.ChatResponse, error) {
+		return &types.ChatResponse{ToolCalls: []types.ToolCall{{
+			ID: "c1", Name: "bash", Arguments: `{"command":"echo hi"}`,
+		}}}, nil
+	}}
+	bashTool := Bash()
+	deps := &TaskToolDeps{
+		AllTools: []agent.Tool{{
+			Name: bashTool.Name, Description: bashTool.Description,
+			Parameters: bashTool.Parameters, Execute: bashTool.Execute,
+		}},
+		GetAgentConfig: func(name string) *agent.AgentConfig {
+			return &agent.AgentConfig{Name: name, AllowedTools: []string{"bash"}, MaxSteps: 3}
+		},
+		ResolveProvider: func(string) (agent.LLMProvider, error) { return provider, nil },
+	}
+	if _, err := TaskTool(deps).Execute(taskCtx(), map[string]any{"agent": "explore", "goal": "look around"}); err != nil {
+		t.Fatalf("task: %v", err)
+	}
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("the container was not used: %v", err)
+	}
+	line := string(args)
+	for _, want := range []string{"run --rm", "--network none", ":/work:ro", "img bash -c echo hi"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("argv is missing %q:\n%s", want, line)
+		}
+	}
+}
+
+// TestReadOnlyTierNeedsAProjectRoot: a container has nothing to mount without one,
+// so narrowing would only break the task.
+func TestReadOnlyTierNeedsAProjectRoot(t *testing.T) {
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	stubRuntime(t, "fakedocker", "27.1.1")
+	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker", Image: "img"}, "kernel")
+
+	if _, ok := ReadOnlyTier(types.SandboxPolicy{Tier: types.SandboxTierKernel}); ok {
+		t.Fatal("narrowed without a project root")
 	}
 }

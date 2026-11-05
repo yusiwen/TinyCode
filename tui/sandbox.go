@@ -62,6 +62,9 @@ func sandboxReport() string {
 	// whether the host can confine one. A run that requires the container tier
 	// says so here, on the host it was configured on (roadmap C6).
 	fmt.Fprintf(&b, "  tier: %s\n", tool.TierStatus())
+	// A read-only agent narrows to the container when the host has one, so the
+	// report says what a delegated explore run would actually use (roadmap C6).
+	fmt.Fprintf(&b, "  read-only agents: %s\n", tool.ReadOnlyTierStatus())
 
 	fmt.Fprintf(&b, "  project root: %s\n", root)
 
