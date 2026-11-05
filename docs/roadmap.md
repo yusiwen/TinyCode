@@ -16,15 +16,13 @@ after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 21 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 22 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 2 | F1 — three increments landed, the next one is not opened; C6 — S1 landed, S2–S4 open |
+| In progress | 1 | F1 — three increments landed, the next one is not opened |
 | Not started | 16 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: C6 ([#327](https://github.com/yusiwen/TinyCode/issues/327) — the tier, the probe and the
-config landed; spawning the container is S2), F1, whose next increment (a task set with headroom) is not
-opened,
+**Open work**: F1, whose next increment (a task set with headroom) is not opened,
 [#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
 contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
 (steering input while a run streams), which is not a roadmap entry.
@@ -56,7 +54,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | C3 | No isolation for parallel execution | Delivered — #322 |
 | C4 | No user-configurable hooks and no session lifecycle events | Delivered — #318 |
 | C5 | No test feedback loop | Delivered — #320 |
-| C6 | Isolation has only one tier | In progress — #327 |
+| C6 | Isolation has only one tier | Delivered — #327 |
 | C7 | No command confinement on macOS | Delivered — #247 |
 | C8 | No Windows support | Not started |
 | D1 | No image input | Not started |
