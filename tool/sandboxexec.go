@@ -160,6 +160,23 @@ var sandboxSelfPath = os.Executable
 // read-only, build mode is workspace-write over the session's writable roots.
 func bashInvocation(ctx context.Context, cmdStr string) ([]string, error) {
 	bash := []string{"bash", "-c", cmdStr}
+
+	// The run's policy decides the mode, the roots and the tier; this function
+	// does not derive any of them from configuration, so a concurrent run cannot
+	// change what this command runs under.
+	policy := runPolicy(ctx)
+	// The container tier is selected but not yet implemented here (roadmap C6,
+	// S2 spawns it): a run that requires it is refused rather than quietly run
+	// under the weaker boundary it asked to leave. The check comes before the
+	// ConfineCommands early return: a host with command confinement off must still
+	// refuse a tier it was told to use.
+	if policy.Tier == types.SandboxTierContainer {
+		if probe := ProbeContainer(containerRuntime()); !probe.Available {
+			return nil, containerUnavailableError(probe)
+		}
+		return nil, fmt.Errorf("the container tier is selected but spawning it lands in the next increment (roadmap C6); refusing rather than running under the %s tier", policy.Tier)
+	}
+
 	if !ConfineCommands() {
 		return bash, nil
 	}
@@ -169,10 +186,6 @@ func bashInvocation(ctx context.Context, cmdStr string) ([]string, error) {
 		return nil, fmt.Errorf("locate the confinement launcher: %w", err)
 	}
 
-	// The run's policy decides the mode and the roots; this function does not
-	// derive either from configuration, so a concurrent run cannot change what
-	// this command is allowed to write.
-	policy := runPolicy(ctx)
 	switch policy.Mode {
 	case types.SandboxReadOnly:
 		// A read-only run grants no path: the boundary allows only the sinks a

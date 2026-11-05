@@ -62,6 +62,13 @@ type SandboxConfig struct {
 	// AutoAllowPaths are paths automatically allowed (CWD, parent, etc.)
 	AutoAllowPaths []string
 
+	// Tier is how shell commands are isolated (roadmap C6): none, kernel, or
+	// container. "auto" is resolved by ResolveTier before it is stored here.
+	Tier string
+	// Container is the container tier's runtime and limits, copied from the
+	// configuration.
+	Container *ContainerConfig
+
 	// CacheRoots are the additional writable roots outside the project that a
 	// confined command needs to run a real toolchain: the platform user cache
 	// directory, where GOCACHE and most build tools write. They are grants, not

@@ -23,8 +23,10 @@ func PolicyFor(mode types.SandboxMode) types.SandboxPolicy {
 // including a direct CheckPath on a configuration that never went through a run
 // — so no consumer can invent a second answer.
 func PolicyFromConfig(sc *SandboxConfig, mode types.SandboxMode) types.SandboxPolicy {
+	tier, _ := ResolveTier(sc.Tier)
 	return types.SandboxPolicy{
 		Mode:        mode,
+		Tier:        tier,
 		ProjectRoot: sc.projectRootResolved(),
 		Roots:       sc.WritableRoots(),
 		Source:      "sandbox configuration",

@@ -25,3 +25,16 @@ func TestSandboxReportStatesTheCachePolicy(t *testing.T) {
 		}
 	}
 }
+
+// TestSandboxReportNamesTheTier: the tier is what a command runs *under*, and a
+// host that cannot do the configured tier has to say so where /sandbox reads
+// (roadmap C6).
+func TestSandboxReportNamesTheTier(t *testing.T) {
+	report := sandboxReport()
+	if !strings.Contains(report, "tier:") {
+		t.Fatalf("the report has no tier line:\n%s", report)
+	}
+	if !strings.Contains(report, "kernel") {
+		t.Fatalf("the default tier is not named:\n%s", report)
+	}
+}
