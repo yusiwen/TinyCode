@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,5 +154,125 @@ func TestTierStatusNamesTheTier(t *testing.T) {
 	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker"}, "kernel")
 	if got := TierStatus(); !strings.Contains(got, "kernel") {
 		t.Fatalf("status = %q", got)
+	}
+}
+
+// TestContainerInvocationIsBuiltFromConfig: every flag comes from the policy or the
+// configuration, and none from the model.
+func TestContainerInvocationIsBuiltFromConfig(t *testing.T) {
+	cfg := &ContainerConfig{Runtime: "podman", Image: "golang:1.27", Network: "bridge", Memory: "2g", CPUs: "2", PIDs: 512}
+	policy := types.SandboxPolicy{Mode: types.SandboxWorkspaceWrite, ProjectRoot: "/tmp/project"}
+
+	argv, err := ContainerInvocation(policy, cfg, "go test ./...")
+	if err != nil {
+		t.Fatalf("ContainerInvocation: %v", err)
+	}
+	line := strings.Join(argv, " ")
+	for _, want := range []string{
+		"podman run --rm --init --pull never --network bridge",
+		"--workdir /work",
+		"-v /tmp/project:/work",
+		"--tmpfs /tmp:rw,exec",
+		"-e HOME=/tmp/home",
+		"--memory 2g", "--cpus 2", "--pids-limit 512",
+		"golang:1.27 bash -c go test ./...",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("argv is missing %q:\n%s", want, line)
+		}
+	}
+	if strings.Contains(line, "/work:ro") {
+		t.Fatalf("a writable policy mounted read-only:\n%s", line)
+	}
+	if !strings.Contains(line, fmt.Sprintf("--user %d:%d", os.Getuid(), os.Getgid())) {
+		t.Errorf("the container does not run as the caller:\n%s", line)
+	}
+}
+
+// TestContainerInvocationMountsReadOnlyForAReadOnlyRun: plan mode's read-only
+// policy must not become writable because it moved into a container.
+func TestContainerInvocationMountsReadOnlyForAReadOnlyRun(t *testing.T) {
+	argv, err := ContainerInvocation(
+		types.SandboxPolicy{Mode: types.SandboxReadOnly, ProjectRoot: "/tmp/project"},
+		&ContainerConfig{Image: "img"}, "echo hi")
+	if err != nil {
+		t.Fatalf("ContainerInvocation: %v", err)
+	}
+	if !strings.Contains(strings.Join(argv, " "), "/tmp/project:/work:ro") {
+		t.Fatalf("argv = %v", argv)
+	}
+	// The default network is none: a command does not reach the network unless
+	// the configuration says so.
+	if !strings.Contains(strings.Join(argv, " "), "--network none") {
+		t.Fatalf("argv = %v", argv)
+	}
+}
+
+// TestContainerInvocationNeedsAnImage: no image, no container — and the message
+// names the key to set.
+func TestContainerInvocationNeedsAnImage(t *testing.T) {
+	_, err := ContainerInvocation(types.SandboxPolicy{ProjectRoot: "/tmp/p"}, &ContainerConfig{}, "true")
+	if err == nil || !strings.Contains(err.Error(), "sandbox.container.image") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// TestBashInvocationUsesTheContainer: the spawn replaces the launcher when the
+// tier is the container and the host has a runtime.
+func TestBashInvocationUsesTheContainer(t *testing.T) {
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	stubRuntime(t, "fakedocker", "27.1.1")
+	withContainerConfig(t, &ContainerConfig{Runtime: "fakedocker", Image: "img"}, "container")
+
+	ctx := types.WithSandboxPolicy(context.Background(), types.SandboxPolicy{
+		Mode: types.SandboxWorkspaceWrite, Tier: types.SandboxTierContainer, ProjectRoot: "/tmp/project",
+	})
+	argv, err := bashInvocation(ctx, "echo hi")
+	if err != nil {
+		t.Fatalf("bashInvocation: %v", err)
+	}
+	if argv[0] != "fakedocker" || argv[1] != "run" {
+		t.Fatalf("argv = %v", argv)
+	}
+	if !strings.Contains(strings.Join(argv, " "), "img bash -c echo hi") {
+		t.Fatalf("argv = %v", argv)
+	}
+}
+
+// TestContainerSpawnRunsWhenTheHostHasARuntime is the gated end-to-end: it needs a
+// real runtime and an image, so it runs only with CONTAINER_TEST=1.
+func TestContainerSpawnRunsWhenTheHostHasARuntime(t *testing.T) {
+	if os.Getenv("CONTAINER_TEST") != "1" {
+		t.Skip("set CONTAINER_TEST=1 with a container runtime and image to run this")
+	}
+	restore := resetContainerProbeForTest()
+	t.Cleanup(restore)
+	probe := ProbeContainer(containerRuntime())
+	if !probe.Available {
+		t.Skipf("no container runtime: %s", probe.Reason)
+	}
+	image := os.Getenv("CONTAINER_TEST_IMAGE")
+	if image == "" {
+		t.Skip("set CONTAINER_TEST_IMAGE to an image with bash and coreutils")
+	}
+	withContainerConfig(t, &ContainerConfig{Image: image}, "container")
+	project := t.TempDir()
+
+	ctx := types.WithSandboxPolicy(context.Background(), types.SandboxPolicy{
+		Mode: types.SandboxWorkspaceWrite, Tier: types.SandboxTierContainer, ProjectRoot: project,
+	})
+	out, err := Bash().Execute(ctx, map[string]any{"command": "pwd && echo written > file.txt && cat file.txt && (curl -sS -m 2 https://example.com >/dev/null && echo NETWORK-OPEN || echo NETWORK-CLOSED)"})
+	if err != nil {
+		t.Fatalf("bash in the container: %v", err)
+	}
+	if !strings.Contains(out, "/work") || !strings.Contains(out, "written") {
+		t.Fatalf("output = %q", out)
+	}
+	if !strings.Contains(out, "NETWORK-CLOSED") {
+		t.Fatalf("the network is not closed: %q", out)
+	}
+	if _, err := os.Stat(project + "/file.txt"); err != nil {
+		t.Fatalf("the write did not reach the project mount: %v", err)
 	}
 }

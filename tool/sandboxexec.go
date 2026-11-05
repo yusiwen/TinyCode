@@ -171,10 +171,7 @@ func bashInvocation(ctx context.Context, cmdStr string) ([]string, error) {
 	// ConfineCommands early return: a host with command confinement off must still
 	// refuse a tier it was told to use.
 	if policy.Tier == types.SandboxTierContainer {
-		if probe := ProbeContainer(containerRuntime()); !probe.Available {
-			return nil, containerUnavailableError(probe)
-		}
-		return nil, fmt.Errorf("the container tier is selected but spawning it lands in the next increment (roadmap C6); refusing rather than running under the %s tier", policy.Tier)
+		return containerInvocationFor(ctx, policy, cmdStr)
 	}
 
 	if !ConfineCommands() {

@@ -59,8 +59,17 @@ otherwise, and a **named** tier is a promise — `container` on a host without a
 command** rather than falling back, the same fail-closed rule `require_hard_boundary` follows.
 
 The probe (a bounded `docker info`, cached for the process) and the resulting tier are reported by
-`/sandbox`. The container tier's command spawn, mounts and limits are the next increment of the entry; until
-it lands, a run that selects `container` refuses with a message naming the increment.
+`/sandbox`.
+
+The container spawn is `run --rm --init --pull never --network <none|bridge>`, with the caller's uid and gid,
+the project mounted at `/work` (**read-only when the run's mode is**), a `tmpfs` at `/tmp` for scratch and
+the toolchain caches (`HOME`, `TMPDIR`, `GOCACHE`, `GOMODCACHE`, `GOPATH` point inside it), and the
+configured `--memory`/`--cpus`/`--pids-limit`. Nothing else is mounted: no `~/.ssh`, no docker socket, no
+environment pass-through, and no implicit image pull — a missing image is an error a person fixes. The
+consequence to know: **the caches do not survive a command**, so a cold build pays full price.
+
+A host with only the client reports unavailable with the daemon's own message; a run that named
+`container` then refuses rather than running in the weaker tier.
 
 ## One policy per run
 
