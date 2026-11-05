@@ -36,7 +36,9 @@
         exec ${pkgs.go_1_27}/bin/go "$@"
       '';
     in {
-      devShells.default = pkgs.mkShell {
+      # mkShellNoCC: `make build` and every CI target build with CGO_ENABLED=0,
+      # so the shell needs no C compiler.
+      devShells.default = pkgs.mkShellNoCC {
         # Go toolchain + the tools `make lint`/the LSP client rely on.
         # go_1_27 (not `go`) is deliberate: CI, go.mod and this shell must all
         # use the 1.27 line, and nixos-unstable still defaults to Go 1.26.
@@ -44,7 +46,10 @@
         nativeBuildInputs = [
           go
           pkgs.go_1_27
-          pkgs.git
+          # pkgs.git pulls python3, and python3's sysconfig data references
+          # clang-wrapper: the full git is what put a ~1.2 GiB C toolchain in
+          # this shell. The override keeps https and the macOS keychain helper.
+          (pkgs.git.override { pythonSupport = false; perlSupport = false; })
           pkgs.gopls
           pkgs.gofumpt
         ];
