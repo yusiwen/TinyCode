@@ -18,11 +18,13 @@ after it (see *Provenance and method*).
 | :--- | ---: | :--- |
 | Delivered | 21 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 17 | verified gaps, no issue opened |
+| In progress | 2 | F1 — three increments landed, the next one is not opened; C6 — S1 landed, S2–S4 open |
+| Not started | 16 | verified gaps, no issue opened |
 | **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: F1, whose next increment (a task set with headroom) is not opened,
+**Open work**: C6 ([#327](https://github.com/yusiwen/TinyCode/issues/327) — the tier, the probe and the
+config landed; spawning the container is S2), F1, whose next increment (a task set with headroom) is not
+opened,
 [#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
 contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
 (steering input while a run streams), which is not a roadmap entry.
@@ -54,7 +56,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | C3 | No isolation for parallel execution | Delivered — #322 |
 | C4 | No user-configurable hooks and no session lifecycle events | Delivered — #318 |
 | C5 | No test feedback loop | Delivered — #320 |
-| C6 | Isolation has only one tier | Not started |
+| C6 | Isolation has only one tier | In progress — #327 |
 | C7 | No command confinement on macOS | Delivered — #247 |
 | C8 | No Windows support | Not started |
 | D1 | No image input | Not started |
@@ -589,6 +591,12 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### C6 — Isolation has only one tier
 
+- **Picked up**: [#327](https://github.com/yusiwen/TinyCode/issues/327) — S1 (the tier on the policy, the
+  probe, the config and the report), S2 (spawn commands in the container with mounts and limits), S3 (a tier
+  per agent: `explore` read-only on the container), S4 (the documents). **S1 landed 2026-11-05**: the tier is
+  a policy field resolved once per run (`kernel` by default, `auto` falls back, a named `container` refuses
+  when the host cannot provide it), the probe is a bounded `docker info` cached per runtime and injectable in
+  tests, and `/sandbox` reports the tier with the reason. The spawn is S2.
 - **Gap**: no container, VM or remote execution backend, and no way to escalate to a deliberately
   wider or narrower confinement tier.
 - **Evidence**: no `docker`, `podman`, `ssh`, `qemu`, `firecracker` or `nsenter`; `SandboxFullAccess`
