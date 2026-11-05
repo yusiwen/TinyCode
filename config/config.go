@@ -612,6 +612,30 @@ type SandboxConfig struct {
 	// where it cannot — and a user who needs the wider boundary can set it to
 	// false in their own config.
 	ConfineCommands *bool `json:"confine_commands,omitempty"`
+
+	// Tier is how shell commands are isolated: "kernel" (the default), "none",
+	// "container", or "auto" (container when this host has a runtime, kernel
+	// otherwise). A tier that is required and unavailable refuses the command
+	// rather than falling back (roadmap C6).
+	Tier string `json:"tier,omitempty"`
+	// Container configures the container tier.
+	Container *ContainerConfig `json:"container,omitempty"`
+}
+
+// ContainerConfig is the container tier's runtime, image and network policy.
+type ContainerConfig struct {
+	// Runtime is "docker" or "podman"; empty means docker.
+	Runtime string `json:"runtime,omitempty"`
+	// Image is the image commands run in. It is required for the container tier
+	// and is never chosen for the user: the container's security is the image's.
+	Image string `json:"image,omitempty"`
+	// Network is "none" (the default) or "bridge".
+	Network string `json:"network,omitempty"`
+	// Memory, CPUs and PIDs are the container's limits; empty means the runtime's
+	// default.
+	Memory string `json:"memory,omitempty"`
+	CPUs   string `json:"cpus,omitempty"`
+	PIDs   int    `json:"pids,omitempty"`
 }
 
 // MCPServerConfig defines a single MCP server to connect to.

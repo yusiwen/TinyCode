@@ -43,6 +43,25 @@ The mode comes from the agent a run is using: `plan` is read-only, everything
 else is workspace-write. It is recorded with the policy's `Source` so a refusal
 or a report can say where it came from.
 
+## Isolation tiers
+
+Roadmap C6. The mode says what a write may land on; the **tier** says what a command runs *under*.
+
+| Tier | Covers | Read | Write | Network |
+| --- | --- | --- | --- | --- |
+| `none` | nothing | all | all | all |
+| `kernel` (default) | file writes and command writes, enforced by Landlock (Linux) or Seatbelt (macOS) | all | the policy's roots | all |
+| `container` | **commands**, inside an image | the image plus explicit mounts | the project mount | `none` by default |
+
+`tier` is a value in the configuration (`sandbox.tier`), resolved once per run into the run's policy:
+`kernel` is the default, `auto` picks the container when this host has a runtime and the kernel tier
+otherwise, and a **named** tier is a promise — `container` on a host without a runtime **refuses the
+command** rather than falling back, the same fail-closed rule `require_hard_boundary` follows.
+
+The probe (a bounded `docker info`, cached for the process) and the resulting tier are reported by
+`/sandbox`. The container tier's command spawn, mounts and limits are the next increment of the entry; until
+it lands, a run that selects `container` refuses with a message naming the increment.
+
 ## One policy per run
 
 `types.SandboxPolicy` carries the mode, the project root, the writable roots and

@@ -58,6 +58,10 @@ func sandboxReport() string {
 	// no mechanism exists) is stated on the host it applies to rather than
 	// leaving commands silently unconfined.
 	fmt.Fprintf(&b, "  command confinement: %s\n", tool.CommandConfinementStatus())
+	// The tier answers a different question: what a command runs *under*, not
+	// whether the host can confine one. A run that requires the container tier
+	// says so here, on the host it was configured on (roadmap C6).
+	fmt.Fprintf(&b, "  tier: %s\n", tool.TierStatus())
 
 	fmt.Fprintf(&b, "  project root: %s\n", root)
 

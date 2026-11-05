@@ -768,6 +768,19 @@ func installSandboxBoundary(layers config.Layers) {
 // will happen next — every fenced operation refuses — so a refusal later in the
 // run is not a surprise.
 func applySandboxCapabilityPolicy(cfg *config.Config, user config.UserLayer) {
+	// The isolation tier (roadmap C6): the tier name and the container section are
+	// copied here, once, so the run's policy can be built without the tool package
+	// reading the configuration. "auto" stays as written: it is resolved per host
+	// by ResolveTier, which probes.
+	if cfg.Sandbox != nil {
+		tool.DefaultSandbox.Tier = cfg.Sandbox.Tier
+		if c := cfg.Sandbox.Container; c != nil {
+			tool.DefaultSandbox.Container = &tool.ContainerConfig{
+				Runtime: c.Runtime, Image: c.Image, Network: c.Network,
+				Memory: c.Memory, CPUs: c.CPUs, PIDs: c.PIDs,
+			}
+		}
+	}
 	if cfg.Sandbox != nil && cfg.Sandbox.RequireHardBoundary {
 		tool.SetRequireHardBoundary(true)
 	}

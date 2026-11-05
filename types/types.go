@@ -273,8 +273,25 @@ const (
 // configuration edit, or by a grant given to a different call. Consumers
 // (the path fence, the command boundary, the plan-mode guard) read it and
 // nothing else; none of them re-derives a mode or a root.
+type SandboxTier string
+
+const (
+	// SandboxTierNone applies no boundary at all.
+	SandboxTierNone SandboxTier = "none"
+	// SandboxTierKernel confines with the platform's own mechanism: Landlock on
+	// Linux, Seatbelt on macOS. It bounds writes only.
+	SandboxTierKernel SandboxTier = "kernel"
+	// SandboxTierContainer runs commands inside a container, which is the first
+	// tier that can bound reads and the network as well as writes.
+	SandboxTierContainer SandboxTier = "container"
+)
+
 type SandboxPolicy struct {
 	Mode SandboxMode
+	// Tier is how this run's commands are isolated. It is resolved once, when
+	// the run starts, so a host whose runtime disappears mid-run cannot silently
+	// change what a command runs under (roadmap C6).
+	Tier SandboxTier
 	// ProjectRoot is the one root the single-root kernel probe can express
 	// (openat2 RESOLVE_BENEATH). It is empty when no root is configured.
 	ProjectRoot string

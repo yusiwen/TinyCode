@@ -97,6 +97,13 @@
   "searxng_url": "https://search.yusiwen.cn",
 
   "sandbox": {
+    "tier": "kernel",
+    "container": {
+      "$comment": "The container tier runs commands in an image (roadmap C6). tier: kernel (default), container, none, or auto (container when this host has a runtime). A required tier that is unavailable refuses the command instead of falling back. Note: tier: container is detected and reported here; the spawn is the next increment, and a run that requires it refuses rather than running in the weaker tier.",
+      "runtime": "docker",
+      "image": "golang:1.27",
+      "network": "none"
+    },
     "project_root": "<PROJECT_ROOT>",
     "deny_commands": ["rm -rf /", "sudo", "reboot", "shutdown"]
   },
