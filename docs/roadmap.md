@@ -600,7 +600,10 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   `run --rm --init --pull never --network <none|bridge>`, as the caller's uid/gid, with the project mounted at
   `/work` (read-only when the run's mode is) and a tmpfs for scratch and the toolchain caches; the argv is
   built from the configuration and the policy alone, and a gated test (`CONTAINER_TEST=1`) proves it against
-  a real runtime. Per-agent tiers (S3) and `docs/tiers.md` (S4) remain.
+  a real runtime. **S3 and S4 landed too**: a delegated read-only agent narrows to the container by itself
+  (read-only mount, network off — a narrowing grants nothing, so it needs no flag) and keeps the session's
+  tier when the host cannot provide one; `/sandbox` reports both, and [tiers.md](tiers.md) is the page for the
+  ladder, its costs and what it does not promise.
 - **Gap**: no container, VM or remote execution backend, and no way to escalate to a deliberately
   wider or narrower confinement tier.
 - **Evidence**: no `docker`, `podman`, `ssh`, `qemu`, `firecracker` or `nsenter`; `SandboxFullAccess`

@@ -149,6 +149,12 @@ func (mgr *BackgroundTaskManager) Start(ctx context.Context, deps *TaskToolDeps,
 		defer cancel()
 		if tree.path != "" {
 			ctx = types.WithSandboxPolicy(ctx, policyWithRoot(base, tree.path))
+		} else if !mayWrite(cfg) {
+			// A read-only background task gets the same narrowing as a synchronous
+			// one (roadmap C6, S3).
+			if narrowed, ok := ReadOnlyTier(runPolicy(base)); ok {
+				ctx = types.WithSandboxPolicy(ctx, narrowed)
+			}
 		}
 
 		watchdog := time.AfterFunc(bgTaskTimeout, func() {

@@ -265,3 +265,49 @@ func containerInvocationFor(ctx context.Context, policy types.SandboxPolicy, cmd
 	}
 	return ContainerInvocation(policy, DefaultSandbox.Container, cmdStr)
 }
+
+// ReadOnlyTier returns the policy a read-only agent should run under: the
+// session's, narrowed to the container tier when this host has one, or unchanged
+// when it does not.
+//
+// Narrowing is allowed without a configuration flag because it cannot widen
+// anything: the agent has no write tools, and running its commands in an image
+// with the project mounted read-only takes away the network and the host's
+// filesystem rather than granting either. A host without a runtime keeps the
+// session's tier: an opportunistic narrowing is not a promise, so it must not
+// fail the task that could have run.
+func ReadOnlyTier(session types.SandboxPolicy) (types.SandboxPolicy, bool) {
+	if session.Tier == types.SandboxTierContainer || session.Tier == types.SandboxTierNone {
+		return session, false
+	}
+	cfg := DefaultSandbox.Container
+	if cfg == nil || strings.TrimSpace(cfg.Image) == "" {
+		return session, false
+	}
+	// A container needs something to mount: without a project root the command
+	// could not run at all, so narrowing to it would only break the task.
+	if strings.TrimSpace(session.ProjectRoot) == "" {
+		return session, false
+	}
+	if probe := ProbeContainer(containerRuntime()); !probe.Available {
+		return session, false
+	}
+	narrowed := session
+	narrowed.Tier = types.SandboxTierContainer
+	// Read-only as well: a container whose project mount is writable would let a
+	// read-only agent's `bash` change files the agent's own tools cannot.
+	narrowed.Mode = types.SandboxReadOnly
+	return narrowed, true
+}
+
+// ReadOnlyTierStatus names what a read-only agent would run under, for /sandbox.
+func ReadOnlyTierStatus() string {
+	policy := PolicyFor(types.SandboxWorkspaceWrite)
+	if _, ok := ReadOnlyTier(policy); ok {
+		return fmt.Sprintf("container, read-only (%s)", ProbeContainer(containerRuntime()))
+	}
+	if policy.Tier == types.SandboxTierContainer {
+		return "container, read-only (inherited from the session)"
+	}
+	return "the session's tier (no container runtime or image configured)"
+}

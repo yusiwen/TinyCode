@@ -71,6 +71,10 @@ consequence to know: **the caches do not survive a command**, so a cold build pa
 A host with only the client reports unavailable with the daemon's own message; a run that named
 `container` then refuses rather than running in the weaker tier.
 
+A delegated **read-only** agent narrows to the container by itself (read-only mount, network off) when the
+host has a runtime and an image — a narrowing grants nothing, so it needs no flag — and keeps the session's
+tier when it cannot. [tiers.md](tiers.md) is the page for the whole ladder.
+
 ## One policy per run
 
 `types.SandboxPolicy` carries the mode, the project root, the writable roots and
