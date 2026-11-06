@@ -1,0 +1,7 @@
+A user-configured hook that runs past its timeout is supposed to be killed, and the agent is supposed to carry
+on. In practice, a hook like `sleep 5; true` configured with `timeout_ms: 50` makes the tool call last about
+five seconds: the timeout reaches the shell, but the call still waits.
+
+Reproduce it however you like — a small Go test in `hook/`, or a temporary config and a command. Then find the
+cause and fix it without weakening what the timeout means: a hook that outlives its bound must be reported as
+timed out, and the run must continue.

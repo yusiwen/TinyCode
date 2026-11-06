@@ -1,0 +1,5 @@
+# The tree the agent gets: the commit before the fix. The tests come from the fix.
+base: f5904b0
+fix: 8f1433f
+packages: ./hook
+hidden: hook/hook_test.go

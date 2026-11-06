@@ -140,3 +140,84 @@ framework.
 Read the tokens-per-solved-task rows together with the pass rates. A tier that costs three times as much to
 solve is a different kind of difficulty from one that simply fails more often, and a future evaluator will
 want to know which one it is measuring.
+
+## Repository-level tasks
+
+The eighteen tasks above are hand-written modules, and three increments of evidence say why that is the
+limit of what they can measure: the difficulty *knobs* move cost, not success. Issue
+[#332](https://github.com/yusiwen/TinyCode/issues/332) takes the other route the earlier conclusions named —
+**the domain** — with tasks built from this repository's own fix history.
+
+A task is a directory under `eval/repo-tasks/<name>/` with two files:
+
+```
+TASK          # base: <sha>, fix: <sha>, packages: ./hook, hidden: hook/hook_test.go
+PROMPT        # the symptom, without naming a file or a test
+```
+
+| Part | Where it comes from |
+| :--- | :--- |
+| the tree the agent gets | `git archive <base>` — a real 100-file repository, materialized at run time |
+| the grade | the test files the **fix** commit changed, injected after the attempt (`hidden:`) |
+| the reference fix | the fix commit's non-test diff, used only by the offline gate |
+| what the agent sees | the prompt; the tests never reach the work copy |
+
+Two properties follow, and both matter:
+
+- **The tests are hidden**, so the agent has to find the defect in a real tree rather than read the assertion
+  it must satisfy. The base tree also has no `.git`, so the fix commit is not reachable from the work copy.
+- **The grade is the fix's own tests**, so the task measures "did the agent reach the behaviour the fix
+  reached", not "did it write the change we had in mind".
+
+Grading runs `go test <packages>` rather than `./...`: the whole suite takes minutes and is not what the task
+is about.
+
+### Running one
+
+```bash
+make build
+cp bin/tinycode /tmp/tinycode-under-test     # the harness path quirk; see repo-index-spike.md
+TINYCODE_EVAL=1 go run ./eval/runner \
+  -repo-tasks eval/repo-tasks -repo . -configurations build -reps 2 \
+  -out /tmp/repo-eval -work /tmp/repo-eval-work -binary /tmp/tinycode-under-test
+```
+
+`-repo` names the git repository the commits are read from; the tree is never copied into the repository, so
+a task is reproducible only against this repository's history.
+
+### The gate that runs without money
+
+`go test ./eval/runner -run RepoTask` materializes one task, injects the fix's tests, proves it **red**, and
+proves the reference patch makes it **green** — no provider, no network. The corpus's second task is proved
+the same way by hand (`eval/repo-tasks/../check` is not committed; the PR for #332 records both halves).
+
+### The first measurement
+
+Two tasks, `build`, two repetitions each (2026-11-06):
+
+| Task | Solved | Cost |
+| :--- | :--- | :--- |
+| `hook-timeout` | **2/2** (46 and 50 steps) | ~1.72M tokens each |
+| `root-threading` | **0/2** (one hit the 50-step limit; the other answered without passing) | 2.55M tokens for the recorded attempt; the second run's trajectory recorded no steps, which is noted rather than explained away |
+
+**One of the two defeated the funded agent**, so the domain lever is real — and the increment's
+pre-registered condition ("at least two tasks defeat `build`") was **not met**. Two facts are worth keeping:
+
+- `hook-timeout` was too easy for the repository it sits in: the fix is the same idiom the codebase already
+  uses in `tool/bash.go`, and the agent found it in one pass. A repository-level task still has to be hard
+  *for that repository*.
+- `root-threading` defeated the agent by being a **cross-cutting change**: several files derive the root for
+  one call, and the agent's first attempt patched one of them and reasoned about "what remains" at the step
+  limit. That is the shape the F1 entry has been pointing at since the first increment — a failure mode that
+  is not "one package, one test suite".
+
+What follows, per the condition: the set needs more tasks of the second shape (and fewer of the first) before
+anything is claimed about "a framework"; a framework built on two tasks would measure the pair, not the agent.
+
+### What it does not do
+
+- **Two tasks, not a benchmark.** They exist to test whether the domain lever works at all.
+- **The hidden tests must compile against the base tree**, or "red" would mean "the test does not build".
+  Both current tasks satisfy this, and it is the first thing to check when adding a task.
+- **The base tree is not committed**: reproducibility depends on this repository's history, which is the
+  point of the exercise and also its limit.

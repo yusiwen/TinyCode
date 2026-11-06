@@ -859,6 +859,15 @@ working directory only — it never walks upward and never merges nested files (
   real repository, a multi-hour refactor, a failure mode that is not "one package, one test suite".
   **D7 supplies the execution mechanism for that domain**: a task set can span more work than one
   request, without a human typing "continue" between rounds.
+- **Repository-level tasks** ([#332](https://github.com/yusiwen/TinyCode/issues/332)) — the domain the previous
+  increment named. A task is this repository at a commit **before** a fix, materialized from `git archive` at
+  run time, with the fix's own test files injected only after the attempt and the fix's non-test diff kept as
+  the reference. **Measured 2026-11-06, four runs**: `hook-timeout` solved 2/2 (too easy — its fix is an idiom
+  the codebase already uses), `root-threading` **0/2** (a cross-cutting change; one attempt hit the 50-step
+  limit with "what remains" reasoning). One of two defeated the funded agent, so the domain lever is real, and
+  the pre-registered condition ("at least two") was not met: the next increment is more tasks of the
+  cross-cutting shape, not a framework. The machinery, the format and the costs are in
+  [eval.md](eval.md#repository-level-tasks).
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the

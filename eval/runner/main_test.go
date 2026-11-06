@@ -259,3 +259,21 @@ func TestEverySolutionBelongsToATask(t *testing.T) {
 		}
 	}
 }
+
+// TestRemoveScratchHandlesAReadOnlyCache: an attempt's work copy carries a
+// read-only Go module cache, and a plain RemoveAll leaves it behind.
+func TestRemoveScratchHandlesAReadOnlyCache(t *testing.T) {
+	dir := t.TempDir()
+	cache := filepath.Join(dir, ".scratch", "gopath", "pkg", "mod", "example")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(cache, "readonly.go")
+	if err := os.WriteFile(file, []byte("package x\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	removeScratch(dir)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the scratch tree survived: %v", err)
+	}
+}
