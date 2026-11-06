@@ -868,8 +868,14 @@ working directory only — it never walks upward and never merges nested files (
   the pre-registered condition ("at least two") was not met: the next increment is more tasks of the
   cross-cutting shape, not a framework. A third task, `run-compaction` (a run's own messages never compact, so a
   long round grows until the provider refuses), was added with a test written for the behaviour rather than
-  taken from a fix commit; it is red before its reference and green after, but **its measured run is still to
-  come**. The machinery, the format and the costs are in [eval.md](eval.md#repository-level-tasks).
+  taken from a fix commit. **Re-measured 2026-11-06, six runs: `build` solved 1/3.** `hook-timeout` 2/2,
+  `root-threading` 0/2, `run-compaction` 0/2 — **two of three defeat the default configuration**, which is this
+  increment's condition, and the reading that goes with it: every recorded attempt ended at the **50-step
+  limit** (so the budget is the binding constraint, not only the task), two attempts were killed by the
+  harness timeout and recorded no trajectory, and tokens per solved task rose to **9.0M** against 88k–184k
+  on the module-level set. What remains of F1 is pass@k and a regression baseline on this corpus — and a
+  baseline that costs 9M tokens per solved task is run deliberately, not in CI. The machinery, the format
+  and the costs are in [eval.md](eval.md#repository-level-tasks).
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the
