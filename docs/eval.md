@@ -197,9 +197,25 @@ Two tasks, `build`, two repetitions each (2026-11-06):
 
 | Task | Solved | Cost |
 | :--- | :--- | :--- |
-| `hook-timeout` | **2/2** (46 and 50 steps) | ~1.72M tokens each |
-| `root-threading` | **0/2** (one hit the 50-step limit; the other answered without passing) | 2.55M tokens for the recorded attempt; the second run's trajectory recorded no steps, which is noted rather than explained away |
-| `run-compaction` | **not measured yet** — added after the first run; see below | — |
+| `hook-timeout` | **2/2** (50 steps each) | ~1.55M and 1.58M tokens |
+| `root-threading` | **0/2** (one hit the 50-step limit; the other was killed by the attempt timeout and recorded no steps) | 2.56M tokens for the recorded attempt |
+| `run-compaction` | **0/2** (one hit the 50-step limit; the other killed by the attempt timeout) | 3.33M tokens for the recorded attempt |
+
+Across the set: `build` solved **1/3**, every repetition agreed on its verdict, the median attempt hit the
+**50-step limit**, and **tokens per solved task were 9.0M** — against 88k–184k on the module-level corpus. The
+second measurement, with the third task added, is the one that met this increment's condition:
+
+> **at least two tasks defeat the default configuration.**
+
+Two of three did. What that means, said precisely:
+
+- **The step budget is the binding constraint.** Every recorded run ended at 50 steps; the two hard tasks were
+  not solved *within the agent's configured budget*, which is a defeat and also a statement about the budget.
+- **Two attempts were killed by the harness timeout** (900 s) and recorded no trajectory; their `pass=false`
+  is honest but they are not evidence about difficulty. The next measurement should raise the timeout or
+  record the kill as a distinct outcome.
+- **The domain costs an order of magnitude more**: 9M tokens per solved task means a regression baseline on
+  this corpus has to be paid for deliberately, not on every change.
 
 **One of the two defeated the funded agent**, so the domain lever is real — and the increment's
 pre-registered condition ("at least two tasks defeat `build`") was **not met**. Two facts are worth keeping:
@@ -215,12 +231,11 @@ pre-registered condition ("at least two tasks defeat `build`") was **not met**. 
 What follows, per the condition: the set needs more tasks of the second shape (and fewer of the first) before
 anything is claimed about "a framework"; a framework built on two tasks would measure the pair, not the agent.
 
-A third task, `run-compaction`, was added after the first measurement: a test written for a behaviour no fix
+The third task, `run-compaction`, was added after the first measurement: a test written for a behaviour no fix
 commit carries (`hidden/agent/runcompaction_test.go` in the task directory), against a work copy at
 `0f4eea7` with the compaction of a run's own messages removed. The reference is the production diff of
 `65d35d4`. All three tasks are red before and green after their reference, checked by the same script the
-offline gate uses. Its measured run is the next step: the corpus grew after the first four runs, and a
-measurement that folded the new task into the old table would be a claim rather than a reading.
+offline gate uses. Its measured run is in the table above.
 
 ### What it does not do
 
