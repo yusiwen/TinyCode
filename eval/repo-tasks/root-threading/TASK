@@ -1,0 +1,5 @@
+# The tree the agent gets: the commit before the fix. The tests come from the fix.
+base: d272740
+fix: bdbc418
+packages: ./tool
+hidden: tool/sandboxroot_test.go

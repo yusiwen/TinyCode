@@ -69,6 +69,18 @@ type task struct {
 	// Tests is the digest of the task's test files, so an attempt that edited
 	// them can be told apart from one that passed honestly.
 	Tests map[string]string
+	// Repo, when set, makes this a repository-level task (roadmap F1): the work
+	// copy is materialized from git history and graded by the fix's own tests.
+	Repo *repoSpec
+}
+
+// repoSpec is what a repository-level task needs from git.
+type repoSpec struct {
+	Repo     string
+	Base     string
+	Fix      string
+	Packages []string
+	Hidden   []string
 }
 
 // runResult is one attempt.
@@ -102,6 +114,8 @@ func main() {
 	timeout := flag.Duration("timeout", 180*time.Second, "wall-clock bound for one attempt")
 	work := flag.String("work", "", "scratch directory (default: a fresh temporary one)")
 	only := flag.String("configurations", "", "comma-separated subset of the configurations")
+	repoTasks := flag.String("repo-tasks", "", "directory of repository-level tasks: each TASK names a base and a fix commit of -repo, and the work copy is materialized from git history")
+	repoPath := flag.String("repo", ".", "the git repository the -repo-tasks commits are read from")
 	hidden := flag.String("hidden", "", "directory of hidden tests to install after each attempt (one subdirectory per task); empty grades the work copy as it is")
 	render := flag.Bool("render", false, "re-render <out>/BASELINE.md from <out>/baseline.json, running nothing")
 	limitedBudget := flag.Int("limited-budget", configurations[1].MaxTokensPerRun,
@@ -138,9 +152,12 @@ func main() {
 	}
 
 	var tasks []task
-	if *hidden != "" {
+	switch {
+	case *repoTasks != "":
+		tasks, err = loadRepoTasks(*repoTasks, *repoPath)
+	case *hidden != "":
 		tasks, err = loadSpikeTasks(*tasksDir, *hidden)
-	} else {
+	default:
 		tasks, err = loadTasks(*tasksDir)
 	}
 	if err != nil {
@@ -160,7 +177,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		defer os.RemoveAll(scratch)
+		defer removeScratch(scratch)
 	}
 	fmt.Printf("evaluating %d tasks x %d configurations x %d reps = %d runs\n",
 		len(tasks), len(configs), *reps, len(tasks)*len(configs)*(*reps))
@@ -210,7 +227,11 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 	if err := os.MkdirAll(recordDir, 0o755); err != nil {
 		return runResult{}, err
 	}
-	if err := copyTask(tk, workDir); err != nil {
+	if tk.Repo != nil {
+		if err := materializeRepoTask(tk.Repo, workDir); err != nil {
+			return runResult{}, err
+		}
+	} else if err := copyTask(tk, workDir); err != nil {
 		return runResult{}, err
 	}
 
@@ -292,8 +313,22 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 	}
 
 	// Graded by the task's own test command, in the copy the agent was given.
-	result.Pass = gradeTask(workDir)
-	modified, err := testsModified(tk, workDir)
+	if tk.Repo != nil {
+		// The grade is the fix's tests, injected now — after the run, never in
+		// the work copy the agent saw.
+		if err := injectRepoTaskTests(tk.Repo, workDir); err != nil {
+			return runResult{}, err
+		}
+		result.Pass = gradeRepoTask(workDir, tk.Repo.Packages)
+	} else {
+		result.Pass = gradeTask(workDir)
+	}
+	// A repository-level task has no tests in its work copy: the grade is
+	// injected after the run, so there is nothing for the agent to have edited.
+	modified := false
+	if tk.Repo == nil {
+		modified, err = testsModified(tk, workDir)
+	}
 	if err != nil {
 		return runResult{}, err
 	}
@@ -416,6 +451,19 @@ func testDigests(dir string) (map[string]string, error) {
 		digests[entry.Name()] = digest(data)
 	}
 	return digests, nil
+}
+
+// removeScratch deletes a scratch tree, making it writable first: an attempt's
+// work copy carries the Go module cache its command used, and those files are
+// read-only, so a plain RemoveAll fails on every entry and leaves the tree behind.
+func removeScratch(dir string) {
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && info.Mode()&0o200 == 0 {
+			_ = os.Chmod(path, info.Mode()|0o200)
+		}
+		return nil
+	})
+	_ = os.RemoveAll(dir)
 }
 
 // testsModified reports whether any test file in the work copy differs from the

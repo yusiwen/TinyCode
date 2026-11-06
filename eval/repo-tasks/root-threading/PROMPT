@@ -1,0 +1,8 @@
+A delegated task can be given its own working root — a different directory from the session's — so that its
+file tools and its shell commands agree about where they work. That agreement is missing: a command run on
+behalf of a task with its own root still starts in the session's directory, and the file tools do not resolve
+relative paths against the task's root either.
+
+Reproduce it however you like — a small Go test that names another root in the run's sandbox policy and runs
+`pwd`, for instance. Then find every place that derives the root for one call and make them agree, without
+changing what happens for a run that has no per-call root.
