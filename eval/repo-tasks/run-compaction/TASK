@@ -1,0 +1,5 @@
+# The tree the agent gets: the commit before the fix. The grade is the test below.
+base: 0f4eea7
+fix: 65d35d4
+packages: ./agent
+hidden: agent/runcompaction_test.go

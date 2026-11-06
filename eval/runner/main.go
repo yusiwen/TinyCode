@@ -81,6 +81,8 @@ type repoSpec struct {
 	Fix      string
 	Packages []string
 	Hidden   []string
+	// Dir is the task's directory, where an optional hidden/ tree lives.
+	Dir string
 }
 
 // runResult is one attempt.

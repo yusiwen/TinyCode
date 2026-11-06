@@ -866,8 +866,10 @@ working directory only — it never walks upward and never merges nested files (
   the codebase already uses), `root-threading` **0/2** (a cross-cutting change; one attempt hit the 50-step
   limit with "what remains" reasoning). One of two defeated the funded agent, so the domain lever is real, and
   the pre-registered condition ("at least two") was not met: the next increment is more tasks of the
-  cross-cutting shape, not a framework. The machinery, the format and the costs are in
-  [eval.md](eval.md#repository-level-tasks).
+  cross-cutting shape, not a framework. A third task, `run-compaction` (a run's own messages never compact, so a
+  long round grows until the provider refuses), was added with a test written for the behaviour rather than
+  taken from a fix commit; it is red before its reference and green after, but **its measured run is still to
+  come**. The machinery, the format and the costs are in [eval.md](eval.md#repository-level-tasks).
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the

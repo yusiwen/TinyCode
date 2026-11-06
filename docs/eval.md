@@ -199,6 +199,7 @@ Two tasks, `build`, two repetitions each (2026-11-06):
 | :--- | :--- | :--- |
 | `hook-timeout` | **2/2** (46 and 50 steps) | ~1.72M tokens each |
 | `root-threading` | **0/2** (one hit the 50-step limit; the other answered without passing) | 2.55M tokens for the recorded attempt; the second run's trajectory recorded no steps, which is noted rather than explained away |
+| `run-compaction` | **not measured yet** — added after the first run; see below | — |
 
 **One of the two defeated the funded agent**, so the domain lever is real — and the increment's
 pre-registered condition ("at least two tasks defeat `build`") was **not met**. Two facts are worth keeping:
@@ -213,6 +214,13 @@ pre-registered condition ("at least two tasks defeat `build`") was **not met**. 
 
 What follows, per the condition: the set needs more tasks of the second shape (and fewer of the first) before
 anything is claimed about "a framework"; a framework built on two tasks would measure the pair, not the agent.
+
+A third task, `run-compaction`, was added after the first measurement: a test written for a behaviour no fix
+commit carries (`hidden/agent/runcompaction_test.go` in the task directory), against a work copy at
+`0f4eea7` with the compaction of a run's own messages removed. The reference is the production diff of
+`65d35d4`. All three tasks are red before and green after their reference, checked by the same script the
+offline gate uses. Its measured run is the next step: the corpus grew after the first four runs, and a
+measurement that folded the new task into the old table would be a claim rather than a reading.
 
 ### What it does not do
 

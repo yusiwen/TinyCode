@@ -1,0 +1,7 @@
+A single run grows until the provider refuses it: every step appends the assistant message and every tool
+result to the run's own message list, and only the *history* between runs is ever compressed. A long round —
+a continuation, a build-fix loop — therefore ends with a context-length error instead of an answer.
+
+Make the run compact its own messages when they cross the compression threshold, without losing the recent
+steps it is reasoning about and without breaking tool calls: an assistant message with tool calls must stay
+with the results that answer it.
