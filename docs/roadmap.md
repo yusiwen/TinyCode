@@ -875,7 +875,9 @@ working directory only — it never walks upward and never merges nested files (
   harness timeout and recorded no trajectory, and tokens per solved task rose to **9.0M** against 88k–184k
   on the module-level set. What remains of F1 is pass@k and a regression baseline on this corpus — and a
   baseline that costs 9M tokens per solved task is run deliberately, not in CI. The machinery, the format
-  and the costs are in [eval.md](eval.md#repository-level-tasks).
+  and the costs are in [eval.md](eval.md#repository-level-tasks). A harness defect the measurement exposed is
+  [#336](https://github.com/yusiwen/TinyCode/issues/336): a killed attempt is recorded as zero tokens and
+  `stop=None`, which corrupts the median-steps and tokens-per-solved-task rows.
 - **Prepared for**: the record it needs exists now — one JSONL file per run with steps, durations,
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the
