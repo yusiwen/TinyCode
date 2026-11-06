@@ -16,17 +16,6 @@ import (
 	"strings"
 )
 
-// repoTask describes one repository-level task. Its directory holds a TASK file
-// (base:, fix:, packages:, hidden:) and a PROMPT.
-type repoTask struct {
-	Name     string
-	Dir      string
-	Base     string   // the commit whose tree the agent gets (the bug state)
-	Fix      string   // the commit that fixed it (the tests come from here)
-	Packages []string // what grading runs: "go test <packages>"
-	Hidden   []string // test files, taken from Fix, injected after the run
-}
-
 // loadRepoTasks reads every task directory under dir, with files read through git
 // in repo.
 func loadRepoTasks(dir, repo string) ([]task, error) {
