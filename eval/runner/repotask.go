@@ -46,7 +46,7 @@ func loadRepoTasks(dir, repo string) ([]task, error) {
 			Name:   entry.Name(),
 			Dir:    path,
 			Prompt: strings.TrimSpace(string(prompt)),
-			Repo:   &repoSpec{Repo: repo, Base: spec.Base, Fix: spec.Fix, Packages: spec.Packages, Hidden: spec.Hidden},
+			Repo:   &repoSpec{Repo: repo, Base: spec.Base, Fix: spec.Fix, Packages: spec.Packages, Hidden: spec.Hidden, Dir: path},
 		})
 	}
 	if len(tasks) == 0 {
@@ -130,12 +130,17 @@ func materializeRepoTask(spec *repoSpec, dir string) error {
 	return nil
 }
 
-// injectRepoTaskTests writes the fix commit's test files into the work copy.
+// injectRepoTaskTests writes the task's hidden tests into the work copy.
+//
+// A hidden test comes from one of two places: the task's own hidden/ directory
+// (a test written for a behaviour that no fix commit carries), or, when that
+// directory has no such file, the fix commit itself (a test the fix added). The
+// first is why a task no longer needs a commit that touched a test file.
 func injectRepoTaskTests(spec *repoSpec, dir string) error {
 	for _, path := range spec.Hidden {
-		data, err := gitOutput(spec.Repo, "show", spec.Fix+":"+path)
+		data, err := readHiddenTest(spec, path)
 		if err != nil {
-			return fmt.Errorf("read %s from %s: %w", path, spec.Fix, err)
+			return fmt.Errorf("read hidden test %s: %w", path, err)
 		}
 		target := filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -146,6 +151,17 @@ func injectRepoTaskTests(spec *repoSpec, dir string) error {
 		}
 	}
 	return nil
+}
+
+// readHiddenTest returns the hidden test's bytes: the task's own hidden/ file
+// first, the fix commit second.
+func readHiddenTest(spec *repoSpec, path string) (string, error) {
+	if spec.Dir != "" {
+		if data, err := os.ReadFile(filepath.Join(spec.Dir, "hidden", path)); err == nil {
+			return string(data), nil
+		}
+	}
+	return gitOutput(spec.Repo, "show", spec.Fix+":"+path)
 }
 
 // repoSolutionPatch is the fix's non-test diff: what the offline validation
