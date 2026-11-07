@@ -87,16 +87,21 @@ type repoSpec struct {
 
 // runResult is one attempt.
 type runResult struct {
-	Configuration string           `json:"configuration"`
-	Task          string           `json:"task"`
-	Rep           int              `json:"rep"`
-	Pass          bool             `json:"pass"`
-	TestsModified bool             `json:"tests_modified"`
-	ExitCode      int              `json:"exit_code"`
-	WallMS        int64            `json:"wall_ms"`
-	Model         string           `json:"model,omitempty"`
-	Tier          int              `json:"tier,omitempty"`
-	Stop          string           `json:"stop,omitempty"`
+	Configuration string `json:"configuration"`
+	Task          string `json:"task"`
+	Rep           int    `json:"rep"`
+	Pass          bool   `json:"pass"`
+	TestsModified bool   `json:"tests_modified"`
+	ExitCode      int    `json:"exit_code"`
+	WallMS        int64  `json:"wall_ms"`
+	Model         string `json:"model,omitempty"`
+	Tier          int    `json:"tier,omitempty"`
+	Stop          string `json:"stop,omitempty"`
+	// Killed is set when the runner's wall-clock bound stopped the attempt: the
+	// process never reached a stop of its own, so its steps and tokens are a
+	// prefix rather than a result, and the report excludes them from the rows
+	// that describe an attempt's cost (issue #336).
+	Killed        bool             `json:"killed,omitempty"`
 	Steps         int              `json:"steps"`
 	Tokens        int              `json:"tokens"`
 	Cost          types.CostTotals `json:"cost,omitempty"`
@@ -276,8 +281,19 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 			return runResult{}, fmt.Errorf("run %s/%s/rep%d: %w", cfg.Name, tk.Name, rep, runErr)
 		}
 	}
-	if ctx.Err() != nil {
-		result.Note = "the attempt hit the runner's wall-clock bound"
+	killed := ctx.Err() != nil
+	if killed {
+		// The kill is a verdict (the attempt did not pass) and a fact about the
+		// attempt (it was stopped, not finished). Both are recorded, so no later
+		// row can read a zero as a measurement.
+		result.Killed = true
+		result.Note = fmt.Sprintf("the attempt hit the runner's wall-clock bound (%s) and was killed", timeout)
+	}
+
+	// A killed attempt has no stop of its own; saying so in the same field the
+	// report groups by keeps "timeout" visible instead of blank (issue #336).
+	if killed && result.Stop == "" {
+		result.Stop = "timeout"
 	}
 
 	// The record first: it is what a missing file has to be reported from.
@@ -296,11 +312,15 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 		result.Cost = run.Cost
 		result.Tools = run.Tools
 		result.TrajectoryRun = run.Run
-		if !run.Complete {
+		if !run.Complete && !killed {
 			result.Note = "the run left no run.end"
 		}
 	case 0:
-		result.Note = "the run left no trajectory"
+		if killed {
+			result.Note += "; the run left no trajectory, so it is recorded as killed with no step or token count"
+		} else {
+			result.Note = "the run left no trajectory"
+		}
 	default:
 		result.Note = fmt.Sprintf("the run left %d trajectories", len(summaries))
 	}

@@ -25,6 +25,7 @@ type taskSummary struct {
 	Solved       bool           `json:"solved"`   // a majority of reps passed
 	Agreed       bool           `json:"agreed"`   // every rep agreed
 	Tampered     int            `json:"tampered"` // reps whose test files were edited
+	Killed       int            `json:"killed"`   // reps the runner's bound stopped
 	MedianSteps  int            `json:"median_steps"`
 	MedianTokens int            `json:"median_tokens"`
 	Stops        map[string]int `json:"stops,omitempty"`
@@ -61,6 +62,10 @@ type configSummary struct {
 	Stops           map[string]int   `json:"stops,omitempty"`
 	Tools           map[string]int   `json:"tools,omitempty"`
 	MissingRecords  int              `json:"missing_records"`
+	// Killed counts the attempts the runner's wall-clock bound stopped. They are
+	// failures, and they are left out of the median and per-solved rows: their
+	// steps and tokens are a prefix, not a result (issue #336).
+	Killed int `json:"killed,omitempty"`
 }
 
 // verdict is the question the spike exists to answer, answered.
@@ -159,6 +164,9 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 			if result.Pass {
 				summary.Passes++
 			}
+			if result.Killed {
+				summary.Killed++
+			}
 			summary.Runs++
 			if len(result.Cost) > 0 {
 				if summary.Cost == nil {
@@ -187,6 +195,12 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 				agreed++
 			}
 			for _, result := range byTask[name] {
+				// A killed attempt never reached a stop, so its counts are a prefix
+				// of an attempt rather than the cost of one; the rows that describe
+				// cost must not average it in (issue #336).
+				if result.Killed {
+					continue
+				}
 				steps = append(steps, result.Steps)
 				tokens = append(tokens, result.Tokens)
 			}
@@ -238,8 +252,14 @@ func summariseTask(name string, results []runResult) taskSummary {
 		if result.Stop != "" {
 			cell.Stops[result.Stop]++
 		}
+		if result.Killed {
+			cell.Killed++
+		}
 		for tool, count := range result.Tools {
 			cell.Tools[tool] += count
+		}
+		if result.Killed {
+			continue
 		}
 		steps = append(steps, result.Steps)
 		tokens = append(tokens, result.Tokens)
@@ -348,16 +368,23 @@ func printMarkdown(w io.Writer, report baselineReport) {
 		fmt.Fprintf(w, "Models: %s\n\n", strings.Join(names, ", "))
 	}
 
-	fmt.Fprintf(w, "| Configuration | Solved | Pass rate | Reps agreed | Median steps | Median tokens | Tokens per solved task | Stops |\n")
-	fmt.Fprintf(w, "| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+	fmt.Fprintf(w, "| Configuration | Solved | Pass rate | Reps agreed | Median steps | Median tokens | Tokens per solved task | Killed | Stops |\n")
+	fmt.Fprintf(w, "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
+	killedTotal := 0
 	for _, cfg := range report.Configurations {
 		rate := 0.0
 		if cfg.Runs > 0 {
 			rate = float64(cfg.Passes) / float64(cfg.Runs)
 		}
-		fmt.Fprintf(w, "| `%s` | %d/%d | %.0f%% | %.0f%% | %d | %d | %d | %s |\n",
+		killedTotal += cfg.Killed
+		fmt.Fprintf(w, "| `%s` | %d/%d | %.0f%% | %.0f%% | %d | %d | %d | %d | %s |\n",
 			cfg.Name, cfg.Solved, cfg.TaskCount, rate*100, cfg.Agreement*100,
-			cfg.MedianSteps, cfg.MedianTokens, cfg.TokensPerSolved, stopsText(cfg.Stops))
+			cfg.MedianSteps, cfg.MedianTokens, cfg.TokensPerSolved, cfg.Killed, stopsText(cfg.Stops))
+	}
+	if killedTotal > 0 {
+		// The numbers the kill invalidates have to say so, or a reader takes a
+		// zero for a measured value (issue #336).
+		fmt.Fprintf(w, "\n**%d attempt(s) were killed by the runner's wall-clock bound.** They count as failures and are excluded from the median steps, median tokens and tokens-per-solved-task rows: a killed attempt never reached a stop, so what it recorded is a prefix, not a result. Raise `-timeout` if they are a large share.\n", killedTotal)
 	}
 
 	fmt.Fprintf(w, "\n**Verdict.** ")

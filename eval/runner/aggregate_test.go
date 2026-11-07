@@ -408,3 +408,49 @@ func TestDifficultyIsMeasuredFromTheRuns(t *testing.T) {
 		}
 	}
 }
+
+// TestKilledAttemptsCountAsFailuresAndLeaveTheCostRows is issue #336: a kill is a
+// verdict and a fact, so it must count as a failure without being averaged into
+// rows that describe a finished attempt.
+func TestKilledAttemptsCountAsFailuresAndLeaveTheCostRows(t *testing.T) {
+	results := []runResult{
+		// One solved attempt: 10 steps, 1000 tokens.
+		{Configuration: "build", Task: "easy", Rep: 0, Pass: true, Stop: "final", Steps: 10, Tokens: 1000, TrajectoryRun: "r1"},
+		// One killed attempt: it recorded a prefix (3 steps, 0 tokens) before the kill.
+		{Configuration: "build", Task: "hard", Rep: 0, Pass: false, Killed: true, Stop: "timeout", Steps: 3, Tokens: 0, TrajectoryRun: ""},
+		// One finished failure: 40 steps, 4000 tokens.
+		{Configuration: "build", Task: "hard", Rep: 1, Pass: false, Stop: "step_limit", Steps: 40, Tokens: 4000, TrajectoryRun: "r2"},
+	}
+	report, err := summarise(results, []configuration{{Name: "build", Mode: "build"}})
+	if err != nil {
+		t.Fatalf("summarise: %v", err)
+	}
+	cfg := report.Configurations[0]
+	if cfg.Killed != 1 {
+		t.Fatalf("killed = %d, want 1", cfg.Killed)
+	}
+	// The solved count is by task majority: "hard" has two failures, "easy" one pass.
+	if cfg.Solved != 1 || cfg.TaskCount != 2 {
+		t.Fatalf("solved = %d/%d", cfg.Solved, cfg.TaskCount)
+	}
+	// Medians over the two finished attempts (upper median): steps [10, 40] → 40,
+	// tokens [1000, 4000] → 4000. Had the killed prefix (3, 0) been included the
+	// answers would be 10 and 1000, so this assertion distinguishes the two.
+	if cfg.MedianSteps != 40 || cfg.MedianTokens != 4000 {
+		t.Fatalf("medians = %d steps / %d tokens, want the killed attempt excluded", cfg.MedianSteps, cfg.MedianTokens)
+	}
+	// Tokens per solved task counts only the finished attempts: (1000+4000)/1.
+	if cfg.TokensPerSolved != 5000 {
+		t.Fatalf("tokens per solved = %d, want 5000", cfg.TokensPerSolved)
+	}
+	if cfg.Stops["timeout"] != 1 {
+		t.Fatalf("stops = %v, want the kill grouped as timeout", cfg.Stops)
+	}
+
+	// The rendered report says so, in words a reader cannot mistake for a zero.
+	var out strings.Builder
+	printMarkdown(&out, report)
+	if !strings.Contains(out.String(), "killed by the runner's wall-clock bound") {
+		t.Fatalf("the report does not mention the kill:\n%s", out.String())
+	}
+}
