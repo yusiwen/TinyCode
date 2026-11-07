@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // write makes a file with its directories.
@@ -275,5 +276,45 @@ func TestRemoveScratchHandlesAReadOnlyCache(t *testing.T) {
 	removeScratch(dir)
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("the scratch tree survived: %v", err)
+	}
+}
+
+// TestAttemptRecordsAKillAsItsOwnOutcome is issue #336: the bound stopping an
+// attempt must be visible in the result, not inferred from zeros.
+func TestAttemptRecordsAKillAsItsOwnOutcome(t *testing.T) {
+	// A binary that outlives the bound. It is a shell script so the test needs no
+	// provider and no money.
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "slow-agent")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	taskDir := filepath.Join(dir, "task")
+	if err := os.MkdirAll(taskDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taskDir, "PROMPT"), []byte("do it"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taskDir, "go.mod"), []byte("module example.com/task\n\ngo 1.27\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := attempt(t.TempDir(), fake, configuration{Name: "build", Mode: "build"},
+		task{Name: "t", Dir: taskDir, Prompt: "do it"}, 0, 300*time.Millisecond, "")
+	if err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if !result.Killed {
+		t.Fatal("the attempt was not recorded as killed")
+	}
+	if result.Stop != "timeout" {
+		t.Fatalf("stop = %q, want timeout", result.Stop)
+	}
+	if !strings.Contains(result.Note, "wall-clock bound") {
+		t.Fatalf("note = %q, want the bound named", result.Note)
+	}
+	if result.Pass {
+		t.Fatal("a killed attempt passed")
 	}
 }

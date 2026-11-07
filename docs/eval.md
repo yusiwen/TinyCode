@@ -211,9 +211,12 @@ Two of three did. What that means, said precisely:
 
 - **The step budget is the binding constraint.** Every recorded run ended at 50 steps; the two hard tasks were
   not solved *within the agent's configured budget*, which is a defeat and also a statement about the budget.
-- **Two attempts were killed by the harness timeout** (900 s) and recorded no trajectory; their `pass=false`
-  is honest but they are not evidence about difficulty. The next measurement should raise the timeout or
-  record the kill as a distinct outcome.
+- **Two attempts were killed by the harness timeout** (900 s). They count as failures, and the runner now
+  records them as such ([#336](https://github.com/yusiwen/TinyCode/issues/336)): the result carries
+  `killed: true` and `stop: "timeout"`, the report has a **Killed** column, and the median-steps,
+  median-tokens and tokens-per-solved-task rows exclude them — a killed attempt never reached a stop, so
+  what it recorded is a prefix, not a result. A study that leaves them in would read a zero as a
+  measurement.
 - **The domain costs an order of magnitude more**: 9M tokens per solved task means a regression baseline on
   this corpus has to be paid for deliberately, not on every change.
 
