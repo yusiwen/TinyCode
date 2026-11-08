@@ -44,6 +44,12 @@ type configuration struct {
 	// the treatment arm of the repository-index spike (roadmap B4): no new
 	// capability to call, just the map in hand.
 	RepoMap bool
+	// SystemPrompt replaces the agent's prompt; empty keeps the built-in one.
+	SystemPrompt string
+	// Model is "<provider>/<model>"; empty keeps the configured route.
+	Model string
+	// MaxSteps overrides the agent's step budget; 0 keeps the built-in one.
+	MaxSteps int
 }
 
 var configurations = []configuration{
@@ -123,6 +129,7 @@ func main() {
 	only := flag.String("configurations", "", "comma-separated subset of the configurations")
 	repoTasks := flag.String("repo-tasks", "", "directory of repository-level tasks: each TASK names a base and a fix commit of -repo, and the work copy is materialized from git history")
 	repoPath := flag.String("repo", ".", "the git repository the -repo-tasks commits are read from")
+	variantsPath := flag.String("variants", "", "JSON file of A/B variants (name, mode, system_prompt or system_prompt_file, model, max_steps, max_tokens_per_run, repo_map); replaces the built-in configurations")
 	hidden := flag.String("hidden", "", "directory of hidden tests to install after each attempt (one subdirectory per task); empty grades the work copy as it is")
 	render := flag.Bool("render", false, "re-render <out>/BASELINE.md from <out>/baseline.json, running nothing")
 	baselinePath := flag.String("baseline", "", "a stored baseline.json to compare this run against; the comparison is written into the report")
@@ -173,6 +180,12 @@ func main() {
 		fail(err)
 	}
 	configs := configurations
+	if *variantsPath != "" {
+		configs, err = loadVariants(*variantsPath)
+		if err != nil {
+			fail(err)
+		}
+	}
 	if *only != "" {
 		configs, err = selectConfigurations(*only)
 		if err != nil {
@@ -219,6 +232,9 @@ func main() {
 	report, err := summarise(results, configs)
 	if err != nil {
 		fail(err)
+	}
+	if len(report.Configurations) > 1 {
+		report.AB = compareVariants(report)
 	}
 	if *repoTasks != "" {
 		// A baseline is only comparable against the corpus that produced it, so the
@@ -584,18 +600,32 @@ func writeWorkConfig(workDir, recordDir string, cfg configuration) error {
 	type budget struct {
 		MaxTokensPerRun int `json:"max_tokens_per_run,omitempty"`
 	}
+	// The agent override is how a variant reaches the model: the same config keys
+	// a user's own file uses, so an experiment cannot exercise a code path the
+	// product does not have.
+	type agentOverride struct {
+		SystemPrompt string `json:"system_prompt,omitempty"`
+		Model        string `json:"model,omitempty"`
+		MaxSteps     int    `json:"max_steps,omitempty"`
+	}
 	type trajectory struct {
 		Dir string `json:"dir"`
 	}
 	document := struct {
-		DefaultMode string     `json:"default_mode"`
-		LogLevel    string     `json:"log_level"`
-		Budget      *budget    `json:"budget,omitempty"`
-		Trajectory  trajectory `json:"trajectory"`
+		DefaultMode string                   `json:"default_mode"`
+		LogLevel    string                   `json:"log_level"`
+		Budget      *budget                  `json:"budget,omitempty"`
+		Trajectory  trajectory               `json:"trajectory"`
+		Agents      map[string]agentOverride `json:"agents,omitempty"`
 	}{
 		DefaultMode: cfg.Mode,
 		LogLevel:    "warn",
 		Trajectory:  trajectory{Dir: recordDir},
+	}
+	if cfg.SystemPrompt != "" || cfg.Model != "" || cfg.MaxSteps > 0 {
+		document.Agents = map[string]agentOverride{
+			cfg.Mode: {SystemPrompt: cfg.SystemPrompt, Model: cfg.Model, MaxSteps: cfg.MaxSteps},
+		}
 	}
 	if cfg.MaxTokensPerRun > 0 {
 		document.Budget = &budget{MaxTokensPerRun: cfg.MaxTokensPerRun}
