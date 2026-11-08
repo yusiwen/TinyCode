@@ -11,21 +11,22 @@ table never trails the prose.
 
 ## Where the entries stand
 
-The source inventory lists 39 items; this document carries 40 entries, because D7 was recorded
-after it (see *Provenance and method*).
+The source inventory lists 39 items; this document carries 41 entries, because D7 and F4 were
+recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 22 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 23 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 1 | F1 — three increments landed, the next one is not opened |
-| Not started | 16 | verified gaps, no issue opened |
-| **Total** | **40** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
+| In progress | 0 | nothing is picked up right now |
+| Not started | 17 | verified gaps, no issue opened |
+| **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
-**Open work**: F1, whose next increment (a task set with headroom) is not opened,
+**Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
 [#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
 contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
-(steering input while a run streams), which is not a roadmap entry.
+(steering input while a run streams), which is not a roadmap entry. F1 is delivered; its judge became
+F4 rather than disappearing, so a deliberate exclusion is not mistaken for a finished capability.
 
 **Next, by the reading order**: C4 (the hooks bundle; then C5, C3, C6 — reordered on 2026-11-03 because
 hooks are the smallest item and two entries need them: C5 can fire a test command from one, and D7 needs a
@@ -69,9 +70,10 @@ injected map lost, so it reopens only under the three conditions its entry names
 | E3 | No IDE plugin | Not started |
 | E4 | Trajectories are not persisted in an analysable format | Delivered — #249 |
 | E5 | Refuted: project instruction files *are* loaded | Refuted |
-| F1 | No agent-level evaluation framework | In progress — #252 #254 #256 |
+| F1 | No agent-level evaluation framework | Delivered — #252 #254 #256 |
 | F2 | No A/B comparison mechanism | Not started |
 | F3 | Tool calls are not validated against their schema | Delivered — #200 |
+| F4 | The evaluation grades outcomes, never the process | Not started |
 | G1 | Delegation is two levels deep | Not started |
 | G2 | Sub-agent output is not streamed to the UI | Not started |
 | H1 | No i18n | Not started |
@@ -893,6 +895,12 @@ says how to record and refresh one — and a
   tokens, costs and per-tool outcomes (E4, issue #249), listed with `tinycode --trajectories` and
   documented in [trajectories.md](trajectories.md). What F1 still owns is the task set, the
   repetitions, pass@k and a judge: a record of what happened is not a verdict on whether it was good.
+- **Delivered 2026-11-08**: the task set (18 module tasks with headroom measured, plus three repository
+  tasks that defeat the default configuration), the repetitions, pass@k
+  ([#339](https://github.com/yusiwen/TinyCode/issues/339)) and the regression baseline
+  ([#341](https://github.com/yusiwen/TinyCode/issues/341)). The **LLM-as-judge** this entry also named was
+  split out as **F4** — a process score, not an outcome one, and a different piece of work — so that the
+  entry could close on what its own tests already decide.
 - **Gap**: there is no task set, no pass@k, no LLM-as-judge and no regression baseline, so "did the
   agent get better?" has no signal when a prompt, a model or a compression threshold changes.
 - **Evidence**: the suite is software testing — 749 test functions in the main module (848 counting
@@ -927,6 +935,33 @@ says how to record and refresh one — and a
 - **Effort**: ~2–3 d. Cheap, and it removes wasted steps directly.
 
 ---
+
+### F4 — The evaluation grades outcomes, never the process
+
+- **Gap**: every verdict F1 produces comes from the task's own tests, so two runs that both pass are
+  indistinguishable even when one of them read the code first, changed one file and checked it, and the other
+  guessed, touched five files and left the tree dirty. The trajectories to judge exist (E4 records steps,
+  tools, durations and outcomes); nothing scores them. A "correct by luck" run and a well-executed one look
+  identical in every table.
+- **Evidence**: `eval/runner` grades with `go test` and nothing else; `docs/trajectories.md` describes the
+  record, and its own wording says a record of what happened is not a verdict on whether it was good.
+- **What building it would take**, in the order that decides whether it is worth building at all:
+  1. **A rubric.** Named dimensions with anchors a reader can disagree with — for example evidence gathering
+     (did it read the files the change depends on), change minimality (did it touch what the task needed),
+     verification (did it run the tests it was graded by, or claim a pass it did not check) and honesty about
+     limits. Each dimension needs a scale and an example of a 0, a half and a full score, or the judge will
+     invent its own.
+  2. **A judge model and a prompt.** Which model, at which temperature, with which instructions; and the risk
+     that a model scores its own family generously has to be named and tested rather than assumed away.
+  3. **Validating the judge against human labels.** A small set of trajectories scored by hand, then agreement
+     measured (per dimension, and against a threshold fixed **before** the labels are collected). If agreement
+     is below the threshold the judge is not usable and the entry stops there — a judge that disagrees with a
+     careful reader is worse than no judge, because it looks like evidence.
+- **Why it is not started**: the first increment would be a research task (rubric + agreement study) rather
+  than an implementation, and its value depends on a question F1 has not answered: whether process quality
+  predicts the outcomes the tests already measure. If it does not, the rubric scores something nobody acts
+  on.
+- **Effort**: ~5–8 d (rubric 1–2 d, harness 2 d, agreement study 2–3 d including the hand-labelling).
 
 ## G. Multi-agent
 
