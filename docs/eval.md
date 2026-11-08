@@ -124,6 +124,47 @@ What the increment *did* show is where the difficulty went, and it is not where 
 refactor, a task whose failure mode is not "one package, one test suite". That is written in
 `docs/roadmap.md` and in issue #256's condition, before this data existed.
 
+## The regression baseline
+
+A measurement is not a baseline: "build solved 1/3" answers nothing about whether the change you just made
+hurt. Pass a stored report and the runner compares the two:
+
+```bash
+# once, to record a baseline (this spends money)
+TINYCODE_EVAL=1 go run ./eval/runner -repo-tasks eval/repo-tasks -configurations build -reps 2 \
+  -out /tmp/baseline -work /tmp/baseline-work -binary /tmp/tinycode-under-test
+
+# later, to compare a change against it
+TINYCODE_EVAL=1 go run ./eval/runner -repo-tasks eval/repo-tasks -configurations build -reps 2 \
+  -baseline /tmp/baseline/baseline.json -out /tmp/after -work /tmp/after-work \
+  -binary /tmp/tinycode-under-test -fail-on-regression
+```
+
+**The rule is registered before the data, and it is deliberately blunt:**
+
+> A task is a **regression** when the baseline solved it in every attempt and this run solved it in none.
+> **Improved** is the mirror. Everything else is **inconclusive** and counted as such.
+
+Two repetitions cannot separate a real regression from noise, so the rule refuses to try: it only reports a
+flip that no repetition disagrees with. "No regressions" therefore means "nothing the rule can decide", not
+"nothing changed" — a partial pass on either side is printed as inconclusive for exactly that reason.
+
+Two guardrails come with it:
+
+- **The corpus is fingerprinted.** A report carries a digest of the task set (the `TASK` files it measured), and
+  a comparison across two different corpora is refused rather than answered: per-task comparison of different
+  task sets is meaningless. Adding a task therefore requires re-measuring the baseline.
+- **`-fail-on-regression` writes the report before it exits non-zero.** A gate that fails must leave the
+  evidence that explains it, or the next person re-runs the whole measurement to find out why.
+
+**When to run it.** Never in CI: the repository corpus costs about 9M tokens per solved task (six runs took
+~40 minutes). Run it deliberately before a release, or after a change to the agent loop, the tools or the
+prompts — not after a documentation change.
+
+**What it is not.** Not a statistical test, and not a comparison of cost: tokens per task and pass@k are
+printed for context, not judged. A run that keeps the same solved count while spending twice the tokens is a
+regression a person has to read out of the tables.
+
 ## pass@k
 
 A solved count says how many tasks fell; it does not say how likely one attempt is to fall. The report

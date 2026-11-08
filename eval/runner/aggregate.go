@@ -131,7 +131,12 @@ type baselineReport struct {
 	Gradient       gradientVerdict  `json:"gradient"`
 	Headroom       headroomVerdict  `json:"headroom"`
 	Difficulty     []taskDifficulty `json:"difficulty"`
-	Results        []runResult      `json:"results"`
+	// Corpus fingerprints the task set a run measured (repository tasks only), so
+	// a later run can refuse to compare against a different one.
+	Corpus string `json:"corpus,omitempty"`
+	// Regression is present only when a stored baseline was supplied.
+	Regression *regression `json:"regression,omitempty"`
+	Results    []runResult `json:"results"`
 }
 
 // summarise folds the attempts into the report the spike is judged on.
@@ -407,6 +412,10 @@ func printMarkdown(w io.Writer, report baselineReport) {
 		fmt.Fprintf(w, "Not decided — %s.\n", report.Verdict.Detail)
 	} else {
 		fmt.Fprintf(w, "**The abandonment condition is met, against building the framework.** %s. Either the task set is too easy, the harness measures the wrong thing, or the noise is wider than the difference; what gets built next is a harder task set, not a framework.\n", report.Verdict.Detail)
+	}
+
+	if report.Regression != nil {
+		printRegression(w, *report.Regression)
 	}
 
 	// pass@k, which is the number a cost decision needs: a solved count says how

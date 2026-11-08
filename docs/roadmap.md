@@ -875,7 +875,15 @@ working directory only — it never walks upward and never merges nested files (
   harness timeout and recorded no trajectory, and tokens per solved task rose to **9.0M** against 88k–184k
   on the module-level set. **pass@k landed** ([#339](https://github.com/yusiwen/TinyCode/issues/339)): the report carries the unbiased
 estimate for every k with enough attempts, per configuration, and the committed baseline gained the section on
-a re-render. What remains of F1 is a regression baseline on this corpus — and a
+a re-render. **The regression baseline landed** ([#341](https://github.com/yusiwen/TinyCode/issues/341)):
+`-baseline` compares a stored report against a fresh run under a rule registered before the data (only a
+task the baseline solved in every attempt and this run in none counts as a regression; a partial pass on
+either side is inconclusive), the corpus is fingerprinted so a comparison across task sets is refused, and
+`-fail-on-regression` lets a release be gated with the report written first. What remains of the entry's
+original gap is the **LLM-as-judge** — the grade is the tests, and a judge would score the *process* rather
+than the outcome — so F1 stays in progress until that is either built or recorded as deliberately out of
+scope. The corpus baseline is not committed (it measures a model at a time and drifts with it); the page
+says how to record and refresh one — and a
   baseline that costs 9M tokens per solved task is run deliberately, not in CI. The machinery, the format
   and the costs are in [eval.md](eval.md#repository-level-tasks). The harness defect the measurement exposed,
   [#336](https://github.com/yusiwen/TinyCode/issues/336) (a killed attempt was recorded as zero tokens and
