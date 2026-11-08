@@ -125,6 +125,8 @@ func main() {
 	repoPath := flag.String("repo", ".", "the git repository the -repo-tasks commits are read from")
 	hidden := flag.String("hidden", "", "directory of hidden tests to install after each attempt (one subdirectory per task); empty grades the work copy as it is")
 	render := flag.Bool("render", false, "re-render <out>/BASELINE.md from <out>/baseline.json, running nothing")
+	baselinePath := flag.String("baseline", "", "a stored baseline.json to compare this run against; the comparison is written into the report")
+	failOnRegression := flag.Bool("fail-on-regression", false, "exit non-zero when -baseline shows a regression (for a release gate; a human still reads the report)")
 	limitedBudget := flag.Int("limited-budget", configurations[1].MaxTokensPerRun,
 		"token budget for the `limited` configuration; a middle rung is only a gradient if it is above the cliff")
 	flag.Parse()
@@ -217,6 +219,26 @@ func main() {
 	report, err := summarise(results, configs)
 	if err != nil {
 		fail(err)
+	}
+	if *repoTasks != "" {
+		// A baseline is only comparable against the corpus that produced it, so the
+		// report says which one that was.
+		if digest, err := corpusDigest(*repoTasks); err == nil {
+			report.Corpus = digest
+		}
+	}
+	if *baselinePath != "" {
+		baseline, err := loadBaseline(*baselinePath)
+		if err != nil {
+			fail(fmt.Errorf("load -baseline: %w", err))
+		}
+		comparison := compareBaselines(baseline, report)
+		report.Regression = &comparison
+		if *failOnRegression && len(comparison.Regressed) > 0 {
+			// The report is written first: a gate that fails must still leave the
+			// evidence that explains the failure.
+			defer fail(fmt.Errorf("%d task(s) regressed against %s", len(comparison.Regressed), *baselinePath))
+		}
 	}
 	if err := writeBaseline(*out, report); err != nil {
 		fail(err)
