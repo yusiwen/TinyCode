@@ -6,13 +6,22 @@ Generated 2026-10-18T10:16:57Z. `TINYCODE_EVAL=1 go run ./eval/runner`
 
 Models: deepseek-flash
 
-| Configuration | Solved | Pass rate | Reps agreed | Median steps | Median tokens | Tokens per solved task | Stops |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `build` | 18/18 | 100% | 100% | 6 | 33616 | 184183 | final 35, blocked 1 |
-| `limited` | 6/18 | 50% | 67% | 3 | 12987 | 78292 | budget 36 |
-| `plan` | 0/18 | 0% | 100% | 5 | 17932 | 0 | final 34, error 1 |
+| Configuration | Solved | Pass rate | Reps agreed | Median steps | Median tokens | Tokens per solved task | Killed | Stops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `build` | 18/18 | 100% | 100% | 6 | 33616 | 184183 | 0 | final 35, blocked 1 |
+| `limited` | 6/18 | 50% | 67% | 3 | 12987 | 78292 | 0 | budget 36 |
+| `plan` | 0/18 | 0% | 100% | 5 | 17932 | 0 | 0 | final 34, error 1 |
 
 **Verdict.** The signal moves — build 18/18, limited 6/18, plan 0/18. An evaluation framework has something to measure; whether it should be built is a separate argument, and the task set's own gradient is what it turns on.
+
+## pass@k
+
+The probability that at least one of k attempts solves a task, averaged over the tasks that have at least k attempts (the unbiased estimator, `1 - C(n-c,k)/C(n,k)`, where `n` is a task's attempts and `c` its passes). It is **not** a per-attempt success rate: with fewer than k attempts a task says nothing about that row and is left out. A killed attempt counts in `n` and not in `c`.
+
+| k | `build` | `limited` | `plan` |
+| --- | --- | --- | --- |
+| 1 | 100% | 50% | 0% |
+| 2 | 100% | 67% | 0% |
 
 ## The gradient
 

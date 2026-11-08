@@ -124,6 +124,29 @@ What the increment *did* show is where the difficulty went, and it is not where 
 refactor, a task whose failure mode is not "one package, one test suite". That is written in
 `docs/roadmap.md` and in issue #256's condition, before this data existed.
 
+## pass@k
+
+A solved count says how many tasks fell; it does not say how likely one attempt is to fall. The report
+answers that with the unbiased estimator over the tasks:
+
+```
+pass@k = mean over tasks of (1 - C(n-c, k) / C(n, k))
+```
+
+where `n` is a task's attempt count and `c` its passes. Three properties decide how to read it:
+
+- **It is not a per-attempt success rate.** With `n=2, c=1`, `k=1` is 50% (one attempt in two passes) and
+  `k=2` is 100% (with two attempts, one of them passes) — the second number says the task is reachable within
+  the budget, not that the agent succeeds every time.
+- **A task with fewer than k attempts contributes nothing to that row** and is left out, rather than counted
+  as a zero. `k > n` is an `—`, not 0%.
+- **A killed attempt is in `n`, not in `c`** ([#336](https://github.com/yusiwen/TinyCode/issues/336)).
+  Dropping it would report the success rate of the attempts that were allowed to finish.
+
+With the committed two repetitions only `k ≤ 2` is meaningful, and `k=2` is the "at least one passed" reading.
+The `-render` path derives the row from the recorded attempts, so a `baseline.json` written before it existed
+gains it without re-running anything — which is how the committed baseline got its section.
+
 ## The gradient
 
 The report has a section per tier: solved counts and tokens per solved task, for each configuration. The
