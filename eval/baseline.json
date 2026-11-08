@@ -18,6 +18,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 14,
           "median_tokens": 82509,
           "stops": {
@@ -36,6 +37,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 15,
           "median_tokens": 124313,
           "stops": {
@@ -54,6 +56,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 21981,
           "stops": {
@@ -72,6 +75,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 24,
           "median_tokens": 314929,
           "stops": {
@@ -93,6 +97,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 21946,
           "stops": {
@@ -111,6 +116,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 22,
           "median_tokens": 430429,
           "stops": {
@@ -130,6 +136,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 28,
           "median_tokens": 465719,
           "stops": {
@@ -150,6 +157,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 6,
           "median_tokens": 32260,
           "stops": {
@@ -170,6 +178,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 24389,
           "stops": {
@@ -189,6 +198,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 21835,
           "stops": {
@@ -207,6 +217,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 17,
           "median_tokens": 149342,
           "stops": {
@@ -228,6 +239,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 22502,
           "stops": {
@@ -247,6 +259,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 21,
           "median_tokens": 161647,
           "stops": {
@@ -268,6 +281,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 11,
           "median_tokens": 73454,
           "stops": {
@@ -288,6 +302,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 18,
           "median_tokens": 125961,
           "stops": {
@@ -308,6 +323,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 10,
           "median_tokens": 55971,
           "stops": {
@@ -326,6 +342,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 6,
           "median_tokens": 32719,
           "stops": {
@@ -344,6 +361,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 8,
           "median_tokens": 42826,
           "stops": {
@@ -404,7 +422,19 @@
         "sandbox_allow": 12,
         "write_file": 24
       },
-      "missing_records": 0
+      "missing_records": 0,
+      "pass_at_k": [
+        {
+          "k": 1,
+          "tasks": 18,
+          "pass": 1
+        },
+        {
+          "k": 2,
+          "tasks": 18,
+          "pass": 1
+        }
+      ]
     },
     {
       "name": "limited",
@@ -419,6 +449,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12557,
           "stops": {
@@ -438,6 +469,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 14348,
           "stops": {
@@ -455,6 +487,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12606,
           "stops": {
@@ -474,6 +507,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13673,
           "stops": {
@@ -492,6 +526,7 @@
           "solved": false,
           "agreed": false,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12600,
           "stops": {
@@ -511,6 +546,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13115,
           "stops": {
@@ -529,6 +565,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13502,
           "stops": {
@@ -547,6 +584,7 @@
           "solved": false,
           "agreed": false,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13611,
           "stops": {
@@ -566,6 +604,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13118,
           "stops": {
@@ -585,6 +624,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12421,
           "stops": {
@@ -603,6 +643,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13214,
           "stops": {
@@ -621,6 +662,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12913,
           "stops": {
@@ -640,6 +682,7 @@
           "solved": false,
           "agreed": false,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13218,
           "stops": {
@@ -657,6 +700,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13914,
           "stops": {
@@ -674,6 +718,7 @@
           "solved": false,
           "agreed": false,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 13017,
           "stops": {
@@ -691,6 +736,7 @@
           "solved": true,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12952,
           "stops": {
@@ -709,6 +755,7 @@
           "solved": false,
           "agreed": false,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 14664,
           "stops": {
@@ -728,6 +775,7 @@
           "solved": false,
           "agreed": false,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 12735,
           "stops": {
@@ -784,7 +832,19 @@
         "read_file": 27,
         "write_file": 9
       },
-      "missing_records": 0
+      "missing_records": 0,
+      "pass_at_k": [
+        {
+          "k": 1,
+          "tasks": 18,
+          "pass": 0.5
+        },
+        {
+          "k": 2,
+          "tasks": 18,
+          "pass": 0.6666666666666666
+        }
+      ]
     },
     {
       "name": "plan",
@@ -798,6 +858,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 3,
           "median_tokens": 8440,
           "stops": {
@@ -817,6 +878,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 6,
           "median_tokens": 31341,
           "stops": {
@@ -837,6 +899,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 7,
           "median_tokens": 21271,
           "stops": {
@@ -857,6 +920,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 4,
           "median_tokens": 19163,
           "stops": {
@@ -876,6 +940,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 4,
           "median_tokens": 12088,
           "stops": {
@@ -895,6 +960,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 28354,
           "stops": {
@@ -914,6 +980,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 7,
           "median_tokens": 32724,
           "stops": {
@@ -933,6 +1000,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 4,
           "median_tokens": 15290,
           "stops": {
@@ -952,6 +1020,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 4,
           "median_tokens": 11947,
           "stops": {
@@ -971,6 +1040,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 14944,
           "stops": {
@@ -990,6 +1060,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 8,
           "median_tokens": 34670,
           "stops": {
@@ -1010,6 +1081,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 4,
           "median_tokens": 10592,
           "stops": {
@@ -1028,6 +1100,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 6,
           "median_tokens": 23752,
           "stops": {
@@ -1047,6 +1120,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 19994,
           "stops": {
@@ -1066,6 +1140,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 4,
           "median_tokens": 13553,
           "stops": {
@@ -1085,6 +1160,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 7,
           "median_tokens": 25211,
           "stops": {
@@ -1104,6 +1180,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 8,
           "median_tokens": 32104,
           "stops": {
@@ -1124,6 +1201,7 @@
           "solved": false,
           "agreed": true,
           "tampered": 0,
+          "killed": 0,
           "median_steps": 5,
           "median_tokens": 16493,
           "stops": {
@@ -1183,7 +1261,19 @@
         "read_file": 74,
         "search_files": 137
       },
-      "missing_records": 0
+      "missing_records": 0,
+      "pass_at_k": [
+        {
+          "k": 1,
+          "tasks": 18,
+          "pass": 0
+        },
+        {
+          "k": 2,
+          "tasks": 18,
+          "pass": 0
+        }
+      ]
     }
   ],
   "verdict": {

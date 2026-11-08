@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -452,5 +455,155 @@ func TestKilledAttemptsCountAsFailuresAndLeaveTheCostRows(t *testing.T) {
 	printMarkdown(&out, report)
 	if !strings.Contains(out.String(), "killed by the runner's wall-clock bound") {
 		t.Fatalf("the report does not mention the kill:\n%s", out.String())
+	}
+}
+
+// TestPassAtKIsTheUnbiasedEstimator is issue #339: the numbers are hand-computed,
+// because an estimator tested against its own implementation proves nothing.
+func TestPassAtKIsTheUnbiasedEstimator(t *testing.T) {
+	attempts := func(passes, total int) []runResult {
+		results := make([]runResult, total)
+		for i := range results {
+			results[i] = runResult{Pass: i < passes}
+		}
+		return results
+	}
+
+	cases := []struct {
+		name   string
+		byTask map[string][]runResult
+		reps   int
+		want   map[int]float64
+	}{
+		{
+			name:   "n=2 c=1",
+			byTask: map[string][]runResult{"a": attempts(1, 2)},
+			reps:   2,
+			want:   map[int]float64{1: 0.5, 2: 1},
+		},
+		{
+			name:   "n=3 c=1",
+			byTask: map[string][]runResult{"a": attempts(1, 3)},
+			reps:   3,
+			// k=2: 1 - C(2,2)/C(3,2) = 2/3; k=3: 1 - C(2,3)/C(3,3) = 1.
+			want: map[int]float64{1: 1.0 / 3.0, 2: 2.0 / 3.0, 3: 1},
+		},
+		{
+			name:   "n=2 c=0",
+			byTask: map[string][]runResult{"a": attempts(0, 2)},
+			reps:   2,
+			want:   map[int]float64{1: 0, 2: 0},
+		},
+		{
+			name:   "n=2 c=2",
+			byTask: map[string][]runResult{"a": attempts(2, 2)},
+			reps:   2,
+			want:   map[int]float64{1: 1, 2: 1},
+		},
+		{
+			// A task with one attempt says nothing about k=2 and is left out; the
+			// mean is over the task that has two.
+			name: "a short task is skipped, not counted as zero",
+			byTask: map[string][]runResult{
+				"a": attempts(0, 2),
+				"b": attempts(1, 1),
+			},
+			reps: 2,
+			want: map[int]float64{1: 0.5, 2: 0},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cells := passAtK(tc.byTask, tc.reps)
+			got := make(map[int]float64, len(cells))
+			for _, cell := range cells {
+				got[cell.K] = cell.Pass
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for k, want := range tc.want {
+				if diff := got[k] - want; diff > 1e-9 || diff < -1e-9 {
+					t.Fatalf("k=%d: got %v, want %v", k, got[k], want)
+				}
+			}
+		})
+	}
+}
+
+// TestPassAtKCountsAKilledAttemptInN: a killed attempt was an attempt; leaving it
+// out would report the success rate of the attempts that were allowed to finish.
+func TestPassAtKCountsAKilledAttemptInN(t *testing.T) {
+	byTask := map[string][]runResult{
+		"a": {
+			{Pass: true},
+			{Pass: false, Killed: true},
+		},
+	}
+	cells := passAtK(byTask, 2)
+	if len(cells) != 2 {
+		t.Fatalf("cells = %v", cells)
+	}
+	// n=2, c=1: k=1 → 0.5, k=2 → 1. Dropping the kill would make n=1 and leave no
+	// k=2 cell at all.
+	if cells[0].Pass != 0.5 {
+		t.Fatalf("k=1 = %v, want 0.5", cells[0].Pass)
+	}
+	if cells[1].Pass != 1 {
+		t.Fatalf("k=2 = %v, want 1", cells[1].Pass)
+	}
+}
+
+// TestRenderAddsPassAtKToAnOlderBaseline: the acceptance for issue #339 — a
+// baseline.json written before the row existed gains it on -render, because the
+// estimate is a pure derivation from the recorded attempts.
+func TestRenderAddsPassAtKToAnOlderBaseline(t *testing.T) {
+	dir := t.TempDir()
+	older := baselineReport{
+		Reps:   2,
+		Runs:   2,
+		Models: map[string]int{"m": 2},
+		Configurations: []configSummary{{
+			Name: "build", Mode: "build", TaskCount: 1, Solved: 0, Runs: 2,
+			Tasks: []taskSummary{{Task: "a", Reps: 2}},
+			// no PassAtK: the field did not exist yet
+		}},
+		Results: []runResult{
+			{Configuration: "build", Task: "a", Rep: 0, Pass: true, Stop: "final"},
+			{Configuration: "build", Task: "a", Rep: 1, Pass: false, Stop: "step_limit"},
+		},
+	}
+	data, err := json.MarshalIndent(older, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "baseline.json"), append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := renderBaseline(dir); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	rendered, err := os.ReadFile(filepath.Join(dir, "baseline.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got baselineReport
+	if err := json.Unmarshal(rendered, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Configurations) != 1 || len(got.Configurations[0].PassAtK) != 2 {
+		t.Fatalf("pass_at_k = %+v", got.Configurations[0].PassAtK)
+	}
+	if got.Configurations[0].PassAtK[0].Pass != 0.5 || got.Configurations[0].PassAtK[1].Pass != 1 {
+		t.Fatalf("estimates = %+v", got.Configurations[0].PassAtK)
+	}
+	markdown, err := os.ReadFile(filepath.Join(dir, "BASELINE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(markdown), "## pass@k") || !strings.Contains(string(markdown), "| 2 | 100% |") {
+		t.Fatalf("the section is missing:\n%s", markdown)
 	}
 }

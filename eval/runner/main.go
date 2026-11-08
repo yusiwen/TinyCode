@@ -632,6 +632,15 @@ func renderBaseline(dir string) error {
 	// the file: the rule and its wording live in code, and a render must not
 	// reproduce a sentence the code no longer says. The numbers are untouched.
 	report.Verdict = judge(report.Configurations)
+	// pass@k is a pure derivation from the recorded attempts, so a re-render
+	// produces it for a baseline.json written before the row existed — the numbers
+	// it summarizes are untouched, which is the property the rest of this function
+	// protects (issue #339).
+	if len(report.Results) > 0 {
+		for i := range report.Configurations {
+			report.Configurations[i].PassAtK = passAtKFor(report.Results, report.Configurations[i].Name, report.Reps)
+		}
+	}
 	rendered, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return err

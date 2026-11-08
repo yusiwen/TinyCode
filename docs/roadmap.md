@@ -873,7 +873,9 @@ working directory only — it never walks upward and never merges nested files (
   increment's condition, and the reading that goes with it: every recorded attempt ended at the **50-step
   limit** (so the budget is the binding constraint, not only the task), two attempts were killed by the
   harness timeout and recorded no trajectory, and tokens per solved task rose to **9.0M** against 88k–184k
-  on the module-level set. What remains of F1 is pass@k and a regression baseline on this corpus — and a
+  on the module-level set. **pass@k landed** ([#339](https://github.com/yusiwen/TinyCode/issues/339)): the report carries the unbiased
+estimate for every k with enough attempts, per configuration, and the committed baseline gained the section on
+a re-render. What remains of F1 is a regression baseline on this corpus — and a
   baseline that costs 9M tokens per solved task is run deliberately, not in CI. The machinery, the format
   and the costs are in [eval.md](eval.md#repository-level-tasks). The harness defect the measurement exposed,
   [#336](https://github.com/yusiwen/TinyCode/issues/336) (a killed attempt was recorded as zero tokens and

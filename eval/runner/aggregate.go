@@ -43,6 +43,14 @@ type tierSummary struct {
 	MedianTokens    int `json:"median_tokens"`
 }
 
+// passKCell is one k's estimate: the probability that at least one of k attempts
+// solves a task, averaged over the tasks that have at least k attempts.
+type passKCell struct {
+	K     int     `json:"k"`
+	Tasks int     `json:"tasks"`
+	Pass  float64 `json:"pass"`
+}
+
 // configSummary is one configuration's row.
 type configSummary struct {
 	Name            string           `json:"name"`
@@ -66,6 +74,10 @@ type configSummary struct {
 	// failures, and they are left out of the median and per-solved rows: their
 	// steps and tokens are a prefix, not a result (issue #336).
 	Killed int `json:"killed,omitempty"`
+	// PassAtK is the unbiased pass@k estimate for k = 1..reps (issue #339). It is
+	// empty when nothing was recorded, and a k with no task having that many
+	// attempts is absent rather than zero.
+	PassAtK []passKCell `json:"pass_at_k,omitempty"`
 }
 
 // verdict is the question the spike exists to answer, answered.
@@ -206,6 +218,7 @@ func summarise(results []runResult, configs []configuration) (baselineReport, er
 			}
 		}
 		summary.Tiers = summariseTiers(summary.Tasks)
+		summary.PassAtK = passAtK(byTask, report.Reps)
 		summary.TaskCount = len(taskNames)
 		summary.MedianSteps = medianInt(steps)
 		summary.MedianTokens = medianInt(tokens)
@@ -394,6 +407,26 @@ func printMarkdown(w io.Writer, report baselineReport) {
 		fmt.Fprintf(w, "Not decided — %s.\n", report.Verdict.Detail)
 	} else {
 		fmt.Fprintf(w, "**The abandonment condition is met, against building the framework.** %s. Either the task set is too easy, the harness measures the wrong thing, or the noise is wider than the difference; what gets built next is a harder task set, not a framework.\n", report.Verdict.Detail)
+	}
+
+	// pass@k, which is the number a cost decision needs: a solved count says how
+	// many tasks fell, this says how likely one attempt is to fall (issue #339).
+	if len(report.Configurations) > 0 && anyPassAtK(report.Configurations) {
+		fmt.Fprintf(w, "\n## pass@k\n\n")
+		fmt.Fprintf(w, "The probability that at least one of k attempts solves a task, averaged over the tasks that have at least k attempts (the unbiased estimator, `1 - C(n-c,k)/C(n,k)`, where `n` is a task's attempts and `c` its passes). It is **not** a per-attempt success rate: with fewer than k attempts a task says nothing about that row and is left out. A killed attempt counts in `n` and not in `c`.\n\n")
+		fmt.Fprintf(w, "| k | %s |\n| --- |", strings.Join(columnNames(report.Configurations), " | "))
+		fmt.Fprintf(w, "%s\n", strings.Repeat(" --- |", len(report.Configurations)))
+		for k := 1; k <= report.Reps; k++ {
+			fmt.Fprintf(w, "| %d |", k)
+			for _, cfg := range report.Configurations {
+				if value, ok := passAtKOf(cfg, k); ok {
+					fmt.Fprintf(w, " %.0f%% |", value*100)
+				} else {
+					fmt.Fprintf(w, " — |")
+				}
+			}
+			fmt.Fprintln(w)
+		}
 	}
 
 	// The gradient, which is what this increment was for: the same pass counts
@@ -734,4 +767,92 @@ func measureDifficulty(configs []configSummary) []taskDifficulty {
 		}
 	}
 	return out
+}
+
+// passAtK computes the unbiased estimator for every k with enough attempts.
+//
+// For one task with n attempts and c passes, the probability that a sample of k
+// attempts contains at least one pass is 1 - C(n-c,k)/C(n,k). The estimate for the
+// set is the mean over the tasks that have at least k attempts — a task with fewer
+// than k attempts says nothing about k, so it is left out rather than counted as
+// zero (issue #339).
+//
+// A killed attempt is an attempt: it is counted in n and not in c. Dropping it
+// would report the success rate of the attempts that were allowed to finish, which
+// is a different and flattering number.
+func passAtK(byTask map[string][]runResult, reps int) []passKCell {
+	if reps <= 0 {
+		return nil
+	}
+	var cells []passKCell
+	for k := 1; k <= reps; k++ {
+		var sum float64
+		tasks := 0
+		for _, results := range byTask {
+			n := len(results)
+			if n < k {
+				continue
+			}
+			c := 0
+			for _, result := range results {
+				if result.Pass {
+					c++
+				}
+			}
+			sum += 1 - float64(combinations(n-c, k))/float64(combinations(n, k))
+			tasks++
+		}
+		if tasks == 0 {
+			continue
+		}
+		cells = append(cells, passKCell{K: k, Tasks: tasks, Pass: sum / float64(tasks)})
+	}
+	return cells
+}
+
+// combinations is n choose k, the binomial coefficient. The values are small (a
+// handful of attempts), so the multiplicative form is exact for this use and does
+// not overflow.
+func combinations(n, k int) int64 {
+	if k < 0 || n < 0 || k > n {
+		return 0
+	}
+	result := int64(1)
+	for i := 1; i <= k; i++ {
+		result = result * int64(n-k+i) / int64(i)
+	}
+	return result
+}
+
+// passAtKFor groups the flat results by task for one configuration, so a render
+// that only has baseline.json can derive pass@k without re-running anything.
+func passAtKFor(results []runResult, configuration string, reps int) []passKCell {
+	byTask := make(map[string][]runResult)
+	for _, result := range results {
+		if result.Configuration != configuration {
+			continue
+		}
+		byTask[result.Task] = append(byTask[result.Task], result)
+	}
+	return passAtK(byTask, reps)
+}
+
+// anyPassAtK reports whether the report has anything to say about pass@k.
+func anyPassAtK(configs []configSummary) bool {
+	for _, cfg := range configs {
+		if len(cfg.PassAtK) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// passAtKOf is one configuration's estimate for one k.
+func passAtKOf(cfg configSummary, k int) (float64, bool) {
+	for _, cell := range cfg.PassAtK {
+		if cell.K == k {
+			return cell.Pass, true
+		}
+	}
+	return 0, false
 }
