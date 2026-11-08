@@ -3,6 +3,7 @@
 package tool
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -160,7 +161,31 @@ func commandConfinementAvailable() bool {
 // which is the difference between a real capability answer and a false positive
 // that would refuse every command in the session.
 func probeSeatbelt(binary string) bool {
-	return exec.Command(binary, "-p", seatbeltAllowAll, "/usr/bin/true").Run() == nil
+	ok, _, _ := seatbeltProbe(binary)
+	return ok
+}
+
+// seatbeltProbe is probeSeatbelt with the reason it failed, which is the half a
+// test needs: "present but refused" and "present but broken" are different states
+// and only the first is a skip (issue #280).
+//
+// The reason carries the applier's own stderr, so a reader can tell a nested
+// sandbox ("Operation not permitted") from a host whose seatbelt is broken.
+func seatbeltProbe(binary string) (ok bool, spawnFailed bool, reason string) {
+	out, err := exec.Command(binary, "-p", seatbeltAllowAll, "/usr/bin/true").CombinedOutput()
+	if err == nil {
+		return true, false, ""
+	}
+	text := strings.TrimSpace(string(out))
+	// spawnFailed is the difference between "the applier could not be started"
+	// and "the applier ran and refused". Only the first can mean a nested sandbox;
+	// the second is a broken applier and belongs to the caller as a failure.
+	var exitErr *exec.ExitError
+	spawnFailed = !errors.As(err, &exitErr)
+	if text == "" {
+		return false, spawnFailed, err.Error()
+	}
+	return false, spawnFailed, fmt.Sprintf("%v: %s", err, text)
 }
 
 // seatbeltExecPath resolves the applier. It is cheap and uncached on purpose:

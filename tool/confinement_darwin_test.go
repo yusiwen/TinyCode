@@ -177,19 +177,53 @@ func TestSeatbeltProfileRefusesARootItCannotUse(t *testing.T) {
 // a file check: /bin/false exists and can be executed, and cannot apply a
 // profile.
 func TestProbeSeatbeltIsASmokeRun(t *testing.T) {
-	if probeSeatbelt("/bin/false") {
-		t.Fatal("a binary that cannot apply a profile was reported as usable")
+	// The negative control must be a binary that *runs* and exits non-zero. It was
+	// "/bin/false" until this test grew the spawnFailed assertion, which exposed
+	// that macOS has no /bin/false: the probe was answering "unusable" for a
+	// missing file, and the control proved nothing.
+	falsePath, err := exec.LookPath("false")
+	if err != nil {
+		t.Skipf("no `false` binary on this host: %v", err)
 	}
-	if probeSeatbelt(filepath.Join(t.TempDir(), "does-not-exist")) {
+	if ok, spawnFailed, reason := seatbeltProbe(falsePath); ok {
+		t.Fatal("a binary that cannot apply a profile was reported as usable")
+	} else if spawnFailed {
+		t.Fatalf("a binary that runs and exits non-zero was reported as unspawnable: %q", reason)
+	} else if reason == "" {
+		t.Fatal("the negative control failed without a reason")
+	}
+	if ok, spawnFailed, reason := seatbeltProbe(filepath.Join(t.TempDir(), "does-not-exist")); ok {
 		t.Fatal("a missing binary was reported as usable")
+	} else if !spawnFailed {
+		t.Fatal("a missing binary was not reported as unspawnable")
+	} else if !strings.Contains(reason, "no such file") && !strings.Contains(reason, "not found") {
+		t.Fatalf("a missing binary's reason is not about the file: %q", reason)
 	}
 	binary, err := seatbeltExecPath()
 	if err != nil {
 		t.Skipf("no %s on this host: %v", sandboxExecPath, err)
 	}
-	if !probeSeatbelt(binary) {
-		t.Fatalf("%s is present but the probe says it cannot apply a profile", binary)
+	ok, spawnFailed, reason := seatbeltProbe(binary)
+	if ok {
+		return
 	}
+	// "Present but refused by the process's own sandbox" is a skip, not a
+	// failure: the DSH agent's workspace-write policy forbids spawning a nested
+	// sandbox, and a test that fails there says nothing about the applier
+	// (issue #280). The skip prints the applier's stderr so the distinction from
+	// "broken host capability" is visible.
+	if nestedSandboxRefusal(spawnFailed, reason) {
+		t.Skipf("%s is present but this process may not apply a nested profile: %s", binary, reason)
+	}
+	t.Fatalf("%s is present but the probe says it cannot apply a profile: %s", binary, reason)
+}
+
+// nestedSandboxRefusal reports whether a failed probe was refused by the sandbox
+// the test runs in, rather than by a broken applier. The applier must not even
+// have started: a sandbox-exec that ran and refused its target is a host problem
+// the test should still catch.
+func nestedSandboxRefusal(spawnFailed bool, reason string) bool {
+	return spawnFailed && strings.Contains(strings.ToLower(reason), "operation not permitted")
 }
 
 // TestSeatbeltChildHelper is not a test: it is the child half of
@@ -414,5 +448,27 @@ printf x > /dev/null && printf ok`,
 	}
 	if !strings.Contains(string(out), "ok") {
 		t.Fatalf("the command did not report success: %q", out)
+	}
+}
+
+// TestNestedSandboxRefusalClassifies is the decision #280 turns on: a refusal by
+// the current sandbox is a skip, a broken applier is a failure, and the two are
+// told apart by what the applier printed.
+func TestNestedSandboxRefusalClassifies(t *testing.T) {
+	cases := []struct {
+		spawnFailed bool
+		reason      string
+		nested      bool
+	}{
+		{true, "fork/exec /usr/bin/sandbox-exec: operation not permitted", true},
+		{false, "exit status 71: sandbox-exec: sandbox_apply: Operation not permitted", false},
+		{true, "exec: \"/usr/bin/sandbox-exec\": no such file or directory", false},
+		{false, "exit status 1: exec: /bin/false: exit status 1", false},
+		{false, "exit status 71: sandbox-exec: invalid profile", false},
+	}
+	for _, tc := range cases {
+		if got := nestedSandboxRefusal(tc.spawnFailed, tc.reason); got != tc.nested {
+			t.Errorf("nestedSandboxRefusal(%v, %q) = %v, want %v", tc.spawnFailed, tc.reason, got, tc.nested)
+		}
 	}
 }
