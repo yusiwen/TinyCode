@@ -16,10 +16,10 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 23 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 24 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 17 | verified gaps, no issue opened |
+| Not started | 16 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -71,7 +71,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | E4 | Trajectories are not persisted in an analysable format | Delivered — #249 |
 | E5 | Refuted: project instruction files *are* loaded | Refuted |
 | F1 | No agent-level evaluation framework | Delivered — #252 #254 #256 |
-| F2 | No A/B comparison mechanism | Not started |
+| F2 | No A/B comparison mechanism | Delivered — #345 |
 | F3 | Tool calls are not validated against their schema | Delivered — #200 |
 | F4 | The evaluation grades outcomes, never the process | Not started |
 | G1 | Delegation is two levels deep | Not started |
@@ -910,6 +910,13 @@ says how to record and refresh one — and a
 
 ### F2 — No A/B comparison mechanism
 
+- **Picked up**: [#345](https://github.com/yusiwen/TinyCode/issues/345) — **delivered 2026-11-08**: `-variants`
+  takes a JSON list of variants (prompt or prompt file, model, step and token budgets, repo map), each written
+  into its work copy under the product's own `agents.<mode>` keys; the report carries a pairwise comparison under
+  a rule registered before the data — **better means strictly more tasks solved and every task the other solved**,
+  anything else inconclusive — with the per-task difference listed. See
+  [eval.md](eval.md#ab-variants). The evidence below is what the entry said before F1 existed; it now has a task
+  set to run on.
 - **Gap**: two system prompts, two skill sets or two models cannot be run over one task set and
   compared.
 - **Evidence**: no such mechanism; and without F1's task set or A2's per-run accounting there is

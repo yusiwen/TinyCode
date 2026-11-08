@@ -134,6 +134,9 @@ type baselineReport struct {
 	// Corpus fingerprints the task set a run measured (repository tasks only), so
 	// a later run can refuse to compare against a different one.
 	Corpus string `json:"corpus,omitempty"`
+	// AB is the pairwise comparison of the variants, present when more than one
+	// ran (roadmap F2).
+	AB []abComparison `json:"ab,omitempty"`
 	// Regression is present only when a stored baseline was supplied.
 	Regression *regression `json:"regression,omitempty"`
 	Results    []runResult `json:"results"`
@@ -416,6 +419,9 @@ func printMarkdown(w io.Writer, report baselineReport) {
 
 	if report.Regression != nil {
 		printRegression(w, *report.Regression)
+	}
+	if len(report.AB) > 0 {
+		printAB(w, report.AB)
 	}
 
 	// pass@k, which is the number a cost decision needs: a solved count says how

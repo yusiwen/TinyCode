@@ -124,6 +124,43 @@ What the increment *did* show is where the difficulty went, and it is not where 
 refactor, a task whose failure mode is not "one package, one test suite". That is written in
 `docs/roadmap.md` and in issue #256's condition, before this data existed.
 
+## A/B variants
+
+The three configurations the runner ships (`build`, `limited`, `plan`) compare an agent against itself under
+different budgets. A prompt or model change needs the other axis: **two variants over one task set**. Pass a
+file and the runner uses exactly those variants instead:
+
+```json
+[
+  {"name": "baseline", "mode": "build"},
+  {"name": "prompt-b", "mode": "build", "system_prompt_file": "/tmp/prompt-b.txt", "max_steps": 40},
+  {"name": "other-model", "mode": "build", "model": "deepseek/deepseek-chat"}
+]
+```
+
+```bash
+TINYCODE_EVAL=1 go run ./eval/runner -variants /tmp/variants.json -repo-tasks eval/repo-tasks \
+  -configurations baseline,prompt-b -reps 2 -out /tmp/ab -work /tmp/ab-work -binary /tmp/tinycode-under-test
+```
+
+Each variant is written into its work copy as the **product's own** config keys (`agents.<mode>.system_prompt`,
+`.model`, `.max_steps`), so an experiment cannot exercise a code path a user could not reach. The mode picks
+which built-in agent the variant is; the prompt replaces that agent's prompt rather than adding to it.
+
+**The comparison rule, registered before the data:**
+
+> A variant is **better** when it solves strictly more tasks **and** solves every task the other solved.
+> Anything else — including one extra solve bought by losing another — is **inconclusive**.
+
+The section lists the tasks solved by exactly one side for every pair, so a winner on count alone cannot hide a
+lost task; the tables above carry the pass rates, pass@k and tokens per solved task, which is where a tie on
+solve count turns into a cost decision a person has to make.
+
+**What it does not do.** Dominance is not significance: two repetitions cannot resolve a one-task difference, so
+the rule says inconclusive instead of pretending. A variant currently changes the prompt, the model and the step
+and token budgets — not the tool allow/deny lists or the skill set; those would be more overlay keys, and the
+issue records that as the follow-up if a comparison needs them.
+
 ## The regression baseline
 
 A measurement is not a baseline: "build solved 1/3" answers nothing about whether the change you just made
