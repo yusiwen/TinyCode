@@ -9,6 +9,19 @@ back to its change and tests.
 
 ## Unreleased
 
+### staticcheck v0.8.2, and the staticcheck job floats Go again
+
+The pinned `honnef.co/go/tools v0.8.1` cannot read the export data go1.27.2 and later write (version
+5 against a maximum of 4), so the `staticcheck` job alone had its toolchain pinned to go1.27.1, with a
+comment naming the condition for floating it back (issue #172). `v0.8.2` decodes version 5: the pin
+moves to it, the job floats `1.27` again, and the workaround comment is replaced by the measurement
+that retires it.
+
+Measured locally on one tree with go1.27.3: `make staticcheck STATICCHECK_VERSION=v0.8.1` fails with
+`cannot decode "internal/goarch" ... export data version 5 is greater than maximum supported version
+4`; `v0.8.2` passes `./...` on the main module (13 s) and on the nested `tuiprobe` module (3 s), with
+no new findings.
+
 ### The branch tree, and a comparison that trusts the transcripts
 
 H3, S1–S4. `/fork` has written `parent_session` and `fork_at` into the branch file since it existed,
