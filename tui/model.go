@@ -263,6 +263,7 @@ func commandList() []cmdEntry {
 		{"/model", "Switch model"},
 		{"/fork", "Create session branch"},
 		{"/session", "List/switch branch"},
+		{"/compare", "Compare two branches"},
 		{"/exit", "Exit TinyCode"},
 	}
 }

@@ -1,0 +1,27 @@
+# The branch view (roadmap H3). The fixture pair seeded by `make test-tui-scenarios`
+# records the link the view is built from: TUI-20260101-000000-try carries
+# `parent_session: TUI-20260101-000000` and `fork_at: 1`, so /session must draw it
+# *under* the parent and name the fork point, and /compare must call the parent the
+# ancestor and show the branch's first message past the fork. Both used to be
+# invisible: every session was one flat row and the link was only decodable from the id.
+open --dir . --size 120x45 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text "Get started" --timeout 20s
+wait --text "Type your request" --timeout 20s
+send --text /session
+send --key enter
+wait --text "└─ TUI-20260101-000000-try" --timeout 10s
+wait --text "forked at 1" --timeout 10s
+screenshot /tmp/tinyscen-shots/branch-tree-120x45.png --scale 2
+send --text "/compare TUI-20260101-000000 TUI-20260101-000000-try"
+# The send is asynchronous: pressing Enter before the whole command is in the
+# input submits the first word, and the palette answers with a usage line. Wait
+# for the screen to settle, which is what "the text has been inserted" looks like.
+stable 300ms --timeout 10s
+send --key enter
+wait --text "a is an ancestor of b" --timeout 10s
+wait --text "common prefix" --timeout 10s
+wait --text "scenario-branch-answer" --timeout 10s
+screenshot /tmp/tinyscen-shots/branch-compare-120x45.png --scale 2
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

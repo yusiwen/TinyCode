@@ -525,26 +525,7 @@ func newRootCmd() *cobra.Command {
 			}
 
 			if listSessions {
-				infos := store.List()
-				if len(infos) == 0 {
-					fmt.Println("No saved sessions found.")
-				} else {
-					fmt.Println("Available sessions:")
-					for _, info := range infos {
-						when := info.UpdatedAt.Format("2006-01-02 15:04")
-						title := info.Title
-						if title == "" {
-							title = "(no title)"
-						}
-						msgs := fmt.Sprintf("%d msgs", info.MessageCount)
-						model := info.ModelName
-						if model == "" {
-							model = "?"
-						}
-						fmt.Printf("  %-35s %-50s %-12s %s\n",
-							info.ID, title, msgs, when)
-					}
-				}
+				printSessionTree(store)
 				return nil
 			}
 
@@ -1498,4 +1479,44 @@ func printTrajectory(cfg *config.Config, id string) error {
 	}
 	_, err = os.Stdout.Write(data)
 	return err
+}
+
+// printSessionTree renders --list-sessions as the branch forest: a session that
+// forked from another is indented under it, so the relationship is read from
+// the page instead of decoded from the id (roadmap H3).
+func printSessionTree(store *session.Store) {
+	roots := store.Tree()
+	if len(roots) == 0 {
+		fmt.Println("No saved sessions found.")
+		return
+	}
+	fmt.Println("Available sessions:")
+	session.Walk(roots, func(n *session.Node) {
+		fmt.Printf("  %s\n", sessionTreeLabel(n))
+	})
+}
+
+// sessionTreeLabel is one row of that forest: the columns the flat list had,
+// plus the fork point — or the reason the recorded link could not be followed.
+func sessionTreeLabel(n *session.Node) string {
+	title := n.Title
+	if title == "" {
+		title = "(no title)"
+	}
+	msgs := fmt.Sprintf("%d msgs", n.MessageCount)
+	when := n.UpdatedAt.Format("2006-01-02 15:04")
+	// The guides are part of the first column, so a branch's title, size and time
+	// still line up with its parent's. Indenting the id instead would shift every
+	// later column by the depth.
+	line := fmt.Sprintf("%-35s %-50s %-12s %s", n.Indent+n.Connector+n.ID, title, msgs, when)
+	switch {
+	case n.ParentSessionID == "":
+		return line
+	case n.Orphan:
+		return line + fmt.Sprintf("  [parent %s missing]", n.ParentSessionID)
+	case n.Cycle:
+		return line + fmt.Sprintf("  [parent %s: cycle broken here]", n.ParentSessionID)
+	default:
+		return line + fmt.Sprintf("  [forked at %d]", n.ForkAt)
+	}
 }
