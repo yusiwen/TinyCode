@@ -9,6 +9,38 @@ back to its change and tests.
 
 ## Unreleased
 
+### The branch tree, and a comparison that trusts the transcripts
+
+H3, S1–S4. `/fork` has written `parent_session` and `fork_at` into the branch file since it existed,
+and nothing read them back: the store was listed as one flat row per file, so the only way to tell
+which session was a branch of which was to decode the id — which is not the authoritative link, and
+carries no fork point at all.
+
+`--list-sessions` and the TUI's `/session` now draw the forest: a branch indented under the session
+it forked from, with its fork point. Roots are ordered least-recently-updated first, exactly as the
+flat list was, and siblings by creation time. Two deformations that only a hand-edited store can
+produce are shown rather than repaired — a session whose parent file is gone is an orphan at the top
+level, and a parent cycle is broken at its smallest id so the whole component stays visible.
+
+`/compare <a> <b>` answers two independent questions: where the branch chains meet (nearest common
+ancestor, which side is the ancestor, the fork point below it), and where the transcripts stop
+agreeing (the identical leading-message count and the first message that differs on each side).
+Messages are compared on what the model is sent — role, name, tool-call identity and content — so a
+`/drop` or an edited copy shows up as disagreement with the link instead of being papered over by
+it. A session compared with itself, or one that is not in the store, is refused in one line.
+
+The renderer had to change with it: a multi-line system message containing a box-drawing character
+went through the no-wrap path as one chunk, whose newlines became cells — the tree collapsed onto a
+single flowing row. The chunk is now split on newlines before it is appended, which is what the
+no-wrap path was always meant to preserve.
+
+`branch-tree.scenario` is the end-to-end gate over a committed parent/branch fixture pair: it asserts
+the indented branch line, the fork point, the ancestor line and the branch's first message past the
+fork, through the real binary. The suite is now 41 scenario files and 1435 test functions.
+
+What this does not add: a merge, a rename or a re-parent (the link is whatever the file records), or
+a way to see branches on another machine.
+
 ### Four native provider backends
 
 A6. A route can now name the vendor's own protocol instead of the OpenAI-compatible shape:
