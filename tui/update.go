@@ -1246,6 +1246,9 @@ Commands:
   /compress      Manually trigger conversation compression
   /model         Switch provider/model
   /sessions      List saved sessions
+  /session       List the branch forest, or switch to a session
+  /fork [label]  Branch the conversation, and switch to the branch
+  /compare <a> <b>  Compare two branches
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
   /skill         Load a skill's instructions (e.g. /skill code-review)
@@ -1317,23 +1320,9 @@ Mouse:
 	case "/session":
 		parts := strings.Fields(cmd)
 		if len(parts) < 2 {
-			// List all branches/sessions
-			infos := m.sessionStore.List()
-			var sb strings.Builder
-			sb.WriteString("Sessions and branches:\n")
-			for _, info := range infos {
-				mark := "  "
-				if info.ID == m.currentBranch {
-					mark = " *"
-				}
-				title := info.Title
-				if title == "" {
-					title = "(no title)"
-				}
-				msgs := info.MessageCount
-				sb.WriteString(fmt.Sprintf("%s %-40s %s (%d msgs)\n", mark, info.ID, title, msgs))
-			}
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: strings.TrimSpace(sb.String())})
+			// List the branch forest; a branch is drawn under the session it
+			// forked from, and the current one is marked.
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: sessionTreeText(m.sessionStore, m.currentBranch)})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1356,6 +1345,21 @@ Mouse:
 			Role:    "system",
 			Content: fmt.Sprintf("Switched to session: %s (%d messages)", branch.ID, len(branch.Messages)),
 		})
+		m.autoScroll()
+	case "/compare":
+		parts := strings.Fields(cmd)
+		if len(parts) < 3 {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: "Usage: /compare <session-a> <session-b>"})
+			m.autoScroll()
+			return m, nil
+		}
+		cmp, err := m.sessionStore.Compare(parts[1], parts[2])
+		if err != nil {
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Compare error: %v", err)})
+			m.autoScroll()
+			return m, nil
+		}
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: formatComparison(cmp)})
 		m.autoScroll()
 	case "/thinking":
 		if m.config.ShowThinking == nil {

@@ -355,15 +355,7 @@ func (st *Store) Search(query string) []SessionInfo {
 			}
 		}
 		if matched {
-			results = append(results, SessionInfo{
-				ID:           id,
-				Title:        s.Title,
-				Preview:      s.Preview,
-				ModelName:    s.ModelName,
-				CreatedAt:    s.CreatedAt,
-				UpdatedAt:    s.UpdatedAt,
-				MessageCount: s.MessageCount,
-			})
+			results = append(results, s.info())
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -401,7 +393,9 @@ func (s *Session) ExportMarkdown() string {
 	return b.String()
 }
 
-// SessionInfo summarizes a session for display purposes.
+// SessionInfo summarizes a session for display purposes. The branch fields are
+// carried here because both readers of a listing — the flat list and the tree —
+// need them, and reading each file twice to get them would be waste.
 type SessionInfo struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title,omitempty"`
@@ -410,15 +404,46 @@ type SessionInfo struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	MessageCount int       `json:"message_count"`
+
+	ParentSessionID string `json:"parent_session,omitempty"`
+	ForkAt          int    `json:"fork_at,omitempty"`
+}
+
+// info summarizes the session for listing and for the branch tree.
+func (s *Session) info() SessionInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return SessionInfo{
+		ID:              s.ID,
+		Title:           s.Title,
+		Preview:         s.Preview,
+		ModelName:       s.ModelName,
+		CreatedAt:       s.CreatedAt,
+		UpdatedAt:       s.UpdatedAt,
+		MessageCount:    s.MessageCount,
+		ParentSessionID: s.ParentSessionID,
+		ForkAt:          s.ForkAt,
+	}
 }
 
 // List returns all available session infos sorted by update time (newest last).
 func (st *Store) List() []SessionInfo {
+	infos := st.infos()
+	sort.Slice(infos, func(i, j int) bool {
+		return infos[i].UpdatedAt.Before(infos[j].UpdatedAt)
+	})
+	return infos
+}
+
+// infos returns an unsorted summary of every readable session in the store. It
+// is the single directory scan behind List and Tree; an unreadable file is
+// skipped, and Load reports its error when someone asks for that id.
+func (st *Store) infos() []SessionInfo {
 	entries, err := os.ReadDir(st.Dir)
 	if err != nil {
 		return nil
 	}
-	var infos []SessionInfo
+	var out []SessionInfo
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -428,18 +453,7 @@ func (st *Store) List() []SessionInfo {
 		if err != nil {
 			continue
 		}
-		infos = append(infos, SessionInfo{
-			ID:           id,
-			Title:        s.Title,
-			Preview:      s.Preview,
-			ModelName:    s.ModelName,
-			CreatedAt:    s.CreatedAt,
-			UpdatedAt:    s.UpdatedAt,
-			MessageCount: s.MessageCount,
-		})
+		out = append(out, s.info())
 	}
-	sort.Slice(infos, func(i, j int) bool {
-		return infos[i].UpdatedAt.Before(infos[j].UpdatedAt)
-	})
-	return infos
+	return out
 }

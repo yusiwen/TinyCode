@@ -203,7 +203,14 @@ func (m *TuiModel) View() string {
 						continue
 					}
 					if strings.ContainsAny(chunk.Text, "│─") {
-						g.AppendChunk(chunk)
+						// A box-drawn block must not be re-wrapped — wordWrap would
+						// break its borders — but its own newlines still delimit
+						// rows. Appending the chunk whole put every newline in a
+						// cell, so a multi-line tree or table collapsed onto one
+						// flowing row.
+						for _, line := range strings.Split(chunk.Text, "\n") {
+							g.AppendChunk(CellChunk{Text: line, Style: chunk.Style})
+						}
 						continue
 					}
 					wrapped := wordWrap(chunk.Text, g.width, chunk.Style)

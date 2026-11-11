@@ -12,9 +12,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -1106,5 +1108,31 @@ func TestBuildProviderRegistryRejectsBadFailover(t *testing.T) {
 				t.Fatalf("error = %v, want it to contain %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestSessionTreeLabelNamesTheFork covers the one column --list-sessions adds for
+// a branch: where it forked, or why the recorded parent link could not be
+// followed (roadmap H3).
+func TestSessionTreeLabelNamesTheFork(t *testing.T) {
+	at := time.Unix(0, 0)
+	child := &session.Node{SessionInfo: session.SessionInfo{
+		ID: "main-try", ParentSessionID: "main", ForkAt: 7, MessageCount: 3, UpdatedAt: at,
+	}}
+	child.Connector = "└─ "
+	if got := sessionTreeLabel(child); !strings.Contains(got, "└─ main-try") || !strings.Contains(got, "[forked at 7]") {
+		t.Errorf("branch row = %q, want the guide and the fork point", got)
+	}
+
+	orphan := &session.Node{SessionInfo: session.SessionInfo{
+		ID: "kept", ParentSessionID: "deleted", MessageCount: 1, UpdatedAt: at,
+	}, Orphan: true}
+	if got := sessionTreeLabel(orphan); !strings.Contains(got, "[parent deleted missing]") {
+		t.Errorf("orphan row = %q, want the dangling parent named", got)
+	}
+
+	root := &session.Node{SessionInfo: session.SessionInfo{ID: "main", MessageCount: 1, UpdatedAt: at}}
+	if got := sessionTreeLabel(root); strings.Contains(got, "[") {
+		t.Errorf("root row = %q, want no branch annotation", got)
 	}
 }

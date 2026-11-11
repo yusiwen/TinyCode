@@ -48,6 +48,7 @@
   /model  Switch model
   /fork  Create session branch
   /session  List/switch branch
+  /compare  Compare two branches
   /exit  Exit TinyCode
 ↑↓ navigate · Enter execute · Esc cancel
 ⚡ plan  ■ unknown  tokens: 0  tools: 0  msgs: 2  session: 2562047h47m
