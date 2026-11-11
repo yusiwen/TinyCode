@@ -16,10 +16,10 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 24 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 25 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 16 | verified gaps, no issue opened |
+| Not started | 15 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -78,7 +78,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | G2 | Sub-agent output is not streamed to the UI | Not started |
 | H1 | No i18n | Not started |
 | H2 | Command checks are heuristics, not a boundary | Not started |
-| H3 | No branch visualisation | Not started |
+| H3 | No branch visualisation | Delivered — #347 |
 
 ## Provenance and method
 
@@ -1007,6 +1007,17 @@ says how to record and refresh one — and a
 
 ### H3 — No branch visualisation
 
+- **Picked up**: [#347](https://github.com/yusiwen/TinyCode/issues/347) — S1 (`session.Tree`, a
+  forest derived from `parent_session`, with orphan and cycle handling), S2 (`--list-sessions`
+  renders it), S3 (`/session` tree and `/compare`), S4 (a scenario over a committed fixture pair,
+  README and this row). **Delivered 2026-11-11.** `--list-sessions` and `/session` draw a branch
+  under the session it forked from, with its fork point; a session whose parent file is gone stays
+  visible as an orphan, and a parent cycle is broken at one deterministic member instead of hiding
+  the component. `/compare a b` reports the nearest common ancestor, the fork point, the number of
+  identical leading messages and the first message where the transcripts differ — the last two
+  computed from the transcripts themselves, so a `/drop` or an edited copy shows up as disagreement
+  with the link instead of being papered over by it. A box-drawn multi-line system message also keeps
+  its line breaks now: the renderer used to put its newlines in cells (`tui/view.go`).
 - **Gap**: `session.Store.Fork` can branch a session but the TUI reports one line, so the
   relationship between two branches has to be inferred from IDs.
 - **Evidence**: `session/session.go:222` implements `Fork`; the TUI calls it at
