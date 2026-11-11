@@ -186,7 +186,7 @@ lint:
 
 # Stricter linter, pinned so local runs match CI. Deliberately separate from
 # `lint` so a missing tool can never turn that target into a no-op.
-STATICCHECK_VERSION ?= v0.8.1
+STATICCHECK_VERSION ?= v0.8.2
 
 staticcheck:
 	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...

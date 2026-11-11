@@ -1043,7 +1043,7 @@ make install-gopls  # go install gopls@$(GOPLS_VERSION)
 make test-browser   # real-browser smoke test (BROWSER_TEST=1); needs Chromium
 make test-tui-visual # TUI screenshots + PTY smoke (TUI_SHOT=1); needs Chromium and a PTY
 make lint           # go vet (blocking)
-make staticcheck    # staticcheck, pinned via STATICCHECK_VERSION (v0.8.1)
+make staticcheck    # staticcheck, pinned via STATICCHECK_VERSION (v0.8.2)
 make fmt-check      # fail when a tracked Go file is not gofmt-clean
 make run PROMPT="..."  # one-shot mode
 ./bin/tinycode      # TUI mode
@@ -1073,7 +1073,7 @@ make run PROMPT="..."  # one-shot mode
 - `tui-visual` job: installs Chrome for Testing the same way and runs `make test-tui-visual` (`TUI_SHOT=1`), the only place the built binary is started on a PTY and the frames are rendered to PNG. The golden frames and the headless program driver run in the `ci` job, which needs neither a browser nor a terminal device.
 - `lsp` job: installs gopls at the Makefile's pinned `GOPLS_VERSION` (v0.23.0, matching the flake) plus `typescript-language-server` with TypeScript 5 (`make install-tsls`, non-fatal: the TypeScript case skips with the reason if the registry is unavailable) and runs `make test-lsp` (`LSP_TEST=1`) so the integration tests that spawn a real language server actually run. Installed-server coverage, per language: **go** (gopls) integration-tested in every `lsp` job run; **typescript/javascript** integration-tested when the server is installed (CI installs it) and otherwise covered ungated by a stand-in server that proves selection, arguments, `languageId`, the document URI and the diagnostics round trip; **python** has the "binary missing" path tested, pyright itself is not installed anywhere; **rust**, **cpp** and **java** have no server-level coverage — their configs are pinned by unit tests only.
 - `cross` job: `GOOS/GOARCH` build + vet for linux/amd64, linux/arm64 and darwin/arm64 — this is also what type-checks the platform-only files (`tool/pathbeneath_linux.go`, `tool/sysproc_unix.go`, `tool/confinement_linux.go`, `tool/confinement_darwin.go`). It compiles the macOS launcher and does not run it; `TestSeatbeltBoundaryIsEnforced` on a Mac is the execution check.
-- `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.1` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it).
+- `staticcheck` job: blocking, pinned to `honnef.co/go/tools v0.8.2` via `make staticcheck` so a new release cannot red the build without a code change (bump `STATICCHECK_VERSION` in the Makefile to move it). v0.8.2 decodes Go 1.27's export data version 5, so the job floats Go `1.27` again instead of pinning `1.27.1` (issue #172).
 - Toolchain: CI, the Nix flake (`pkgs.go_1_27`) and the `go 1.27` directive in `go.mod` are all on the 1.27 line, so `gofmt`/`go vet` behave identically in every environment.
 - **Annotation baseline, and why the gate is "no new annotations" rather than zero:** every job carries one `ubuntu-latest` migration notice from the runner image, and `browser` + `tui-visual` additionally carry `browser-actions/setup-chrome@v1`'s Node 20 deprecation warning, because the action targets Node 20 while the runner forces Node 24. Both are platform notices no change in this repository can remove, so a PR is clean when its counts match the baseline (verified on master `a4f815b` and on the previous green run):
 
