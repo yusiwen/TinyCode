@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -46,6 +47,7 @@ func TestAutoAllowParent(t *testing.T) {
 }
 
 func TestBlockOutsideAutoAllow(t *testing.T) {
+	testenv.Symlinks(t)
 	cwd, _ := os.Getwd()
 	sandbox := &SandboxConfig{
 		ProjectRoot:    cwd,
@@ -284,6 +286,7 @@ func TestCheckPathRejectsSymlinkEscape(t *testing.T) {
 // applies ".." to the already-resolved link target, so a lexical check that
 // collapses the path first would wrongly allow it.
 func TestCheckPathRejectsSymlinkDotDotEscape(t *testing.T) {
+	testenv.Symlinks(t)
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
 	outside := filepath.Join(base, "outside")
@@ -444,6 +447,7 @@ func TestApplyPatchAllowedInsideRoot(t *testing.T) {
 // resolver: ".." must be applied after the symlink on its left is resolved,
 // and components that do not exist yet must be preserved.
 func TestResolveRealPathKernelOrder(t *testing.T) {
+	testenv.Symlinks(t)
 	base := t.TempDir()
 	// Normalize the temp dir itself so expectations are not confused by
 	// platform symlinks such as macOS /var -> /private/var.

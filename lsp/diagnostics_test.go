@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 // are tracked per file, that warnings are excluded from the error count, and
 // that a file's count drops once its errors are fixed.
 func TestDiagnosticsRegistry(t *testing.T) {
+	testenv.POSIXShell(t, "an LSP server stub script")
 	resetDiagnostics()
 	t.Cleanup(resetDiagnostics)
 
@@ -100,6 +102,7 @@ func TestDiagnosticsRegistryFiltersWarnings(t *testing.T) {
 // after the most recently updated file is fixed: it falls back to a
 // deterministic path that still has errors, and to "" once the registry drains.
 func TestRecordDiagnosticsLastPathFallback(t *testing.T) {
+	testenv.POSIXShell(t, "an LSP server stub script")
 	resetDiagnostics()
 	t.Cleanup(resetDiagnostics)
 

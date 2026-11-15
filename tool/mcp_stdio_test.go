@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/internal/testenv"
 )
 
 // TestHelperMCPProcess is a fake MCP server used as the stdio child of
@@ -262,6 +263,7 @@ func TestHelperMCPPidProcess(t *testing.T) {
 // hook closes stdio clients, leaves no child process behind, and is safe to
 // call more than once.
 func TestCloseMCPServersReapsChildAndIsIdempotent(t *testing.T) {
+	testenv.POSIXShell(t, "an MCP server stub script")
 	t.Setenv("TINYCODE_MCP_PID_HELPER", "1")
 	pidFile := filepath.Join(t.TempDir(), "mcp-child.pid")
 	t.Setenv("TINYCODE_MCP_PID_FILE", pidFile)

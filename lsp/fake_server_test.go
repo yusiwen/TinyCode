@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"io"
 	"os"
 	"os/exec"
@@ -175,6 +176,7 @@ func readFakeLog(t *testing.T, path string) string {
 // started with, the languageId and URI it was told about, and the diagnostic that
 // came back (issue #10).
 func TestSyncFileUsesTheTypeScriptServer(t *testing.T) {
+	testenv.POSIXShell(t, "a fake language server shell script")
 	proj := t.TempDir()
 	app := filepath.Join(proj, "app.ts")
 	content := "const answer: number = 42\n"

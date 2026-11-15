@@ -50,8 +50,17 @@ func (a *Agent) keepsPath(arguments string) bool {
 	if arguments == "" {
 		return false
 	}
+	// The arguments were written by the model, so they spell the path the way it
+	// typed it — "internal/store.go" — while the kept path is the platform's form
+	// ("internal\store.go" on Windows). Both sides are normalised to forward
+	// slashes before the containment check, or a kept path silently stops
+	// matching on the one platform whose separator differs.
+	args := strings.ReplaceAll(arguments, `\`, "/")
 	for _, kept := range a.KeptPaths {
-		if kept != "" && strings.Contains(arguments, kept) {
+		if kept == "" {
+			continue
+		}
+		if strings.Contains(args, strings.ReplaceAll(kept, `\`, "/")) {
 			return true
 		}
 	}

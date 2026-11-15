@@ -41,3 +41,26 @@ func DesktopNotifier(t testing.TB) {
 		t.Skip("no desktop notifier for Windows in this project; the run finishes without one")
 	}
 }
+
+// POSIXShell skips a test that drives a POSIX shell stub or a mechanism that only
+// exists on Unix: the command launcher, the seatbelt/landlock confinement, a
+// container runtime stub written as a shell script, or a fake `git`/`gh`/`gopls`
+// installed as one. Windows runs commands through bash when Git for Windows is
+// installed, but these tests build their own stubs and assert Unix process
+// behaviour on top of them.
+func POSIXShell(t testing.TB, what string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(what + " drives a POSIX shell stub or a Unix-only mechanism, which this platform does not provide")
+	}
+}
+
+// SkipWindows skips a test for a reason the caller states, for the cases that are
+// not a general platform property (an evaluation corpus developed on Unix, a
+// privilege, a tool the platform does not install).
+func SkipWindows(t testing.TB, reason string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(reason)
+	}
+}

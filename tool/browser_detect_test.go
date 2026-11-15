@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/yusiwen/tinycode/internal/testenv"
 )
 
 // writeFixture creates a file at dir/rel, creating parent directories.
@@ -225,6 +226,7 @@ func TestBrowserCandidatesOrder(t *testing.T) {
 // preference and the probe alone. A regression that pointed the `--dump-dom` path
 // at the full browser fails here without a browser being started.
 func TestFindBrowserPerPathDrivesTheWholeChain(t *testing.T) {
+	testenv.Symlinks(t)
 	// The layout helpers must name a real binary for every GOOS they claim to
 	// support: an empty string made the fixture write a file where the cache
 	// directory belongs, and that only showed up on Linux (PR #52's first CI run).
