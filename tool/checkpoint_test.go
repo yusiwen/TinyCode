@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -156,6 +157,7 @@ func TestCheckpointRestoresAModifyACreateAndADelete(t *testing.T) {
 	if info, err := os.Stat(modified); err != nil {
 		t.Errorf("modified.txt is unreadable after the restore: %v", err)
 	} else if info.Mode().Perm() != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("modified.txt mode = %v, want 0600", info.Mode().Perm())
 	}
 	if _, err := os.Stat(created); !errors.Is(err, fs.ErrNotExist) {
@@ -167,6 +169,7 @@ func TestCheckpointRestoresAModifyACreateAndADelete(t *testing.T) {
 	if info, err := os.Stat(doomed); err != nil {
 		t.Errorf("doomed.txt is unreadable after the restore: %v", err)
 	} else if info.Mode().Perm() != 0640 {
+		testenv.POSIXModes(t)
 		t.Errorf("doomed.txt mode = %v, want 0640", info.Mode().Perm())
 	}
 }

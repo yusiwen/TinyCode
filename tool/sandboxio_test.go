@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"errors"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,6 +44,7 @@ func TestSandboxedReadWrite(t *testing.T) {
 		t.Fatalf("stat: %v", err)
 	}
 	if perm := info.Mode().Perm(); perm != 0644 {
+		testenv.POSIXModes(t)
 		t.Errorf("created file mode = %o, want 644", perm)
 	}
 

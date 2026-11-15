@@ -88,8 +88,8 @@ jobs:
       # gopls). They are grouped and tracked in issue #358; until that list is
       # worked through, this job proves the build, the vet pass and that the test
       # binaries compile — not that the suite is green here.
-      - name: Compile the test binaries
-        run: go test ./... -run '^$' -count=1
+      - name: Test
+        run: go test ./... -count=1
 
   lsp:
     name: LSP integration (gopls + typescript)

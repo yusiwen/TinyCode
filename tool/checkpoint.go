@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusiwen/tinycode/internal/home"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -95,7 +96,7 @@ func CheckpointRoot() string {
 	if root != "" {
 		return root
 	}
-	home, err := os.UserHomeDir()
+	home, err := home.Dir()
 	if err != nil || home == "" {
 		return ""
 	}

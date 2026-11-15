@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yusiwen/tinycode/internal/home"
 )
 
 // ProviderRecordConfig holds one provider definition.
@@ -303,7 +305,7 @@ func (c Config) TrajectorySpec() TrajectorySpec {
 		MaxRuns:  DefaultTrajectoryMaxRuns,
 		MaxBytes: DefaultTrajectoryMaxBytes,
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
+	if home, err := home.Dir(); err == nil && home != "" {
 		spec.Dir = filepath.Join(home, ".tinycode", "trajectories")
 	}
 	if c.Trajectory == nil {
@@ -460,7 +462,7 @@ func (c Config) MemorySpec() MemorySpec {
 		MaxBytes:    DefaultMemoryMaxBytes,
 		RecallLimit: DefaultMemoryRecallLimit,
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
+	if home, err := home.Dir(); err == nil && home != "" {
 		spec.Dir = filepath.Join(home, ".tinycode", "memory")
 	}
 	if c.Memory == nil {
@@ -721,7 +723,7 @@ func (c Config) NotifyPolicy() (channel string, minDuration time.Duration) {
 
 // DefaultConfig returns the hardcoded default configuration.
 func DefaultConfig() Config {
-	home, _ := os.UserHomeDir()
+	home, _ := home.Dir()
 	showThinking := true
 	return Config{
 		DefaultMode:  "plan",
@@ -1180,7 +1182,7 @@ type UserLayer struct {
 // A missing file is the defaults and no diagnostic; a malformed one is reported
 // exactly once, here, and the defaults are used rather than a partial parse.
 func LoadUserLayer() UserLayer {
-	home, err := os.UserHomeDir()
+	home, err := home.Dir()
 	if err != nil {
 		return UserLayer{cfg: DefaultConfig(), raw: map[string]any{}}
 	}
@@ -1669,7 +1671,7 @@ func AddAllowedPath(path string) error {
 
 // userConfigPath returns ~/.tinycode/config.json, creating the directory.
 func userConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := home.Dir()
 	if err != nil {
 		return "", err
 	}

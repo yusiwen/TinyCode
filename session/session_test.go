@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -142,6 +143,7 @@ func TestFlushIsAtomicAndPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if perm := info.Mode().Perm(); perm != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("session file mode = %o, want 600", perm)
 	}
 

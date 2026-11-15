@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -354,6 +355,7 @@ func TestLocalMemoryFileIsPrivateAndTolerant(t *testing.T) {
 		t.Fatalf("stat: %v", err)
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
+		testenv.POSIXModes(t)
 		t.Fatalf("store mode = %04o, want 0600", perm)
 	}
 

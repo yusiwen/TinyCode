@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"errors"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,6 +92,7 @@ func TestWriteSandboxedReplacesAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	if mode := info.Mode().Perm(); mode != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("mode = %o, want the existing 600 to survive the replacement", mode)
 	}
 

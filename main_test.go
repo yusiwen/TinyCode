@@ -19,6 +19,7 @@ import (
 
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
@@ -456,6 +457,7 @@ func TestExportSessionWritesPrivateMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	if perm := info.Mode().Perm(); perm != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("export mode = %o, want 600", perm)
 	}
 }

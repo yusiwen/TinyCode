@@ -6,6 +6,7 @@ import (
 
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/types"
+	"path/filepath"
 )
 
 // seedHistory gives the model n turns of two messages each, the shape a real
@@ -235,16 +236,19 @@ func TestCompressPreviewRefusedDuringARun(t *testing.T) {
 func TestKeepCommands(t *testing.T) {
 	m := newTestTUI()
 
+	// The path is echoed and stored the way the platform spells it, so the
+	// expectation is built with filepath.Join rather than written with a slash.
+	kept := filepath.Join("internal", "store.go")
 	m.handleCommand("/keep internal/store.go")
-	if !strings.Contains(lastMessage(m), "kept internal/store.go") {
+	if !strings.Contains(lastMessage(m), "kept "+kept) {
 		t.Fatalf("reply = %q", lastMessage(m))
 	}
-	if len(m.agent.KeptPaths) != 1 || m.agent.KeptPaths[0] != "internal/store.go" {
+	if len(m.agent.KeptPaths) != 1 || m.agent.KeptPaths[0] != kept {
 		t.Fatalf("kept paths = %v", m.agent.KeptPaths)
 	}
 
 	m.handleCommand("/keep")
-	if !strings.Contains(lastMessage(m), "internal/store.go") {
+	if !strings.Contains(lastMessage(m), kept) {
 		t.Fatalf("listing = %q", lastMessage(m))
 	}
 

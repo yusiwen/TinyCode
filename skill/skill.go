@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/yusiwen/tinycode/internal/home"
 )
 
 // skillNameRe restricts skill names to a safe, path-free charset. Names are
@@ -88,7 +90,7 @@ func Discover(cwd string) []Skill {
 	}
 
 	// 2. Global (~/.tinycode/skills/)
-	home, _ := os.UserHomeDir()
+	home, _ := home.Dir()
 	if home != "" {
 		globalDir := filepath.Join(home, ".tinycode", "skills")
 		skills = append(skills, scanDir(globalDir, false)...)
@@ -173,7 +175,7 @@ var (
 
 // UserSkillDir returns the user's skill directory (~/.tinycode/skills/).
 func UserSkillDir() string {
-	home, _ := os.UserHomeDir()
+	home, _ := home.Dir()
 	if home == "" {
 		return ""
 	}
