@@ -868,17 +868,31 @@ func loadPersistentGrants(user config.UserLayer) error {
 
 // expandPath expands $VARS and a leading "~" in a configured path, so values
 // like "~/.tinycode/sessions" behave the way users expect.
+//
+// HOME wins over the platform's own answer when it is set: a test, a container, a
+// service and Git Bash on Windows all say where home is that way, and Windows is
+// the case where os.UserHomeDir ignores HOME and answers with USERPROFILE — a
+// different directory than the one the person's shell and their `~` mean.
 func expandPath(p string) string {
 	p = os.ExpandEnv(p)
+	home := func() (string, bool) {
+		if dir := os.Getenv("HOME"); dir != "" {
+			return dir, true
+		}
+		if dir, err := os.UserHomeDir(); err == nil {
+			return dir, true
+		}
+		return "", false
+	}
 	if p == "~" {
-		if home, err := os.UserHomeDir(); err == nil {
-			return home
+		if dir, ok := home(); ok {
+			return dir
 		}
 		return p
 	}
 	if strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[2:])
+		if dir, ok := home(); ok {
+			return filepath.Join(dir, p[2:])
 		}
 	}
 	return p

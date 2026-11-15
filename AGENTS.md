@@ -171,8 +171,9 @@ helper is the signal to take this route.
 ## CI Notes
 
 `main.yml` jobs: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run),
-`lsp`, `browser`, `tui-visual`, `cross` (linux/amd64, linux/arm64, darwin/arm64)
-and `staticcheck`. The annotation baseline is **not zero**: one `ubuntu-latest`
+`lsp`, `browser`, `tui-visual`, `cross` (linux/amd64, linux/arm64, darwin/arm64,
+windows/amd64, windows/arm64), `windows` (build, vet, and the test binaries compiled
+— the suite is not green there yet, see #358) and `staticcheck`. The annotation baseline is **not zero**: one `ubuntu-latest`
 migration notice per job, and `browser` + `tui-visual` additionally carry the
 `setup-chrome@v1` Node 20 deprecation warning. Gate on *no new* annotations:
 
