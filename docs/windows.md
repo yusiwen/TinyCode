@@ -9,12 +9,11 @@ $ make windows-amd64        # bin/tinycode-windows-amd64.exe
 $ make windows-arm64
 ```
 
-The CI runs both cross-compiles and a `windows-latest` job that builds and vets
-the module and compiles the test binaries. It does **not** run the suite yet: about
-ninety tests carry Unix assumptions (file modes Windows ignores, short 8.3 paths in
-the temp directory, a desktop notifier, POSIX stub scripts), and they are grouped in
-[#358](https://github.com/yusiwen/TinyCode/issues/358). That issue is what stands
-between this page and "the suite is green on Windows".
+The CI runs both cross-compiles and a `windows-latest` job that builds, vets and
+runs the whole test suite on the platform. The tests that need a Unix mechanism or a
+property Windows does not model skip themselves through `internal/testenv` with the
+reason — the same convention the rest of the suite uses for a gated capability —
+so a green job means what it says.
 
 ## What works
 

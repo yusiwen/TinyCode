@@ -82,12 +82,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # Compile-only for now: the suite compiles on Windows, but a number of its
-      # assertions are Unix assumptions (file modes Windows ignores, short 8.3
-      # paths in the temp directory, a desktop notifier, POSIX stubs for git and
-      # gopls). They are grouped and tracked in issue #358; until that list is
-      # worked through, this job proves the build, the vet pass and that the test
-      # binaries compile — not that the suite is green here.
+      # The whole suite, on the platform. The tests that need a Unix mechanism
+      # (the command launcher, containers, PTY, process groups) or a property
+      # Windows does not model (Unix permission bits, redirectable cache dirs,
+      # symlink privileges) skip themselves through internal/testenv with the
+      # reason; everything else runs here.
       - name: Test
         run: go test ./... -count=1
 

@@ -16,9 +16,9 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 28 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 29 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
-| In progress | 1 | nothing is picked up right now |
+| In progress | 0 | nothing is picked up right now |
 | Not started | 11 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
@@ -57,7 +57,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | C5 | No test feedback loop | Delivered — #320 |
 | C6 | Isolation has only one tier | Delivered — #327 |
 | C7 | No command confinement on macOS | Delivered — #247 |
-| C8 | No Windows support | In progress — #356 |
+| C8 | No Windows support | Delivered — #356 |
 | D1 | No image input | Delivered — #354 |
 | D2 | No audio | Not started |
 | D3 | No desktop computer use | Not started |
@@ -647,7 +647,7 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### C8 — No Windows support
 
-- **Picked up**: [#356](https://github.com/yusiwen/TinyCode/issues/356) — **in progress.** The module
+- **Picked up**: [#356](https://github.com/yusiwen/TinyCode/issues/356) — the module
   already type-checked for Windows (every syscall sits behind a build tag), so what was missing was
   everything after "it compiles". Landed so far: `windows-amd64` and `windows-arm64` make targets and
   cross-matrix entries, a `windows-latest` job that builds and vets the module and compiles the test
@@ -657,8 +657,13 @@ current tree. D7 is the exception: it was recorded later, so its references are 
   root-detection rule reading both path conventions, `expandPath` preferring `HOME`, and the PTY
   verification tests behind `//go:build !windows`. `docs/windows.md` states what works and what the
   boundary means where there is no kernel mechanism (build mode unconfined, plan mode refuses commands).
-  **What remains** is the suite: about ninety tests fail on Windows for the Unix-assumption groups listed
-  in [#358](https://github.com/yusiwen/TinyCode/issues/358), which is why this row is not Delivered.
+  The suite followed in [#359](https://github.com/yusiwen/TinyCode/pull/359): the Unix-assumption groups
+  in [#358](https://github.com/yusiwen/TinyCode/issues/358) were worked through one at a time — file
+  modes, redirectable cache directories, a desktop notifier, POSIX stub scripts, separator expectations,
+  symlink privileges, the eval corpus — and each is now a skip with its reason through
+  `internal/testenv`, or a fix where the failure was a real bug (a file replace Windows refused, a
+  kept-path comparison that crossed separators, a test that pasted a path into hand-written JSON).
+  **The whole suite runs green on Windows.**
 - **Gap**: no Windows build target and no platform-specific files.
 - **Evidence**: `Makefile:16-19` lists linux-amd64, linux-arm64 and darwin-arm64; no `*_windows.go`
   (control: three `*_darwin.go` files exist); the CI cross matrix matches

@@ -35,10 +35,14 @@ The boundary on Windows is the documented weak one: no kernel file boundary for 
 and tool file writes are still fenced in process), and plan mode **refuses to run a command at all** —
 the rule roadmap H2 established, applied to the platform that needs it most.
 
-What is not done: the suite does not run green on Windows yet. About ninety tests carry Unix assumptions
-— file modes Windows ignores, short 8.3 paths in the temp directory, a desktop notifier, POSIX stub
-scripts — grouped and tracked in [#358](https://github.com/yusiwen/TinyCode/issues/358). Until that list
-is worked through, the Windows job is a build and type-check gate, and the roadmap row says In progress.
+The suite follows the same route. The first Windows run failed about ninety tests, all on Unix
+assumptions, and each group was worked through rather than skipped wholesale: file modes, redirectable
+cache directories, a desktop notifier and POSIX stub scripts now skip themselves through
+`internal/testenv` with the reason, separator-sensitive expectations were corrected, and the failures
+that were real bugs were fixed — a memory-store file replace Windows refused while a scanner held the
+destination, a kept-path comparison that crossed separators (the compaction test summarised the kept
+read away), a log handle that outlived the command that opened it, and a test that pasted a Windows path
+into hand-written JSON. **The whole suite runs green on `windows-latest`.**
 
 ### A picture can be attached to the conversation
 
