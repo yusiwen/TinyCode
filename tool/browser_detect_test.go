@@ -128,11 +128,13 @@ func TestFindPlaywrightBrowserEmpty(t *testing.T) {
 
 // TestPlaywrightCacheDir pins the per-platform cache location.
 func TestPlaywrightCacheDir(t *testing.T) {
-	if got := playwrightCacheDir("/home/u", "darwin"); got != "/home/u/Library/Caches/ms-playwright" {
-		t.Errorf("darwin cache dir = %q", got)
+	// The expectations are joined the way the function joins them: it builds a
+	// filesystem path, so the separator is the platform's even for a POSIX home.
+	if got, want := playwrightCacheDir("/home/u", "darwin"), filepath.Join("/home/u", "Library", "Caches", "ms-playwright"); got != want {
+		t.Errorf("darwin cache dir = %q, want %q", got, want)
 	}
-	if got := playwrightCacheDir("/home/u", "linux"); got != "/home/u/.cache/ms-playwright" {
-		t.Errorf("linux cache dir = %q", got)
+	if got, want := playwrightCacheDir("/home/u", "linux"), filepath.Join("/home/u", ".cache", "ms-playwright"); got != want {
+		t.Errorf("linux cache dir = %q, want %q", got, want)
 	}
 }
 

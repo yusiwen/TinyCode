@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,6 +100,7 @@ func TestSpikePromptsDoNotNameFiles(t *testing.T) {
 // TestRepoMapDigest pins the map's shape and its budget: files sorted, exported
 // declarations with signatures, and the whole thing bounded.
 func TestRepoMapDigest(t *testing.T) {
+	testenv.SkipWindows(t, "the evaluation corpus is developed and graded on Unix; its digests and paths are POSIX")
 	dir := t.TempDir()
 	write := func(name, body string) {
 		t.Helper()

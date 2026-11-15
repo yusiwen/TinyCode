@@ -240,7 +240,9 @@ func TestKeepCommands(t *testing.T) {
 	// expectation is built with filepath.Join rather than written with a slash.
 	kept := filepath.Join("internal", "store.go")
 	m.handleCommand("/keep internal/store.go")
-	if !strings.Contains(lastMessage(m), "kept "+kept) {
+	// The reply quotes the path as it was typed; what is stored is the cleaned
+	// platform form.
+	if !strings.Contains(lastMessage(m), "kept internal/store.go") {
 		t.Fatalf("reply = %q", lastMessage(m))
 	}
 	if len(m.agent.KeptPaths) != 1 || m.agent.KeptPaths[0] != kept {
