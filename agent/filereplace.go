@@ -28,5 +28,17 @@ func replaceFile(src, dst string) error {
 		time.Sleep(50 * time.Millisecond)
 		err = os.Rename(src, dst)
 	}
+	if err == nil || !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	// A destination another process holds open for its whole lifetime refuses the
+	// replace however long the retry waits — a scanner quarantine, an editor, a
+	// second store in the same process that has not closed yet. Removing the old
+	// file and renaming the new one into place is what "replace" means there; the
+	// temp file is complete and fsynced before this point, so the window in which
+	// neither name exists is one rename wide.
+	if rmErr := os.Remove(dst); rmErr == nil || errors.Is(rmErr, fs.ErrNotExist) {
+		return os.Rename(src, dst)
+	}
 	return err
 }
