@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/yusiwen/tinycode/internal/shell"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -159,7 +160,10 @@ var sandboxSelfPath = os.Executable
 // command goes through the launcher under the mode the run is in: plan mode is
 // read-only, build mode is workspace-write over the session's writable roots.
 func bashInvocation(ctx context.Context, cmdStr string) ([]string, error) {
-	bash := []string{"bash", "-c", cmdStr}
+	bash, err := shell.Script(cmdStr)
+	if err != nil {
+		return nil, err
+	}
 
 	// The run's policy decides the mode, the roots and the tier; this function
 	// does not derive any of them from configuration, so a concurrent run cannot

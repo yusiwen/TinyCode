@@ -1,3 +1,5 @@
+//go:build !windows
+
 package tui
 
 // The TUI verification suite: the project's fixtures (scenarios_test.go) asserted

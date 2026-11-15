@@ -51,6 +51,40 @@ jobs:
           make test-tuiprobe-race
           make test-tuiprobe-examples
 
+  # Windows is a build target and a run target, not only a cross-compile: the
+  # cross job proves it type-checks, and this job runs the suite on the platform.
+  # The PTY verification tests are excluded by a build tag rather than skipped at
+  # run time, because the tuiprobe module's pty package needs syscall.Kill.
+  windows:
+    name: Windows build and tests
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.27
+
+      # TinyCode runs commands through `bash -c`, not cmd.exe (docs/windows.md).
+      # Git for Windows is installed on the runner; this puts its shell on PATH
+      # for every later step, which is exactly the prerequisite a user needs.
+      - name: Put Git's POSIX shell on PATH
+        run: echo "$(dirname "$(command -v bash)")" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
   lsp:
     name: LSP integration (gopls + typescript)
     runs-on: ubuntu-latest
@@ -146,6 +180,8 @@ jobs:
           - { goos: linux, goarch: amd64 }
           - { goos: linux, goarch: arm64 }
           - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
     steps:
       - name: Check out code
         uses: actions/checkout@v5

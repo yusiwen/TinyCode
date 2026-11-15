@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yusiwen/tinycode/internal/shell"
 )
 
 // Limits are the defaults a caller can tighten, not loosen: a test command is the
@@ -176,8 +178,10 @@ func Run(ctx context.Context, dir, command string, opts Options) (Report, error)
 	defer cancel()
 
 	started := time.Now()
-	cmd := exec.CommandContext(runCtx, "sh", "-c", command)
-	cmd.Dir = dir
+	cmd, err := shell.Command(runCtx, command, dir)
+	if err != nil {
+		return Report{Command: command}, err
+	}
 	cmd.WaitDelay = waitDelay
 	out, err := cmd.CombinedOutput()
 
