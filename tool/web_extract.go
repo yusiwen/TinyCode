@@ -131,18 +131,18 @@ func extractURL(ctx context.Context, urlStr string) (string, error) {
 	content, _, _, err = fetchURL(ctx, cacheURL, "Mozilla/5.0 (compatible; TinyCode/1.0)")
 	if err == nil && len(content) > 200 {
 		if processed := processContent(content); len(processed) > 50 {
-			return processed + "\n\n(来源: Google Cache)", nil
+			return processed + "\n\n(source: Google Cache)", nil
 		}
 	}
 
 	// 4. Wayback Machine
 	if snapContent := tryWayback(ctx, urlStr); snapContent != "" {
-		return snapContent + "\n\n(来源: Wayback Machine)", nil
+		return snapContent + "\n\n(source: Wayback Machine)", nil
 	}
 
 	// 5. Browser rendering (local Chromium) for JS-heavy pages
 	if browserContent := tryBrowser(ctx, urlStr); browserContent != "" {
-		return browserContent + "\n\n(来源: Chromium headless)", nil
+		return browserContent + "\n\n(source: Chromium headless)", nil
 	}
 
 	if err != nil {

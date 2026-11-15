@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yusiwen/tinycode/i18n"
 )
 
 // contextTurns reads the optional turn count: "/pin 2" acts on two turns, "/pin"
@@ -17,7 +18,7 @@ func contextTurns(cmd, name string) (int, error) {
 	}
 	n, err := strconv.Atoi(rest)
 	if err != nil || n < 1 {
-		return 0, fmt.Errorf("usage: %s [turns] — turns is a positive number", name)
+		return 0, fmt.Errorf("%s", i18n.T("usage: %s [turns] — turns is a positive number", name))
 	}
 	return n, nil
 }
@@ -33,11 +34,11 @@ func contextTurns(cmd, name string) (int, error) {
 // from that record.
 func (m *TuiModel) handleContextCommand(cmd, name string) (tea.Model, tea.Cmd) {
 	if m.agent == nil {
-		m.ShowStatus("No agent available")
+		m.ShowStatus(i18n.T("No agent available"))
 		return m, nil
 	}
 	if m.runIsActive() {
-		m.ShowStatus("Cannot " + strings.TrimPrefix(name, "/") + ": a run is in progress")
+		m.ShowStatus(i18n.T("Cannot %s: a run is in progress", strings.TrimPrefix(name, "/")))
 		return m, nil
 	}
 	if name == "/keep" || name == "/unkeep" {
@@ -55,31 +56,29 @@ func (m *TuiModel) handleContextCommand(cmd, name string) (tea.Model, tea.Cmd) {
 	case "/pin":
 		pinned, total := m.agent.PinLast(n)
 		if pinned == 0 {
-			m.appendSystem("nothing to pin: the history is empty")
+			m.appendSystem(i18n.T("nothing to pin: the history is empty"))
 			return m, nil
 		}
 		m.syncPinsToTranscript()
 		m.persistSession()
-		m.appendSystem(fmt.Sprintf(
-			"pinned %d turn(s); %d pinned in total. A pinned turn is kept verbatim — neither /compress nor the automatic compression summarizes it.",
+		m.appendSystem(i18n.T("pinned %d turn(s); %d pinned in total. A pinned turn is kept verbatim — neither /compress nor the automatic compression summarizes it.",
 			pinned, total))
 	case "/unpin":
 		cleared, remaining := m.agent.UnpinLast(n)
 		if cleared == 0 {
-			m.appendSystem("nothing to unpin: no turn carries a pin")
+			m.appendSystem(i18n.T("nothing to unpin: no turn carries a pin"))
 			return m, nil
 		}
 		m.syncPinsToTranscript()
 		m.persistSession()
-		m.appendSystem(fmt.Sprintf("unpinned %d turn(s); %d pinned in total.", cleared, remaining))
+		m.appendSystem(i18n.T("unpinned %d turn(s); %d pinned in total.", cleared, remaining))
 	case "/drop":
 		dropped := m.agent.DropLast(n)
 		if dropped == 0 {
-			m.appendSystem("nothing to drop: the history is empty")
+			m.appendSystem(i18n.T("nothing to drop: the history is empty"))
 			return m, nil
 		}
-		m.appendSystem(fmt.Sprintf(
-			"dropped %d turn(s) from this context. The session file still holds them, so --resume brings them back.",
+		m.appendSystem(i18n.T("dropped %d turn(s) from this context. The session file still holds them, so --resume brings them back.",
 			dropped))
 	}
 	return m, nil
@@ -119,29 +118,29 @@ func (m *TuiModel) handleKeep(cmd, name string) {
 	arg := strings.TrimSpace(strings.TrimPrefix(cmd, name))
 	if name == "/keep" && arg == "" {
 		if len(m.agent.KeptPaths) == 0 {
-			m.appendSystem("no kept paths; /keep <path> keeps a file's reads in context across a compaction")
+			m.appendSystem(i18n.T("no kept paths; /keep <path> keeps a file's reads in context across a compaction"))
 			return
 		}
-		m.appendSystem("kept paths (their reads survive compaction):\n  " + strings.Join(m.agent.KeptPaths, "\n  "))
+		m.appendSystem(i18n.T("kept paths (their reads survive compaction):\n  %s", strings.Join(m.agent.KeptPaths, "\n  ")))
 		return
 	}
 	if arg == "" {
-		m.appendSystem("usage: /unkeep <path>")
+		m.appendSystem(i18n.T("usage: /unkeep <path>"))
 		return
 	}
 	if name == "/keep" {
 		if !m.agent.KeepPath(arg) {
-			m.appendSystem("already kept: " + arg)
+			m.appendSystem(i18n.T("already kept: %s", arg))
 			return
 		}
 		m.persistSession()
-		m.appendSystem("kept " + arg + ": a tool call that names it is kept verbatim when the run is compacted")
+		m.appendSystem(i18n.T("kept %s: a tool call that names it is kept verbatim when the run is compacted", arg))
 		return
 	}
 	if !m.agent.UnkeepPath(arg) {
-		m.appendSystem("not kept: " + arg)
+		m.appendSystem(i18n.T("not kept: %s", arg))
 		return
 	}
 	m.persistSession()
-	m.appendSystem("dropped " + arg + " from the kept paths")
+	m.appendSystem(i18n.T("dropped %s from the kept paths", arg))
 }

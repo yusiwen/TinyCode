@@ -15,6 +15,7 @@ import (
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/hook"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -28,7 +29,7 @@ import (
 // runInProgressStatus is the one wording both refusals of a second concurrent
 // run use: the raw ChatMsg path and the Enter key path must read alike, so the
 // string lives here instead of being copied into each (issue #119).
-const runInProgressStatus = "A run is already in progress"
+func runInProgressStatus() string { return i18n.T("A run is already in progress") }
 
 func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -182,7 +183,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// letting the switch look effective when it is not
 						// (roadmap A5).
 						if m.agent.Config != nil && m.agent.Config.Route != "" && m.agent.Config.Route != m.provReg.CurrentRoute() {
-							m.ShowStatus(fmt.Sprintf("%s — agent %q keeps route %s",
+							m.ShowStatus(i18n.T("%s — agent %q keeps route %s",
 								m.provReg.CurrentName(), m.agent.Config.Name, m.agent.Config.Route))
 						}
 					}
@@ -300,7 +301,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// A compression owns Agent.History; submitting here would lose the
 			// typed text to a refusal further down, so keep it in the input box.
 			if m.compressIsActive() {
-				m.ShowStatus("Cannot start a run: compression is in progress")
+				m.ShowStatus(i18n.T("Cannot start a run: compression is in progress"))
 				m.autoScroll()
 				return m, nil
 			}
@@ -313,7 +314,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// screen was indistinguishable from a command the user had not
 			// submitted yet, which is exactly how a dropped /exit read.
 			if strings.TrimSpace(m.input.Value()) != "" {
-				m.ShowStatus(runInProgressStatus)
+				m.ShowStatus(runInProgressStatus())
 				m.autoScroll()
 				return m, nil
 			}
@@ -344,7 +345,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if text != "" {
 					copyToClipboard(text)
 					m.clearCharSelection()
-					m.ShowStatus("✓ Copied")
+					m.ShowStatus(i18n.T("✓ Copied"))
 					m.autoScroll()
 					return m, nil
 				}
@@ -355,7 +356,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				copyToClipboard(sel)
 				m.selectStart = -1
 				m.selectEnd = -1
-				m.ShowStatus("✓ Copied to clipboard")
+				m.ShowStatus(i18n.T("✓ Copied to clipboard"))
 				m.autoScroll()
 				return m, nil
 			}
@@ -364,7 +365,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// ends the wait instead of arming a quit.
 			if m.compressIsActive() {
 				m.cancelCompress()
-				m.ShowStatus("⏹ Cancelling compression…")
+				m.ShowStatus(i18n.T("⏹ Cancelling compression…"))
 				m.autoScroll()
 				return m, nil
 			}
@@ -372,24 +373,24 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch {
 				case m.runAlreadyInterrupted():
 					// Cancellation already requested; wait for the run to unwind.
-					m.ShowStatus("⏹ Interrupting...")
+					m.ShowStatus(i18n.T("⏹ Interrupting..."))
 				case m.cancelRun():
 					// A live run owns the status now: it flips back to Idle
 					// only when its terminal StreamDone is processed.
 					// Unblock any permission dialog the run is waiting on.
 					tool.CancelPendingPermission()
-					m.ShowStatus("⏹ Interrupted")
+					m.ShowStatus(i18n.T("⏹ Interrupted"))
 				default:
 					// No live run attached (state set directly): reset here.
 					m.status = StatusIdle
-					m.ShowStatus("⏹ Interrupted")
+					m.ShowStatus(i18n.T("⏹ Interrupted"))
 				}
 				m.autoScroll()
 				return m, nil
 			}
 			if !m.quitConfirm {
 				m.quitConfirm = true
-				m.statusMsg = "Press Ctrl+C again to quit"
+				m.statusMsg = i18n.T("Press Ctrl+C again to quit")
 				m.autoScroll()
 				return m, nil
 			}
@@ -418,9 +419,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// unwinding (e.g. right after an interrupt). A compression in flight
 			// owns Agent.History and must not overlap the agent loop either.
 			if m.compressIsActive() {
-				m.ShowStatus("Cannot start a run: compression is in progress")
+				m.ShowStatus(i18n.T("Cannot start a run: compression is in progress"))
 			} else {
-				m.ShowStatus(runInProgressStatus)
+				m.ShowStatus(runInProgressStatus())
 			}
 			m.autoScroll()
 			return m, nil
@@ -533,7 +534,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isStaleRun(msg.RunID) {
 			return m, m.waitForStream()
 		}
-		m.ShowStatus(fmt.Sprintf("⟳ retrying (%d/%d): %v", msg.Attempt, msg.MaxAttempts, msg.Err))
+		m.ShowStatus(i18n.T("⟳ retrying (%d/%d): %v", msg.Attempt, msg.MaxAttempts, msg.Err))
 		m.autoScroll()
 		return m, m.waitForStream()
 
@@ -541,7 +542,7 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isStaleRun(msg.RunID) {
 			return m, m.waitForStream()
 		}
-		m.ShowStatus(fmt.Sprintf("⇄ routing %s → %s: %v", msg.From, msg.To, msg.Err))
+		m.ShowStatus(i18n.T("⇄ routing %s → %s: %v", msg.From, msg.To, msg.Err))
 		m.autoScroll()
 		return m, m.waitForStream()
 
@@ -572,14 +573,14 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			if ca != nil {
 				if errors.Is(msg.Error, context.Canceled) {
-					ca.Content = "⏹ Interrupted"
+					ca.Content = i18n.T("⏹ Interrupted")
 				} else {
-					ca.Content = fmt.Sprintf("Error: %v", msg.Error)
+					ca.Content = i18n.T("Error: %v", msg.Error)
 				}
 				ca.Streaming = false
 			}
 			if errors.Is(msg.Error, context.Canceled) {
-				m.ShowStatus("⏹ Interrupted")
+				m.ShowStatus(i18n.T("⏹ Interrupted"))
 			}
 		} else if msg.IsIntermediate {
 			// Intermediate step: just finalize, don't set Blocks (no text response)
@@ -651,11 +652,11 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			// Do not spend an LLM call on a title after a failed or
 			// interrupted run.
-			return m, batch(notifyFinishedCmd(elapsed, "run failed"), notifyGoalCmd(elapsed, goalNotice))
+			return m, batch(notifyFinishedCmd(elapsed, i18n.T("run failed")), notifyGoalCmd(elapsed, goalNotice))
 		}
 		// Generate the session title off the event loop (async + timeout), and
 		// give the continuation driver its chance to start another round.
-		return m, batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, "run finished"), notifyGoalCmd(elapsed, goalNotice), m.scheduleGoalRound())
+		return m, batch(m.generateSessionTitleCmd(), notifyFinishedCmd(elapsed, i18n.T("run finished")), notifyGoalCmd(elapsed, goalNotice), m.scheduleGoalRound())
 
 	case sessionTitleMsg:
 		if msg.Title != "" && m.sessionTitle == "" {
@@ -666,9 +667,9 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case testDoneMsg:
 		switch {
 		case msg.err != nil:
-			m.appendSystem("[tests] " + msg.err.Error())
+			m.appendSystem(i18n.T("[tests] %s", msg.err.Error()))
 		default:
-			m.appendSystem("[tests] " + msg.report.String())
+			m.appendSystem(i18n.T("[tests] %s", msg.report.String()))
 		}
 		return m, nil
 
@@ -678,13 +679,13 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.finishCompress()
 		switch {
 		case errors.Is(msg.err, context.Canceled):
-			m.ShowStatus(fmt.Sprintf("⏹ Compression cancelled — history unchanged (%d messages)", msg.remaining))
+			m.ShowStatus(i18n.T("⏹ Compression cancelled — history unchanged (%d messages)", msg.remaining))
 		case msg.err != nil:
-			m.ShowStatus(fmt.Sprintf("Compression failed: %v", msg.err))
+			m.ShowStatus(i18n.T("Compression failed: %v", msg.err))
 		case msg.compressed:
-			m.ShowStatus(fmt.Sprintf("Compressed: %d messages remaining", msg.remaining))
+			m.ShowStatus(i18n.T("Compressed: %d messages remaining", msg.remaining))
 		default:
-			m.ShowStatus(fmt.Sprintf("No compression needed (%d messages, below threshold)", msg.remaining))
+			m.ShowStatus(i18n.T("No compression needed (%d messages, below threshold)", msg.remaining))
 		}
 		m.autoScroll()
 		return m, nil
@@ -1181,7 +1182,7 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "/compress":
 		if m.agent == nil {
-			m.ShowStatus("No agent available")
+			m.ShowStatus(i18n.T("No agent available"))
 			return m, nil
 		}
 		// `/compress preview` reads the history without replacing it. It is still
@@ -1189,7 +1190,7 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		// and reading it concurrently is a data race even when nothing is written.
 		if strings.TrimSpace(strings.TrimPrefix(cmd, "/compress")) == "preview" {
 			if m.runIsActive() {
-				m.ShowStatus("Cannot preview: a run is in progress")
+				m.ShowStatus(i18n.T("Cannot preview: a run is in progress"))
 				return m, nil
 			}
 			m.appendSystem(m.agent.CompressionPreview())
@@ -1202,11 +1203,11 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		// has delivered its terminal StreamDone, so once no run is active no
 		// goroutine is touching History anymore.
 		if m.runIsActive() {
-			m.ShowStatus("Cannot compress: a run is in progress")
+			m.ShowStatus(i18n.T("Cannot compress: a run is in progress"))
 			return m, nil
 		}
 		if m.agent.CompressionThreshold <= 0 {
-			m.ShowStatus("Compression is disabled (CompressionThreshold=0)")
+			m.ShowStatus(i18n.T("Compression is disabled (CompressionThreshold=0)"))
 			return m, nil
 		}
 		// The summarizer runs as a command rather than inline: on the Update
@@ -1215,22 +1216,18 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		// goroutine that reads keys was the one blocked in the request.
 		ctx, ok := m.beginCompress()
 		if !ok {
-			m.ShowStatus("Cannot compress: a compression is already in progress")
+			m.ShowStatus(i18n.T("Cannot compress: a compression is already in progress"))
 			return m, nil
 		}
-		m.ShowStatus("Compressing history… (Ctrl+C to cancel)")
+		m.ShowStatus(i18n.T("Compressing history… (Ctrl+C to cancel)"))
 		m.autoScroll()
 		return m, m.compressCmd(ctx)
 
 	case "/dialog":
-		m.showDialog("Test dialog — choose an option:", []string{
-			"Option One",
-			"Option Two",
-			"Option Three",
-		}, func(sel string) {
+		m.showDialog(i18n.T("Test dialog — choose an option:"), []string{i18n.T("Option One"), i18n.T("Option Two"), i18n.T("Option Three")}, func(sel string) {
 			m.messages = append(m.messages, chatMessage{
 				Role:    "system",
-				Content: "Dialog selected: " + sel,
+				Content: i18n.T("Dialog selected: %s", sel),
 			})
 		})
 		return m, nil
@@ -1290,7 +1287,7 @@ Mouse:
 		if m.agent.Verbose {
 			s = "on"
 		}
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Verbose mode %s", s)})
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Verbose mode %s", s)})
 		m.autoScroll()
 	case "/fork":
 		parts := strings.Fields(cmd)
@@ -1299,13 +1296,13 @@ Mouse:
 			label = parts[1]
 		}
 		if m.currentBranch == "" {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: "No active session to fork. Start a conversation first."})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("No active session to fork. Start a conversation first.")})
 			m.autoScroll()
 			return m, nil
 		}
 		branch, err := m.sessionStore.Fork(m.currentBranch, len(m.messages), label)
 		if err != nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Fork error: %v", err)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Fork error: %v", err)})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1314,7 +1311,7 @@ Mouse:
 		m.adoptSession(branch)
 		m.messages = append(m.messages, chatMessage{
 			Role:    "system",
-			Content: fmt.Sprintf("Created branch: %s (forked at message %d from %s)", branch.ID, branch.ForkAt, branch.ParentSessionID),
+			Content: i18n.T("Created branch: %s (forked at message %d from %s)", branch.ID, branch.ForkAt, branch.ParentSessionID),
 		})
 		m.autoScroll()
 	case "/session":
@@ -1330,7 +1327,7 @@ Mouse:
 		branchID := parts[1]
 		branch, err := m.sessionStore.Load(branchID)
 		if err != nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Session %q not found.", branchID)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Session %q not found.", branchID)})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1343,19 +1340,19 @@ Mouse:
 		m.adoptSession(branch)
 		m.messages = append(m.messages, chatMessage{
 			Role:    "system",
-			Content: fmt.Sprintf("Switched to session: %s (%d messages)", branch.ID, len(branch.Messages)),
+			Content: i18n.T("Switched to session: %s (%d messages)", branch.ID, len(branch.Messages)),
 		})
 		m.autoScroll()
 	case "/compare":
 		parts := strings.Fields(cmd)
 		if len(parts) < 3 {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: "Usage: /compare <session-a> <session-b>"})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Usage: /compare <session-a> <session-b>")})
 			m.autoScroll()
 			return m, nil
 		}
 		cmp, err := m.sessionStore.Compare(parts[1], parts[2])
 		if err != nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Compare error: %v", err)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Compare error: %v", err)})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1371,7 +1368,7 @@ Mouse:
 		if *m.config.ShowThinking {
 			s = "on"
 		}
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Thinking display %s", s)})
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Thinking display %s", s)})
 		m.autoScroll()
 	case "/model":
 		m.selectingProvider = true
@@ -1379,16 +1376,16 @@ Mouse:
 	case "/sessions":
 		infos := m.sessionStore.List()
 		if len(infos) == 0 {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: "No saved sessions."})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("No saved sessions.")})
 		} else {
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("**%d saved sessions:**\n\n", len(infos)))
-			sb.WriteString("| Title | ID | Messages | Model | Last active |\n")
+			sb.WriteString(i18n.T("**%d saved sessions:**\n\n", len(infos)))
+			sb.WriteString(i18n.T("| Title | ID | Messages | Model | Last active |\n"))
 			sb.WriteString("|-------|-----|----------|-------|-------------|\n")
 			for _, info := range infos {
 				title := info.Title
 				if title == "" {
-					title = "(no title)"
+					title = i18n.T("(no title)")
 				}
 				model := info.ModelName
 				if model == "" {
@@ -1398,7 +1395,7 @@ Mouse:
 				sb.WriteString(fmt.Sprintf("| %s | `%s` | %d | %s | %s |\n",
 					title, info.ID, info.MessageCount, model, when))
 			}
-			sb.WriteString(fmt.Sprintf("\nUse `%s --resume <ID>` (CLI) to resume a session.", os.Args[0]))
+			sb.WriteString(i18n.T("\nUse `%s --resume <ID>` (CLI) to resume a session.", os.Args[0]))
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: sb.String()})
 		}
 		m.autoScroll()
@@ -1407,13 +1404,13 @@ Mouse:
 		parts := strings.Fields(cmd)
 		if len(parts) < 2 {
 			names := strings.Join(ThemeNames(), ", ")
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Available themes: %s. Use /theme <name> to switch.", names)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Available themes: %s. Use /theme <name> to switch.", names)})
 			m.autoScroll()
 			return m, nil
 		}
 		theme := LookupTheme(parts[1])
 		if theme == nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown theme %q. Available: %s", parts[1], strings.Join(ThemeNames(), ", "))})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Unknown theme %q. Available: %s", parts[1], strings.Join(ThemeNames(), ", "))})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1423,7 +1420,7 @@ Mouse:
 			tlog.Error("theme.save", "error", err)
 		}
 		m.MarkAllDirty()
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Switched to theme: %s", theme.Name)})
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Switched to theme: %s", theme.Name)})
 		m.autoScroll()
 	case "/diagnostics":
 		// Refresh from the in-memory registry (a map copy, never an LSP read)
@@ -1436,9 +1433,9 @@ Mouse:
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: m.diagnosticsListing()})
 			m.autoScroll()
 		case !lsp.IsAvailable():
-			m.ShowStatus("LSP not available (set lsp.enabled=true in config.json)")
+			m.ShowStatus(i18n.T("LSP not available (set lsp.enabled=true in config.json)"))
 		default:
-			m.ShowStatus("No LSP diagnostics.")
+			m.ShowStatus(i18n.T("No LSP diagnostics."))
 		}
 		return m, nil
 	case "/sandbox":
@@ -1459,7 +1456,7 @@ Mouse:
 
 	case "/test":
 		if m.agent == nil || m.agent.Tests == nil {
-			m.appendSystem("No test settings: the project's suite is discovered at start-up.")
+			m.appendSystem(i18n.T("No test settings: the project's suite is discovered at start-up."))
 			return m, nil
 		}
 		// The suite runs off the event loop (testDoneMsg), and it is refused while
@@ -1468,20 +1465,20 @@ Mouse:
 		active := m.runActive
 		m.runMu.Unlock()
 		if active {
-			m.ShowStatus("Cannot run tests: a run is in progress")
+			m.ShowStatus(i18n.T("Cannot run tests: a run is in progress"))
 			return m, nil
 		}
 		return m, m.testCmd()
 
 	case "/hooks":
 		if m.agent == nil || m.agent.Hooks == nil || m.agent.Hooks.Empty() {
-			m.appendSystem(`No hooks configured. Declare them in ~/.tinycode/config.json:
+			m.appendSystem(i18n.T(`No hooks configured. Declare them in ~/.tinycode/config.json:
   "hooks": {"post_tool_use": [{"command": "gofmt -w .", "match": "*.go"}]}
-A project-local .tinycode/config.json cannot declare hooks.`)
+A project-local .tinycode/config.json cannot declare hooks.`))
 			return m, nil
 		}
 		var b strings.Builder
-		b.WriteString("Hooks (from your own config; a project-local file cannot declare them):")
+		b.WriteString(i18n.T("Hooks (from your own config; a project-local file cannot declare them):"))
 		for _, event := range hook.Events() {
 			list := m.agent.Hooks.Hooks(event)
 			if len(list) == 0 {
@@ -1493,7 +1490,7 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 				if match == "" {
 					match = "*"
 				}
-				fmt.Fprintf(&b, "\n    [%s] %s (timeout %s)", match, h.Command, h.Timeout)
+				fmt.Fprintf(&b, i18n.T("\n    [%s] %s (timeout %s)"), match, h.Command, h.Timeout)
 			}
 		}
 		m.appendSystem(b.String())
@@ -1501,12 +1498,12 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 
 	case "/changes":
 		if m.agent == nil {
-			m.ShowStatus("No agent available")
+			m.ShowStatus(i18n.T("No agent available"))
 			return m, nil
 		}
 		changes, err := tool.RunChanges(context.Background(), m.currentBranch, m.runStart)
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("Changes: %v", err))
+			m.appendSystem(i18n.T("Changes: %v", err))
 			return m, nil
 		}
 		m.appendSystem(changes.Report())
@@ -1518,31 +1515,31 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 		// deciding whether to undo wants to read the paths more than once.
 		call, ok, err := tool.LastCall(m.currentBranch)
 		if err != nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Undo: %v", err)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Undo: %v", err)})
 			m.autoScroll()
 			return m, nil
 		}
 		if !ok {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: "Nothing to undo: no tool call of this session has an un-undone pre-image."})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Nothing to undo: no tool call of this session has an un-undone pre-image.")})
 			m.autoScroll()
 			return m, nil
 		}
 		paths := call.Paths()
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf(
-			"The last tool call (%s) wrote %d file(s):\n  %s", call.Tool, len(paths), strings.Join(paths, "\n  "))})
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("The last tool call (%s) wrote %d file(s):\n  %s", call.Tool, len(paths), strings.Join(paths, "\n  "))})
 		m.autoScroll()
-		m.showDialog(fmt.Sprintf("Undo it, restoring those %d file(s)?", len(paths)), []string{"Undo", "Cancel"}, func(sel string) {
-			if sel != "Undo" {
-				m.messages = append(m.messages, chatMessage{Role: "system", Content: "Undo cancelled."})
+		undoLabel := i18n.T("Undo")
+		m.showDialog(i18n.T("Undo it, restoring those %d file(s)?", len(paths)), []string{undoLabel, i18n.T("Cancel")}, func(sel string) {
+			if sel != undoLabel {
+				m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Undo cancelled.")})
 				m.autoScroll()
 				return
 			}
 			restored, err := tool.RestoreCall(context.Background(), call)
-			content := fmt.Sprintf("Undid the last tool call (%s). Restored:\n  %s", call.Tool, strings.Join(restored, "\n  "))
+			content := i18n.T("Undid the last tool call (%s). Restored:\n  %s", call.Tool, strings.Join(restored, "\n  "))
 			if err != nil {
 				// A partial restore has already changed the files it names, so
 				// the error comes with the list rather than instead of it.
-				content = fmt.Sprintf("Undo of the last tool call (%s) failed after restoring %d file(s):\n  %s\n%v",
+				content = i18n.T("Undo of the last tool call (%s) failed after restoring %d file(s):\n  %s\n%v",
 					call.Tool, len(restored), strings.Join(restored, "\n  "), err)
 			}
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: content})
@@ -1581,15 +1578,15 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 		skills := skill.Discover(".")
 		if len(parts) < 2 {
 			var b strings.Builder
-			b.WriteString(fmt.Sprintf("Available skills (%d):\n", len(skills)))
+			b.WriteString(i18n.T("Available skills (%d):\n", len(skills)))
 			for _, s := range skills {
 				label := ""
 				if s.Builtin {
-					label = " [builtin]"
+					label = i18n.T(" [builtin]")
 				}
 				b.WriteString(fmt.Sprintf("  %s — %s%s\n", s.Name, s.Description, label))
 			}
-			b.WriteString("\nUse /skill <name> to load, or the load_skill tool.")
+			b.WriteString(i18n.T("\nUse /skill <name> to load, or the load_skill tool."))
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: b.String()})
 			m.autoScroll()
 			return m, nil
@@ -1603,7 +1600,7 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 			}
 		}
 		if found == nil {
-			m.ShowStatus(fmt.Sprintf("Skill not found: %s", name))
+			m.ShowStatus(i18n.T("Skill not found: %s", name))
 			return m, nil
 		}
 		// An explicit /skill command always shows the content. The
@@ -1614,7 +1611,7 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 		if content == "" {
 			content = found.Description
 		}
-		msg := "Loaded skill: " + name + "\n\n" + content
+		msg := i18n.T("Loaded skill: ") + name + "\n\n" + content
 		m.messages = append(m.messages, chatMessage{
 			Role:    "system",
 			Content: msg,
@@ -1623,7 +1620,7 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 		return m, nil
 	case "/plan":
 		if err := m.registry.Set("plan"); err != nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Error: %v", err)})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1632,7 +1629,7 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 		m.autoScroll()
 	case "/build":
 		if err := m.registry.Set("build"); err != nil {
-			m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Error: %v", err)})
+			m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Error: %v", err)})
 			m.autoScroll()
 			return m, nil
 		}
@@ -1640,7 +1637,7 @@ A project-local .tinycode/config.json cannot declare hooks.`)
 		m.modeName = "build"
 		m.autoScroll()
 	default:
-		m.messages = append(m.messages, chatMessage{Role: "system", Content: fmt.Sprintf("Unknown command: %s", cmd)})
+		m.messages = append(m.messages, chatMessage{Role: "system", Content: i18n.T("Unknown command: %s", cmd)})
 		m.autoScroll()
 	}
 	return m, nil
@@ -1724,17 +1721,17 @@ func (m *TuiModel) handlePullRequest(cmd string) {
 	active := m.runActive
 	m.runMu.Unlock()
 	if active {
-		m.ShowStatus("Cannot open a pull request: a run is in progress")
+		m.ShowStatus(i18n.T("Cannot open a pull request: a run is in progress"))
 		return
 	}
 	if title == "" {
-		m.appendSystem("usage: /pr <title> — opens a pull request for the current branch (push first)")
+		m.appendSystem(i18n.T("usage: /pr <title> — opens a pull request for the current branch (push first)"))
 		return
 	}
 	ctx := context.Background()
 	branch, err := tool.CurrentBranch(ctx)
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("Pull request: %v", err))
+		m.appendSystem(i18n.T("Pull request: %v", err))
 		return
 	}
 	base := tool.DefaultBranch(ctx)
@@ -1742,17 +1739,18 @@ func (m *TuiModel) handlePullRequest(cmd string) {
 		base = "main"
 	}
 	if def := tool.DefaultBranch(ctx); def != "" && branch == def {
-		m.appendSystem(fmt.Sprintf("Pull request refused: %s is the default branch. Create a branch first.", branch))
+		m.appendSystem(i18n.T("Pull request refused: %s is the default branch. Create a branch first.", branch))
 		return
 	}
-	m.showDialog(fmt.Sprintf("Open a pull request from %s into %s?", branch, base), []string{"Create", "Cancel"}, func(sel string) {
-		if sel != "Create" {
-			m.appendSystem("Pull request cancelled.")
+	createLabel := i18n.T("Create")
+	m.showDialog(i18n.T("Open a pull request from %s into %s?", branch, base), []string{createLabel, i18n.T("Cancel")}, func(sel string) {
+		if sel != createLabel {
+			m.appendSystem(i18n.T("Pull request cancelled."))
 			return
 		}
 		out, err := tool.OpenPullRequest(context.Background(), tool.PullRequestOptions{Title: title})
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("Pull request failed: %v", err))
+			m.appendSystem(i18n.T("Pull request failed: %v", err))
 			return
 		}
 		m.appendSystem(out)
@@ -1770,31 +1768,32 @@ func (m *TuiModel) handlePush(cmd string) {
 	active := m.runActive
 	m.runMu.Unlock()
 	if active {
-		m.ShowStatus("Cannot push: a run is in progress")
+		m.ShowStatus(i18n.T("Cannot push: a run is in progress"))
 		return
 	}
 	ctx := context.Background()
 	branch, err := tool.CurrentBranch(ctx)
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("Push: %v", err))
+		m.appendSystem(i18n.T("Push: %v", err))
 		return
 	}
 	if def := tool.DefaultBranch(ctx); def != "" && branch == def {
-		m.appendSystem(fmt.Sprintf("Push refused: %s is the default branch. Create a branch first (/push never publishes the default branch).", branch))
+		m.appendSystem(i18n.T("Push refused: %s is the default branch. Create a branch first (/push never publishes the default branch).", branch))
 		return
 	}
-	question := fmt.Sprintf("Push %s to origin?", branch)
+	question := i18n.T("Push %s to origin?", branch)
 	if force {
-		question = fmt.Sprintf("Force-push %s to origin (--force-with-lease)?", branch)
+		question = i18n.T("Force-push %s to origin (--force-with-lease)?", branch)
 	}
-	m.showDialog(question, []string{"Push", "Cancel"}, func(sel string) {
-		if sel != "Push" {
-			m.appendSystem("Push cancelled.")
+	pushLabel := i18n.T("Push")
+	m.showDialog(question, []string{pushLabel, i18n.T("Cancel")}, func(sel string) {
+		if sel != pushLabel {
+			m.appendSystem(i18n.T("Push cancelled."))
 			return
 		}
 		out, err := tool.PushBranch(context.Background(), force)
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("Push failed: %v", err))
+			m.appendSystem(i18n.T("Push failed: %v", err))
 			return
 		}
 		m.appendSystem(out)
@@ -1809,7 +1808,7 @@ func (m *TuiModel) handlePush(cmd string) {
 // unrelated work with it — the one failure mode a loop like this must not have.
 func (m *TuiModel) handleCommit(cmd string) {
 	if m.agent == nil {
-		m.ShowStatus("No agent available")
+		m.ShowStatus(i18n.T("No agent available"))
 		return
 	}
 	rest := strings.TrimSpace(strings.TrimPrefix(cmd, "/commit"))
@@ -1818,40 +1817,41 @@ func (m *TuiModel) handleCommit(cmd string) {
 		rest = strings.TrimSpace(strings.TrimPrefix(rest, "--all"))
 	}
 	if rest == "" {
-		m.appendSystem("usage: /commit <message> — stages the files this run's tool calls wrote; /commit --all <message> stages the whole working tree")
+		m.appendSystem(i18n.T("usage: /commit <message> — stages the files this run's tool calls wrote; /commit --all <message> stages the whole working tree"))
 		return
 	}
 
 	var paths []string
-	what := "the whole working tree"
+	what := i18n.T("the whole working tree")
 	if !all {
 		changes, err := tool.RunChanges(context.Background(), m.currentBranch, m.runStart)
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("Commit: %v", err))
+			m.appendSystem(i18n.T("Commit: %v", err))
 			return
 		}
 		for _, file := range changes.Run() {
 			paths = append(paths, file.Path)
 		}
 		if len(paths) == 0 {
-			m.appendSystem("Nothing this run's tool calls wrote; /commit --all <message> stages the whole working tree.")
+			m.appendSystem(i18n.T("Nothing this run's tool calls wrote; /commit --all <message> stages the whole working tree."))
 			return
 		}
-		what = fmt.Sprintf("%d file(s) this run wrote", len(paths))
-		m.appendSystem(fmt.Sprintf("Staging %d file(s):\n  %s", len(paths), strings.Join(paths, "\n  ")))
+		what = i18n.T("%d file(s) this run wrote", len(paths))
+		m.appendSystem(i18n.T("Staging %d file(s):\n  %s", len(paths), strings.Join(paths, "\n  ")))
 	} else {
-		m.appendSystem("--all stages every working-tree change, including ones this run did not make.")
+		m.appendSystem(i18n.T("--all stages every working-tree change, including ones this run did not make."))
 	}
 
-	prompt := fmt.Sprintf("Commit %s?", what)
-	m.showDialog(prompt, []string{"Commit", "Cancel"}, func(sel string) {
-		if sel != "Commit" {
-			m.appendSystem("Commit cancelled.")
+	prompt := i18n.T("Commit %s?", what)
+	commitLabel := i18n.T("Commit")
+	m.showDialog(prompt, []string{commitLabel, i18n.T("Cancel")}, func(sel string) {
+		if sel != commitLabel {
+			m.appendSystem(i18n.T("Commit cancelled."))
 			return
 		}
 		out, err := tool.CommitChanges(context.Background(), rest, paths)
 		if err != nil {
-			m.appendSystem(fmt.Sprintf("Commit failed: %v", err))
+			m.appendSystem(i18n.T("Commit failed: %v", err))
 			return
 		}
 		m.appendSystem(out)
@@ -1878,8 +1878,7 @@ func (m *TuiModel) noteRunChanges(runErr error) {
 		added += file.Added
 		removed += file.Removed
 	}
-	m.appendSystem(fmt.Sprintf(
-		"This run's tool calls changed %d file(s), +%d/-%d — /changes for the whole tree, /commit <message> to land them.",
+	m.appendSystem(i18n.T("This run's tool calls changed %d file(s), +%d/-%d — /changes for the whole tree, /commit <message> to land them.",
 		len(run), added, removed))
 }
 
@@ -1890,7 +1889,7 @@ func (m *TuiModel) endSession() {
 	m.persistSession()
 	if m.agent != nil && m.agent.Hooks != nil {
 		if fired := m.agent.Hooks.FireSessionEnd(m.currentBranch); fired.Err != nil {
-			m.appendSystem(fmt.Sprintf("session_end hook failed: %v", fired.Err))
+			m.appendSystem(i18n.T("session_end hook failed: %v", fired.Err))
 		}
 	}
 }
@@ -1908,7 +1907,7 @@ func (m *TuiModel) appendSystem(text string) {
 // reason the domain gave.
 func (m *TuiModel) applyGoal(parsed goal.Command) (string, error) {
 	if m.goals == nil {
-		return "", fmt.Errorf("no goal service is attached")
+		return "", errors.New(i18n.T("no goal service is attached"))
 	}
 	switch parsed.Action {
 	case goal.ActionShow:
@@ -1942,7 +1941,7 @@ func (m *TuiModel) applyGoal(parsed goal.Command) (string, error) {
 	case goal.ActionResume:
 		updated, err = m.goals.Resume(ref)
 	default:
-		return "", fmt.Errorf("unknown goal action %q", parsed.Action)
+		return "", fmt.Errorf("%s", i18n.T("unknown goal action %q", parsed.Action))
 	}
 	if err != nil {
 		return "", err

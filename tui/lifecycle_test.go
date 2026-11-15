@@ -162,11 +162,11 @@ func TestSecondSubmitDoesNotStartConcurrentRun(t *testing.T) {
 	if got := m.input.Value(); got != "third" {
 		t.Errorf("the refused text must stay in the input box, got %q", got)
 	}
-	if m.statusMsg != runInProgressStatus {
-		t.Errorf("the refusal must name its reason: statusMsg = %q, want %q", m.statusMsg, runInProgressStatus)
+	if m.statusMsg != runInProgressStatus() {
+		t.Errorf("the refusal must name its reason: statusMsg = %q, want %q", m.statusMsg, runInProgressStatus())
 	}
-	if frame := stripANSIView(m.View()); !strings.Contains(frame, runInProgressStatus) {
-		t.Errorf("the frame does not show the refusal reason %q", runInProgressStatus)
+	if frame := stripANSIView(m.View()); !strings.Contains(frame, runInProgressStatus()) {
+		t.Errorf("the frame does not show the refusal reason %q", runInProgressStatus())
 	}
 
 	// Clean up: cancel and let the run finish so no goroutine leaks.

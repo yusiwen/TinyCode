@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1435 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1447 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -363,6 +363,26 @@ What runs today, in order:
 - **`FireSessionEnd(session)`** — fires `session_end` once per process (`sync.Once`), so every TUI exit path and the one-shot path can call it and the hook still runs once.
 - **Limits** — `timeout_ms` (default 5 s, clamped to 60 s) enforced through the command's context and `cmd.WaitDelay` after the kill; output truncated at 2000 bytes; `sh -c` in the project root.
 - **Config rule** — `config.Layers.ResolveHooks` honours only the user's own file; a project-local `hooks` section is dropped and reported (`docs/hooks.md`).
+
+## Package: `i18n`
+
+- **The message id is the English text** (gettext style), so a string with no catalogue entry degrades to
+  English instead of to a key name, and adding a message costs one catalogue entry.
+- **`T(msgid, args...)`** — looks the message up in the current language and formats it with
+  `fmt.Sprintf` only when arguments are present; a message that legitimately contains `%` survives
+  otherwise. **`Lookup(l, msgid)`** — the same without formatting. **`Translation(l, msgid)`** — the entry
+  and whether it exists. **`Messages(l)`** — a copy of the catalogue.
+- **`SetLanguage(l)` / `Current()`** — the process language, stored atomically because the TUI renders
+  from another goroutine. A value that parses to nothing supported leaves English in place.
+- **`Parse(s)`** — `en`/`english`/`zh`/`chinese`, the locale form (`zh_CN.UTF-8`), BCP 47 (`zh-Hans-CN`);
+  `C` and `POSIX` mean English.
+- **`Detect(configured, getenv)`** — first supported value wins: `--lang`, then `language` in the config,
+  then `TINYCODE_LANG`, then `LC_ALL`, `LC_MESSAGES`, `LANG`. An unsupported value is skipped, not fatal.
+- **`zh.go`** — the Simplified Chinese catalogue. Three gates keep it honest: every `i18n.T("…")` call
+  has an entry, no entry is unreachable, and a translation's verb sequence matches its message's; no
+  literal is handed straight to a TUI sink; and the tables translated at draw time are enumerated by a
+  test in `tui/`. Boundaries (help text, error strings, model-facing text) and the rules are in
+  [docs/i18n.md](docs/i18n.md).
 
 ## Package: `config`
 
@@ -917,7 +937,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1435 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1447 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -963,7 +983,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1435 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1447 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

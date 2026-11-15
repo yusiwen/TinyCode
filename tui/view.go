@@ -9,12 +9,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"github.com/yusiwen/tinycode/goal"
+	"github.com/yusiwen/tinycode/i18n"
 )
 
 // View renders the TUI layout.
 func (m *TuiModel) View() string {
 	if !m.ready {
-		return "Loading..."
+		return i18n.T("Loading...")
 	}
 
 	var b strings.Builder
@@ -141,7 +142,7 @@ func (m *TuiModel) View() string {
 					// Find the "→ Calling tools:" index
 					toolCallIdx := -1
 					for ci, ch := range chunks {
-						if strings.Contains(ch.Text, "→ Calling tools:") {
+						if strings.Contains(ch.Text, i18n.T("→ Calling tools:")) {
 							toolCallIdx = ci
 							break
 						}
@@ -157,7 +158,7 @@ func (m *TuiModel) View() string {
 						total := len(items)
 						todoChunks := []CellChunk{
 							{Text: "", Style: DefaultStyle},
-							{Text: fmt.Sprintf("  Todo (%d/%d)", done, total), Style: HeadingStyle},
+							{Text: i18n.T("  Todo (%d/%d)", done, total), Style: HeadingStyle},
 						}
 						for _, item := range items {
 							marker := "[ ]"
@@ -259,7 +260,7 @@ func (m *TuiModel) View() string {
 						offset = 2
 					}
 				case "assistant":
-					if text == "Response:" {
+					if text == i18n.T("Response:") {
 						field = "label"
 						offset = 0
 					} else if msg.ReasoningContent != "" && r-startRow == 0 {
@@ -274,16 +275,16 @@ func (m *TuiModel) View() string {
 			// [Copy] button
 			if msg.Role == "assistant" && !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
 				btnRow := g.RowCount()
-				btnLine, col, width := ButtonComponent{}.Render("Copy", 4, false)
+				btnLine, col, width := ButtonComponent{}.Render(i18n.T("Copy"), 4, false)
 				plainBtn := stripANSI(btnLine)
 				g.AppendChunk(CellChunk{Text: plainBtn, Style: DimStyle})
 				m.lineSrcs = append(m.lineSrcs, lineSrc{MsgIdx: i, SourceField: "button", Text: ""})
 				msgContent := msg.Content
 				m.activeButtons = append(m.activeButtons, Button{
-					MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: "Copy",
+					MsgIdx: i, Line: btnRow, Col: col, Width: width, Label: i18n.T("Copy"),
 					Action: func() {
 						copyToClipboard(msgContent)
-						m.ShowStatus("✓ Copied")
+						m.ShowStatus(i18n.T("✓ Copied"))
 					},
 				})
 			}
@@ -353,7 +354,7 @@ func (m *TuiModel) View() string {
 		}
 		b.WriteString(renderHintRow(dialogHintAlternatives, m.width))
 	} else if m.selectingProvider {
-		b.WriteString(renderHeading("Select provider:", m.width))
+		b.WriteString(renderHeading(i18n.T("Select provider:"), m.width))
 		b.WriteString("\n")
 		for i, rec := range m.provReg.List() {
 			// The picker's label is built from the user's own provider names, so it
@@ -385,15 +386,16 @@ func (m *TuiModel) View() string {
 		b.WriteString(renderHintRow(providerHintAlternatives, m.width))
 	} else if m.cmdPalette {
 		cmds := m.filteredCmds()
-		b.WriteString(renderHeading("Commands:", m.width))
+		b.WriteString(renderHeading(i18n.T("Commands:"), m.width))
 		b.WriteString("\n")
 		for i, c := range cmds {
+			desc := i18n.T(c.Desc)
 			marker, name := "  ", c.Name
 			if i == m.cmdPaletteSel {
 				marker, name = "> ", headerStyle.Render(c.Name)
 			}
 			head := marker + name
-			if c.Desc == "" {
+			if desc == "" {
 				b.WriteString(head)
 				b.WriteString("\n")
 				continue
@@ -404,7 +406,7 @@ func (m *TuiModel) View() string {
 			// fragments like `LSP` / `diagnostics`, which is not a description
 			// (issue #221).
 			column := lipgloss.Width(head) + len(paletteGap)
-			if lines := wrapInputText(c.Desc, m.width, column, column); len(lines) == 1 {
+			if lines := wrapInputText(desc, m.width, column, column); len(lines) == 1 {
 				b.WriteString(head + paletteGap + dimStyle.Render(lines[0]))
 				b.WriteString("\n")
 				continue
@@ -412,7 +414,7 @@ func (m *TuiModel) View() string {
 			b.WriteString(head)
 			b.WriteString("\n")
 			column = len(marker) + len(paletteGap)
-			for _, line := range wrapInputText(c.Desc, m.width, column, column) {
+			for _, line := range wrapInputText(desc, m.width, column, column) {
 				b.WriteString(strings.Repeat(" ", column) + dimStyle.Render(line))
 				b.WriteString("\n")
 			}
@@ -464,13 +466,13 @@ func (m *TuiModel) renderStatusBar() string {
 	// History indicator
 	histStr := ""
 	if m.historyPos >= 0 {
-		histStr = fmt.Sprintf("  hist %d/%d", m.historyPos+1, len(m.inputHistory))
+		histStr = i18n.T("  hist %d/%d", m.historyPos+1, len(m.inputHistory))
 	}
 
 	// Build status bar
 	diagStr := ""
 	if m.diagTotal > 0 {
-		diagStr = fmt.Sprintf("  errors: %d", m.diagTotal)
+		diagStr = i18n.T("  errors: %d", m.diagTotal)
 	}
 
 	statusMsg := m.statusMsg
@@ -482,17 +484,17 @@ func (m *TuiModel) renderStatusBar() string {
 	// the session limit: the counter is a session total, so showing a per-run
 	// limit beside it would put two different scopes in one fraction. With no
 	// budget configured the text is exactly what it has always been.
-	tokensStr := fmt.Sprintf("tokens: %d", m.sessionTokens)
+	tokensStr := i18n.T("tokens: %d", m.sessionTokens)
 	if m.config != nil {
 		if _, perSession := m.config.TokenBudgets(); perSession > 0 {
-			tokensStr = fmt.Sprintf("tokens: %d/%d", m.sessionTokens, perSession)
+			tokensStr = i18n.T("tokens: %d/%d", m.sessionTokens, perSession)
 		}
 	}
 	// Cache reads sit beside the total they are part of, and only when a provider
 	// reported one: a route without caching shows the bar it always showed
 	// (roadmap A4). The number is the token saving, not a second total.
 	if m.sessionCached > 0 {
-		tokensStr += fmt.Sprintf(" (%d cached)", m.sessionCached)
+		tokensStr += i18n.T(" (%d cached)", m.sessionCached)
 	}
 
 	// Money appears only when cost accounting is in play — a rate the user
@@ -509,11 +511,11 @@ func (m *TuiModel) renderStatusBar() string {
 	costStr := ""
 	if costInPlay {
 		if len(m.sessionCost) == 0 {
-			costStr = fmt.Sprintf("  cost: unknown (%d unpriced)", m.unpricedCalls)
+			costStr = i18n.T("  cost: unknown (%d unpriced)", m.unpricedCalls)
 		} else {
-			costStr = "  cost: " + m.sessionCost.String()
+			costStr = i18n.T("  cost: ") + m.sessionCost.String()
 			if m.unpricedCalls > 0 {
-				costStr += fmt.Sprintf(" (+%d unpriced)", m.unpricedCalls)
+				costStr += i18n.T(" (+%d unpriced)", m.unpricedCalls)
 			}
 		}
 	}
@@ -524,12 +526,12 @@ func (m *TuiModel) renderStatusBar() string {
 	goalStr := ""
 	if m.goals != nil {
 		if g := m.goals.Snapshot(); g != nil {
-			goalStr = fmt.Sprintf("  goal %d/%d", g.RoundsStarted, g.MaxGoalRounds)
+			goalStr = i18n.T("  goal %d/%d", g.RoundsStarted, g.MaxGoalRounds)
 			switch g.Phase {
 			case goal.PhaseBlocked:
-				goalStr += " blocked"
+				goalStr += i18n.T(" blocked")
 			case goal.PhaseComplete:
-				goalStr += " done"
+				goalStr += i18n.T(" done")
 			}
 		}
 	}
@@ -544,12 +546,7 @@ func (m *TuiModel) renderStatusBar() string {
 		fmt.Sprintf("  ■ %s", provName),
 		"  " + tokensStr,
 		goalStr,
-		costStr,
-		fmt.Sprintf("  tools: %d", m.sessionToolCalls),
-		fmt.Sprintf("  msgs: %d", len(m.messages)),
-		diagStr,
-		fmt.Sprintf("  session: %s", durStr),
-		histStr,
+		costStr, i18n.T("  tools: %d", m.sessionToolCalls), i18n.T("  msgs: %d", len(m.messages)), diagStr, i18n.T("  session: %s", durStr), histStr,
 	}
 
 	return statusBarStyle.Render(fitStatusBar(segments, statusMsg, m.width))
@@ -680,6 +677,14 @@ func renderHintRow(alternatives []string, width int) string {
 // A width of zero means the terminal size is not known yet: the row is then built
 // in full on one line, which is what it did before this existed.
 func fitHintRow(alternatives []string, width int) []string {
+	// The alternatives are English source text; the row is laid out in the
+	// language it is drawn in, because a translated hint is wider or narrower
+	// and the packing has to measure what is actually shown.
+	translated := make([]string, len(alternatives))
+	for i, alt := range alternatives {
+		translated[i] = i18n.T(alt)
+	}
+	alternatives = translated
 	if width <= 0 {
 		return []string{strings.Join(alternatives, hintSeparator)}
 	}
@@ -838,14 +843,14 @@ func buildLineSrcs(messages []chatMessage, vpWidth int) ([]string, []lineSrc) {
 				text := stripANSI(msgLines[li])
 				field := "content"
 				offset := 4
-				if strings.Contains(text, "Response:") {
+				if strings.Contains(text, i18n.T("Response:")) {
 					field = "label"
 					offset = 0
 				}
 				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: field, Text: text, ContentOffset: offset})
 			}
 			if !msg.Streaming && (len(msg.Blocks) > 0 || msg.Content != "") {
-				btnLine, _, _ := ButtonComponent{}.Render("Copy", 4, false)
+				btnLine, _, _ := ButtonComponent{}.Render(i18n.T("Copy"), 4, false)
 				msgLines = append(msgLines, btnLine)
 				srcs = append(srcs, lineSrc{MsgIdx: i, SourceField: "button", Text: ""})
 			}

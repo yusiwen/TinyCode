@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/goal"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
 	"github.com/yusiwen/tinycode/skill"
@@ -236,35 +236,35 @@ type cmdEntry struct {
 // commandList returns all available commands for the palette.
 func commandList() []cmdEntry {
 	return []cmdEntry{
-		{"/help", "Show help"},
-		{"/plan", "Plan mode"},
-		{"/build", "Build mode"},
-		{"/verbose", "Toggle verbose output"},
-		{"/thinking", "Toggle thinking display"},
-		{"/theme", "Switch theme"},
-		{"/skill", "Load a skill"},
-		{"/diagnostics", "LSP diagnostics"},
-		{"/changes", "Show what changed since the last run"},
-		{"/hooks", "List the configured hooks"},
-		{"/test", "Run the project's test suite"},
-		{"/commit", "Commit the files this run wrote"},
-		{"/push", "Push the current branch to origin"},
-		{"/pr", "Open a pull request for the current branch"},
-		{"/undo", "Restore the last tool call's files"},
-		{"/goal", "View, create, pause or resume the goal"},
-		{"/pin", "Keep the last turn out of compression"},
-		{"/unpin", "Clear a pin on the last turn"},
-		{"/drop", "Drop the last turn from this context"},
-		{"/keep", "Keep a file's reads out of compaction"},
-		{"/unkeep", "Drop a kept path"},
-		{"/remember", "Store a fact for later sessions"},
-		{"/memory", "List or forget stored facts"},
-		{"/sandbox", "Sandbox status"},
-		{"/model", "Switch model"},
-		{"/fork", "Create session branch"},
-		{"/session", "List/switch branch"},
-		{"/compare", "Compare two branches"},
-		{"/exit", "Exit TinyCode"},
+		{"/help", i18n.T("Show help")},
+		{"/plan", i18n.T("Plan mode")},
+		{"/build", i18n.T("Build mode")},
+		{"/verbose", i18n.T("Toggle verbose output")},
+		{"/thinking", i18n.T("Toggle thinking display")},
+		{"/theme", i18n.T("Switch theme")},
+		{"/skill", i18n.T("Load a skill")},
+		{"/diagnostics", i18n.T("LSP diagnostics")},
+		{"/changes", i18n.T("Show what changed since the last run")},
+		{"/hooks", i18n.T("List the configured hooks")},
+		{"/test", i18n.T("Run the project's test suite")},
+		{"/commit", i18n.T("Commit the files this run wrote")},
+		{"/push", i18n.T("Push the current branch to origin")},
+		{"/pr", i18n.T("Open a pull request for the current branch")},
+		{"/undo", i18n.T("Restore the last tool call's files")},
+		{"/goal", i18n.T("View, create, pause or resume the goal")},
+		{"/pin", i18n.T("Keep the last turn out of compression")},
+		{"/unpin", i18n.T("Clear a pin on the last turn")},
+		{"/drop", i18n.T("Drop the last turn from this context")},
+		{"/keep", i18n.T("Keep a file's reads out of compaction")},
+		{"/unkeep", i18n.T("Drop a kept path")},
+		{"/remember", i18n.T("Store a fact for later sessions")},
+		{"/memory", i18n.T("List or forget stored facts")},
+		{"/sandbox", i18n.T("Sandbox status")},
+		{"/model", i18n.T("Switch model")},
+		{"/fork", i18n.T("Create session branch")},
+		{"/session", i18n.T("List/switch branch")},
+		{"/compare", i18n.T("Compare two branches")},
+		{"/exit", i18n.T("Exit TinyCode")},
 	}
 }
 
@@ -337,13 +337,13 @@ func (m *TuiModel) adoptSession(branch *session.Session) {
 		// Replace, never merge: an empty list has to clear the previous
 		// session's items, which is exactly what a merge would keep.
 		if err := m.todoStore.Write(branch.Todos, false); err != nil {
-			m.appendSystem(fmt.Sprintf("The task list saved with session %q is not usable: %v", branch.ID, err))
+			m.appendSystem(i18n.T("The task list saved with session %q is not usable: %v", branch.ID, err))
 		}
 	}
 	if m.goals != nil {
 		// A goal survives the file; its permission to continue does not.
 		if err := m.goals.Restore(branch.Goal); err != nil {
-			m.appendSystem(fmt.Sprintf("The goal saved with session %q is not usable: %v", branch.ID, err))
+			m.appendSystem(i18n.T("The goal saved with session %q is not usable: %v", branch.ID, err))
 		}
 	}
 	m.currentBranch = branch.ID
@@ -358,7 +358,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		goals = goal.NewService()
 	}
 	t := textarea.New()
-	t.Placeholder = "Type your request (Ctrl+J for newline)..."
+	t.Placeholder = i18n.T("Type your request (Ctrl+J for newline)...")
 	t.CharLimit = 0
 	t.SetWidth(80)
 	t.ShowLineNumbers = false
@@ -417,7 +417,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 				if err := m.provReg.SwitchToName(sess.ProviderName); err != nil {
 					m.messages = append(m.messages, chatMessage{
 						Role: "system",
-						Content: fmt.Sprintf("Route %q from this session is no longer configured; using %s.",
+						Content: i18n.T("Route %q from this session is no longer configured; using %s.",
 							sess.ProviderName, m.provReg.CurrentRoute()),
 					})
 				}
@@ -434,7 +434,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		} else {
 			m.messages = append(m.messages, chatMessage{
 				Role:    "system",
-				Content: fmt.Sprintf("Failed to resume session %q: %v", resume[0], err),
+				Content: i18n.T("Failed to resume session %q: %v", resume[0], err),
 			})
 		}
 	}
@@ -464,7 +464,7 @@ func NewTUI(ag *agent.Agent, cfg *config.Config, reg *agent.Registry, provReg *a
 		skillCount := len(skill.Discover("."))
 
 		if resumedOK {
-			msg := fmt.Sprintf("_Resumed session: %s_\n\nTinyCode ready — %d tools, %d skills loaded", resume[0], toolCount, skillCount)
+			msg := i18n.T("_Resumed session: %s_\n\nTinyCode ready — %d tools, %d skills loaded", resume[0], toolCount, skillCount)
 			m.messages = append(m.messages, chatMessage{Role: "system", Content: msg})
 		} else {
 			agentCount := 0
@@ -497,30 +497,34 @@ func (m *TuiModel) checkPermissionDialog() bool {
 	if len(displayPath) > 60 {
 		displayPath = "..." + displayPath[len(displayPath)-57:]
 	}
-	title := "🔒 Write to " + displayPath + "?"
+	title := i18n.T("🔒 Write to %s?", displayPath)
 	if label != "" {
-		title = "🔒 [" + label + "] Write to " + displayPath + "?"
+		title = i18n.T("🔒 [%s] Write to %s?", label, displayPath)
 	}
 	// Capture the request identity now: the queue head can change while the
 	// user is deciding, and the answer must apply to the request that was shown.
 	reqID := tool.PendingPermissionID()
 	reqPath := path
+	// The answers are compared by value in the callback, so the labels are
+	// resolved once: the same translation must be shown and matched.
+	onceLabel := i18n.T(allowOnceLabel)
+	sessionLabel := i18n.T(allowSessionLabel)
+	alwaysLabel := alwaysAllowLabel()
 	m.showDialogWithCancel(title, []string{
-		allowOnceLabel,
-		allowSessionLabel,
-		alwaysAllowLabel(),
-		"Deny",
+		onceLabel,
+		sessionLabel,
+		alwaysLabel, i18n.T("Deny"),
 	}, func(sel string) {
 		var allowed bool
 		var mode string
 		switch {
-		case sel == allowOnceLabel:
+		case sel == onceLabel:
 			allowed = true
 			mode = "once"
-		case sel == allowSessionLabel:
+		case sel == sessionLabel:
 			allowed = true
 			mode = "session"
-		case strings.HasPrefix(sel, alwaysAllowPrefix):
+		case strings.HasPrefix(sel, i18n.T(alwaysAllowPrefix)):
 			allowed = true
 			mode = "always"
 		default:

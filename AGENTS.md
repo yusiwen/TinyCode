@@ -117,7 +117,7 @@ go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run \
 ```
 
 The `go run` line takes the version from `go.mod` (no `@version`): one place to bump.
-There are 41 files today (`ls tui/testdata/scenarios/*.scenario | wc -l`); the ones to read
+There are 42 files today (`ls tui/testdata/scenarios/*.scenario | wc -l`); the ones to read
 first are `startup` (80x24, geometry, exit code), `narrow` (40x12), `palette` (`/` opens the
 command palette, typing filters it, Esc closes it — note that Ctrl+C while the palette is
 open *closes the palette*, so Esc comes first) and `status-cost` (the status bar's budget
@@ -187,6 +187,7 @@ gh api "repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/commits/$SH
 agent/          ReAct loop, LLM providers, context compression, registry
 config/         JSON config loading (default → ~/.tinycode/ → ./.tinycode/)
 goal/           Persistent objective, /goal, idle continuation driver (docs/goals.md)
+i18n/           Interface language switch and the Chinese catalogue (docs/i18n.md)
 lsp/            LSP client (gopls, pyright, etc.), diagnostics, 4 tools
 mcp/            MCP client (stdio/HTTP), JSON-RPC 2.0, auto-discovery
 session/        Session persistence (JSON), fork/branch support, export

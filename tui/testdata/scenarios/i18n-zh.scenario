@@ -1,0 +1,16 @@
+# The interface in Chinese: the same binary, the same terminal, one variable.
+#
+# This is the end-to-end half of the language switch — the unit tests prove the
+# catalogue and the tables, and this file proves that the real binary, started by
+# the real main.go, draws its startup screen in the language the environment asks
+# for. The scenario heredocs pin TINYCODE_LANG=en in the suite, so this file is
+# also the check that an explicit --env wins over that pin.
+#
+# The provider is unreachable on purpose, like startup.scenario: this is about the
+# screen, not a model, and nothing here reaches the network.
+open --dir . --size 80x24 --env HOME=/tmp/tinyscen-home --env TERM=xterm-256color --env COLORTERM=truecolor --env CLICOLOR_FORCE=1 --env NO_COLOR --env TINYCODE_LANG=zh -- ./bin/tinycode --api-key=scenario --base-url=http://127.0.0.1:9/v1 --model=scenario --session-dir=/tmp/tinyscen-home/sessions --log-level=error
+wait --text 开始使用 --timeout 30s
+fit --size 80x24
+send --key ctrl+c --key ctrl+c
+wait-exit 15s
+expect-exit 0

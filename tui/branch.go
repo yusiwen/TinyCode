@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/session"
 )
 
@@ -17,10 +18,10 @@ import (
 func sessionTreeText(store *session.Store, current string) string {
 	roots := store.Tree()
 	if len(roots) == 0 {
-		return "No saved sessions."
+		return i18n.T("No saved sessions.")
 	}
 	var b strings.Builder
-	b.WriteString("Sessions and branches:\n")
+	b.WriteString(i18n.T("Sessions and branches:\n"))
 	session.Walk(roots, func(n *session.Node) {
 		mark := " "
 		if n.ID == current {
@@ -28,16 +29,16 @@ func sessionTreeText(store *session.Store, current string) string {
 		}
 		title := n.Title
 		if title == "" {
-			title = "(no title)"
+			title = i18n.T("(no title)")
 		}
-		detail := fmt.Sprintf("%d msgs", n.MessageCount)
+		detail := i18n.T("%d msgs", n.MessageCount)
 		switch {
 		case n.Orphan:
-			detail += fmt.Sprintf(", parent %s missing", n.ParentSessionID)
+			detail += i18n.T(", parent %s missing", n.ParentSessionID)
 		case n.Cycle:
-			detail += fmt.Sprintf(", parent %s: cycle broken", n.ParentSessionID)
+			detail += i18n.T(", parent %s: cycle broken", n.ParentSessionID)
 		case n.ParentSessionID != "":
-			detail += fmt.Sprintf(", forked at %d", n.ForkAt)
+			detail += i18n.T(", forked at %d", n.ForkAt)
 		}
 		// The guides go inside the id column so the titles line up at every depth.
 		fmt.Fprintf(&b, "%s %-34s %s (%s)\n", mark, n.Indent+n.Connector+n.ID, title, detail)
@@ -52,41 +53,41 @@ func sessionTreeText(store *session.Store, current string) string {
 // does not.
 func formatComparison(c *session.Comparison) string {
 	var b strings.Builder
-	b.WriteString("Branch comparison\n")
-	fmt.Fprintf(&b, "  a  %-30s %s (%d msgs)\n", c.A.ID, branchTitle(c.A.Title), c.A.MessageCount)
-	fmt.Fprintf(&b, "  b  %-30s %s (%d msgs)\n", c.B.ID, branchTitle(c.B.Title), c.B.MessageCount)
+	b.WriteString(i18n.T("Branch comparison\n"))
+	fmt.Fprintf(&b, i18n.T("  a  %-30s %s (%d msgs)\n"), c.A.ID, branchTitle(c.A.Title), c.A.MessageCount)
+	fmt.Fprintf(&b, i18n.T("  b  %-30s %s (%d msgs)\n"), c.B.ID, branchTitle(c.B.Title), c.B.MessageCount)
 
 	switch {
 	case c.CommonAncestor == "":
-		b.WriteString("  common ancestor  none: the two sessions are not related\n")
+		b.WriteString(i18n.T("  common ancestor  none: the two sessions are not related\n"))
 	case c.AncestorOf == "a":
-		fmt.Fprintf(&b, "  common ancestor  %s: a is an ancestor of b\n", c.CommonAncestor)
+		fmt.Fprintf(&b, i18n.T("  common ancestor  %s: a is an ancestor of b\n"), c.CommonAncestor)
 	case c.AncestorOf == "b":
-		fmt.Fprintf(&b, "  common ancestor  %s: b is an ancestor of a\n", c.CommonAncestor)
+		fmt.Fprintf(&b, i18n.T("  common ancestor  %s: b is an ancestor of a\n"), c.CommonAncestor)
 	default:
-		fmt.Fprintf(&b, "  common ancestor  %s: siblings\n", c.CommonAncestor)
+		fmt.Fprintf(&b, i18n.T("  common ancestor  %s: siblings\n"), c.CommonAncestor)
 	}
 	for _, f := range c.Forks {
-		fmt.Fprintf(&b, "  fork             %s forked at message %d\n", f.ID, f.At)
+		fmt.Fprintf(&b, i18n.T("  fork             %s forked at message %d\n"), f.ID, f.At)
 	}
-	noun := "messages"
+	noun := i18n.T("messages")
 	if c.CommonPrefix == 1 {
-		noun = "message"
+		noun = i18n.T("message")
 	}
-	fmt.Fprintf(&b, "  common prefix    %d %s identical\n", c.CommonPrefix, noun)
+	fmt.Fprintf(&b, i18n.T("  common prefix    %d %s identical\n"), c.CommonPrefix, noun)
 	switch {
 	case c.AFirstDiff == "" && c.BFirstDiff == "":
-		b.WriteString("  transcripts      identical\n")
+		b.WriteString(i18n.T("  transcripts      identical\n"))
 	default:
 		if c.AFirstDiff == "" {
-			fmt.Fprintf(&b, "  a ends at        message %d\n", c.CommonPrefix)
+			fmt.Fprintf(&b, i18n.T("  a ends at        message %d\n"), c.CommonPrefix)
 		} else {
-			fmt.Fprintf(&b, "  a then           %s\n", c.AFirstDiff)
+			fmt.Fprintf(&b, i18n.T("  a then           %s\n"), c.AFirstDiff)
 		}
 		if c.BFirstDiff == "" {
-			fmt.Fprintf(&b, "  b ends at        message %d\n", c.CommonPrefix)
+			fmt.Fprintf(&b, i18n.T("  b ends at        message %d\n"), c.CommonPrefix)
 		} else {
-			fmt.Fprintf(&b, "  b then           %s\n", c.BFirstDiff)
+			fmt.Fprintf(&b, i18n.T("  b then           %s\n"), c.BFirstDiff)
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -94,7 +95,7 @@ func formatComparison(c *session.Comparison) string {
 
 func branchTitle(title string) string {
 	if title == "" {
-		return "(no title)"
+		return i18n.T("(no title)")
 	}
 	return title
 }
