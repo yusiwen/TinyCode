@@ -377,8 +377,10 @@ func binaryLaunch(t *testing.T) (argv, env []string, dir string) {
 		},
 		// The tool's hermetic terminal environment: this process may be running under
 		// an agent shell with TERM=dumb and NO_COLOR=1, and inheriting those would make
-		// the program paint plain text.
-		tuiprobepty.TerminalEnv(home),
+		// the program paint plain text. The language is pinned for the same reason:
+		// a developer whose locale is Chinese would otherwise run this smoke in
+		// Chinese and the assertions below would describe a different screen.
+		append(tuiprobepty.TerminalEnv(home), "TINYCODE_LANG=en"),
 		t.TempDir()
 }
 

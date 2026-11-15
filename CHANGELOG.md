@@ -9,6 +9,45 @@ back to its change and tests.
 
 ## Unreleased
 
+### The interface speaks Chinese, and English is the source text
+
+Roadmap H1 said "no i18n", with the note that UI strings were Chinese. The note was already stale:
+at the baseline commit `7e6b017` the only Han characters in non-test Go code were three source labels
+in `tool/web_extract.go`, and the TUI and CLI had been English for far longer. What was missing was
+the switch, not a language.
+
+The mechanism follows gettext: the English source text **is** the message id, so a string with no
+catalogue entry degrades to English instead of to a key name, `T(msgid, args...)` formats only when
+arguments are passed (a message that contains a literal `%` survives otherwise), and adding a message
+costs one catalogue entry. 285 entries in Simplified Chinese; 269 call sites across the TUI, the
+command line and the desktop notifications.
+
+The language is chosen by the first supported value in this order: `--lang`, `language` in the config,
+`TINYCODE_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`. `zh_CN.UTF-8`, `zh-Hans-CN` and `zh_TW` all mean
+Chinese, `C`/`POSIX` mean English, and a value nobody supports is skipped rather than fatal — a typo in
+one variable cannot lock someone out of the language their `locale` asks for.
+
+Deliberately not translated, and documented as such in `docs/i18n.md`: cobra's `--help` and flag
+descriptions (rendered before the language is known), error strings and log lines (diagnostics, quoted
+verbatim in reports), model-facing text (system prompts, tool descriptions, tool results), and values
+that persist in config files.
+
+Four gates, each mutation-checked when written — dropping a catalogue entry, swapping one `%d` for
+`%s`, unwrapping one call, and adding an unreachable entry each turn a gate red: every `i18n.T("…")`
+call in the module has an entry; no catalogue entry is mentioned by no source file; a translation's
+verb *sequence* matches its message's (a count alone would pass a `%d`→`%s` swap that renders
+`%!s(int=3)`); and no literal is handed straight to a TUI message sink. A test in `tui/` covers the
+tables — command palette, welcome rows, key hints, permission answers — that reach `T` through a
+variable and are therefore invisible to the source scan.
+
+`tui/testdata/scenarios/i18n-zh.scenario` is the end-to-end proof: the real binary, started with
+`TINYCODE_LANG=zh` on a real terminal, draws the Chinese banner. Scenario runs pin `TINYCODE_LANG=en`
+in the Makefile and in the PTY smoke, so a developer whose locale is Chinese runs the same screenshots
+as everybody else.
+
+The three Chinese labels in `tool/web_extract.go` became English: they are part of a tool *result*, so
+they are model-facing text, not interface text.
+
 ### staticcheck v0.8.2, and the staticcheck job floats Go again
 
 The pinned `honnef.co/go/tools v0.8.1` cannot read the export data go1.27.2 and later write (version

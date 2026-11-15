@@ -129,7 +129,7 @@ test-tui-scenarios: build
 	@for f in tui/testdata/scenarios/*.scenario; do \
 		case "$$f" in *live-*) echo "== $$f (skipped: run make test-tui-live)"; continue;; *lsp-*) echo "== $$f (skipped: run make test-tui-lsp)"; continue;; *confine-*) echo "== $$f (skipped: run make test-tui-confine)"; continue;; esac; \
 		echo "== $$f"; \
-		TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TUI_SHOT --dir . "$$f" || exit 1; \
+		TINYCODE_LANG=en TUI_SHOT=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate TUI_SHOT --dir . "$$f" || exit 1; \
 	done
 
 # The one target here that spends money: a real provider call, deliberately gated
@@ -142,7 +142,7 @@ test-tui-lsp: build
 	mkdir -p /tmp/tinyscen-shots
 	@for f in tui/testdata/scenarios/lsp-*.scenario; do \
 		echo "== $$f"; \
-		LSP_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate LSP_TEST --dir . "$$f" || exit 1; \
+		TINYCODE_LANG=en LSP_TEST=1 go run github.com/yusiwen/TinyCode/tuiprobe/cmd/tuiprobe run --gate LSP_TEST --dir . "$$f" || exit 1; \
 	done
 
 # The command-boundary scenarios, gated the way make test-lsp is: they need a kernel

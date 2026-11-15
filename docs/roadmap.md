@@ -16,10 +16,10 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 25 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 26 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 15 | verified gaps, no issue opened |
+| Not started | 14 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -76,7 +76,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | F4 | The evaluation grades outcomes, never the process | Not started |
 | G1 | Delegation is two levels deep | Not started |
 | G2 | Sub-agent output is not streamed to the UI | Not started |
-| H1 | No i18n | Not started |
+| H1 | No i18n | Delivered — #350 |
 | H2 | Command checks are heuristics, not a boundary | Not started |
 | H3 | No branch visualisation | Delivered — #347 |
 
@@ -995,7 +995,23 @@ says how to record and refresh one — and a
 
 ### H1 — No i18n
 
+- **Picked up**: [#350](https://github.com/yusiwen/TinyCode/issues/350) — the `i18n` package (the
+  English source text is the message id, so an untranslated message degrades to English), a 285-entry
+  Simplified Chinese catalogue, the precedence `--lang` → `language` → `TINYCODE_LANG` → `LC_ALL` →
+  `LC_MESSAGES` → `LANG`, and 269 call sites across the TUI, the command line and the desktop
+  notifications. **Delivered 2026-11-15.** Three gates keep it honest: every `i18n.T("…")` call has an
+  entry, no entry is unreachable, and a translation's verb sequence matches its message's (a `%d` that
+  became `%s` is caught); a fourth refuses a literal handed straight to a TUI message sink, and a test
+  in `tui/` enumerates the tables that reach `T` through a variable. Each gate was mutation-checked.
+  `tui/testdata/scenarios/i18n-zh.scenario` starts the real binary with `TINYCODE_LANG=zh` and waits for
+  the Chinese banner on a real terminal. Boundaries, stated so they are not read as omissions: cobra's
+  `--help` (rendered before the language is known), error strings and log lines (diagnostics, quoted
+  verbatim in reports), and model-facing text are English. `docs/i18n.md` is the reference.
 - **Gap**: UI strings are Chinese, with no language switch.
+- **Evidence**: the premise was already stale when the entry was written: at the baseline commit
+  `7e6b017` the only Han characters in non-test Go code were three source labels in
+  `tool/web_extract.go` (`(来源: …)`), and the TUI and CLI were English. What was missing was the
+  switch, not a language. The three labels became English with this work, because they are model-facing.
 
 ### H2 — Command checks are heuristics, not a boundary
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/tool"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -22,9 +23,9 @@ const (
 func alwaysAllowLabel() string {
 	path, err := config.UserConfigPath()
 	if err != nil {
-		return alwaysAllowPrefix + " (saves to your config)"
+		return i18n.T("Always allow (saves to your config)")
 	}
-	return alwaysAllowPrefix + " (saves to " + path + ")"
+	return i18n.T("Always allow (saves to %s)", path)
 }
 
 // sandboxReport renders what actually confines file operations in this process,
@@ -49,24 +50,24 @@ func sandboxReport() string {
 
 	var b strings.Builder
 	b.WriteString("Sandbox\n")
-	fmt.Fprintf(&b, "  containment: %s\n", info.String())
-	fmt.Fprintf(&b, "  hard boundary required: %s\n", required)
+	fmt.Fprintf(&b, i18n.T("  containment: %s\n"), info.String())
+	fmt.Fprintf(&b, i18n.T("  hard boundary required: %s\n"), required)
 
 	// Command confinement is its own capability and its own switch: a host can
 	// enforce the agent's opens and still have no way to confine a subprocess.
 	// The line says why when it is off, so the per-platform default (off where
 	// no mechanism exists) is stated on the host it applies to rather than
 	// leaving commands silently unconfined.
-	fmt.Fprintf(&b, "  command confinement: %s\n", tool.CommandConfinementStatus())
+	fmt.Fprintf(&b, i18n.T("  command confinement: %s\n"), tool.CommandConfinementStatus())
 	// The tier answers a different question: what a command runs *under*, not
 	// whether the host can confine one. A run that requires the container tier
 	// says so here, on the host it was configured on (roadmap C6).
-	fmt.Fprintf(&b, "  tier: %s\n", tool.TierStatus())
+	fmt.Fprintf(&b, i18n.T("  tier: %s\n"), tool.TierStatus())
 	// A read-only agent narrows to the container when the host has one, so the
 	// report says what a delegated explore run would actually use (roadmap C6).
-	fmt.Fprintf(&b, "  read-only agents: %s\n", tool.ReadOnlyTierStatus())
+	fmt.Fprintf(&b, i18n.T("  read-only agents: %s\n"), tool.ReadOnlyTierStatus())
 
-	fmt.Fprintf(&b, "  project root: %s\n", root)
+	fmt.Fprintf(&b, i18n.T("  project root: %s\n"), root)
 
 	// The roots come from the same resolver a run uses, so the report cannot
 	// describe a writable set the fence would not grant.
@@ -84,9 +85,9 @@ func sandboxReport() string {
 	// the report says what grants them and what grants more. Without this line the
 	// only way to learn why a toolchain's cache is writable — or why `go mod
 	// download` failed on a cold one — is to read the source (issue #166).
-	b.WriteString("  toolchain caches: granted for the toolchains installed on this host (go, cargo, npm, pnpm), " +
+	b.WriteString(i18n.T("  toolchain caches: granted for the toolchains installed on this host (go, cargo, npm, pnpm), " +
 		"and never a directory on PATH; grant another path in your own ~/.tinycode/config.json, " +
-		"under \"sandbox.allowed_path_grants\"\n")
+		"under \"sandbox.allowed_path_grants\"\n"))
 
 	// What can be undone is part of the safety posture this command reports, and
 	// the line that matters is the one naming what is *not* captured: a user who

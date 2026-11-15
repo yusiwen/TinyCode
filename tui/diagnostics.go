@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/lsp"
 )
 
@@ -60,7 +60,7 @@ func (m *TuiModel) diagnosticsListing() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("LSP diagnostics: %d error(s) in %d file(s)\n", m.diagTotal, m.diagFiles))
+	b.WriteString(i18n.T("LSP diagnostics: %d error(s) in %d file(s)\n", m.diagTotal, m.diagFiles))
 	for _, line := range m.diagDetails {
 		b.WriteString("  " + line + "\n")
 	}

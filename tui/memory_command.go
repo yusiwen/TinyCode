@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -24,10 +25,10 @@ const memoryListLimit = 20
 // config that switched it off rather than a build that lacks it.
 func (m *TuiModel) memoryStoreForCommand() (types.MemoryStore, string) {
 	if m.agent == nil || m.agent.Memory == nil {
-		return nil, "memory is off: set memory.enabled in your own ~/.tinycode/config.json (see docs/memory-decision.md)"
+		return nil, i18n.T("memory is off: set memory.enabled in your own ~/.tinycode/config.json (see docs/memory-decision.md)")
 	}
 	if m.agent.MemoryMode != agent.MemoryModeAuto {
-		return nil, "memory is configured but not being recalled; nothing is stored or listed"
+		return nil, i18n.T("memory is configured but not being recalled; nothing is stored or listed")
 	}
 	return m.agent.Memory, ""
 }
@@ -43,15 +44,15 @@ func (m *TuiModel) handleRemember(arg string) {
 	}
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		m.appendSystem("usage: /remember <fact>   or   /remember <label>: <fact>")
+		m.appendSystem(i18n.T("usage: /remember <fact>   or   /remember <label>: <fact>"))
 		return
 	}
 	key, value := splitMemoryFact(arg)
 	if err := store.Remember(key, value); err != nil {
-		m.appendSystem("remember failed: " + err.Error())
+		m.appendSystem(i18n.T("remember failed: %s", err.Error()))
 		return
 	}
-	m.appendSystem(fmt.Sprintf("remembered (%s): %s\n/memory lists it with the id that /memory forget takes.", key, value))
+	m.appendSystem(i18n.T("remembered (%s): %s\n/memory lists it with the id that /memory forget takes.", key, value))
 }
 
 // handleMemory lists the store or forgets one fact. Deleting is part of the same
@@ -68,11 +69,11 @@ func (m *TuiModel) handleMemory(arg string) {
 	case len(fields) == 0:
 		facts, err := store.List()
 		if err != nil {
-			m.appendSystem("memory list failed: " + err.Error())
+			m.appendSystem(i18n.T("memory list failed: %s", err.Error()))
 			return
 		}
 		if len(facts) == 0 {
-			m.appendSystem("no memories stored; /remember <fact> adds one")
+			m.appendSystem(i18n.T("no memories stored; /remember <fact> adds one"))
 			return
 		}
 		shown := len(facts)
@@ -80,7 +81,7 @@ func (m *TuiModel) handleMemory(arg string) {
 			shown = memoryListLimit
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "%d facts (newest %d):\n", len(facts), shown)
+		fmt.Fprintf(&b, i18n.T("%d facts (newest %d):\n"), len(facts), shown)
 		// Newest first: the fact just written is the one a person is checking.
 		for i := len(facts) - 1; i >= len(facts)-shown; i-- {
 			fact := facts[i]
@@ -90,15 +91,15 @@ func (m *TuiModel) handleMemory(arg string) {
 	case fields[0] == "forget" && len(fields) == 2:
 		if err := store.Forget(fields[1]); err != nil {
 			if errors.Is(err, agent.ErrMemoryNotFound) {
-				m.appendSystem("no fact with id " + fields[1])
+				m.appendSystem(i18n.T("no fact with id %s", fields[1]))
 				return
 			}
-			m.appendSystem("forget failed: " + err.Error())
+			m.appendSystem(i18n.T("forget failed: %s", err.Error()))
 			return
 		}
-		m.appendSystem("forgot " + fields[1])
+		m.appendSystem(i18n.T("forgot %s", fields[1]))
 	default:
-		m.appendSystem("usage: /memory   or   /memory forget <id>")
+		m.appendSystem(i18n.T("usage: /memory   or   /memory forget <id>"))
 	}
 }
 

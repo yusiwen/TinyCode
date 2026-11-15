@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/yusiwen/tinycode/i18n"
 	"strings"
 )
 
@@ -137,7 +138,7 @@ func (ReasoningComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if msg.ReasoningFolded {
 		markerChunks = []CellChunk{
 			{Text: "[+]", Style: bracketStyle},
-			{Text: fmt.Sprintf(" %d lines of reasoning", lineCount), Style: markerStyle},
+			{Text: i18n.T(" %d lines of reasoning", lineCount), Style: markerStyle},
 		}
 	}
 	chunks = append(chunks, markerChunks...)
@@ -202,7 +203,7 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	var chunks []CellChunk
 	// Blank line before tool calls section
 	chunks = append(chunks, CellChunk{Text: "", Style: DefaultStyle})
-	chunks = append(chunks, CellChunk{Text: "  → Calling tools:", Style: style})
+	chunks = append(chunks, CellChunk{Text: i18n.T("  → Calling tools:"), Style: style})
 	for _, tc := range msg.ToolCalls {
 		// Skip todo — rendered separately between reasoning and tool calls
 		if tc.Name == "todo" {
@@ -217,7 +218,7 @@ func (ToolCallComponent) Render(msg chatMessage, sel bool) []CellChunk {
 				arg = lines[0]
 				if len(lines) > 1 {
 					totalLines := strings.Count(tc.Arg, "\n") + 1
-					arg += fmt.Sprintf(" (%d lines)", totalLines)
+					arg += i18n.T(" (%d lines)", totalLines)
 				} else {
 					arg = arg[:77] + "..."
 				}

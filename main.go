@@ -15,6 +15,7 @@ import (
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/hook"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -71,6 +72,7 @@ func newRootCmd() *cobra.Command {
 	var listGrants bool
 	var revokeGrant string
 	var undoLast bool
+	var lang string
 
 	rootCmd := &cobra.Command{
 		Use:     "tinycode",
@@ -83,6 +85,16 @@ func newRootCmd() *cobra.Command {
 			// start could disagree if the file changed in between (issue #231).
 			layers := config.LoadLayers()
 			cfg := layers.Config()
+
+			// The interface language is chosen before anything is printed. The
+			// flag wins over the file, and both lose to nothing: the environment
+			// and the locale are consulted last, in the order docs/i18n.md
+			// documents. A language nobody supports is skipped, not fatal.
+			configured := cfg.Language
+			if lang != "" {
+				configured = lang
+			}
+			i18n.SetLanguage(i18n.Detect(configured, os.Getenv))
 
 			// Initialize logger
 			logDir := filepath.Join(expandPath(cfg.SessionDir), "..", "log")
@@ -457,16 +469,16 @@ func newRootCmd() *cobra.Command {
 			if searchSessions != "" {
 				infos := store.Search(searchSessions)
 				if len(infos) == 0 {
-					fmt.Println("No sessions matched.")
+					fmt.Println(i18n.T("No sessions matched."))
 				} else {
-					fmt.Printf("Found %d session(s) matching %q:\n", len(infos), searchSessions)
+					fmt.Printf(i18n.T("Found %d session(s) matching %q:\n"), len(infos), searchSessions)
 					for _, info := range infos {
 						when := info.UpdatedAt.Format("2006-01-02 15:04")
 						title := info.Title
 						if title == "" {
-							title = "(no title)"
+							title = i18n.T("(no title)")
 						}
-						fmt.Printf("  %-35s %s (%d msgs, %s)\n", info.ID, title, info.MessageCount, when)
+						fmt.Printf(i18n.T("  %-35s %s (%d msgs, %s)\n"), info.ID, title, info.MessageCount, when)
 					}
 				}
 				return nil
@@ -476,7 +488,7 @@ func newRootCmd() *cobra.Command {
 				if err := store.Delete(deleteSession); err != nil {
 					return fmt.Errorf("delete session: %w", err)
 				}
-				fmt.Printf("Deleted session: %s\n", deleteSession)
+				fmt.Printf(i18n.T("Deleted session: %s\n"), deleteSession)
 				return nil
 			}
 
@@ -498,7 +510,7 @@ func newRootCmd() *cobra.Command {
 				if err := os.WriteFile(outPath, []byte(md), 0600); err != nil {
 					return fmt.Errorf("write export: %w", err)
 				}
-				fmt.Printf("Exported session to: %s\n", outPath)
+				fmt.Printf(i18n.T("Exported session to: %s\n"), outPath)
 				return nil
 			}
 
@@ -511,12 +523,12 @@ func newRootCmd() *cobra.Command {
 					return fmt.Errorf("undo: %w", err)
 				}
 				if !ok {
-					fmt.Println("Nothing to undo: no tool call in this project has a recorded pre-image.")
+					fmt.Println(i18n.T("Nothing to undo: no tool call in this project has a recorded pre-image."))
 					return nil
 				}
 				restored, err := tool.RestoreCall(cmd.Context(), call)
 				for _, path := range restored {
-					fmt.Printf("Restored: %s\n", path)
+					fmt.Printf(i18n.T("Restored: %s\n"), path)
 				}
 				if err != nil {
 					return fmt.Errorf("undo: %w", err)
@@ -540,27 +552,26 @@ func newRootCmd() *cobra.Command {
 				}
 				path, pathErr := config.UserConfigPath()
 				if pathErr != nil {
-					path = "(config path unavailable)"
+					path = i18n.T("(config path unavailable)")
 				}
 				if len(grants) == 0 {
-					fmt.Printf("No persistent path grants in %s\n", path)
+					fmt.Printf(i18n.T("No persistent path grants in %s\n"), path)
 					return nil
 				}
-				fmt.Printf("Persistent path grants in %s:\n", path)
+				fmt.Printf(i18n.T("Persistent path grants in %s:\n"), path)
 				for _, g := range grants {
 					switch {
 					case g.Legacy:
-						fmt.Printf("  %-50s recorded before grants carried context\n", g.Path)
+						fmt.Printf(i18n.T("  %-50s recorded before grants carried context\n"), g.Path)
 					default:
 						project := g.Project
 						if project == "" {
-							project = "(unknown project)"
+							project = i18n.T("(unknown project)")
 						}
-						fmt.Printf("  %-50s granted %s from %s\n",
-							g.Path, g.Granted.Local().Format("2006-01-02 15:04"), project)
+						fmt.Printf(i18n.T("  %-50s granted %s from %s\n"), g.Path, g.Granted.Local().Format("2006-01-02 15:04"), project)
 					}
 				}
-				fmt.Println("Revoke one with --revoke-grant <path>")
+				fmt.Println(i18n.T("Revoke one with --revoke-grant <path>"))
 				return nil
 			}
 			if revokeGrant != "" {
@@ -569,9 +580,9 @@ func newRootCmd() *cobra.Command {
 					return err
 				}
 				if removed {
-					fmt.Printf("Revoked the persistent grant for %s\n", revokeGrant)
+					fmt.Printf(i18n.T("Revoked the persistent grant for %s\n"), revokeGrant)
 				} else {
-					fmt.Printf("No persistent grant for %s\n", revokeGrant)
+					fmt.Printf(i18n.T("No persistent grant for %s\n"), revokeGrant)
 				}
 				return nil
 			}
@@ -584,17 +595,17 @@ func newRootCmd() *cobra.Command {
 			var mcpCount int
 			var mcpToolList []agent.Tool
 			if len(cfg.MCPServers) > 0 {
-				fmt.Print("  Connecting to MCP servers... ")
+				fmt.Print(i18n.T("  Connecting to MCP servers... "))
 				mcpToolList, _ = tool.ConnectMCPServers(context.Background(), cfg.MCPServers)
 				for _, mt := range mcpToolList {
 					ag.AddTool(mt)
 				}
 				mcpCount = len(mcpToolList)
 				if mcpCount > 0 {
-					fmt.Printf("%d tools from %d server(s)\n", mcpCount, len(cfg.MCPServers))
+					fmt.Printf(i18n.T("%d tools from %d server(s)\n"), mcpCount, len(cfg.MCPServers))
 					tlog.Info("main", "mcp tools registered", "count", mcpCount)
 				} else {
-					fmt.Println("no tools found")
+					fmt.Println(i18n.T("no tools found"))
 				}
 			}
 			// Reap every MCP child (stdio) on the way out. Safe when none was
@@ -633,7 +644,7 @@ func newRootCmd() *cobra.Command {
 
 			if prompt != "" {
 				// One-shot mode
-				fmt.Printf("🤖 TinyCode (model: %s)\n", provReg.CurrentName())
+				fmt.Printf(i18n.T("🤖 TinyCode (model: %s)\n"), provReg.CurrentName())
 				result, err := ag.Run(ctx, prompt)
 				// A one-shot run ends its session here: there is no TUI exit path
 				// to report it, and a hook that exports the transcript should not
@@ -666,7 +677,7 @@ func newRootCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Println("\nBye!")
+			fmt.Println(i18n.T("\nBye!"))
 			return nil
 		},
 	}
@@ -686,6 +697,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().BoolVar(&listGrants, "list-grants", false, "List persistent path grants and exit")
 	rootCmd.Flags().StringVar(&revokeGrant, "revoke-grant", "", "Revoke a persistent path grant and exit")
 	rootCmd.Flags().BoolVar(&undoLast, "undo", false, "Restore the files the last tool call wrote, and exit")
+	rootCmd.Flags().StringVar(&lang, "lang", "", "Interface language: en or zh (default: from config, $TINYCODE_LANG or the locale)")
 
 	return rootCmd
 }
@@ -1440,24 +1452,23 @@ func printTrajectories(cfg *config.Config, limit int) error {
 		return fmt.Errorf("list trajectories: %w", err)
 	}
 	if len(runs) == 0 {
-		fmt.Printf("No trajectories in %s.\n", spec.Dir)
+		fmt.Printf(i18n.T("No trajectories in %s.\n"), spec.Dir)
 		return nil
 	}
-	fmt.Printf("Trajectories in %s (newest %d):\n", spec.Dir, len(runs))
+	fmt.Printf(i18n.T("Trajectories in %s (newest %d):\n"), spec.Dir, len(runs))
 	for _, run := range runs {
 		stop := run.Stop
 		if !run.Complete {
-			stop = "incomplete"
+			stop = i18n.T("incomplete")
 		}
 		cost := "-"
 		if len(run.Cost) > 0 {
 			cost = run.Cost.String()
 		}
 		if run.CostUnknown > 0 {
-			cost = fmt.Sprintf("%s (+%d unpriced)", cost, run.CostUnknown)
+			cost = i18n.T("%s (+%d unpriced)", cost, run.CostUnknown)
 		}
-		fmt.Printf("  %-24s %-12s %2d steps %7.1fs %6d tok %s\n    %s\n",
-			run.Run, stop, run.Steps, run.Duration.Seconds(), run.TokensTotal(), cost, run.Path)
+		fmt.Printf(i18n.T("  %-24s %-12s %2d steps %7.1fs %6d tok %s\n    %s\n"), run.Run, stop, run.Steps, run.Duration.Seconds(), run.TokensTotal(), cost, run.Path)
 	}
 	return nil
 }
@@ -1487,10 +1498,10 @@ func printTrajectory(cfg *config.Config, id string) error {
 func printSessionTree(store *session.Store) {
 	roots := store.Tree()
 	if len(roots) == 0 {
-		fmt.Println("No saved sessions found.")
+		fmt.Println(i18n.T("No saved sessions found."))
 		return
 	}
-	fmt.Println("Available sessions:")
+	fmt.Println(i18n.T("Available sessions:"))
 	session.Walk(roots, func(n *session.Node) {
 		fmt.Printf("  %s\n", sessionTreeLabel(n))
 	})
@@ -1501,9 +1512,9 @@ func printSessionTree(store *session.Store) {
 func sessionTreeLabel(n *session.Node) string {
 	title := n.Title
 	if title == "" {
-		title = "(no title)"
+		title = i18n.T("(no title)")
 	}
-	msgs := fmt.Sprintf("%d msgs", n.MessageCount)
+	msgs := i18n.T("%d msgs", n.MessageCount)
 	when := n.UpdatedAt.Format("2006-01-02 15:04")
 	// The guides are part of the first column, so a branch's title, size and time
 	// still line up with its parent's. Indenting the id instead would shift every
@@ -1513,10 +1524,10 @@ func sessionTreeLabel(n *session.Node) string {
 	case n.ParentSessionID == "":
 		return line
 	case n.Orphan:
-		return line + fmt.Sprintf("  [parent %s missing]", n.ParentSessionID)
+		return line + i18n.T("  [parent %s missing]", n.ParentSessionID)
 	case n.Cycle:
-		return line + fmt.Sprintf("  [parent %s: cycle broken here]", n.ParentSessionID)
+		return line + i18n.T("  [parent %s: cycle broken here]", n.ParentSessionID)
 	default:
-		return line + fmt.Sprintf("  [forked at %d]", n.ForkAt)
+		return line + i18n.T("  [forked at %d]", n.ForkAt)
 	}
 }

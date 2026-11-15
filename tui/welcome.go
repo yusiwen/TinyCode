@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/yusiwen/tinycode/i18n"
 )
 
 // welcomeInfo carries the startup statistics shown in the welcome banner.
@@ -74,13 +75,13 @@ func newWelcomeMessage(info welcomeInfo) chatMessage {
 // plainText renders the banner without styling, for copies and msg.Content.
 func (info welcomeInfo) plainText() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "TinyCode — %d tools · %d skills · %d agents\n\n", info.Tools, info.Skills, info.Agents)
-	b.WriteString("Get started:\n")
+	fmt.Fprintf(&b, i18n.T("TinyCode — %d tools · %d skills · %d agents\n\n"), info.Tools, info.Skills, info.Agents)
+	b.WriteString(i18n.T("Get started:\n"))
 	for _, c := range welcomeCommands {
-		fmt.Fprintf(&b, "  %-*s  %s\n", welcomeKeyWidth, c.Key, c.Desc)
+		fmt.Fprintf(&b, "  %-*s  %s\n", welcomeKeyWidth, c.Key, i18n.T(c.Desc))
 	}
-	fmt.Fprintf(&b, "\nConfig: %s\n", welcomeConfigPath)
-	fmt.Fprintf(&b, "Source: %s", welcomeSourceURL)
+	fmt.Fprintf(&b, i18n.T("\nConfig: %s\n"), welcomeConfigPath)
+	fmt.Fprintf(&b, i18n.T("Source: %s"), welcomeSourceURL)
 	return b.String()
 }
 
@@ -105,14 +106,14 @@ func renderWelcomeLines(info welcomeInfo, width int) [][]CellChunk {
 	lines = append(lines, nil)
 	lines = appendWelcomeLine(lines, info.countChunks(), width)
 	lines = append(lines, nil)
-	lines = append(lines, []CellChunk{{Text: welcomeIndent + "Get started", Style: bannerAccentStyle}})
+	lines = append(lines, []CellChunk{{Text: welcomeIndent + i18n.T("Get started"), Style: bannerAccentStyle}})
 	for _, c := range welcomeCommands {
 		lines = appendWelcomeLine(lines, commandChunks(c), width)
 	}
 
 	lines = append(lines, nil)
-	lines = appendWelcomeLine(lines, footerChunks("Config", welcomeConfigPath, ""), width)
-	lines = appendWelcomeLine(lines, footerChunks("Source", welcomeSourceURL, welcomeSourceLink), width)
+	lines = appendWelcomeLine(lines, footerChunks(i18n.T("Config"), welcomeConfigPath, ""), width)
+	lines = appendWelcomeLine(lines, footerChunks(i18n.T("Source"), welcomeSourceURL, welcomeSourceLink), width)
 	return lines
 }
 
@@ -135,7 +136,7 @@ func (info welcomeInfo) countChunks() []CellChunk {
 		}
 		chunks = append(chunks,
 			CellChunk{Text: fmt.Sprintf("%d", it.n), Style: bannerAccentStyle},
-			CellChunk{Text: " " + it.label, Style: DefaultStyle},
+			CellChunk{Text: " " + i18n.T(it.label), Style: DefaultStyle},
 		)
 	}
 	return chunks
@@ -152,7 +153,7 @@ func commandChunks(c welcomeCommand) []CellChunk {
 		{Text: welcomeIndent, Style: DefaultStyle},
 		{Text: key, Style: bannerKeyStyle},
 		{Text: "  ", Style: DefaultStyle},
-		{Text: c.Desc, Style: DefaultStyle},
+		{Text: i18n.T(c.Desc), Style: DefaultStyle},
 	}
 }
 

@@ -1,11 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/goal"
+	"github.com/yusiwen/tinycode/i18n"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -117,7 +117,7 @@ func (m *TuiModel) startGoalRound() (tea.Model, tea.Cmd) {
 	}
 	round, err := m.goals.StartRound()
 	if err != nil {
-		m.appendSystem(fmt.Sprintf("Goal round not started: %v", err))
+		m.appendSystem(i18n.T("Goal round not started: %v", err))
 		return m, nil
 	}
 	prompt := goal.RoundPrompt(m.goals.Snapshot(), round)
@@ -128,7 +128,7 @@ func (m *TuiModel) startGoalRound() (tea.Model, tea.Cmd) {
 		// Unreachable: the decision above and this call happen in one Update, so
 		// nothing can take the session in between. Reported rather than hidden,
 		// because the round has already been counted.
-		m.appendSystem("Goal round could not start: another run took the session")
+		m.appendSystem(i18n.T("Goal round could not start: another run took the session"))
 		return m, nil
 	}
 	m.autoScroll()
@@ -155,8 +155,8 @@ func (m *TuiModel) settleGoalRound(runErr error) string {
 
 	if m.currentRunIsGoal && runErr != nil {
 		if _, err := m.goals.Pause(ref); err == nil {
-			m.appendSystem("Goal paused: the round ended with an error. /goal resume re-arms it.")
-			return "goal paused: the round ended with an error"
+			m.appendSystem(i18n.T("Goal paused: the round ended with an error. /goal resume re-arms it."))
+			return i18n.T("goal paused: the round ended with an error")
 		}
 		return ""
 	}
@@ -168,27 +168,25 @@ func (m *TuiModel) settleGoalRound(runErr error) string {
 			m.goalToolFreeRounds = 0
 		}
 		if m.goalNoProgress > 0 && m.goalToolFreeRounds >= m.goalNoProgress {
-			if _, err := m.goals.Block(ref, goal.BlockerNoProgress,
-				fmt.Sprintf("%d consecutive rounds made no tool calls", m.goalToolFreeRounds)); err == nil {
-				m.appendSystem("Goal blocked: consecutive rounds made no tool calls. Investigate, then /goal resume.")
-				return "goal blocked: no progress"
+			if _, err := m.goals.Block(ref, goal.BlockerNoProgress, i18n.T("%d consecutive rounds made no tool calls", m.goalToolFreeRounds)); err == nil {
+				m.appendSystem(i18n.T("Goal blocked: consecutive rounds made no tool calls. Investigate, then /goal resume."))
+				return i18n.T("goal blocked: no progress")
 			}
 			return ""
 		}
 	}
 
 	if current.Phase == goal.PhaseActive && current.RoundsLeft() == 0 {
-		if _, err := m.goals.Block(ref, goal.BlockerRoundLimit,
-			fmt.Sprintf("the goal spent its %d rounds", current.MaxGoalRounds)); err == nil {
-			m.appendSystem("Goal blocked: it spent its round budget. Raise max_goal_rounds, then /goal resume.")
-			return "goal blocked: round budget spent"
+		if _, err := m.goals.Block(ref, goal.BlockerRoundLimit, i18n.T("the goal spent its %d rounds", current.MaxGoalRounds)); err == nil {
+			m.appendSystem(i18n.T("Goal blocked: it spent its round budget. Raise max_goal_rounds, then /goal resume."))
+			return i18n.T("goal blocked: round budget spent")
 		}
 		return ""
 	}
 
 	// The model completed it: say so once, not on every later run.
 	if current.Phase == goal.PhaseComplete && m.runGoalPhase != goal.PhaseComplete {
-		return "goal complete"
+		return i18n.T("goal complete")
 	}
 	return ""
 }

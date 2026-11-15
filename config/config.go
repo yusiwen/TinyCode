@@ -672,11 +672,15 @@ type Config struct {
 	Test *TestConfig `json:"test,omitempty"`
 	// Parallel controls how delegated tasks are isolated from one another
 	// (roadmap C3).
-	Parallel   *ParallelConfig          `json:"parallel,omitempty"`
-	Agents     map[string]AgentOverride `json:"agents,omitempty"`
-	Sandbox    *SandboxConfig           `json:"sandbox,omitempty"`
-	Theme      string                   `json:"theme,omitempty"`
-	SessionDir string                   `json:"session_dir,omitempty"`
+	Parallel *ParallelConfig          `json:"parallel,omitempty"`
+	Agents   map[string]AgentOverride `json:"agents,omitempty"`
+	Sandbox  *SandboxConfig           `json:"sandbox,omitempty"`
+	Theme    string                   `json:"theme,omitempty"`
+	// Language is the interface language: "en" or "zh". Empty means
+	// English unless the environment or the locale names one, in the
+	// order docs/i18n.md documents.
+	Language   string `json:"language,omitempty"`
+	SessionDir string `json:"session_dir,omitempty"`
 	// CheckpointDir is where the pre-images of tool writes are kept, so a write
 	// can be undone. It is deliberately outside the project root: the fence that
 	// confines every tool write then confines the store as well.
@@ -1077,6 +1081,9 @@ func merge(dst, src Config) Config {
 	}
 	if src.Theme != "" {
 		dst.Theme = src.Theme
+	}
+	if src.Language != "" {
+		dst.Language = src.Language
 	}
 	if src.SearXNGURL != "" {
 		dst.SearXNGURL = src.SearXNGURL
