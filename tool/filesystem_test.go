@@ -224,3 +224,26 @@ func TestWithPathGate(t *testing.T) {
 		t.Errorf("inner executed %d times, want 2", executed)
 	}
 }
+
+// TestReadFileRefusesAnImageAsText is the D1 boundary on the tool side: the
+// bytes of a screenshot are not text, and reading them as lines fills the
+// context with mojibake. The refusal names the attachment path that works.
+func TestReadFileRefusesAnImageAsText(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "shot.png")
+	// A real PNG signature is enough for the sniffer.
+	png := append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, make([]byte, 32)...)
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ReadFile().Execute(context.Background(), map[string]any{"path": path})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"is an image (image/png", "/image", "--image"} {
+		if !strings.Contains(result, want) {
+			t.Errorf("the refusal does not mention %q: %s", want, result)
+		}
+	}
+}

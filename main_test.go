@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1134,5 +1137,47 @@ func TestSessionTreeLabelNamesTheFork(t *testing.T) {
 	root := &session.Node{SessionInfo: session.SessionInfo{ID: "main", MessageCount: 1, UpdatedAt: at}}
 	if got := sessionTreeLabel(root); strings.Contains(got, "[") {
 		t.Errorf("root row = %q, want no branch annotation", got)
+	}
+}
+
+// TestLoadImagesIsTheFlagsContract pins what --image accepts and refuses: the
+// flag exists so a person can name a picture on the command line, and a bad one
+// must fail the command rather than reach the model as a dropped attachment.
+func TestLoadImagesIsTheFlagsContract(t *testing.T) {
+	dir := t.TempDir()
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	good := filepath.Join(dir, "shot.png")
+	if err := os.WriteFile(good, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(bad, []byte("not a picture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	images, err := loadImages(nil)
+	if err != nil || images != nil {
+		t.Fatalf("no --image should mean no images: %v %v", images, err)
+	}
+	images, err = loadImages([]string{good, good})
+	if err != nil {
+		t.Fatalf("loadImages: %v", err)
+	}
+	if len(images) != 2 || images[0].MediaType != "image/png" {
+		t.Fatalf("loaded %+v", images)
+	}
+	if _, err := loadImages([]string{good, bad}); err == nil {
+		t.Error("a text file was accepted by --image")
+	}
+	many := make([]string, types.MaxImagesPerMessage+1)
+	for i := range many {
+		many[i] = good
+	}
+	if _, err := loadImages(many); err == nil {
+		t.Error("more images than the cap were accepted")
 	}
 }

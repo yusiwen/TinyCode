@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/tlog"
+	"github.com/yusiwen/tinycode/types"
 )
 
 // ReadFile returns a Tool that reads file contents.
@@ -57,6 +59,16 @@ func ReadFile() Tool {
 			data, err := readSandboxed(ctx, safePath)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", path, err)
+			}
+
+			// A picture is not text: reading its bytes as lines fills the model's
+			// context with mojibake. The attachment path is the one that works
+			// (roadmap D1), so the refusal names it instead of pretending.
+			if mediaType := http.DetectContentType(data); types.IsImageMediaType(mediaType) {
+				return fmt.Sprintf("=== %s is an image (%s, %d bytes) ===\n"+
+					"read_file returns text only. To show it to the model, attach it: "+
+					"`/image %s` in the TUI, or `tinycode --image %s \"...\"` on the command line.",
+					path, mediaType, len(data), path, path), nil
 			}
 
 			const maxLines = 2000

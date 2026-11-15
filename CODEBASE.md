@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1440 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1459 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -872,7 +872,8 @@ adding a scenario — frame, black-box scenario file, or tool release — is in
 
 ### `types.go`
 - **Constants**: `RoleSystem`, `RoleUser`, `RoleAssistant`, `RoleTool`
-- **`Message`** struct: `Role`, `Content`, `Name`, `ToolCallID`, `ToolCalls []ToolCall`, `ReasoningContent`, `ReasoningSignature` (the vendor's receipt for a thinking block, carried from the response onto the assistant turn so Anthropic/Bedrock can replay it; empty for providers that do not sign reasoning)
+- **`Message`** struct: `Role`, `Content`, `Name`, `ToolCallID`, `ToolCalls []ToolCall`, `ReasoningContent`, `ReasoningSignature` (the vendor's receipt for a thinking block, carried from the response onto the assistant turn so Anthropic/Bedrock can replay it; empty for providers that do not sign reasoning), `Images []Image`
+- **`Image`** (`types/image.go`, roadmap D1) — one picture attached to a user message: `MediaType` **sniffed from the bytes** (png/jpeg/gif/webp), the bytes, a name; 4 MiB per image, 4 per message. `ReadImage`/`NewImage` validate, `CheckImages` bounds a message, and `DataURL`/`Base64`/`Subtype` give the three spellings the providers need. The bytes are base64 in the session JSON, so a resume keeps them. Every backend serializes them in its own shape (see [docs/images.md](docs/images.md)); `read_file` refuses a picture and names the attachment path
 - **`ToolCall`** struct: `ID`, `Name`, `Arguments string` (raw JSON)
 - **`ToolDef`** struct: `Name`, `Description`, `Parameters map[string]any`
 - **`ChatRequest`** struct: `Messages []Message`, `Tools []ToolDef`, `MaxTokens int`, `Model string`, `StreamCallbacks *StreamCallbacks`
@@ -942,7 +943,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1440 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1459 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -988,7 +989,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1440 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1459 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

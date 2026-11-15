@@ -73,6 +73,7 @@ func newRootCmd() *cobra.Command {
 	var revokeGrant string
 	var undoLast bool
 	var lang string
+	var imagePaths []string
 
 	rootCmd := &cobra.Command{
 		Use:     "tinycode",
@@ -643,9 +644,16 @@ func newRootCmd() *cobra.Command {
 			tool.SetInteractive(prompt == "")
 
 			if prompt != "" {
-				// One-shot mode
+				// One-shot mode. Pictures named on the command line belong to the
+				// prompt, so they are loaded before the run and carried by its
+				// user message; a bad one fails the command rather than being
+				// dropped silently.
+				images, err := loadImages(imagePaths)
+				if err != nil {
+					return err
+				}
 				fmt.Printf(i18n.T("🤖 TinyCode (model: %s)\n"), provReg.CurrentName())
-				result, err := ag.Run(ctx, prompt)
+				result, err := ag.RunWithImages(ctx, prompt, images)
 				// A one-shot run ends its session here: there is no TUI exit path
 				// to report it, and a hook that exports the transcript should not
 				// depend on which mode the user chose (roadmap C4).
@@ -698,6 +706,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.Flags().StringVar(&revokeGrant, "revoke-grant", "", "Revoke a persistent path grant and exit")
 	rootCmd.Flags().BoolVar(&undoLast, "undo", false, "Restore the files the last tool call wrote, and exit")
 	rootCmd.Flags().StringVar(&lang, "lang", "", "Interface language: en or zh (default: from config, $TINYCODE_LANG or the locale)")
+	rootCmd.Flags().StringArrayVar(&imagePaths, "image", nil, "Attach an image to the prompt (png, jpeg, gif or webp; repeatable)")
 
 	return rootCmd
 }
@@ -1530,4 +1539,25 @@ func sessionTreeLabel(n *session.Node) string {
 	default:
 		return line + i18n.T("  [forked at %d]", n.ForkAt)
 	}
+}
+
+// loadImages reads the pictures named with --image. It fails on the first bad
+// one on purpose: an attachment the model never sees is worse than a refusal
+// that says which file and why.
+func loadImages(paths []string) ([]types.Image, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if len(paths) > types.MaxImagesPerMessage {
+		return nil, fmt.Errorf("--image given %d times; at most %d images per message", len(paths), types.MaxImagesPerMessage)
+	}
+	images := make([]types.Image, 0, len(paths))
+	for _, path := range paths {
+		img, err := types.ReadImage(expandPath(path))
+		if err != nil {
+			return nil, err
+		}
+		images = append(images, img)
+	}
+	return images, nil
 }

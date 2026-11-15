@@ -35,6 +35,10 @@ type Message struct {
 	// session file with the message it protects, so a resumed conversation
 	// still honours it (roadmap B5).
 	Pinned bool `json:"pinned,omitempty"`
+	// Images are the pictures attached to a user message (roadmap D1). They
+	// travel with the message into the request, into the session file and back
+	// on resume; a provider serializes them as its own content block.
+	Images []Image `json:"images,omitempty"`
 }
 
 // Memory represents a remembered fact.

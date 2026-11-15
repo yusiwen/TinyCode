@@ -396,18 +396,18 @@ func (a *Agent) chatProvider() (LLMProvider, error) {
 // History keeps the reasoning the model produced; the session log does not, as
 // it never did. A turn with no assistant text is not recorded: there is nothing
 // a later run could read.
-func (a *Agent) recordTurn(user, assistant, reasoning string) {
+func (a *Agent) recordTurn(user, assistant, reasoning string, images []types.Image) {
 	if assistant == "" {
 		return
 	}
 	a.History = append(a.History,
-		types.Message{Role: types.RoleUser, Content: user},
+		types.Message{Role: types.RoleUser, Content: user, Images: images},
 		types.Message{Role: types.RoleAssistant, Content: assistant, ReasoningContent: reasoning},
 	)
 	if a.SessionStore == nil {
 		return
 	}
-	a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: user})
+	a.SessionStore.Append(types.Message{Role: types.RoleUser, Content: user, Images: images})
 	a.SessionStore.Append(types.Message{Role: types.RoleAssistant, Content: assistant})
 	if err := a.SessionStore.Flush(); err != nil {
 		log.Printf("warning: flush session: %v", err)
@@ -420,6 +420,13 @@ var runIDSeq atomic.Int64
 
 // Run executes the ReAct loop for a user prompt.
 func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr error) {
+	return a.RunWithImages(ctx, prompt, nil)
+}
+
+// RunWithImages executes the ReAct loop for a prompt with pictures attached to
+// it. The images are part of the user message, so every place the turn is
+// recorded — the history the next run reads, the session file — keeps them.
+func (a *Agent) RunWithImages(ctx context.Context, prompt string, images []types.Image) (answer string, runErr error) {
 	// A run that ends — whatever the outcome — is a fact a user hook may want
 	// (roadmap C4). The report is deferred so every exit path has one, and it
 	// gets its own context: the run's may be cancelled by the time it fires.
@@ -514,7 +521,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		}
 	}
 
-	messages = append(messages, types.Message{Role: types.RoleUser, Content: prompt})
+	messages = append(messages, types.Message{Role: types.RoleUser, Content: prompt, Images: images})
 
 	step := 0
 	// Resolve max steps from config, falling back to Agent.MaxSteps
@@ -559,7 +566,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			msg := budgetMessage(which, limit, spent)
 			outcome.stop = trajectoryStopBudget
 			tlog.Info("agent.loop", "budget reached", "budget", which, "limit", limit, "spent", spent, "steps", step)
-			a.recordTurn(prompt, msg, "")
+			a.recordTurn(prompt, msg, "", images)
 			return msg, nil
 		}
 
@@ -674,7 +681,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 			a.ContentStreamed = true
 			// Save to multi-turn history (skip empty responses)
 			if resp.Content != "" {
-				a.recordTurn(prompt, resp.Content, resp.ReasoningContent)
+				a.recordTurn(prompt, resp.Content, resp.ReasoningContent, images)
 			}
 			if a.trajRun != nil {
 				a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
@@ -909,7 +916,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 					a.trajRun.StepEnd(step, a.now().Sub(stepStarted))
 				}
 				a.stepName("[step %d] security block detected, bypassing LLM", step)
-				a.recordTurn(prompt, r.Result, "")
+				a.recordTurn(prompt, r.Result, "", images)
 				return r.Result, nil
 			}
 
@@ -990,7 +997,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (answer string, runErr e
 		return "", fmt.Errorf("step limit summary failed: %w", err)
 	}
 	a.recordCall(summaryCallbacks, resp, started, step)
-	a.recordTurn(prompt, resp.Content, resp.ReasoningContent)
+	a.recordTurn(prompt, resp.Content, resp.ReasoningContent, images)
 	return resp.Content, nil
 }
 

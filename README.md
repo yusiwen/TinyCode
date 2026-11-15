@@ -35,6 +35,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
   point — and the TUI shows the same tree with `/session`; `/compare <a> <b>` reports the nearest common
   ancestor and the first message where two transcripts differ. See [docs/sessions.md](docs/sessions.md).
 - **Two interface languages**: every message the program shows a person is written once, in English, and translated through a catalogue keyed by that exact text — so `--lang zh`, `language: "zh"`, `TINYCODE_LANG=zh` or a Chinese locale switches the TUI, the command line and the desktop notifications, and a message nobody has translated yet stays readable in English. `--help` and error strings stay English on purpose. See [docs/i18n.md](docs/i18n.md).
+- **Attach a picture**: `/image <path>` in the TUI (it goes with your next message) or `--image` on the one-shot command line — png/jpeg/gif/webp, sniffed from the bytes, 4 MiB and four per message — and every backend serializes it its own way (OpenAI-compatible data URL, Anthropic base64 source, Gemini inlineData, Bedrock Converse image, Ollama images). The attachment rides the user message into the request, the history and the session file, so a resume keeps it. See [docs/images.md](docs/images.md).
 - **Undo a tool call**: every file-tool write records the bytes it replaced, so `/undo` in the TUI — or `--undo` on the command line — returns the last tool call's files to their previous state. Bounded per project (50 calls / 64 MiB, oldest undone first). A `bash` command's writes are captured too, from a snapshot of the project tree taken before it. See [docs/checkpoints.md](docs/checkpoints.md).
 - **A measurement, before a framework**: `TINYCODE_EVAL=1 go run ./eval/runner` runs six small tasks through three agent configurations, grades each attempt by the task's own `go test`, and reports what the trajectories say — solved tasks, noise, tokens per solved task. Gated and never in CI, because it spends money. See [docs/eval.md](docs/eval.md).
 - **Every run leaves a trajectory**: one JSONL file per run — steps, per-call durations and TTFT, tokens, cost, and each tool call with a digest of its arguments, its result size and how it ended — written to `~/.tinycode/trajectories` by default, read back with `--trajectories` and `--trajectory <id>`. Metadata only unless you ask for text, bounded at 200 runs / 64 MiB, and not writable by a tool. See [docs/trajectories.md](docs/trajectories.md).
@@ -110,7 +111,7 @@ Custom **CellGrid** frame-buffer renders markdown directly in the terminal — n
 - **GitHub Actions**: Two workflows — main.yml (build + lint + test on push/PR) and release.yml (cross-compile + GitHub Releases on tags v*)
 - **main.yml jobs**: `ci` (build, gofmt gate, vet, tests, `-race`, repeated run), `lsp` (real gopls), `browser` (real Chromium), `tui-visual` (frame PNGs + the built binary on a PTY), `cross` (linux/amd64, linux/arm64, darwin/arm64 build + vet) and `staticcheck`
 - **Makefile improvements**: test target preserves exit code with pass/fail message; releases target cross-compiles all platforms + .tar.gz archives
-- **1440 test functions + 10 fuzz targets** across the repository — the main module plus the evaluation corpora, with `tuiprobe/` a nested module the command below excludes — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
+- **1459 test functions + 10 fuzz targets** across the repository — the main module plus the evaluation corpora, with `tuiprobe/` a nested module the command below excludes — counted with `find . -name '*_test.go' -not -path './tuiprobe/*' -print0 | xargs -0 grep -h '^func Test' | wc -l` and `grep -rn '^func Fuzz' --include=*_test.go . | wc -l`; the command is part of the record, and `CODEBASE.md` → Testing lists every count with its measurement
 - **Annotations**: the jobs carry one `ubuntu-latest` migration notice each, plus the `setup-chrome@v1` Node 20 warning on `browser` and `tui-visual`; the gate is no *new* annotations, not zero
 
 ### Running the checks locally
@@ -317,7 +318,7 @@ delta does not block a repaint.
 ```
 agent/          Agent loop, LLM provider, context compression, registry
 config/         Config loading (JSON, env, CLI flags)
-docs/           Reference documents (sandbox, checkpoints, goals, trajectories, sessions, i18n, eval, roadmap, TUI verification, pricing)
+docs/           Reference documents (sandbox, checkpoints, goals, trajectories, sessions, images, i18n, eval, roadmap, TUI verification, pricing)
 goal/           Persistent objective, /goal, idle continuation driver (docs/goals.md)
 i18n/           Interface language switch and the Chinese catalogue (docs/i18n.md)
 internal/netsafe/  Shared SSRF policy (blocked IPs, pinned-IP client, redirect checks)

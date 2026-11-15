@@ -21,6 +21,9 @@ type MockLLM struct {
 	Steps     []MockStep
 	callCount int
 	name      string
+	// Requests records every request the loop made, so a test can assert what
+	// the model would have received — attachments included.
+	Requests []types.ChatRequest
 }
 
 func NewMockLLM(steps []MockStep) *MockLLM {
@@ -33,6 +36,7 @@ func (m *MockLLM) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatR
 	}
 	step := m.Steps[m.callCount]
 	m.callCount++
+	m.Requests = append(m.Requests, req)
 
 	// Return the expected tool results as additional history context
 	// (simulating the real agent loop appending tool results between steps)

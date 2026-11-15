@@ -85,6 +85,9 @@ type chatMessage struct {
 	// Pinned mirrors types.Message.Pinned so the flag survives the session
 	// file: persistSession rebuilds the stored messages from this transcript.
 	Pinned bool
+	// Images are the pictures attached to a user message. They ride the
+	// message into the request and into the session file (roadmap D1).
+	Images []types.Image
 }
 
 // ToolCallInfo records one tool invocation during a message.

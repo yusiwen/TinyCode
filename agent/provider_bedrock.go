@@ -126,7 +126,10 @@ func (p *BedrockProvider) endpoint(model string, stream bool) string {
 type bedrockContentBlock struct {
 	// Text is a pointer so an empty tool result still sends the required text
 	// field: a command that printed nothing is a result, not an absent block.
-	Text             *string                  `json:"text,omitempty"`
+	Text *string `json:"text,omitempty"`
+	// Image carries an attached picture: Converse takes the bytes base64-encoded
+	// and names the format separately.
+	Image            *bedrockImage            `json:"image,omitempty"`
 	ToolUse          *bedrockToolUse          `json:"toolUse,omitempty"`
 	ToolResult       *bedrockToolResult       `json:"toolResult,omitempty"`
 	ReasoningContent *bedrockReasoningContent `json:"reasoningContent,omitempty"`
@@ -346,6 +349,31 @@ func bedrockText(text string) *string { return &text }
 // bedrockMessages maps the shared history onto Converse's messages/system split.
 // Consecutive tool results are grouped into one user turn because a toolUse must
 // be answered in the next user message.
+// bedrockImage is one attached picture in Converse's shape.
+type bedrockImage struct {
+	Format string             `json:"format"`
+	Source bedrockImageSource `json:"source"`
+}
+
+type bedrockImageSource struct {
+	Bytes string `json:"bytes"`
+}
+
+// bedrockUserBlocks renders a user message: its words, then its pictures.
+func bedrockUserBlocks(m types.Message) []bedrockContentBlock {
+	var blocks []bedrockContentBlock
+	if m.Content != "" {
+		blocks = append(blocks, bedrockContentBlock{Text: bedrockText(m.Content)})
+	}
+	for _, img := range m.Images {
+		blocks = append(blocks, bedrockContentBlock{Image: &bedrockImage{
+			Format: img.Subtype(),
+			Source: bedrockImageSource{Bytes: img.Base64()},
+		}})
+	}
+	return blocks
+}
+
 func bedrockMessages(msgs []types.Message) (system []bedrockSystemBlock, messages []bedrockMessage) {
 	for _, m := range msgs {
 		if m.Role == types.RoleSystem && m.Content != "" {
@@ -400,12 +428,13 @@ func bedrockMessages(msgs []types.Message) (system []bedrockSystemBlock, message
 			}
 
 		default: // user
-			if m.Content == "" {
+			blocks := bedrockUserBlocks(m)
+			if len(blocks) == 0 {
 				continue
 			}
 			messages = append(messages, bedrockMessage{
 				Role:    "user",
-				Content: []bedrockContentBlock{{Text: bedrockText(m.Content)}},
+				Content: blocks,
 			})
 		}
 	}

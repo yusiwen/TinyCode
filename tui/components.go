@@ -51,7 +51,14 @@ func (UserComponent) Render(msg chatMessage, sel bool) []CellChunk {
 	if sel {
 		style = SelectionStyle
 	}
-	return []CellChunk{{Text: "> " + msg.Content, Style: style}}
+	chunks := []CellChunk{{Text: "> " + msg.Content, Style: style}}
+	// An attached picture is named where the words it was sent with are: the
+	// bytes are in the request, and a reader of the transcript needs to know
+	// which ones went with this turn.
+	for _, img := range msg.Images {
+		chunks = append(chunks, CellChunk{Text: "  [image] " + img.Label() + " (" + img.MediaType + ")", Style: DimStyle})
+	}
+	return chunks
 }
 
 // SystemComponent renders system messages (→ prefix, dim gray).

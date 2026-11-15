@@ -16,10 +16,10 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 27 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 28 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 13 | verified gaps, no issue opened |
+| Not started | 12 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -58,7 +58,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | C6 | Isolation has only one tier | Delivered — #327 |
 | C7 | No command confinement on macOS | Delivered — #247 |
 | C8 | No Windows support | Not started |
-| D1 | No image input | Not started |
+| D1 | No image input | Delivered — #354 |
 | D2 | No audio | Not started |
 | D3 | No desktop computer use | Not started |
 | D4 | No event-driven entry point | Not started |
@@ -659,6 +659,15 @@ current tree. D7 is the exception: it was recorded later, so its references are 
 
 ### D1 — No image input
 
+- **Picked up**: [#354](https://github.com/yusiwen/TinyCode/issues/354) — `types.Image` on the user
+  message, sniffed media type, 4 MiB and four per message; serialization in all five backends
+  (OpenAI-compatible `image_url` data URL, Anthropic base64 source, Gemini `inlineData`, Bedrock
+  Converse image block, Ollama `images`); `--image` on the command line and `/image` in the TUI;
+  the bytes persist in the session file, so a resume keeps them. **Delivered 2026-11-15.** The type is
+  sniffed from the bytes, not the extension, so a `.png` that is a PDF is refused as a PDF; SVG and PDF
+  are refused on purpose. `read_file` stops returning a picture's bytes as lines and names the
+  attachment path instead. Limits, documented in `docs/images.md`: no clipboard paste or drag-and-drop,
+  no downscaling, no OCR, and a text-only model still answers with its provider's error.
 - **Gap**: a screenshot, a design or a picture of an error cannot be given to the agent.
 - **Evidence**: `rg -qi 'image_url|multimodal|ContentPart|ImageContent'` → exit 1; `types.Message`
   carries `Content string` only (`types/types.go:14-21`) and `ChatRequest` has no image field

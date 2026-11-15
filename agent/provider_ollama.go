@@ -104,6 +104,8 @@ type ollamaMessage struct {
 	Role      string           `json:"role"`
 	Content   string           `json:"content"`
 	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+	// Images are the raw base64 strings Ollama wants, one per attached picture.
+	Images []string `json:"images,omitempty"`
 }
 
 type ollamaToolCall struct {
@@ -134,12 +136,26 @@ type ollamaChatRequest struct {
 	Tools    []ollamaTool    `json:"tools,omitempty"`
 }
 
+// ollamaImageStrings is the raw base64 list Ollama takes, one string per
+// attached picture; empty when the message carries none.
+func ollamaImageStrings(images []types.Image) []string {
+	if len(images) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(images))
+	for _, img := range images {
+		out = append(out, img.Base64())
+	}
+	return out
+}
+
 func (p *OllamaProvider) Chat(ctx context.Context, req types.ChatRequest) (*types.ChatResponse, error) {
 	ollamaMsgs := make([]ollamaMessage, len(req.Messages))
 	for i, msg := range req.Messages {
 		m := ollamaMessage{
 			Role:    msg.Role,
 			Content: msg.Content,
+			Images:  ollamaImageStrings(msg.Images),
 		}
 
 		switch msg.Role {
