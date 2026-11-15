@@ -168,3 +168,25 @@ func TestReadOnlyWriteHintNamesTheWrite(t *testing.T) {
 		}
 	}
 }
+
+// TestIsRootTargetReadsBothConventions is the platform-neutral half of the
+// destructive-rm rule. `rm -rf /` must be caught on Windows too, where
+// filepath.Clean turns "/" into "\\", and the Windows spelling of a root ("C:/")
+// has to be caught on every platform the command text can reach.
+func TestIsRootTargetReadsBothConventions(t *testing.T) {
+	roots := []string{`/`, `/*`, `/**`, `/tmp/..`, `C:/`, `c:\`, `//`}
+	for _, target := range roots {
+		if !isRootTarget(target) {
+			t.Errorf("isRootTarget(%q) = false, want true", target)
+		}
+	}
+	notRoots := []string{``, `/tmp`, `./x`, `C:/tmp`, `..`, `internal/store.go`}
+	for _, target := range notRoots {
+		if isRootTarget(target) {
+			t.Errorf("isRootTarget(%q) = true, want false", target)
+		}
+	}
+	if err := DefaultSandbox.CheckCommand(`r"m" -rf C:/`); err == nil {
+		t.Error("a Windows root was not denied")
+	}
+}

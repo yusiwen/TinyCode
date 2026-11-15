@@ -9,6 +9,37 @@ back to its change and tests.
 
 ## Unreleased
 
+### Windows is a build target, and its boundary is stated
+
+Roadmap C8 said there was no Windows support. The tree already type-checked for windows/amd64 — every
+syscall sits behind a build tag — so the gap was everything after "it compiles": no release target built
+it, no CI job ran it, three call sites hardcoded `sh`, one test file could not build, and nothing said
+what a boundary means where there is no kernel mechanism.
+
+The Makefile grows `windows-amd64` and `windows-arm64` (with the `.exe` extension), both join the cross
+matrix, and a `windows-latest` job builds and vets the module and compiles the test binaries.
+`internal/shell` is now the one place that decides how a command string runs: `bash -c`, then `sh -c`,
+and a refusal that names the dependency ("on Windows, Git for Windows ships one") when neither exists.
+`cmd.exe` is deliberately not used — the command reader and the models are POSIX, and a tool called
+`bash` that silently ran another language would be a lie. The `bash` tool, `verify.Run` and the hook
+runner all go through it; the LSP language probe stopped shelling out to `test -f` and `ls | head` and
+asks `os.Stat` and `filepath.Glob`.
+
+Two portability bugs found by the Windows run are fixed here: the destructive-command rule compared
+`filepath.Clean("/")`, which is `\` on Windows and silently stopped matching the most destructive
+command there is, and `expandPath` ignored `HOME` in favour of `USERPROFILE`, which is not the directory
+the person's shell calls home.
+
+The boundary on Windows is the documented weak one: no kernel file boundary for subprocesses, so
+`confine_commands` stays off by default, build-mode commands run unconfined (the deny list still applies,
+and tool file writes are still fenced in process), and plan mode **refuses to run a command at all** —
+the rule roadmap H2 established, applied to the platform that needs it most.
+
+What is not done: the suite does not run green on Windows yet. About ninety tests carry Unix assumptions
+— file modes Windows ignores, short 8.3 paths in the temp directory, a desktop notifier, POSIX stub
+scripts — grouped and tracked in [#358](https://github.com/yusiwen/TinyCode/issues/358). Until that list
+is worked through, the Windows job is a build and type-check gate, and the roadmap row says In progress.
+
 ### A picture can be attached to the conversation
 
 Roadmap D1 said a screenshot or a design could not be given to the agent, and the workaround was worse

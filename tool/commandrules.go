@@ -2,7 +2,7 @@ package tool
 
 import (
 	"fmt"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 
@@ -302,17 +302,36 @@ func longFlag(seg ShellSegment, name string) bool {
 	return false
 }
 
-// isRootTarget reports whether a path names the filesystem root, including the
+// isRootTarget reports whether a target names a filesystem root, including the
 // glob spellings (`/`, `/*`, `/**`) that mean the same thing to a shell.
-func isRootTarget(path string) bool {
-	if path == "" || strings.Contains(path, dynamicWord) {
+//
+// Both separators are read: the command may be POSIX (`rm -rf /`, which Git Bash
+// on Windows resolves to its own root) or Windows (`rm -rf C:/`). The comparison
+// is against slash-normalised text with the path package, because filepath.Clean
+// on Windows turns "/" into "\" and the rule would silently stop matching the
+// most destructive command there is.
+func isRootTarget(target string) bool {
+	if target == "" || strings.Contains(target, dynamicWord) {
 		return false
 	}
-	clean := filepath.Clean(path)
+	p := strings.ReplaceAll(target, `\`, "/")
+	// `C:`, `C:/` and `c:\` all name the top of a drive. Over-matching here is
+	// the safe direction: a false positive costs one refused command, and the
+	// command text may be resolved by either convention depending on the shell.
+	if len(p) >= 2 && p[1] == ':' && isASCIILetter(p[0]) && (len(p) == 2 || strings.Trim(p[2:], "/") == "") {
+		return true
+	}
+	clean := path.Clean(p)
 	if clean == "/" {
 		return true
 	}
 	return strings.HasPrefix(clean, "/") && strings.Trim(clean, "/*") == ""
+}
+
+// isASCIILetter reports whether c is an ASCII letter, the only thing Windows
+// accepts as a drive letter.
+func isASCIILetter(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 // argvHasPrefix reports whether argv starts with prefix, comparing program names

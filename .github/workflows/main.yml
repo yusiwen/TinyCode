@@ -82,8 +82,14 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test
-        run: go test ./... -count=1
+      # Compile-only for now: the suite compiles on Windows, but a number of its
+      # assertions are Unix assumptions (file modes Windows ignores, short 8.3
+      # paths in the temp directory, a desktop notifier, POSIX stubs for git and
+      # gopls). They are grouped and tracked in issue #358; until that list is
+      # worked through, this job proves the build, the vet pass and that the test
+      # binaries compile — not that the suite is green here.
+      - name: Compile the test binaries
+        run: go test ./... -run '^$' -count=1
 
   lsp:
     name: LSP integration (gopls + typescript)
@@ -201,7 +207,10 @@ jobs:
 
       # The nested module is invisible to the root's ./... , including here: a
       # platform-gated break in tuiprobe must fail this job, not wait for a tag.
+      # Windows is excluded because the harness's pty package needs syscall.Kill:
+      # it drives a real terminal, and Windows users do not run the harness.
       - name: Build and vet the tuiprobe module
+        if: matrix.goos != 'windows'
         run: |
           cd tuiprobe
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build ./...
