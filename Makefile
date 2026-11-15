@@ -16,7 +16,9 @@ GOBUILD=CGO_ENABLED=0 go build -trimpath -ldflags '-X "main.Version=$(VERSION)" 
 PLATFORM_LIST = \
 	linux-amd64 \
 	linux-arm64 \
-	darwin-arm64
+	darwin-arm64 \
+	windows-amd64 \
+	windows-arm64
 
 .PHONY: default build run test test-race test-repeat test-lsp test-browser test-tui-visual install-gopls install-tsls test-tuiprobe test-tuiprobe-race test-tuiprobe-examples lint-tuiprobe build-tuiprobe lint staticcheck fmt fmt-check fuzz clean all test-tui-confine
 
@@ -246,6 +248,17 @@ linux-arm64:
 darwin-arm64:
 	@mkdir -p $(BINDIR)
 	GOARCH=arm64 GOOS=darwin $(GOBUILD) -o $(BINDIR)/$(NAME)-$@
+
+# Windows binaries carry the .exe extension the platform needs. The build is the
+# same one as everywhere else; what a Windows host can and cannot do at run time
+# is a separate question, and docs/windows.md answers it.
+windows-amd64:
+	@mkdir -p $(BINDIR)
+	GOARCH=amd64 GOOS=windows $(GOBUILD) -o $(BINDIR)/$(NAME)-$@.exe
+
+windows-arm64:
+	@mkdir -p $(BINDIR)
+	GOARCH=arm64 GOOS=windows $(GOBUILD) -o $(BINDIR)/$(NAME)-$@.exe
 
 all: $(PLATFORM_LIST)
 	@echo "Built all platforms: $(PLATFORM_LIST)"

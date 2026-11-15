@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -109,24 +110,24 @@ func DetectLanguage(rootDir string) string {
 		{"build.gradle", "java"},
 	}
 
+	// File probes are answered in process rather than through `test -f` and
+	// `ls | head`: a shell call is a process per check, and on a platform whose
+	// command interpreter is not POSIX it silently answers nothing, which made
+	// "no language detected" look like "no source files".
 	for _, check := range checks {
-		cmd := exec.Command("test", "-f", rootDir+"/"+check.file)
-		if cmd.Run() == nil {
+		if info, err := os.Stat(filepath.Join(rootDir, check.file)); err == nil && !info.IsDir() {
 			return check.language
 		}
 	}
 
-	// Fallback: look at file extensions
-	cmd := exec.Command("sh", "-c",
-		fmt.Sprintf("ls %s/*.go 2>/dev/null | head -1", rootDir))
-	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-		return "go"
-	}
-
-	cmd = exec.Command("sh", "-c",
-		fmt.Sprintf("ls %s/*.py 2>/dev/null | head -1", rootDir))
-	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-		return "python"
+	// Fallback: look at file extensions.
+	for _, ext := range []struct{ pattern, language string }{
+		{"*.go", "go"},
+		{"*.py", "python"},
+	} {
+		if matches, err := filepath.Glob(filepath.Join(rootDir, ext.pattern)); err == nil && len(matches) > 0 {
+			return ext.language
+		}
 	}
 
 	return ""

@@ -11,13 +11,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/internal/shell"
 )
 
 // Event names a point a hook can run at.
@@ -205,8 +205,10 @@ func (r *Runner) run(ctx context.Context, h Hook, payload Payload) (string, erro
 	runCtx, cancel := context.WithTimeout(ctx, h.Timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, "sh", "-c", h.Command)
-	cmd.Dir = r.Dir
+	cmd, err := shell.Command(runCtx, h.Command, r.Dir)
+	if err != nil {
+		return "", err
+	}
 	cmd.Stdin = bytes.NewReader(data)
 	// Killing the shell is not enough to end the call: a child it spawned (a
 	// `sleep`, a compiler) inherits the output pipe, and Wait would sit on it
