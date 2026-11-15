@@ -1,12 +1,12 @@
 package tui
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yusiwen/tinycode/i18n"
+	"github.com/yusiwen/tinycode/internal/home"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -112,13 +112,13 @@ func splitPaths(arg string) []string {
 // the path they see in their file manager.
 func expandUserPath(path string) string {
 	if path == "~" {
-		if home, err := os.UserHomeDir(); err == nil {
+		if home, err := home.Dir(); err == nil {
 			return home
 		}
 		return path
 	}
 	if strings.HasPrefix(path, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
+		if home, err := home.Dir(); err == nil {
 			return filepath.Join(home, path[2:])
 		}
 	}

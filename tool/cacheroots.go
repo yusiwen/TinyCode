@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/yusiwen/tinycode/internal/home"
 	"github.com/yusiwen/tinycode/tlog"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -170,7 +171,7 @@ func pnpmStoreCache() string {
 // directory cannot be determined — an invented location would widen the fence to
 // something nobody chose.
 func underHome(elements ...string) string {
-	home, err := os.UserHomeDir()
+	home, err := home.Dir()
 	if err != nil || home == "" {
 		return ""
 	}

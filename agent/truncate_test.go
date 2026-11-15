@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yusiwen/tinycode/config"
+	"github.com/yusiwen/tinycode/internal/testenv"
 )
 
 // withTruncation sets the package limits for one test and restores them, with a
@@ -62,6 +63,7 @@ func TestTruncateOutputSavedFileIsPrivate(t *testing.T) {
 		t.Fatalf("stat saved output: %v", err)
 	}
 	if perm := info.Mode().Perm(); perm != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("saved output mode = %o, want 600", perm)
 	}
 	if !strings.Contains(res.Content, "TRUNCATED") {

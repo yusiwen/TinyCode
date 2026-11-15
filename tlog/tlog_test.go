@@ -1,6 +1,7 @@
 package tlog
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,7 @@ func TestInitWritesPrivateSingleLineEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	if perm := info.Mode().Perm(); perm != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("log file mode = %o, want 600", perm)
 	}
 

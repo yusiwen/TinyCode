@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"io"
 	"os"
 	"path/filepath"
@@ -121,6 +122,7 @@ func TestSaveCreatesDirAndIsPrivate(t *testing.T) {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 	if perm := info.Mode().Perm(); perm != 0600 {
+		testenv.POSIXModes(t)
 		t.Errorf("config file mode = %o, want 600", perm)
 	}
 }

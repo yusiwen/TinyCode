@@ -16,6 +16,7 @@ import (
 	"github.com/yusiwen/tinycode/goal"
 	"github.com/yusiwen/tinycode/hook"
 	"github.com/yusiwen/tinycode/i18n"
+	"github.com/yusiwen/tinycode/internal/home"
 	"github.com/yusiwen/tinycode/internal/notify"
 	"github.com/yusiwen/tinycode/lsp"
 	"github.com/yusiwen/tinycode/session"
@@ -875,23 +876,14 @@ func loadPersistentGrants(user config.UserLayer) error {
 // different directory than the one the person's shell and their `~` mean.
 func expandPath(p string) string {
 	p = os.ExpandEnv(p)
-	home := func() (string, bool) {
-		if dir := os.Getenv("HOME"); dir != "" {
-			return dir, true
-		}
-		if dir, err := os.UserHomeDir(); err == nil {
-			return dir, true
-		}
-		return "", false
-	}
 	if p == "~" {
-		if dir, ok := home(); ok {
+		if dir, err := home.Dir(); err == nil {
 			return dir
 		}
 		return p
 	}
 	if strings.HasPrefix(p, "~/") {
-		if dir, ok := home(); ok {
+		if dir, err := home.Dir(); err == nil {
 			return filepath.Join(dir, p[2:])
 		}
 	}

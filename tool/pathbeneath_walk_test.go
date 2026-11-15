@@ -3,6 +3,7 @@
 package tool
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,6 +57,7 @@ func TestOpenResolvedNoFollowWalksWithoutFollowingSymlinks(t *testing.T) {
 		t.Fatalf("created file = %q, %v", got, err)
 	}
 	if info, err := os.Stat(created); err != nil || info.Mode().Perm() != 0640 {
+		testenv.POSIXModes(t)
 		t.Errorf("created mode = %v, %v, want 640", info.Mode().Perm(), err)
 	}
 

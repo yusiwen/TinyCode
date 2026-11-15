@@ -20,6 +20,7 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 
 	"github.com/yusiwen/tinycode/internal/browserproxy"
+	"github.com/yusiwen/tinycode/internal/home"
 	"github.com/yusiwen/tinycode/internal/netsafe"
 	"github.com/yusiwen/tinycode/tlog"
 )
@@ -120,7 +121,7 @@ func appendBrowserProxyArgs(args []string, proxyURL string) []string {
 // playwrightChromiumPath returns the path to a browser installed by Playwright,
 // or "" when Playwright has no browser in its cache.
 func playwrightChromiumPath() string {
-	home, err := os.UserHomeDir()
+	home, err := home.Dir()
 	if err != nil {
 		return ""
 	}
@@ -130,7 +131,7 @@ func playwrightChromiumPath() string {
 // playwrightHeadlessShellPath is the `--dump-dom` counterpart of
 // playwrightChromiumPath.
 func playwrightHeadlessShellPath() string {
-	home, err := os.UserHomeDir()
+	home, err := home.Dir()
 	if err != nil {
 		return ""
 	}
