@@ -17,9 +17,34 @@ import (
 // changesRepo prepares a git repository, points the checkpoint store at a
 // throwaway directory and makes it the working directory, because the git tools
 // run in the process directory.
+// tempWorkTree is t.TempDir for a directory a git child process has just used.
+// On Windows a process that is still exiting keeps its working directory open,
+// and t.TempDir's single RemoveAll then fails the test with "the process cannot
+// access the file" — a cleanup race, not a defect in what was tested. The removal
+// is retried so the failure means something.
+func tempWorkTree(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "tinycode-worktree-*")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		for i := 0; i < 20; i++ {
+			if err := os.RemoveAll(dir); err == nil {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			t.Logf("could not remove the temp work tree %s: %v", dir, err)
+		}
+	})
+	return dir
+}
+
 func changesRepo(t *testing.T) string {
 	t.Helper()
-	repo := t.TempDir()
+	repo := tempWorkTree(t)
 	for _, cmd := range []string{"git init", "git config user.email t@t", "git config user.name t"} {
 		c := exec.Command("sh", "-c", cmd)
 		c.Dir = repo
