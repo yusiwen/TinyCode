@@ -9,6 +9,35 @@ back to its change and tests.
 
 ## Unreleased
 
+### The evaluation measures the process, not only the outcome
+
+Roadmap F4: every verdict the harness produced came from the task's own tests, so two passing runs looked
+identical even when one read the code it changed and the other guessed. The record that says how a run
+went already existed (E4); nothing read it for that purpose.
+
+`agent.ReadRun` now returns a run's events in order, and `eval/runner/process.go` turns them into a
+process report printed beside the outcome: steps, tool calls, repeated calls (same tool, same argument
+digest), tool errors and refusals, evidence gathering (a read/search before the first write),
+verification (a `go test` **after the last write** — a test that ran first proves nothing about the
+change), and the distinct files written. Each dimension is one rule, stated in `docs/eval.md` so a reader
+can disagree and recompute it.
+
+Two things had to change for the record to hold what the rules read. Every attempt now records with
+`capture: full` (bounded at 64 KiB per payload), because a digest cannot tell `go test` from `go build`;
+and every attempt gets **its own home directory**, because full capture is honoured only from the user's
+own config — and, a bug fix in its own right, the developer's `~/.tinycode/config.json` would otherwise
+size the budget or set the mode of every measurement. Key material is carried across, so a run still
+authenticates.
+
+The report also answers the question the entry said decides whether a rubric is worth building: it splits
+the attempts by each property and prints the pass rate on either side, with the sample size stated — a
+percentage over three attempts is a sentence, not a measurement, and association is not causation.
+
+What stays out is deliberate: whether a run was honest about what it had not verified, and whether its
+change was minimal relative to the reference fix, need a reader's judgement. That is the
+rubric-and-agreement study, filed as [#361](https://github.com/yusiwen/TinyCode/issues/361) with this
+measurement as its input.
+
 ### Windows is a build target, and its boundary is stated
 
 Roadmap C8 said there was no Windows support. The tree already type-checked for windows/amd64 — every

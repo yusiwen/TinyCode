@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1466 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1475 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -548,7 +548,7 @@ before any flag parsing and re-execs itself as the launcher.
 
 - **`Trajectory` / `TrajectoryRun`** (`agent/trajectory.go`) — one JSONL file per run, one event per line, each event carrying its own duration so a reader never pairs two lines to compute one. `run.start` (which carries `goal{goal_id, round, source}` when the run serves a goal), `llm.call` (which carries `route`/`model` — the route that served the call — plus `route.failover` events when a call moved, roadmap A5), `tool.call`, `step.end`, `run.end`; payloads are `{sha256, chars}` and carry `text` only under `capture: "full"` (bounded at 64 KiB). Files are created `O_EXCL` under a timestamp-and-counter name, so two processes starting in the same second cannot overwrite each other's record. `Prune` keeps the newest `max_runs` / `max_bytes`, never removing a file some run still holds open.
 - **`agent/trajectory_agent.go`** — where the loop meets it. `recording()` is `Trajectory != nil || TrajectoryParent != nil` (a delegated agent has no writer of its own). `Run` records from its first instant, and one `defer` writes `run.end`, so the six ways a run can return — including a panic — all close the file with the same vocabulary: `final`, `budget`, `blocked`, `step_limit`, `cancelled`, `error`. Durations come from `Agent.Now`; with nothing being recorded the clock is still read exactly once per call, which is the pricing invariant #225 established — the second read is the recorder's and only happens when a trajectory exists. `recordFailover` attaches a route change to the step that made it and forwards it to the caller; `toolStatus` classifies a tool result from its text (`ok`, `error`, `blocked`, `refused`, `repeated`), because the dispatcher turns every failure into a string and there is no separate status to read.
-- **`agent/trajectory_read.go`** — the reader `--trajectories` uses. It parses the files rather than an index, reports a file with no `run.end` as incomplete rather than broken, tolerates a half-written last line, and `ValidRunID` is the path-traversal guard: the id becomes a file name, and the store is worth nothing if it can be asked for a file it never wrote.
+- **`agent/trajectory_read.go`** — the reader `--trajectories` uses. It parses the files rather than an index, reports a file with no `run.end` as incomplete rather than broken, tolerates a half-written last line, and `ValidRunID` is the path-traversal guard: the id becomes a file name, and the store is worth nothing if it can be asked for a file it never wrote. **`ReadRun(dir, id)`** is the same file read event by event, for the one consumer that needs order rather than totals: the evaluation's process report.
 - **Not a tool path** (`tool/trajectory_store.go`): `CheckPathAccess` refuses the store with `ask: reserved`, full access excepted, for the reason the checkpoint store is refused — evidence the recorded agent can rewrite is not evidence.
 - **Never fails a run**: a write failure warns once and disables the recording. The checkpoint store does the opposite on purpose (a pre-image that cannot be read refuses the write); one is safety, the other is observability, and `docs/checkpoints.md` and `docs/trajectories.md` each say which they are.
 
@@ -583,6 +583,15 @@ Not product code, and deliberately small: it answers whether an evaluation signa
   task including the failures' spend, per-tier rows, `judge` (the three-clause separation condition) and
   `judgeGradient` (build must solve a strictly smaller *fraction* of tier 3 than of tier 1 — fractions
   because the tiers do not hold the same number of tasks).
+- **The process report** (`eval/runner/process.go`, roadmap F4) — `measureProcess` turns a run's events into
+  deterministic dimensions (steps, calls, repeats, errors/refusals, evidence gathering before the first
+  write, `go test` after the last write, distinct files written); `summarizeProcess` and
+  `associateProcess` reduce a corpus to medians and to the pass rate on either side of each property. The
+  rules are in `docs/eval.md`, because a reader has to be able to disagree with them and recompute.
+- **The attempt's own home** (`writeAttemptHome`) — the harness runs each attempt with `HOME` pointing at
+  a scratch directory whose user-layer config asks for `capture: full` (a digest cannot tell `go test`
+  from `go build`) and carries `.env` across for the key. It is also why a developer's own config can no
+  longer size the budget or set the mode of a measurement.
 - **Why it reads trajectories** — steps, tokens, cost, tools and `stop` come from `agent.ListRuns`, not from
   the runner's own bookkeeping. That makes the harness the record's second consumer, which is how a format
   gets found out when it is missing a field.
@@ -943,7 +952,7 @@ User Input (textarea / CLI arg)
 
 ## Testing
 
-- **1466 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1475 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -989,7 +998,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1466 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1475 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame

@@ -241,3 +241,44 @@ func TestListRunsReadsTheGoalAttribution(t *testing.T) {
 		t.Errorf("goal = %+v, want goal-9 round 2 driver", goal)
 	}
 }
+
+// TestReadRunReturnsTheEventsInOrder is what the process report reads: the totals
+// ListRuns produces cannot say whether a file was read before it was written.
+func TestReadRunReturnsTheEventsInOrder(t *testing.T) {
+	dir := t.TempDir()
+	body := `{"type":"run.start","run":"r1"}
+{"type":"tool.call","tool":"read_file","status":"ok"}
+{"type":"tool.call","tool":"write_file","status":"ok"}
+{"type":"run.end","stop":"final","steps":2}
+`
+	if err := os.WriteFile(filepath.Join(dir, "r1.jsonl"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := ReadRun(dir, "r1")
+	if err != nil {
+		t.Fatalf("ReadRun: %v", err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("events = %d, want 4", len(events))
+	}
+	var tools []string
+	for _, event := range events {
+		if event["type"] == "tool.call" {
+			tools = append(tools, event["tool"].(string))
+		}
+	}
+	if strings.Join(tools, ",") != "read_file,write_file" {
+		t.Errorf("tool order = %v, want the file's order", tools)
+	}
+}
+
+// TestReadRunRefusesAnIDThatIsAPath keeps the reader's id a file name, not a path:
+// the record store is worth nothing if it can be asked for a file it never wrote.
+func TestReadRunRefusesAnIDThatIsAPath(t *testing.T) {
+	for _, id := range []string{"", "../secret", `a\b`, "a/b", "..", "a b"} {
+		if _, err := ReadRun(t.TempDir(), id); err == nil {
+			t.Errorf("ReadRun accepted %q", id)
+		}
+	}
+}
