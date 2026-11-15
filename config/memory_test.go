@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,9 @@ func TestMemoryDefaults(t *testing.T) {
 	if spec.WantsNetwork() {
 		t.Fatal("the default configuration sends text off the machine")
 	}
-	if !strings.HasSuffix(spec.Dir, ".tinycode/memory") {
+	// The separator is the platform's: the assertion is about the two path
+	// elements, not about which slash joins them.
+	if !strings.HasSuffix(filepath.ToSlash(spec.Dir), ".tinycode/memory") {
 		t.Fatalf("default dir = %q, want one under ~/.tinycode/memory", spec.Dir)
 	}
 	if spec.MaxEntries != DefaultMemoryMaxEntries || spec.MaxBytes != DefaultMemoryMaxBytes {

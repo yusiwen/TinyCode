@@ -108,6 +108,7 @@ func newRootCmd() *cobra.Command {
 				lvl = tlog.ParseLevel(logLevel)
 			}
 			tlog.Init(logDir, lvl)
+			defer tlog.Close()
 			tlog.Info("main", "startup", "version", "dev")
 
 			// Expand $HOME in sessionDir

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yusiwen/tinycode/types"
+	"path/filepath"
 )
 
 // turnHistory builds n turns of two messages each: "question i" then "answer i".
@@ -208,7 +209,8 @@ func TestKeepPathCleansAndDeduplicates(t *testing.T) {
 	if ag.KeepPath("   ") {
 		t.Fatal("an empty path was kept")
 	}
-	if len(ag.KeptPaths) != 1 || ag.KeptPaths[0] != "internal/store.go" {
+	keptPath := filepath.Join("internal", "store.go")
+	if len(ag.KeptPaths) != 1 || ag.KeptPaths[0] != keptPath {
 		t.Fatalf("kept paths = %v", ag.KeptPaths)
 	}
 	if !ag.UnkeepPath("internal/store.go") {
