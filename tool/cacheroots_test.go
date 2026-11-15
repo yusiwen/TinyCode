@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -41,6 +42,7 @@ func overrideUserCache(t *testing.T, dir string) string {
 // first — PlatformTempDir puts the per-user scratch inside it — followed only by
 // existing toolchain caches.
 func TestPlatformCacheRootsUseTheUserCacheDir(t *testing.T) {
+	testenv.SkipWindows(t, "os.UserCacheDir cannot be redirected on Windows, so the test cannot observe the value the code reads")
 	want := overrideUserCache(t, t.TempDir())
 
 	roots := PlatformCacheRoots()
@@ -87,6 +89,7 @@ func installedToolchain(t *testing.T, command string, cachePath ...string) strin
 // granted root that cannot be opened would make the Linux applier refuse to run
 // the command at all.
 func TestToolchainCacheIsGrantedOnlyWhenInstalledAndExisting(t *testing.T) {
+	testenv.SkipWindows(t, "os.UserCacheDir cannot be redirected on Windows")
 	overrideUserCache(t, t.TempDir())
 	cache := installedToolchain(t, "go", "go", "pkg", "mod")
 
@@ -108,6 +111,7 @@ func TestToolchainCacheIsGrantedOnlyWhenInstalledAndExisting(t *testing.T) {
 // that merely looks like a toolchain's cache is not evidence that the toolchain
 // is installed.
 func TestToolchainCacheIsNotGrantedWhenTheToolchainIsAbsent(t *testing.T) {
+	testenv.SkipWindows(t, "os.UserCacheDir cannot be redirected on Windows")
 	overrideUserCache(t, t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -129,6 +133,7 @@ func TestToolchainCacheIsNotGrantedWhenTheToolchainIsAbsent(t *testing.T) {
 // confined command leave a program behind that the user later runs — the sandbox
 // escaping by persistence.
 func TestToolchainCacheGrantsTheSubtreeNotTheHome(t *testing.T) {
+	testenv.SkipWindows(t, "os.UserCacheDir cannot be redirected on Windows")
 	overrideUserCache(t, t.TempDir())
 
 	t.Run("go", func(t *testing.T) {
@@ -171,6 +176,7 @@ func TestToolchainCacheGrantsTheSubtreeNotTheHome(t *testing.T) {
 // moved deliberately: the cache is where the variable says, and CARGO_HOME's
 // registry subtree is still the thing granted.
 func TestToolchainCacheHonoursTheEnvironmentVariables(t *testing.T) {
+	testenv.SkipWindows(t, "os.UserCacheDir cannot be redirected on Windows")
 	overrideUserCache(t, t.TempDir())
 	installedToolchain(t, "go", "go", "pkg", "mod") // PATH has go
 
@@ -204,6 +210,7 @@ func TestToolchainCacheHonoursTheEnvironmentVariables(t *testing.T) {
 // resolved against whatever directory a command runs in, so granting it would
 // grant a different path in every project.
 func TestToolchainCacheIgnoresRelativeEnvironmentVariables(t *testing.T) {
+	testenv.SkipWindows(t, "os.UserCacheDir cannot be redirected on Windows")
 	overrideUserCache(t, t.TempDir())
 	installedToolchain(t, "go", "go", "pkg", "mod")
 	t.Setenv("GOMODCACHE", "relative/modcache")
@@ -232,6 +239,7 @@ func contains(paths []string, want string) bool {
 // workspace-write command gets a TMPDIR inside the granted cache root, created
 // before the command starts.
 func TestConfinedEnvPointsTmpdirUnderTheCacheRoot(t *testing.T) {
+	testenv.POSIXShell(t, "the command launcher")
 	overrideUserCache(t, t.TempDir())
 
 	roots := PlatformCacheRoots()

@@ -9,6 +9,7 @@ import (
 
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/hook"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -62,6 +63,7 @@ func TestPreToolUseHookRefusesTheCall(t *testing.T) {
 // TestPostToolUseHookSeesTheResult: the hook runs after the call and receives
 // the session the loop was given.
 func TestPostToolUseHookSeesTheResult(t *testing.T) {
+	testenv.POSIXShell(t, "a shell hook")
 	dir := t.TempDir()
 	payloadFile := filepath.Join(dir, "payload.json")
 	provider := &scriptedProvider{steps: []types.ChatResponse{{
@@ -119,6 +121,7 @@ func TestAgentWithoutHooksIsUnaffected(t *testing.T) {
 // TestStopHookFiresOnEveryOutcome: a finished run and a failed run both report,
 // and a cancelled one still does.
 func TestStopHookFiresOnEveryOutcome(t *testing.T) {
+	testenv.POSIXShell(t, "a shell hook")
 	for _, tc := range []struct {
 		name    string
 		content string

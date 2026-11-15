@@ -3,6 +3,7 @@ package notify
 import (
 	"bytes"
 	"errors"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"strings"
 	"testing"
 	"time"
@@ -118,6 +119,7 @@ func TestThresholdZeroAnnouncesEverything(t *testing.T) {
 
 // TestChannelMatrix is the whole policy in one table.
 func TestChannelMatrix(t *testing.T) {
+	testenv.DesktopNotifier(t)
 	cases := []struct {
 		channel     Channel
 		wantWrite   bool
@@ -155,6 +157,7 @@ func TestChannelMatrix(t *testing.T) {
 // TestDesktopPassesTextAsArguments: a goal containing a quote must not become part
 // of the script that runs.
 func TestDesktopPassesTextAsArguments(t *testing.T) {
+	testenv.DesktopNotifier(t)
 	var r recorder
 	r.install(t)
 	Configure(Config{Channel: ChannelDesktop, MinDuration: 0})

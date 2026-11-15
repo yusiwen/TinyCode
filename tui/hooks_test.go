@@ -7,6 +7,7 @@ import (
 
 	"github.com/yusiwen/tinycode/config"
 	"github.com/yusiwen/tinycode/hook"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -52,6 +53,7 @@ var _ = types.RoleSystem
 // TestExitFiresSessionEnd: both ways out of the TUI report the session's end, and
 // the runner makes them one fire.
 func TestExitFiresSessionEnd(t *testing.T) {
+	testenv.POSIXShell(t, "a shell hook")
 	dir := t.TempDir()
 	marker := dir + "/end.txt"
 	m := newTestTUI()

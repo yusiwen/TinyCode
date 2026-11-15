@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 // this test runs three times in the repeated-run job. The machinery is the same
 // for every task; the PR records the manual proof for both.
 func TestRepoTaskIsRedBeforeAndGreenAfter(t *testing.T) {
+	testenv.SkipWindows(t, "the evaluation corpus is developed and graded on Unix")
 	repo, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -74,6 +76,7 @@ func TestRepoTaskIsRedBeforeAndGreenAfter(t *testing.T) {
 // one package and hidden test — the loader refuses anything less, this pins the
 // corpus as it stands.
 func TestRepoTasksDeclareWhatTheyNeed(t *testing.T) {
+	testenv.SkipWindows(t, "the evaluation corpus is developed and graded on Unix")
 	repo, _ := filepath.Abs("../..")
 	tasks, err := loadRepoTasks("../../eval/repo-tasks", repo)
 	if err != nil {

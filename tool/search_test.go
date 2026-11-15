@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,7 @@ func fakeRipgrep(t *testing.T, body string) (binDir, argsFile string) {
 // passes, the output it returns, ripgrep's "exit 1 means no matches" convention,
 // and a genuine failure.
 func TestSearchWithRG(t *testing.T) {
+	testenv.SkipWindows(t, "ripgrep is not installed on the Windows runner; the native fallback is covered by the other search tests")
 	binDir, argsFile := fakeRipgrep(t, "printf 'main.go\\n3:func foo() {}\\n'\n")
 	t.Setenv("PATH", binDir)
 
@@ -64,6 +66,7 @@ func TestSearchWithRG(t *testing.T) {
 // "no matches" and is not an error, while anything else is a failure that carries
 // the tool's stderr.
 func TestSearchWithRGNoMatchesAndFailure(t *testing.T) {
+	testenv.SkipWindows(t, "ripgrep is not installed on the Windows runner")
 	binDir, _ := fakeRipgrep(t, "exit 1\n")
 	t.Setenv("PATH", binDir)
 	out, err := searchWithRG(context.Background(), "foo", "/tmp/tree", "")
@@ -155,6 +158,7 @@ func TestSearchGoNative(t *testing.T) {
 // TestSearchGoNativeSkipsUnreadableDirectories covers the walk's error branch: a
 // directory the process cannot read costs its files and nothing else.
 func TestSearchGoNativeSkipsUnreadableDirectories(t *testing.T) {
+	testenv.POSIXModes(t)
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: mode 000 does not deny access")
 	}

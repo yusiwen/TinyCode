@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusiwen/tinycode/agent"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -43,6 +44,7 @@ func withContainerConfig(t *testing.T, cfg *ContainerConfig, tier string) {
 // TestProbeContainerFindsAStubRuntime: a runtime that answers `info` is available,
 // and the answer is cached.
 func TestProbeContainerFindsAStubRuntime(t *testing.T) {
+	testenv.POSIXShell(t, "the container probe")
 	restore := resetContainerProbeForTest()
 	t.Cleanup(restore)
 	calls := stubRuntime(t, "fakedocker", "27.1.1")
@@ -77,6 +79,7 @@ func TestProbeContainerReportsAMissingRuntime(t *testing.T) {
 // TestProbeContainerReportsAFailingDaemon: the client exists, the daemon does not
 // answer — the case a person actually hits.
 func TestProbeContainerReportsAFailingDaemon(t *testing.T) {
+	testenv.POSIXShell(t, "the container probe")
 	restore := resetContainerProbeForTest()
 	t.Cleanup(restore)
 	dir := t.TempDir()
@@ -221,6 +224,7 @@ func TestContainerInvocationNeedsAnImage(t *testing.T) {
 // TestBashInvocationUsesTheContainer: the spawn replaces the launcher when the
 // tier is the container and the host has a runtime.
 func TestBashInvocationUsesTheContainer(t *testing.T) {
+	testenv.POSIXShell(t, "the container invocation")
 	restore := resetContainerProbeForTest()
 	t.Cleanup(restore)
 	stubRuntime(t, "fakedocker", "27.1.1")
@@ -281,6 +285,7 @@ func TestContainerSpawnRunsWhenTheHostHasARuntime(t *testing.T) {
 // TestReadOnlyTierNarrowsWhenTheHostCan: an explorer's commands lose the network
 // and the writable project, and nothing it could do is granted.
 func TestReadOnlyTierNarrowsWhenTheHostCan(t *testing.T) {
+	testenv.POSIXShell(t, "the container tier")
 	restore := resetContainerProbeForTest()
 	t.Cleanup(restore)
 	stubRuntime(t, "fakedocker", "27.1.1")
@@ -335,6 +340,7 @@ func TestReadOnlyTierDoesNothingWithoutAnImage(t *testing.T) {
 // TestReadOnlySubagentRunsInTheContainer is the integration half: a read-only
 // sub-agent's `bash` reaches the runtime, which records the argv.
 func TestReadOnlySubagentRunsInTheContainer(t *testing.T) {
+	testenv.POSIXShell(t, "the container tier")
 	restore := resetContainerProbeForTest()
 	t.Cleanup(restore)
 	argsFile := filepath.Join(t.TempDir(), "argv.txt")

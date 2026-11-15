@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -115,6 +116,7 @@ func TestBashInvocationSurfacesLauncherLookupFailure(t *testing.T) {
 // it reads the launcher's own diagnostic rather than whatever the command
 // printed.
 func TestBashReportsLauncherFailureAsNotRun(t *testing.T) {
+	testenv.POSIXShell(t, "the command launcher")
 	withCommandConfinement(t, true)
 	withLauncher(t, "#!/bin/sh\necho 'tinycode-sandbox: stub could not confine' >&2\necho 'command output that never happened'\nexit 125\n")
 
@@ -137,6 +139,7 @@ func TestBashReportsLauncherFailureAsNotRun(t *testing.T) {
 // TestBashConfinedCommandBehavesNormally is the other half: with the boundary
 // applied successfully, the command runs and its output arrives unchanged.
 func TestBashConfinedCommandBehavesNormally(t *testing.T) {
+	testenv.POSIXShell(t, "the command launcher")
 	withCommandConfinement(t, true)
 	// A stand-in that applies nothing but does what the real launcher does with
 	// the argv: skip its own options, then exec the command.

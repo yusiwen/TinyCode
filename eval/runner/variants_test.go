@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -50,6 +51,7 @@ func TestLoadVariantsReadsAPromptFromAFile(t *testing.T) {
 // TestLoadVariantsRefusesWhatAComparisonCannotUse: each refusal is a way to get an
 // A/B result that means nothing.
 func TestLoadVariantsRefusesWhatAComparisonCannotUse(t *testing.T) {
+	testenv.SkipWindows(t, "the evaluation corpus is developed and graded on Unix")
 	cases := []struct {
 		name string
 		body string
