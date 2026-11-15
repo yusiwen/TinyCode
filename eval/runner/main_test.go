@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -282,6 +283,7 @@ func TestRemoveScratchHandlesAReadOnlyCache(t *testing.T) {
 // TestAttemptRecordsAKillAsItsOwnOutcome is issue #336: the bound stopping an
 // attempt must be visible in the result, not inferred from zeros.
 func TestAttemptRecordsAKillAsItsOwnOutcome(t *testing.T) {
+	testenv.POSIXShell(t, "process-group termination")
 	// A binary that outlives the bound. It is a shell script so the test needs no
 	// provider and no money.
 	dir := t.TempDir()

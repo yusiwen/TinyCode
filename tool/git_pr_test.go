@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,7 @@ func ghStub(t *testing.T) (argsFile string) {
 // TestOpenPullRequestRunsGHWithTheBranchAndBase pins the external call: the
 // arguments are exactly what the confirmation dialog described.
 func TestOpenPullRequestRunsGHWithTheBranchAndBase(t *testing.T) {
+	testenv.POSIXShell(t, "a fake gh installed as a shell script")
 	repo, branch := prRepo(t)
 	argsFile := ghStub(t)
 	def, err := gitOutput(context.Background(), "rev-parse", "--abbrev-ref", "HEAD")

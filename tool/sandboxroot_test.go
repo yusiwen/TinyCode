@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -79,6 +80,7 @@ func TestReadHonoursTheRunRoot(t *testing.T) {
 // TestBashDefaultsToTheRunRoot: a command without a workdir runs in the
 // delegated tree.
 func TestBashDefaultsToTheRunRoot(t *testing.T) {
+	testenv.POSIXShell(t, "the POSIX form `pwd` reports")
 	_, _ = checkpointTestSetup(t)
 	other := t.TempDir()
 

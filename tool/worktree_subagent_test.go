@@ -173,7 +173,13 @@ func TestMergeLeavesUnrelatedChangesAlone(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "unrelated.txt"), []byte("before\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("sh", "-c", "cd "+repo+" && git add -A && git commit -m unrelated").CombinedOutput(); err != nil {
+	// The directory is set on the process, not written into the script: a Windows
+	// path carries backslashes and spaces, and `cd C:\Users\...` inside `sh -c`
+	// loses them (the failure said "No such file or directory" for a directory
+	// that existed).
+	commit := exec.Command("sh", "-c", "git add -A && git commit -m unrelated")
+	commit.Dir = repo
+	if out, err := commit.CombinedOutput(); err != nil {
 		t.Fatalf("commit: %v\n%s", err, out)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "unrelated.txt"), []byte("local edit\n"), 0o644); err != nil {
