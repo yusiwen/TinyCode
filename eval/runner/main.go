@@ -107,16 +107,19 @@ type runResult struct {
 	// process never reached a stop of its own, so its steps and tokens are a
 	// prefix rather than a result, and the report excludes them from the rows
 	// that describe an attempt's cost (issue #336).
-	Killed        bool             `json:"killed,omitempty"`
-	Steps         int              `json:"steps"`
-	Tokens        int              `json:"tokens"`
-	Cost          types.CostTotals `json:"cost,omitempty"`
-	Tools         map[string]int   `json:"tools,omitempty"`
-	TrajectoryRun string           `json:"trajectory_run,omitempty"`
-	RecordDir     string           `json:"record_dir"`
-	WorkDir       string           `json:"work_dir"`
-	Log           string           `json:"log"`
-	Note          string           `json:"note,omitempty"`
+	Killed bool             `json:"killed,omitempty"`
+	Steps  int              `json:"steps"`
+	Tokens int              `json:"tokens"`
+	Cost   types.CostTotals `json:"cost,omitempty"`
+	Tools  map[string]int   `json:"tools,omitempty"`
+	// Process is how the run got its answer, measured from its trajectory
+	// (roadmap F4). The grade above is what it achieved.
+	Process       *process `json:"process,omitempty"`
+	TrajectoryRun string   `json:"trajectory_run,omitempty"`
+	RecordDir     string   `json:"record_dir"`
+	WorkDir       string   `json:"work_dir"`
+	Log           string   `json:"log"`
+	Note          string   `json:"note,omitempty"`
 }
 
 func main() {
@@ -261,6 +264,11 @@ func main() {
 	}
 	fmt.Println()
 	printMarkdown(os.Stdout, report)
+	names := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		names = append(names, cfg.Name)
+	}
+	fmt.Print(renderProcess(results, names))
 }
 
 // attempt runs the agent once against one task and grades the result.
@@ -288,6 +296,16 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 	if err := writeWorkConfig(workDir, recordDir, cfg); err != nil {
 		return runResult{}, err
 	}
+	// The attempt gets its own home directory. Two reasons, and the second is why
+	// this is not cosmetic: the developer's own ~/.tinycode/config.json would
+	// otherwise size the budget or set the mode of every measurement, and full
+	// trajectory capture — which the process report needs, because a digest cannot
+	// tell `go test` from `go build` — is honoured only from the user's own file.
+	// The key material is carried across so a run still authenticates.
+	homeDir := filepath.Join(base, "home")
+	if err := writeAttemptHome(homeDir, recordDir); err != nil {
+		return runResult{}, err
+	}
 
 	result := runResult{
 		Configuration: cfg.Name,
@@ -302,6 +320,7 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, promptFor(cfg, tk, workDir))
 	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		return runResult{}, err
@@ -342,6 +361,14 @@ func attempt(scratch, binary string, cfg configuration, tk task, rep int, timeou
 	switch len(summaries) {
 	case 1:
 		run := summaries[0]
+		// The process comes from the same record, read event by event: totals
+		// cannot say whether a file was read before it was written.
+		if events, readErr := agent.ReadRun(recordDir, run.Run); readErr == nil {
+			measured := measureProcess(events)
+			result.Process = &measured
+		} else {
+			result.Note = "the trajectory could not be read for process metrics: " + readErr.Error()
+		}
 		result.Model = run.Model
 		result.Tier = tk.Tier
 		result.Stop = run.Stop
@@ -723,4 +750,44 @@ func readTier(dir string) (int, error) {
 		return 0, fmt.Errorf("TIER %d is outside the declared tiers 1-3", tier)
 	}
 	return tier, nil
+}
+
+// writeAttemptHome gives one attempt its own home directory: a user-layer config
+// that asks for full trajectory capture, and a copy of the developer's `.env` so
+// the run still finds its key.
+//
+// Full capture is the point. The record's default is metadata — digests and
+// lengths — and a digest cannot tell `go test` from `go build`, so the process
+// report (roadmap F4) could not see whether an attempt checked its work. The
+// record is bounded (64 KiB per payload) and lives in the attempt's own scratch
+// directory, so asking for it is a measurement decision, not an exfiltration one.
+func writeAttemptHome(homeDir, recordDir string) error {
+	dir := filepath.Join(homeDir, ".tinycode")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	document := struct {
+		Trajectory struct {
+			Dir     string `json:"dir"`
+			Capture string `json:"capture"`
+		} `json:"trajectory"`
+	}{}
+	document.Trajectory.Dir = recordDir
+	document.Trajectory.Capture = "full"
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), append(data, '\n'), 0o600); err != nil {
+		return err
+	}
+
+	// The key material: the harness's own home keeps it in .env, and a redirected
+	// HOME would otherwise lose it. Absent is fine — the key may be in the
+	// environment — so only a real file is copied.
+	src := filepath.Join(os.Getenv("HOME"), ".tinycode", ".env")
+	if body, err := os.ReadFile(src); err == nil {
+		return os.WriteFile(filepath.Join(dir, ".env"), body, 0o600)
+	}
+	return nil
 }

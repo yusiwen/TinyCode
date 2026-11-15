@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -221,4 +222,46 @@ func ValidRunID(id string) bool {
 		return false
 	}
 	return true
+}
+
+// ReadRun returns every event of one run, in the order the file holds them.
+//
+// ListRuns reduces a file to totals, and totals cannot say *how* a run got its
+// answer: whether it read a file before it edited one, repeated a call that had
+// already failed, or ran the suite it was graded by. The evaluation's process
+// report (roadmap F4) reads the events for exactly that, so the one file format
+// serves both consumers.
+func ReadRun(dir, id string) ([]map[string]any, error) {
+	if !ValidRunID(id) {
+		return nil, fmt.Errorf("trajectory: %q is not a run id", id)
+	}
+	path := filepath.Join(dir, id+".jsonl")
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var events []map[string]any
+	scanner := bufio.NewScanner(file)
+	// A captured payload can be 64 KiB on one line, and the scanner's default
+	// buffer is smaller than that.
+	scanner.Buffer(make([]byte, 0, 64<<10), 4<<20)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal(line, &event); err != nil {
+			// A half-written last line is the normal shape of an interruption;
+			// every whole event before it is still a record.
+			continue
+		}
+		events = append(events, event)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
 }

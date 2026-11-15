@@ -12,7 +12,8 @@ Eighteen tasks, each a directory under [`eval/tasks/`](../eval/tasks) with a `go
 repository-index spike: six tasks whose tests are **hidden** until grading, and a `map` configuration the
 default runs never select. [repo-index-spike.md](repo-index-spike.md) is its result.) An attempt copies the task to a scratch directory, runs
 `tinycode "<prompt>"` there, and is graded by the task's own `go test ./...` exit code — no judge model, no
-rubric, no text comparison.
+rubric, no text comparison. Beside that grade the harness now reports **how** the attempt got there,
+measured from the same trajectory; [The process, measured](#the-process-measured) is that report.
 
 **The tiers are the difficulty axis**, and they are declared rather than inferred:
 
@@ -49,6 +50,58 @@ Three configurations, chosen so the answer is not in doubt:
 Each attempt gets a fresh copy of the task and its own record directory, so one attempt cannot help the
 next one. Test files are hashed before and after: an attempt that edited a test is recorded as
 **tampered** and counts as a failure, because a pass obtained by weakening the test is not a pass.
+
+## The process, measured
+
+The grade is the task's own suite, so two passing runs look identical even when one read the code it
+changed and the other guessed. The harness therefore measures **how** each attempt got its answer, from
+the same trajectory record, and prints it beside the outcome (roadmap F4):
+
+```
+The process (roadmap F4)
+  What the run did, from its trajectory — not what it achieved, which is the grade above.
+
+  configuration   runs   steps   calls  read%  verify%  repeat%  errors%
+  build             36     5.4     9.2    97%      83%      2.1%     1.4%
+  limited           36     2.1     3.0    61%       6%      0.0%     3.2%
+
+  Does the process predict the outcome?
+
+  property                            with      pass   without      pass
+  verified after the last write         30       77%         6       17%
+  read before writing                   32       59%         4        0%
+```
+
+Each dimension is one rule over the recorded events, stated here so a reader can disagree and recompute
+it:
+
+| Dimension | Rule |
+| --- | --- |
+| steps, tool calls | from the record's `run.end` and `tool.call` events |
+| repeated calls | the same tool with the same argument digest, more than once — the cheapest signal that a run is stuck, because the second identical call gets the same answer |
+| tool errors, refusals | the event's `status`: anything but `ok`, and `refused`/`blocked`/`denied` separately |
+| evidence gathering | a read or search call (`read_file`, `search_files`, the `lsp_*` tools) before the first write |
+| verification | a `go test` call **after the last write** — a test that ran before the change proves nothing about it |
+| files written | distinct `path` arguments across `write_file`/`edit`/`apply_patch` |
+
+**What it takes to see it.** Two dimensions need the argument text, and the record's default is metadata
+— digests and lengths, because tool arguments can contain file contents and prompts. The harness
+therefore runs every attempt with `capture: full` (bounded at 64 KiB per payload) and with its **own
+home directory**: full capture is honoured only from the user's own config, and — a second reason that
+is a bug fix in its own right — the developer's `~/.tinycode/config.json` would otherwise size the budget
+or set the mode of every measurement. Key material is carried across, so a run still authenticates.
+
+**Does it predict the outcome?** The association table is the question the roadmap entry says decides
+whether a rubric and a judge model are worth building at all. It splits the attempts by each property
+and reports the pass rate on either side. Read the counts, not the percentages: with eighteen tasks and
+two reps per configuration, a cell of three attempts is a sentence, not a measurement — and nothing here
+shows **causation**, only that the two move together in this corpus.
+
+**What is deliberately not measured.** Whether a run was *honest about what it had not verified*, and
+whether its change was *minimal* relative to the reference fix, need a reader's judgement — that is the
+rubric-and-agreement study in the roadmap entry, and it stays open as its own issue. What this section
+adds is the evidence that study needs: the deterministic half of process quality, and a way to see
+whether it tracks the outcomes the tests already measure.
 
 ## Running it
 

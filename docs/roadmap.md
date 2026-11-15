@@ -16,10 +16,10 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 29 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 30 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 11 | verified gaps, no issue opened |
+| Not started | 10 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -73,7 +73,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | F1 | No agent-level evaluation framework | Delivered — #252 #254 #256 |
 | F2 | No A/B comparison mechanism | Delivered — #345 |
 | F3 | Tool calls are not validated against their schema | Delivered — #200 |
-| F4 | The evaluation grades outcomes, never the process | Not started |
+| F4 | The evaluation grades outcomes, never the process | Delivered — #360 |
 | G1 | Delegation is two levels deep | Not started |
 | G2 | Sub-agent output is not streamed to the UI | Not started |
 | H1 | No i18n | Delivered — #350 |
@@ -970,6 +970,20 @@ says how to record and refresh one — and a
 ---
 
 ### F4 — The evaluation grades outcomes, never the process
+
+- **Picked up**: [#360](https://github.com/yusiwen/TinyCode/issues/360) — the harness reports the process
+  beside the outcome, measured from the trajectory: steps, tool calls, repeated calls, tool errors and
+  refusals, evidence gathering (a read before the first write), verification (a `go test` **after the
+  last write**), and distinct files written. `agent.ReadRun` exposes a run's events so the report can
+  read order rather than totals; the harness records attempts with `capture: full` and in their own home
+  directory, so the argument text is available (a digest cannot tell `go test` from `go build`) and the
+  developer's config cannot size the measurement. **Delivered 2026-11-15.** The report also answers the
+  question the entry said decides whether a rubric is worth building — it splits the attempts by each
+  property and prints the pass rate on either side, with the sample size stated: a percentage over three
+  attempts is a sentence, not a measurement. What stays out is deliberate: whether a run was *honest
+  about what it had not verified* and whether its change was *minimal* need a reader's judgement, and
+  that is the rubric-and-agreement study, filed as [#361](https://github.com/yusiwen/TinyCode/issues/361)
+  with this measurement as its input.
 
 - **Gap**: every verdict F1 produces comes from the task's own tests, so two runs that both pass are
   indistinguishable even when one of them read the code first, changed one file and checked it, and the other
