@@ -498,7 +498,8 @@ rather than for a tool. The table and the code are held together by
 ### `sandbox.go` — Security Sandbox
 
 - **`SandboxConfig`**: `ProjectRoot`, `DenyCommands []string`, `AutoAllowPaths []string`, `allowedPaths map[string]bool` (mutex-guarded)
-- **`DefaultSandbox`** — global with deny: `rm -rf /`, `sudo`, `dd`, `mkfs`, fork bomb, etc.
+- **`DefaultSandbox`** — the process-wide sandbox configuration. Its `DenyCommands` is only the extra entries a configuration adds; the built-in denials are rules in `commandrules.go`
+- **`ParseCommand(cmd string) ShellCommand`** (`shellread.go`) — reads a command into the simple commands it runs, resolving quoting, `${IFS}`, separators, redirections, heredocs, substitution and the wrapper programs; reports what it cannot classify as opaque instead of guessing
 - **`AccessDenied`** error: `Path`, `Message`, `DenyHint() string`
 - **`CheckCommand(cmd string) error`** — deny rules over the parsed command (`tool/shellread.go` reads it, `tool/commandrules.go` judges it): program and arguments, not substrings; still defence-in-depth, not a boundary
 - **`CheckPath(absPath string) error`** — kernel-order symlink resolution (`resolveRealPath`, applied to the raw path before any lexical clean, so `link/..` cannot escape) + project-root containment + auto-allow + cached allows
