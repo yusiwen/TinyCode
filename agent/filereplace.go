@@ -31,6 +31,13 @@ func replaceFile(src, dst string) error {
 	if err == nil || !errors.Is(err, fs.ErrPermission) {
 		return err
 	}
+	// A destination marked read-only refuses the replace with the same error a
+	// lock does, so clear that attribute and try once more.
+	if chmodErr := os.Chmod(dst, 0o600); chmodErr == nil {
+		if err = os.Rename(src, dst); err == nil {
+			return nil
+		}
+	}
 	// A destination another process holds open for its whole lifetime refuses the
 	// replace however long the retry waits — a scanner quarantine, an editor, a
 	// second store in the same process that has not closed yet. Removing the old
@@ -39,6 +46,15 @@ func replaceFile(src, dst string) error {
 	// neither name exists is one rename wide.
 	if rmErr := os.Remove(dst); rmErr == nil || errors.Is(rmErr, fs.ErrNotExist) {
 		return os.Rename(src, dst)
+	}
+	// Last resort: rewrite the destination's bytes in place from the temp file.
+	// The replace is no longer atomic, which is worse than losing the write
+	// entirely, and it is reached only where the platform refused every rename.
+	if data, readErr := os.ReadFile(src); readErr == nil {
+		if writeErr := os.WriteFile(dst, data, 0o600); writeErr == nil {
+			_ = os.Remove(src)
+			return nil
+		}
 	}
 	return err
 }
