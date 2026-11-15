@@ -15,6 +15,13 @@ import (
 // TestBashPlanModeUsesContext verifies the mode travels on the run's policy
 // rather than in package state.
 func TestBashPlanModeUsesContext(t *testing.T) {
+	// The test host has no kernel boundary and the switch is off, so a read-only
+	// run refuses to execute at all. That is the point: without a boundary there
+	// is nothing for a read-only mode to stand on.
+	previous := ConfineCommands()
+	SetConfineCommands(false)
+	t.Cleanup(func() { SetConfineCommands(previous) })
+
 	bash := Bash()
 
 	planCtx := types.WithSandboxPolicy(context.Background(), types.SandboxPolicy{Mode: types.SandboxReadOnly})
@@ -22,9 +29,11 @@ func TestBashPlanModeUsesContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// The refusal names the mode it happened under and the recovery that works
-	// — switching mode — rather than a prefix of its own.
-	for _, want := range []string{types.RefusalMarker, "mode: " + string(types.SandboxReadOnly), "ask: " + types.AskMode, "/build"} {
+	// The refusal names the mode it happened under, the recovery that works —
+	// switching mode — and, because the test host cannot confine a command, the
+	// boundary that is missing. The last one is what separates "plan mode will not
+	// run this" from "plan mode cannot keep its promise here".
+	for _, want := range []string{types.RefusalMarker, "mode: " + string(types.SandboxReadOnly), "ask: " + types.AskMode, "/build", "boundary it can enforce"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("plan-mode refusal is missing %q, got %q", want, out)
 		}
@@ -107,125 +116,5 @@ func TestBashTimeoutKillsProcessGroup(t *testing.T) {
 
 	if before > 0 && after > before {
 		t.Errorf("orphan child kept running after timeout: marker grew %d -> %d bytes", before, after)
-	}
-}
-
-func TestCheckPlanModeWriteMkdir(t *testing.T) {
-	err := checkPlanModeWrite("mkdir test")
-	if err == nil {
-		t.Fatal("expected error for mkdir")
-	}
-}
-
-func TestCheckPlanModeWriteHeredoc(t *testing.T) {
-	err := checkPlanModeWrite("cat > file.txt << 'EOF'\nhello\nEOF")
-	if err == nil {
-		t.Fatal("expected error for heredoc")
-	}
-}
-
-func TestCheckPlanModeWriteRedirect(t *testing.T) {
-	err := checkPlanModeWrite("echo hello > file.txt")
-	if err == nil {
-		t.Fatal("expected error for redirect")
-	}
-}
-
-func TestCheckPlanModeWriteAppend(t *testing.T) {
-	err := checkPlanModeWrite("echo hello >> file.txt")
-	if err == nil {
-		t.Fatal("expected error for append redirect")
-	}
-}
-
-func TestCheckPlanModeReadOnly(t *testing.T) {
-	err := checkPlanModeWrite("ls -la")
-	if err != nil {
-		t.Fatalf("expected no error for ls, got: %v", err)
-	}
-}
-
-func TestCheckPlanModeReadCat(t *testing.T) {
-	err := checkPlanModeWrite("cat file.txt")
-	if err != nil {
-		t.Fatalf("expected no error for cat, got: %v", err)
-	}
-}
-
-func TestCheckPlanModeReadGrep(t *testing.T) {
-	err := checkPlanModeWrite("grep 'foo' *.go")
-	if err != nil {
-		t.Fatalf("expected no error for grep, got: %v", err)
-	}
-}
-
-func TestCheckPlanModeRedirectDevNull(t *testing.T) {
-	err := checkPlanModeWrite("grep foo file.txt > /dev/null")
-	if err != nil {
-		t.Fatalf("expected no error for redirect to /dev/null, got: %v", err)
-	}
-}
-
-func TestCheckPlanModeRedirectStderr(t *testing.T) {
-	err := checkPlanModeWrite("grep foo file.txt 2>/dev/null")
-	if err != nil {
-		t.Fatalf("expected no error for stderr redirect, got: %v", err)
-	}
-}
-
-func TestCheckPlanModeRedirectBoth(t *testing.T) {
-	err := checkPlanModeWrite("grep foo file.txt &>/dev/null")
-	if err != nil {
-		t.Fatalf("expected no error for combined redirect to null, got: %v", err)
-	}
-}
-
-func TestCheckPlanModeWriteRm(t *testing.T) {
-	err := checkPlanModeWrite("rm -rf /tmp/test")
-	if err == nil {
-		t.Fatal("expected error for rm")
-	}
-}
-
-func TestCheckPlanModeWriteCp(t *testing.T) {
-	err := checkPlanModeWrite("cp a.txt b.txt")
-	if err == nil {
-		t.Fatal("expected error for cp")
-	}
-}
-
-func TestCheckPlanModeWriteTouch(t *testing.T) {
-	err := checkPlanModeWrite("touch newfile.txt")
-	if err == nil {
-		t.Fatal("expected error for touch")
-	}
-}
-
-func TestCheckPlanModeWriteMv(t *testing.T) {
-	err := checkPlanModeWrite("mv a.txt b.txt")
-	if err == nil {
-		t.Fatal("expected error for mv")
-	}
-}
-
-func TestCheckPlanModeWriteChained(t *testing.T) {
-	err := checkPlanModeWrite("ls && mkdir test")
-	if err == nil {
-		t.Fatal("expected error for mkdir in chained command")
-	}
-}
-
-func TestCheckPlanModeWriteSemicolon(t *testing.T) {
-	err := checkPlanModeWrite("ls; rm file.txt")
-	if err == nil {
-		t.Fatal("expected error for rm in semicolon command")
-	}
-}
-
-func TestCheckPlanModeWritePipe(t *testing.T) {
-	// Pipelines should be allowed
-	err := checkPlanModeWrite("cat file.txt | grep foo")
-	if err != nil {
-		t.Fatalf("expected no error for pipe, got: %v", err)
 	}
 }

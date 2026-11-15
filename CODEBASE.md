@@ -1,6 +1,6 @@
 # TinyCode — CODEBASE Map
 
-> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1447 test functions + 10 fuzz targets, race-detector clean.
+> AI coding agent in pure Go. Single binary, Bubble Tea TUI, ReAct agent loop, 25 built-in tools + MCP, LSP diagnostics, session persistence. 1440 test functions + 10 fuzz targets, race-detector clean.
 
 ## Quick Reference
 
@@ -500,7 +500,7 @@ rather than for a tool. The table and the code are held together by
 - **`SandboxConfig`**: `ProjectRoot`, `DenyCommands []string`, `AutoAllowPaths []string`, `allowedPaths map[string]bool` (mutex-guarded)
 - **`DefaultSandbox`** — global with deny: `rm -rf /`, `sudo`, `dd`, `mkfs`, fork bomb, etc.
 - **`AccessDenied`** error: `Path`, `Message`, `DenyHint() string`
-- **`CheckCommand(cmd string) error`** — blocklist matching (substring match; not a security boundary)
+- **`CheckCommand(cmd string) error`** — deny rules over the parsed command (`tool/shellread.go` reads it, `tool/commandrules.go` judges it): program and arguments, not substrings; still defence-in-depth, not a boundary
 - **`CheckPath(absPath string) error`** — kernel-order symlink resolution (`resolveRealPath`, applied to the raw path before any lexical clean, so `link/..` cannot escape) + project-root containment + auto-allow + cached allows
 - **`SetInteractive(bool)` / `IsInteractive()`** — declare whether a permission dialog can be shown. Default true; a one-shot CLI run calls `SetInteractive(false)`, and a denial then returns `AccessDenied.NonInteractiveHint()` immediately instead of blocking in `RequestPermission` forever
 - **`CheckPathAccess(ctx, path) (string, error)`** — the shared gate used by `read_file`, `write_file`, `edit`, `apply_patch`, `search_files`; returns a user-facing denial message or ("", nil)
@@ -933,11 +933,15 @@ User Input (textarea / CLI arg)
 - **Chromium fallback**: both browser paths now point Chromium at a loopback filtering proxy (`internal/browserproxy`, `--proxy-server` + `--proxy-bypass-list=<-loopback>`), so every hostname the browser contacts — the initial navigation, each redirect hop, XHR/fetch, iframes, images, WebSocket upgrades and the `--dump-dom` load — is resolved exactly once, validated and pinned by this process; a tunnel or request whose host is private/loopback/metadata is refused with 403. Redirects are handed back to the browser rather than followed by the proxy, so the next hop is validated too, and QUIC is disabled because HTTP/3 would leave over UDP without asking the proxy. On top of that the rod path keeps request interception (`Browser.HijackRequests`) and both paths pin the top-level host with `--host-resolver-rules=MAP <host> <ip>`. The proxy is required, not best effort (issue #8): if it cannot start, or the launcher cannot start Chromium with the sandbox flags, both paths return `errBrowserSandboxUnavailable` instead of crawling with the weaker pre-flight/interceptor protection, and the flags close the channels that never ask a proxy — `--disable-quic` (HTTP/3 over UDP), `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` (WebRTC/STUN candidates) and `--disable-background-networking` (Chromium's own traffic). The scoped loopback exemption the smoke test needs (`netsafe.AllowAuthority` through `browserproxy.Start`) is a test seam, not a runtime default: production grants no exemption.
 - **MCP loopback**: a loopback-configured endpoint exempts exactly that authority (`netsafe.AllowAuthority`), so it cannot be redirected to another loopback port; every other SSRF rule still applies.
 - **MCP**: requests are concurrent (one reader goroutine with per-id dispatch) and a cancelled call only unregisters itself, leaving the transport usable; `tool.CloseMCPServers()` (called from `main.go`) closes every client and reaps stdio children on exit. Server-initiated requests are answered (`ping` and `roots/list` with a result, anything else with a `-32601` error) so a server is never left waiting, and `serverInfo`/`tools` are mutex-guarded. The unmatched-message skip budget is tracked per pending call (`pendingCall.skipped`), so a request that never gets an answer fails on its own after `maxSkippedMessages` frames that answered nobody, leaving calls that are still within their budget — or already served — untouched.
-- **`CheckCommand` and plan-mode checks** are advisory substring heuristics, not an OS-level boundary.
+- **`CheckCommand` is defence-in-depth**, not a boundary: it reads the command and names programs and
+  arguments, which stops the quoting and `${IFS}` evasions a substring match admitted, but `eval`, a
+  script from a pipe, or a program it does not know can still do anything. Plan mode does not rest on
+  it: a read-only run runs its commands under the kernel (or container) boundary, and refuses to run
+  them at all when neither is available.
 
 ## Testing
 
-- **1447 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
+- **1440 test functions + 10 fuzz targets** across the repository — what `go test ./... -count=1` runs for the main module, plus the evaluation corpora under `eval/` (nested modules the command still walks); each count below is listed with the command that produces it, and no count is carried in a copy that nothing checks
 - `make fuzz` (`FUZZTIME=30s`) explores every fuzz target; `go test` already runs their seed corpora, so CI exercises them on every push
 - `make test-browser` (`BROWSER_TEST=1`, `-run TestBrowserSmoke`) renders a JavaScript page through both browser paths against a loopback server and asserts the request carried the proxy's `Via` header, which proves the filtering proxy was used; `TestBrowserSmokeRefusesABlockedSubresource` then serves a page whose own authority is exempted from the loopback rule while the policy stays enforced, and asserts a subresource pointing at a *second, live* loopback service is refused (the script's `onerror` marker in the DOM) and that the service was never reached — a refusal is proven, not only that the proxy was used (issue #8). Both skip without a browser, so `make test` never launches one
 - `make test-tui-visual` (`TUI_SHOT=1`) is the only place the TUI is looked at rather than asserted on: it renders the committed frame scenarios to PNGs through headless Chromium, starts `bin/tinycode` on a real 80x24 PTY (asserting the stream carried SGR styling and that the binary quits on the documented double Ctrl+C), runs it once more on a size-less PTY, and replays the live stream into a screen buffer that is screenshotted as `tinycode-pty-welcome-80x24.png`. Both tests skip without the variable, so `make test` needs neither a browser, nor a binary, nor a terminal device; PNGs land in `TUI_SHOT_DIR` (default `/tmp`)
@@ -983,7 +987,7 @@ Counts in this document are produced by these commands at the commit they descri
 
 ```bash
 find . -name '*_test.go' -not -path './tuiprobe/*' -print0 \
-  | xargs -0 grep -h '^func Test' | wc -l              # 1447 test functions (main module)
+  | xargs -0 grep -h '^func Test' | wc -l              # 1440 test functions (main module)
 grep -rn '^func Fuzz' --include=*_test.go . | wc -l    # 10 fuzz targets
 ls tui/testdata/golden/frames/*.txt | wc -l            # 29 plain-text frames
 ls tui/testdata/golden/ansi/*.ansi | wc -l             # 1 raw ANSI frame
