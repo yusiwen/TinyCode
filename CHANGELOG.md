@@ -9,6 +9,35 @@ back to its change and tests.
 
 ## Unreleased
 
+### Command checks read the command, and plan mode needs a boundary
+
+Roadmap H2 called the command checks heuristics. Measured on the tree before this change, a throwaway
+test showed how far the two of them were from what they claimed: the deny list admitted `r"m" -rf /`,
+`rm${IFS}-rf /` and `$'\x72\x6d' -rf /`, refused `echo "sudo "` and `git commit -m "chmod -R /"`,
+blocked everything if a configuration held an empty entry, and had no test at all. The plan-mode guard
+missed `sh -c 'mkdir x'`, `xargs rm`, `echo hi | tee out.txt` and `git commit`.
+
+`tool.ParseCommand` now reads a command into the simple commands it runs: quoting and escapes resolved,
+`${IFS}` as a word break, separators, subshells, leading assignments, redirections with their targets,
+heredoc bodies skipped, command substitution parsed recursively, and the wrappers that run another
+program unwrapped (`env`, `command`, `exec`, `nohup`, `nice`, `time`, `stdbuf`, `timeout`, `xargs`, and
+`sh -c` with its combined forms). What it cannot classify is reported as opaque, never guessed.
+
+The deny list judges each simple command's program and arguments: recursive `rm` on `/`, device
+formatting, raw device writes, privilege escalation, power, recursive `chmod`/`chown` on `/`, and a
+self-calling shell function. `sandbox.deny_commands` entries are argv prefixes, so `curl` denies
+`env curl x` and does not deny `echo curl`; an empty entry is ignored. An opaque command is checked by
+word for the programs nobody says in passing, so a construct the reader gave up on cannot clear a
+denial by hiding inside it — that is the one place a word is matched, and it is reached only when there
+is no structure to match.
+
+Plan mode stopped resting on any of it. A read-only run runs its commands inside the kernel boundary
+(or the container tier, which mounts the project read-only), and when neither is available it refuses
+to run the command at all and names what is missing. The refusal's recovery is `/build`, which is the
+mode whose posture is the file fence. The string guard that used to be the plan-mode promise is gone,
+along with its hand-rolled quote stripper and redirect detector; what remains is a courtesy refusal
+that names the file or the program a definite write would touch.
+
 ### The interface speaks Chinese, and English is the source text
 
 Roadmap H1 said "no i18n", with the note that UI strings were Chinese. The note was already stale:

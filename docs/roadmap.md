@@ -16,10 +16,10 @@ recorded after it (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
-| Delivered | 26 | the entry's **Picked up** line names the issue that landed it |
+| Delivered | 27 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 14 | verified gaps, no issue opened |
+| Not started | 13 | verified gaps, no issue opened |
 | **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -77,7 +77,7 @@ injected map lost, so it reopens only under the three conditions its entry names
 | G1 | Delegation is two levels deep | Not started |
 | G2 | Sub-agent output is not streamed to the UI | Not started |
 | H1 | No i18n | Delivered — #350 |
-| H2 | Command checks are heuristics, not a boundary | Not started |
+| H2 | Command checks are heuristics, not a boundary | Delivered — #352 |
 | H3 | No branch visualisation | Delivered — #347 |
 
 ## Provenance and method
@@ -1015,6 +1015,17 @@ says how to record and refresh one — and a
 
 ### H2 — Command checks are heuristics, not a boundary
 
+- **Picked up**: [#352](https://github.com/yusiwen/TinyCode/issues/352) — `tool.ParseCommand` reads a
+  shell command into the simple commands it runs (quoting and escapes, `${IFS}`, separators,
+  redirections, heredocs, substitution, and the wrappers `env`/`xargs`/`sh -c`/`nice`/`timeout`/…), and
+  the deny list became rules over that structure instead of substrings. **Delivered 2026-11-15.** The
+  reader admits `r"m" -rf /`, `rm${IFS}-rf /` and `$'\x72\x6d' -rf /` to the rules that name `rm -rf /`,
+  and it stops refusing `echo "sudo "` and `git commit -m "chmod -R /"`, which the substring match
+  caught. An unreadable command is checked by word instead, so `eval "sudo …"` is still refused. The
+  configured `deny_commands` entries are argv prefixes (`curl` denies `env curl x`, not `echo curl`),
+  an empty entry no longer blocks every command, and plan mode stopped standing on any of it: a
+  read-only run runs its commands under the kernel or container boundary, and refuses to run them at
+  all when neither is available, naming what is missing.
 - **Gap**: the command blacklist and the plan-mode write interception are substring matches. On a
   platform with no kernel mechanism they are the entire posture.
 - **Evidence**: `CODEBASE.md:543` — "`CheckCommand` and plan-mode checks are advisory substring

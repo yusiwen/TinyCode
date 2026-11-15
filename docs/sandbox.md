@@ -23,7 +23,7 @@ run starts
 consumers, each reading only that value
   ├─ path fence        read_file / write_file / edit / apply_patch / lsp tools
   ├─ command boundary  bash (when confinement is on)
-  └─ plan-mode guard   bash's string check for writes
+  └─ plan-mode guard   a boundary or no command (see below)
 ```
 
 Nothing re-derives a mode or a root: `tool.PolicyFromConfig` is the one
@@ -191,15 +191,24 @@ Reads are not restricted. The mode vocabulary claims file effects only.
 
 ## The command boundary
 
-Shell commands are guarded in two layers, and only the second is a boundary:
+Shell commands are guarded in two layers, and only one of them is a boundary:
 
-1. **String checks** — `sandbox.deny_commands` and the plan-mode write guard.
-   These are speed bumps: `sh -c 'rm -fr /'`, a path assembled from variables, or
-   `base64 -d | sh` all walk past a substring match. They stay for the obvious
-   cases and for the advice they carry.
+1. **A deny list that reads the command.** `tool.ParseCommand` resolves quoting and
+   escapes, the separators, redirections, heredocs and the wrapper programs that run
+   another program (`env`, `xargs`, `sh -c`, …), and the rules in
+   `tool/commandrules.go` judge the program and its arguments: recursive `rm` on `/`,
+   device formatting, raw device writes, privilege escalation, power, recursive
+   `chmod` on `/`, a self-calling shell function. `sandbox.deny_commands` adds argv
+   prefixes to that set. What the reader cannot classify is reported as opaque, and
+   an opaque command is refused when it mentions one of the programs nobody says in
+   passing.
+   This is still not a boundary: `eval`, a script from a pipe, or a program the
+   reader does not know can still do anything. It exists so the obvious
+   destructive commands are refused before they run, and so the refusal says which
+   rule fired.
 2. **The kernel boundary**, on by default where the host can apply it. The same
    `['bash','-c',cmd]` argv is wrapped in a launcher and the boundary is applied
-   to the process that will run it.
+   to the process that will run it. This is the layer a read-only run stands on.
 
 ### The per-platform default
 
@@ -210,7 +219,7 @@ subprocess at all:
 | Host | Default | What happens |
 | --- | --- | --- |
 | A kernel mechanism (Landlock on Linux, Seatbelt on macOS) | **on** | every shell command runs under the boundary |
-| No mechanism (any host whose probe fails) | **off** | commands run under the string checks, and `/sandbox` says so |
+| No mechanism (any host whose probe fails) | **off** | build-mode commands run unconfined (the deny list still applies); a read-only run refuses to run a command at all, and `/sandbox` says why |
 
 It is not a default of `true` because the launcher **fails closed**: on a host
 with no mechanism, on would refuse every command, and refusing every command is
@@ -402,7 +411,7 @@ result: a command that prints words resembling a refusal is output, not a report
 | Key (`config.json`) | Default | Meaning |
 | --- | --- | --- |
 | `sandbox.project_root` | the working directory for a real run | the boundary root |
-| `sandbox.deny_commands` | a built-in list | substring rules for the command check |
+| `sandbox.deny_commands` | — | extra deny rules, read as argv prefixes and added to the built-in set |
 | `sandbox.allowed_paths` | — | legacy persistent grants (read-only now) |
 | `sandbox.allowed_path_grants` | — | persistent grants with context |
 | `sandbox.require_hard_boundary` | `false` | refuse anything enforced only in process |
@@ -485,9 +494,14 @@ working boundary.
   with Landlock, and on macOS through Seatbelt, every shell command runs under
   the boundary, with the platform user cache root granted and `TMPDIR` inside it
   (see [Writable roots](#writable-roots)). On a host with no mechanism the
-  default is off and `/sandbox` says why; the string checks are the posture
-  there. A user who needs the wider boundary on a capable host can set
-  `confine_commands` to `false` in their own config.
+  default is off and `/sandbox` says why; build-mode commands then run unconfined
+  and the deny list is all that stands between the agent and a destructive command.
+  **Plan mode is different**: it refuses to run a command at all there, because a
+  read-only mode whose only guard is a string check is making a promise it cannot
+  keep. The refusal names the missing boundary, and `/build` is the recovery that
+  works. A user who needs the wider boundary on a capable host can set
+  `confine_commands` to `false` in their own config, and pays that price for plan
+  mode too.
 - **The macOS mechanism is deprecated.** `sandbox-exec` is Apple's, undisclosed
   and deprecated; there is no public API to replace it. It is accepted because the
   launcher fails closed: a host where it cannot be applied refuses the command

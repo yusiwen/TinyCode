@@ -57,7 +57,7 @@ func (e *AccessDenied) NonInteractiveHint() string {
 // SandboxConfig holds security configuration for tool execution.
 type SandboxConfig struct {
 	ProjectRoot  string   // allowed directory root
-	DenyCommands []string // command deny list (kept for backward compat)
+	DenyCommands []string // extra command rules, read as argv prefixes (commandrules.go)
 
 	// AutoAllowPaths are paths automatically allowed (CWD, parent, etc.)
 	AutoAllowPaths []string
@@ -88,27 +88,10 @@ type SandboxConfig struct {
 }
 
 var DefaultSandbox = &SandboxConfig{
-	DenyCommands: []string{
-		"rm -rf /", "rm -rf /*", "rm -rf --no-preserve-root",
-		"sudo ", "su ", "chmod -R /", "chown -R /",
-		"dd if=", "mkfs.", "fdisk", "mkswap",
-		"shutdown", "reboot", "init 0", "halt",
-		"> /dev/sd", "< /dev/sd", "mkfs",
-		"pvcreate", "vgcreate", "lvcreate",
-		":(){ :|:& };:", // fork bomb
-	},
+	// The built-in denials live in commandrules.go as rules over the parsed
+	// command; this list is only the extra entries a configuration adds, read as
+	// argv prefixes. It used to hold the substring patterns.
 	allowedPaths: make(map[string]bool),
-}
-
-func (sc *SandboxConfig) CheckCommand(cmd string) error {
-	cmdLower := strings.ToLower(strings.TrimSpace(cmd))
-	for _, deny := range sc.DenyCommands {
-		if strings.Contains(cmdLower, strings.ToLower(deny)) {
-			tlog.Warn("sandbox", "cmd_blocked", "pattern", deny, "cmd", cmd)
-			return fmt.Errorf("command blocked by security policy (matches: %q)", deny)
-		}
-	}
-	return nil
 }
 
 // escapes reports whether a filepath.Rel result points outside its base.
