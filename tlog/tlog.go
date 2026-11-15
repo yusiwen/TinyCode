@@ -99,6 +99,19 @@ func Init(dir string, level Level) {
 	defaultLogger.file = f
 }
 
+// Close releases the log file. The CLI defers it on the way out, which matters on
+// Windows: an open file cannot be deleted or replaced there, so a handle left to
+// the garbage collector keeps a directory "in use" long after the command that
+// opened it returned.
+func Close() {
+	defaultLogger.mu.Lock()
+	defer defaultLogger.mu.Unlock()
+	if defaultLogger.file != nil {
+		defaultLogger.file.Close()
+		defaultLogger.file = nil
+	}
+}
+
 // SetLevel changes the minimum log level at runtime.
 func SetLevel(level Level) {
 	defaultLogger.mu.Lock()

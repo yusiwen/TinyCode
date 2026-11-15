@@ -279,19 +279,20 @@ func TestKeepPathSurvivesTheSessionFile(t *testing.T) {
 	m.agent.History = append(m.agent.History, types.Message{Role: types.RoleUser, Content: "hello"})
 
 	m.handleCommand("/keep internal/store.go")
+	kept := filepath.Join("internal", "store.go")
 
 	saved, err := session.Load(m.currentBranch, m.SessionDir)
 	if err != nil {
 		t.Fatalf("load session: %v", err)
 	}
-	if len(saved.KeptPaths) != 1 || saved.KeptPaths[0] != "internal/store.go" {
+	if len(saved.KeptPaths) != 1 || saved.KeptPaths[0] != kept {
 		t.Fatalf("the session kept %v", saved.KeptPaths)
 	}
 
 	// The resume path restores it into the agent.
 	next := newTestTUI()
 	next.adoptSession(saved)
-	if len(next.agent.KeptPaths) != 1 || next.agent.KeptPaths[0] != "internal/store.go" {
+	if len(next.agent.KeptPaths) != 1 || next.agent.KeptPaths[0] != kept {
 		t.Fatalf("adoptSession restored %v", next.agent.KeptPaths)
 	}
 }
