@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusiwen/tinycode/internal/testenv"
 	"github.com/yusiwen/tinycode/types"
 )
 
@@ -39,6 +40,7 @@ func runCommand(t *testing.T, ctx context.Context, args map[string]any) string {
 // *new* bytes and the "pre-image" would be a lie. This test is what would break if
 // someone replaced the copy with the link.
 func TestCommandSnapshotRecordsWhatTheCommandChanged(t *testing.T) {
+	testenv.POSIXModes(t)
 	project, _ := checkpointTestSetup(t)
 	ctx := callScope(context.Background(), "bash", 1, 0)
 

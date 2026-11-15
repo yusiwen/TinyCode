@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"encoding/json"
 	"github.com/yusiwen/tinycode/agent"
 	"github.com/yusiwen/tinycode/types"
 )
@@ -25,7 +26,7 @@ func TestTheAgentLoopStampsACheckpointScope(t *testing.T) {
 		{ToolCalls: []types.ToolCall{{
 			ID:        "call_1",
 			Name:      "write_file",
-			Arguments: `{"path":"` + target + `","content":"from the loop\n"}`,
+			Arguments: checkpointWriteArgs(t, target),
 		}}},
 		{Content: "done"},
 	})
@@ -63,4 +64,16 @@ func TestTheAgentLoopStampsACheckpointScope(t *testing.T) {
 	if _, err := os.Stat(target); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("the restore must remove the file the call created: %v", err)
 	}
+}
+
+// checkpointWriteArgs builds a write_file argument object with the path encoded
+// as JSON, not pasted into a string: a Windows path is full of backslashes, and
+// `{"path":"C:\temp\x"}` is not the JSON for that path.
+func checkpointWriteArgs(t *testing.T, target string) string {
+	t.Helper()
+	args, err := json.Marshal(map[string]string{"path": target, "content": "from the loop\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(args)
 }

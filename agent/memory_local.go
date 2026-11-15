@@ -352,7 +352,7 @@ func (m *LocalMemory) rewriteLocked() error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("memory: close %s: %w", name, err)
 	}
-	if err := os.Rename(name, m.path); err != nil {
+	if err := replaceFile(name, m.path); err != nil {
 		return fmt.Errorf("memory: replace %s: %w", m.path, err)
 	}
 	m.size = written
