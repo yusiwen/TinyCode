@@ -108,7 +108,9 @@ func (p *GeminiProvider) endpoint(model string, stream bool) string {
 }
 
 type geminiPart struct {
-	Text             string                  `json:"text,omitempty"`
+	Text string `json:"text,omitempty"`
+	// InlineData carries an attached image: Gemini takes the bytes inline.
+	InlineData       *geminiInlineData       `json:"inlineData,omitempty"`
 	Thought          bool                    `json:"thought,omitempty"`
 	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
@@ -328,6 +330,27 @@ func (p *GeminiProvider) requestBody(req types.ChatRequest) ([]byte, error) {
 // Gemini calls the assistant role "model", answers a tool call with a
 // functionResponse part on a user turn, and keeps consecutive tool results in
 // one content. The system text is a separate instruction rather than a turn.
+// geminiInlineData is an attached image in Gemini's inline form.
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+
+// geminiUserParts renders a user message: its words, then its pictures.
+func geminiUserParts(m types.Message) []geminiPart {
+	var parts []geminiPart
+	if m.Content != "" {
+		parts = append(parts, geminiPart{Text: m.Content})
+	}
+	for _, img := range m.Images {
+		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
+			MimeType: img.MediaType,
+			Data:     img.Base64(),
+		}})
+	}
+	return parts
+}
+
 func geminiContents(msgs []types.Message) (system string, contents []geminiContent) {
 	var systemParts []string
 	for _, m := range msgs {
@@ -378,12 +401,13 @@ func geminiContents(msgs []types.Message) (system string, contents []geminiConte
 			}
 
 		default: // user
-			if m.Content == "" {
+			parts := geminiUserParts(m)
+			if len(parts) == 0 {
 				continue
 			}
 			contents = append(contents, geminiContent{
 				Role:  "user",
-				Parts: []geminiPart{{Text: m.Content}},
+				Parts: parts,
 			})
 		}
 	}

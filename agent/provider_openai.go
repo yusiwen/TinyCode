@@ -189,6 +189,22 @@ func (p *OpenAIProvider) Name() string {
 	return fmt.Sprintf("%s/%s", prefix, p.model)
 }
 
+// openAIContent is the block array an attached image requires. The
+// OpenAI-compatible shape accepts a data: URL, so the bytes need no upload step.
+func openAIContent(msg types.Message) []map[string]any {
+	blocks := make([]map[string]any, 0, len(msg.Images)+1)
+	if msg.Content != "" {
+		blocks = append(blocks, map[string]any{"type": "text", "text": msg.Content})
+	}
+	for _, img := range msg.Images {
+		blocks = append(blocks, map[string]any{
+			"type":      "image_url",
+			"image_url": map[string]any{"url": img.DataURL()},
+		})
+	}
+	return blocks
+}
+
 // requestURL is where one request goes. A provider built by a struct literal (a
 // parser-level test) has no function and keeps the old path.
 func (p *OpenAIProvider) requestURL(model string) string {
@@ -221,6 +237,12 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req types.ChatRequest) (*type
 			Name:             msg.Name,
 			ToolCallID:       msg.ToolCallID,
 			ReasoningContent: msg.ReasoningContent,
+		}
+		// An attached image makes the content a block array; the text block
+		// keeps the message's own words, so the model reads them in the order
+		// they were written.
+		if len(msg.Images) > 0 {
+			m.Content = openAIContent(msg)
 		}
 
 		if len(msg.ToolCalls) > 0 {

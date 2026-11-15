@@ -413,7 +413,8 @@ func (m *TuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, m.lspDiagCmd())
 
 	case ChatMsg:
-		model, cmd, ok := m.beginAgentRun(msg.Text, 0)
+		images := m.takePendingImages()
+		model, cmd, ok := m.beginAgentRunWithImages(msg.Text, 0, images)
 		if !ok {
 			// Refuse a second concurrent run: the previous run may still be
 			// unwinding (e.g. right after an interrupt). A compression in flight
@@ -1018,6 +1019,7 @@ func (m *TuiModel) persistSession() {
 			Content:          chatMsg.Content,
 			ReasoningContent: chatMsg.ReasoningContent,
 			Pinned:           chatMsg.Pinned,
+			Images:           chatMsg.Images,
 		})
 	}
 	if m.provReg != nil {
@@ -1232,6 +1234,9 @@ func (m *TuiModel) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		})
 		return m, nil
 
+	case "/image":
+		return m.handleImage(cmd)
+
 	case "/help":
 		help := `Available commands and shortcuts:
 
@@ -1249,6 +1254,7 @@ Commands:
   /verbose       Toggle verbose output
   /thinking      Toggle thinking display
   /skill         Load a skill's instructions (e.g. /skill code-review)
+  /image <path>  Attach an image (png, jpeg, gif, webp) to your next message
   /theme         Switch theme (nord, default)
   /diagnostics   Show LSP diagnostics
   /changes       Show what changed since the last run
@@ -1649,7 +1655,7 @@ func (m *TuiModel) waitForStream() tea.Cmd {
 	}
 }
 
-func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, goalRun *types.GoalRunInfo) {
+func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, goalRun *types.GoalRunInfo, images []types.Image) {
 	// Two consumers read this: the goal tool, which decides what the run may
 	// do, and the run record, which then says which goal the run served and
 	// whether a human or the driver started it.
@@ -1692,7 +1698,7 @@ func (m *TuiModel) runAgent(ctx context.Context, runID uint64, prompt string, go
 			m.streamCh <- FailoverMsg{RunID: runID, From: from, To: to, Err: err}
 		},
 	}
-	result, err := m.agent.Run(ctx, prompt)
+	result, err := m.agent.RunWithImages(ctx, prompt, images)
 	m.agent.StreamCallbacks = nil
 	if !m.runIsCurrent(runID) {
 		// The run was superseded (or already finalized): do not inject output

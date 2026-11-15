@@ -9,6 +9,37 @@ back to its change and tests.
 
 ## Unreleased
 
+### A picture can be attached to the conversation
+
+Roadmap D1 said a screenshot or a design could not be given to the agent, and the workaround was worse
+than the gap: `read_file` on a PNG returned its bytes as lines, so the model received mojibake that
+looked like a file with a handful of enormous lines.
+
+`types.Image` is now part of a user message. The media type is **sniffed from the bytes** — a `.png`
+that is really a PDF is refused as a PDF — and the accepted set is png, jpeg, gif and webp, at 4 MiB
+per image and four per message. SVG and PDF are refused on purpose: they are documents, not raster
+images.
+
+Every backend serializes the attachment in its own shape, so no route silently drops it: an OpenAI
+`image_url` data URL block array, an Anthropic `image` block with a base64 source, a Gemini
+`inlineData` part, a Bedrock Converse `image` block naming the format, and Ollama's raw `images` list.
+A message with no images serializes byte-for-byte as before.
+
+There are two ways to attach one: `--image <path>` (repeatable) on the one-shot command line, and
+`/image <path>` in the TUI, which holds the pictures for the *next* message — `/image` lists them,
+`/image clear` drops them, and a file that is not an image is refused in the transcript rather than
+silently ignored. The attachment rides the user message into the request, into the history the next run
+reads, and into the session file, so a resume keeps it; the transcript names it beside the words it was
+sent with.
+
+`read_file` no longer pretends a picture is text: it refuses and names `/image` and `--image`.
+
+**What it costs, stated where a person will see it:** the picture is part of the user message, so it is
+sent again on every step of the run — one screenshot is one image's worth of tokens per model call.
+`docs/images.md` carries the formats, the per-backend shapes and what is not covered (no clipboard
+paste or drag-and-drop, no downscaling, no OCR, and a text-only model still answers with its provider's
+error).
+
 ### Command checks read the command, and plan mode needs a boundary
 
 Roadmap H2 called the command checks heuristics. Measured on the tree before this change, a throwaway

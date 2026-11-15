@@ -51,6 +51,8 @@
   /fork  Create session branch
   /session  List/switch branch
   /compare  Compare two branches
+  /image
+    Attach an image to your next message
   /exit  Exit TinyCode
 ↑↓ navigate · Enter execute · Esc cancel
 ⚡ plan  ■ unknown  tokens: 0  tools: 0

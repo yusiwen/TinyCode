@@ -136,6 +136,10 @@ type TuiModel struct {
 	// Quit confirmation
 	quitConfirm bool
 
+	// pendingImages are the pictures attached to the next message: /image
+	// loads them, the next run takes them (roadmap D1).
+	pendingImages []types.Image
+
 	// Session persistence
 	SessionDir    string
 	currentBranch string // current branch ID (same as main session ID for main)
@@ -264,6 +268,7 @@ func commandList() []cmdEntry {
 		{"/fork", i18n.T("Create session branch")},
 		{"/session", i18n.T("List/switch branch")},
 		{"/compare", i18n.T("Compare two branches")},
+		{"/image", i18n.T("Attach an image to your next message")},
 		{"/exit", i18n.T("Exit TinyCode")},
 	}
 }
@@ -299,10 +304,10 @@ func historyFromSession(msgs []types.Message) []types.Message {
 		if m.Role != types.RoleUser && m.Role != types.RoleAssistant {
 			continue
 		}
-		if strings.TrimSpace(m.Content) == "" {
+		if strings.TrimSpace(m.Content) == "" && len(m.Images) == 0 {
 			continue
 		}
-		history = append(history, types.Message{Role: m.Role, Content: m.Content, Pinned: m.Pinned})
+		history = append(history, types.Message{Role: m.Role, Content: m.Content, Pinned: m.Pinned, Images: m.Images})
 	}
 	return history
 }
@@ -322,6 +327,7 @@ func (m *TuiModel) adoptSession(branch *session.Session) {
 			Role:             sm.Role,
 			Content:          sm.Content,
 			ReasoningContent: sm.ReasoningContent,
+			Images:           sm.Images,
 		}
 		if sm.Role == types.RoleAssistant && sm.Content != "" {
 			cm.Blocks = parseMarkdown(sm.Content)

@@ -138,6 +138,9 @@ type anthropicBlock struct {
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 
+	// image, for a picture attached to a user message.
+	Source *anthropicImageSource `json:"source,omitempty"`
+
 	// tool_result. Content is a pointer so an empty tool result still sends the
 	// required field: a command that printed nothing is a result, not an absent
 	// block.
@@ -322,6 +325,28 @@ func (p *AnthropicProvider) requestBody(model string, req types.ChatRequest) ([]
 // messages — one per call in a step — are grouped into one user message, which is
 // what the API requires: every tool_use must be answered in the immediately
 // following user turn.
+// anthropicImageSource is the base64 source of an attached image.
+type anthropicImageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+}
+
+// anthropicUserBlocks renders a user message: its words, then its pictures.
+func anthropicUserBlocks(m types.Message) []anthropicBlock {
+	var blocks []anthropicBlock
+	if m.Content != "" {
+		blocks = append(blocks, anthropicBlock{Type: "text", Text: m.Content})
+	}
+	for _, img := range m.Images {
+		blocks = append(blocks, anthropicBlock{
+			Type:   "image",
+			Source: &anthropicImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Base64()},
+		})
+	}
+	return blocks
+}
+
 func anthropicMessages(msgs []types.Message) (system []anthropicBlock, messages []anthropicMessage) {
 	for _, m := range msgs {
 		if m.Role == types.RoleSystem && m.Content != "" {
@@ -386,12 +411,13 @@ func anthropicMessages(msgs []types.Message) (system []anthropicBlock, messages 
 			}
 
 		default: // user
-			if m.Content == "" {
+			blocks := anthropicUserBlocks(m)
+			if len(blocks) == 0 {
 				continue
 			}
 			messages = append(messages, anthropicMessage{
 				Role:    "user",
-				Content: []anthropicBlock{{Type: "text", Text: m.Content}},
+				Content: blocks,
 			})
 		}
 	}

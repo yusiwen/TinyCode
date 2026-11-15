@@ -36,6 +36,13 @@ func batch(cmds ...tea.Cmd) tea.Cmd {
 // goalRound travels to runAgent as a value rather than through shared state, so
 // the context the agent sees cannot be changed by a later run.
 func (m *TuiModel) beginAgentRun(prompt string, round int) (tea.Model, tea.Cmd, bool) {
+	return m.beginAgentRunWithImages(prompt, round, nil)
+}
+
+// beginAgentRunWithImages starts a run whose user message carries pictures: the
+// attachments go on the transcript message, so the session keeps them, and into
+// the agent call, so the model sees them.
+func (m *TuiModel) beginAgentRunWithImages(prompt string, round int, images []types.Image) (tea.Model, tea.Cmd, bool) {
 	ctx, runID, ok := m.beginRun()
 	if !ok {
 		return m, nil, false
@@ -47,14 +54,14 @@ func (m *TuiModel) beginAgentRun(prompt string, round int) (tea.Model, tea.Cmd, 
 	}
 	goalRun := m.goalRunInfo(round)
 	m.runToolCallsStart = m.sessionToolCalls
-	m.messages = append(m.messages, chatMessage{Role: "user", Content: prompt})
+	m.messages = append(m.messages, chatMessage{Role: "user", Content: prompt, Images: images})
 	cur := chatMessage{Role: "assistant", Streaming: true}
 	m.messages = append(m.messages, cur)
 	m.curAssistant = &m.messages[len(m.messages)-1]
 	m.status = StatusStreaming
 	m.streamDoneNotified = false
 	m.callTokens = 0 // a new call starts with no estimate charged to it
-	go m.runAgent(ctx, runID, prompt, goalRun)
+	go m.runAgent(ctx, runID, prompt, goalRun, images)
 	return m, m.waitForStream(), true
 }
 
