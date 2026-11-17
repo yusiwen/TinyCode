@@ -61,16 +61,28 @@ the same trajectory record, and prints it beside the outcome (roadmap F4):
 The process (roadmap F4)
   What the run did, from its trajectory — not what it achieved, which is the grade above.
 
-  configuration   runs   steps   calls  read%  verify%  repeat%  errors%
-  build             36     5.4     9.2    97%      83%      2.1%     1.4%
-  limited           36     2.1     3.0    61%       6%      0.0%     3.2%
+  configuration  runs avg steps avg calls  read%  verify%   repeat%  errors%
+  build           36       9.5      10.2    33%      75%      2.2%     0.8%
+  limited         36       1.0       2.0     0%       0%      0.0%     0.0%
+  plan            36       4.6       6.5   100%       0%      0.0%    22.2%
 
-  Does the process predict the outcome?
+  Does the process predict the outcome? (within each configuration: `plan` never
+  verifies and `limited` runs out of budget first, so pooling them would compare
+  configurations rather than runs.)
 
-  property                            with      pass   without      pass
-  verified after the last write         30       77%         6       17%
-  read before writing                   32       59%         4        0%
+  configuration property                           with    pass  without    pass
+  build        verified after the last write        27    100%        9      89%
+  build        read before writing                  12     92%       24     100%
+  build        repeated a call                       8    100%       28      96%
+  build        hit a tool error                      3    100%       33      97%
+  ...`
 ```
+
+Those are the numbers of the 2026-11-17 run. Read them with the sample size in view: `build` passes 17 of 18
+tasks, so every split is a handful of attempts on one side, and **in this corpus the deterministic
+dimensions barely separate the runs at all** — reading before writing is *slightly worse* (92% vs 100%),
+which is the honest answer, not a signal to explain away. That is what the roadmap entry asked for: a
+measurement that decides whether a rubric is worth building.
 
 Each dimension is one rule over the recorded events, stated here so a reader can disagree and recompute
 it:
@@ -93,9 +105,21 @@ or set the mode of every measurement. Key material is carried across, so a run s
 
 **Does it predict the outcome?** The association table is the question the roadmap entry says decides
 whether a rubric and a judge model are worth building at all. It splits the attempts by each property
-and reports the pass rate on either side. Read the counts, not the percentages: with eighteen tasks and
-two reps per configuration, a cell of three attempts is a sentence, not a measurement — and nothing here
-shows **causation**, only that the two move together in this corpus.
+and reports the pass rate on either side — **within one configuration at a time**. Pooling them is not a
+neutral choice: `plan` cannot write, so it never verifies, and `limited` runs out of budget before it can
+either, so a pooled table reports "verified → 100% pass" that is really "the build configuration". The
+first paid run after F4 landed printed exactly that pooled table, and this page's rule is the correction.
+
+Read the counts, not the percentages: with eighteen tasks and two reps per configuration, a cell of
+three attempts is a sentence, not a measurement — and nothing here shows **causation**, only that the two
+move together in this corpus.
+
+**Reproducing it.** The report records the knobs a measurement was produced with (`-limited-budget`,
+`-timeout`), and `compareBaselines` refuses to compare two runs whose budget differs — the first run after
+F4 landed reported six "regressions" against a stored baseline that turned out to be a different budget,
+not a code change. A baseline written before the knobs were recorded has its `limited` rows counted as
+inconclusive instead. And the attempt's scratch directory is removed at the end: pass `-work <dir>` to
+keep the trajectories, full capture included, which is what a rubric study hand-labels.
 
 **What is deliberately not measured.** Whether a run was *honest about what it had not verified*, and
 whether its change was *minimal* relative to the reference fix, need a reader's judgement — that is the
@@ -148,6 +172,13 @@ problem, not the setting of it**. Six tasks, each chosen from a different hypoth
 agent, all fell: the algorithmic bound, the specification to implement, the five defects at once, the three
 coupled sites, the all-or-nothing state, the exhaustive format. `build` solved every one, two repetitions out
 of two.
+
+**The 2026-11-17 run recorded in `eval/BASELINE.md` is the same 108 attempts under this tree, and it is *not*
+a successor measurement of that table**: it used the default `-limited-budget 4000`, while the row above was
+measured with 10 000, so its `limited` configuration spends the whole budget before it can do anything
+(0/18, every run stopped by `budget`). The report records the knobs now precisely so this difference cannot
+be read as a regression — the comparison refuses those rows. `build` solved 17/18 (the one failure was an
+`error` stop on `expr-eval`, not a wrong fix) at 3.81M tokens, about $0.75.
 
 What the increment *did* show is where the difficulty went, and it is not where the labels were:
 

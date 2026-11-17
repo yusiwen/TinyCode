@@ -120,9 +120,19 @@ type taskDifficulty struct {
 	Tasks            int    `json:"tasks"`
 }
 
+// knobs are the settings a measurement was produced with. Two runs with a
+// different budget or timeout measured different things, and the first paid run
+// after F4 landed showed the cost of not recording them: a stored baseline made
+// with a larger `limited` budget reported six "regressions" that were the budget.
+type knobs struct {
+	LimitedBudget  int `json:"limited_budget,omitempty"`
+	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
+}
+
 // baselineReport is what gets committed.
 type baselineReport struct {
 	GeneratedAt    string           `json:"generated_at"`
+	Knobs          knobs            `json:"knobs,omitempty"`
 	Reps           int              `json:"reps"`
 	Runs           int              `json:"runs"`
 	Models         map[string]int   `json:"models,omitempty"`
@@ -379,6 +389,10 @@ func printMarkdown(w io.Writer, report baselineReport) {
 	fmt.Fprintf(w, "# The evaluation signal, measured\n\n")
 	fmt.Fprintf(w, "Generated %s. `TINYCODE_EVAL=1 go run ./eval/runner`\n\n", report.GeneratedAt)
 	fmt.Fprintf(w, "%d runs, %d repetitions per (configuration x task).\n\n", report.Runs, report.Reps)
+	if report.Knobs.LimitedBudget > 0 || report.Knobs.TimeoutSeconds > 0 {
+		fmt.Fprintf(w, "Knobs: `-limited-budget %d`, `-timeout %ds`.\n\n",
+			report.Knobs.LimitedBudget, report.Knobs.TimeoutSeconds)
+	}
 
 	if len(report.Models) > 0 {
 		names := make([]string, 0, len(report.Models))
@@ -526,6 +540,13 @@ func printMarkdown(w io.Writer, report baselineReport) {
 			fmt.Fprintf(w, " %s |", mark)
 		}
 		fmt.Fprintln(w)
+	}
+
+	// The process section is part of the committed report, not only of the
+	// terminal: it is the half of the grade that needs the trajectories, and a
+	// `-render` regenerates it from the stored results without spending anything.
+	if names := configurationNames(report.Configurations); len(report.Results) > 0 && hasProcess(report.Results) {
+		fmt.Fprint(w, renderProcess(report.Results, names))
 	}
 
 	fmt.Fprintf(w, "\n## What the numbers are\n\n")
@@ -870,4 +891,24 @@ func passAtKOf(cfg configSummary, k int) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// configurationNames lists the configurations in the report's order.
+func configurationNames(configs []configSummary) []string {
+	names := make([]string, 0, len(configs))
+	for _, cfg := range configs {
+		names = append(names, cfg.Name)
+	}
+	return names
+}
+
+// hasProcess reports whether any attempt carries process data: a baseline written
+// before that dimension existed renders the rest of the report and skips it.
+func hasProcess(results []runResult) bool {
+	for _, r := range results {
+		if r.Process != nil {
+			return true
+		}
+	}
+	return false
 }

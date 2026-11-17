@@ -122,7 +122,7 @@ func TestAMetadataRecordStillYieldsTheCounts(t *testing.T) {
 // a corpus whose answer is known by hand.
 func TestSummarizeProcessAveragesAnAttemptAndItsShare(t *testing.T) {
 	mk := func(pass, verified, readFirst, repeated, calls int) runResult {
-		return runResult{Pass: pass == 1, Process: &process{
+		return runResult{Configuration: "build", Pass: pass == 1, Process: &process{
 			Steps: calls, ToolCalls: calls, Repeated: repeated,
 			ReadBeforeWrite: readFirst == 1, Verified: verified == 1,
 		}}
@@ -147,7 +147,7 @@ func TestSummarizeProcessAveragesAnAttemptAndItsShare(t *testing.T) {
 	// The association is the question the entry says decides whether a judge is
 	// worth building: with verification, 2/2 passed; without, 0/2.
 	var verified, notVerified association
-	for _, a := range associateProcess(results) {
+	for _, a := range associateProcess(results, "build") {
 		switch a.Property {
 		case "verified after the last write":
 			verified = a
@@ -166,7 +166,7 @@ func TestSummarizeProcessAveragesAnAttemptAndItsShare(t *testing.T) {
 // TestRenderProcessNamesTheSampleSize keeps the caveat attached to the numbers: a
 // percentage over three attempts must not read like a measurement.
 func TestRenderProcessNamesTheSampleSize(t *testing.T) {
-	results := []runResult{{Pass: true, Process: &process{ToolCalls: 1, Verified: true}}}
+	results := []runResult{{Configuration: "build", Pass: true, Process: &process{ToolCalls: 1, Verified: true}}}
 	out := renderProcess(results, []string{"build"})
 	for _, want := range []string{"The process", "build", "Does the process predict the outcome", "not a measurement"} {
 		if !strings.Contains(out, want) {
@@ -214,5 +214,41 @@ func TestWriteAttemptHomeAsksForFullCapture(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".tinycode", ".env")); err != nil {
 		t.Errorf("the key file was not carried into the attempt home: %v", err)
+	}
+}
+
+// TestASummaryAndAnAssociationHoldTheConfigurationFixed is the bug the first paid
+// run exposed: with the configurations pooled, every row of the report described
+// the whole corpus, and the association table's "verified → 100% pass" was just
+// "the build configuration" — `plan` never writes, so it never verifies, and
+// `limited` runs out of budget before either.
+func TestASummaryAndAnAssociationHoldTheConfigurationFixed(t *testing.T) {
+	buildRun := runResult{Configuration: "build", Pass: true, Process: &process{
+		Steps: 4, ToolCalls: 4, ReadBeforeWrite: true, Verified: true,
+	}}
+	planRun := runResult{Configuration: "plan", Pass: false, Process: &process{
+		Steps: 2, ToolCalls: 2, ReadBeforeWrite: true,
+	}}
+	results := []runResult{buildRun, planRun}
+
+	build := summarizeProcess("build", results)
+	if build.Runs != 1 || build.Steps != 4 || build.Verified != 100 {
+		t.Errorf("build summary = %+v, want one run of four steps, all verified", build)
+	}
+	plan := summarizeProcess("plan", results)
+	if plan.Runs != 1 || plan.Steps != 2 || plan.Verified != 0 {
+		t.Errorf("plan summary = %+v, want one run of two steps, none verified", plan)
+	}
+
+	// `plan` has no verified run, so its association must not borrow build's.
+	for _, a := range associateProcess(results, "plan") {
+		if a.Property == "verified after the last write" && a.Present != 0 {
+			t.Errorf("plan's association borrowed build's verified run: %+v", a)
+		}
+	}
+
+	out := renderProcess(results, []string{"build", "plan"})
+	if strings.Count(out, "verified after the last write") != 2 {
+		t.Errorf("the report does not print one association row per configuration:\n%s", out)
 	}
 }

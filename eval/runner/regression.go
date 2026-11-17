@@ -54,9 +54,31 @@ func compareBaselines(baseline, current baselineReport) regression {
 		return reg
 	}
 
+	// The budget is part of what was measured: `limited` is defined by it, and a
+	// baseline made with a larger budget is not the same experiment. The first paid
+	// run after F4 landed reported six "regressions" that were this difference.
+	budgetKnown := baseline.Knobs.LimitedBudget > 0 && current.Knobs.LimitedBudget > 0
+	if budgetKnown && baseline.Knobs.LimitedBudget != current.Knobs.LimitedBudget {
+		reg.Comparable = false
+		reg.Note = fmt.Sprintf("the limited budget changed since the baseline (%d → %d tokens), so the `limited` rows measure a different experiment",
+			baseline.Knobs.LimitedBudget, current.Knobs.LimitedBudget)
+		return reg
+	}
+	// A baseline written before the knobs were recorded cannot say what budget it
+	// ran with. Its other rows are comparable; the `limited` ones are not, and they
+	// are counted as inconclusive rather than reported as regressions.
+	compareLimited := budgetKnown
+	if !budgetKnown {
+		reg.Note = "the baseline does not record -limited-budget, so the `limited` rows are counted as inconclusive; re-record the baseline to compare them"
+	}
+
 	oldTasks := taskOutcomes(baseline)
 	nowTasks := taskOutcomes(current)
 	for key, old := range oldTasks {
+		if !compareLimited && strings.HasPrefix(key, "limited/") {
+			reg.Inconclusive++
+			continue
+		}
 		now, ok := nowTasks[key]
 		if !ok {
 			continue

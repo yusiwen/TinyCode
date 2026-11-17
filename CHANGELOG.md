@@ -9,6 +9,29 @@ back to its change and tests.
 
 ## Unreleased
 
+### The first paid evaluation after F4, and what it corrected
+
+`TINYCODE_EVAL=1 go run ./eval/runner -reps 2 -baseline eval/baseline.json` on 2026-11-17: 108 attempts,
+3.81M tokens, about $0.75 on `deepseek-flash`. `build` solved 17/18 (the one failure was an `error` stop on
+`expr-eval`, not a wrong fix), `limited` 0/18 and `plan` 0/18. The run paid for itself three times over by
+exposing three defects in the reporting, all fixed here:
+
+- **The process table summed the whole corpus into every row.** Each configuration showed the same
+  numbers (108 runs each) because the summary never filtered by configuration. It does now, and the
+  report shows the real split: `build` averages 9.5 steps and verifies in 75% of attempts, `limited`
+  manages one step before the budget stops it, `plan` reads in every attempt and never passes.
+- **The association table pooled the configurations.** "Verified → 100% pass" was not about
+  verification: `plan` cannot write (so never verifies) and `limited` never gets far enough, so the
+  pooled table compared the *configurations*. It is now computed per configuration, and in `build` the
+  deterministic dimensions barely separate the runs at all — reading before writing is in fact slightly
+  worse (92% vs 100%) — which is the honest answer and the input #361 needs.
+- **A baseline could not say what it measured.** The stored baseline was produced with
+  `-limited-budget 10000`; this run used the documented default 4000, and the comparison reported six
+  "regressions" that were the budget. The report now records its knobs, and `compareBaselines` refuses
+  to decide `limited` rows when the budget differs or is unrecorded. `eval/BASELINE.md` is re-rendered
+  from the new run, with the knobs in its header and the process section inside the committed report
+  (`-render` regenerates it for free; the trajectories need `-work` to survive).
+
 ### The evaluation measures the process, not only the outcome
 
 Roadmap F4: every verdict the harness produced came from the task's own tests, so two passing runs looked
