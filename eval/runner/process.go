@@ -222,7 +222,7 @@ func summarizeProcess(config string, results []runResult) processSummary {
 	summary := processSummary{Configuration: config}
 	var steps, calls, repeated, errors int
 	for _, r := range results {
-		if r.Process == nil || r.Killed {
+		if r.Process == nil || r.Killed || r.Configuration != config {
 			continue
 		}
 		summary.Runs++
@@ -263,8 +263,14 @@ type association struct {
 	AbsentPass  float64
 }
 
-// associateProcess splits the attempts by each process property.
-func associateProcess(results []runResult) []association {
+// associateProcess splits one configuration's attempts by each process property.
+//
+// It is per configuration on purpose: `plan` cannot write, so it never verifies and
+// never passes, and `limited` runs out of budget before it can do either. Pooling the
+// configurations would report the difference between them as if it were the effect of
+// verification — the first paid run after F4 landed showed exactly that, with a
+// pooled "verified → 100% pass" that was nothing but "the build configuration".
+func associateProcess(results []runResult, config string) []association {
 	type bucket struct {
 		present, absent         int
 		presentPass, absentPass int
@@ -276,7 +282,7 @@ func associateProcess(results []runResult) []association {
 		"hit a tool error":              {},
 	}
 	for _, r := range results {
-		if r.Process == nil || r.Killed {
+		if r.Process == nil || r.Killed || r.Configuration != config {
 			continue
 		}
 		add := func(name string, present bool) {
@@ -320,22 +326,33 @@ func renderProcess(results []runResult, configurations []string) string {
 	var b strings.Builder
 	b.WriteString("\nThe process (roadmap F4)\n")
 	b.WriteString("  What the run did, from its trajectory — not what it achieved, which is the grade above.\n\n")
-	b.WriteString(fmt.Sprintf("  %-12s %5s %7s %7s %6s %8s %9s %9s\n",
-		"configuration", "runs", "steps", "calls", "read%", "verify%", "repeat%", "errors%"))
+	b.WriteString(fmt.Sprintf("  %-12s %5s %9s %9s %6s %8s %9s %8s\n",
+		"configuration", "runs", "avg steps", "avg calls", "read%", "verify%", "repeat%", "errors%"))
 	for _, name := range configurations {
 		s := summarizeProcess(name, results)
 		if s.Runs == 0 {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("  %-12s %5d %7.1f %7.1f %5.0f%% %7.0f%% %8.1f%% %8.1f%%\n",
+		b.WriteString(fmt.Sprintf("  %-12s %5d %9.1f %9.1f %5.0f%% %7.0f%% %8.1f%% %7.1f%%\n",
 			s.Configuration, s.Runs, s.Steps, s.Calls, s.ReadFirst, s.Verified, s.Repeated, s.ToolErrors))
 	}
 
-	b.WriteString("\n  Does the process predict the outcome?\n\n")
-	b.WriteString(fmt.Sprintf("  %-32s %9s %9s %9s %9s\n", "property", "with", "pass", "without", "pass"))
-	for _, a := range associateProcess(results) {
-		b.WriteString(fmt.Sprintf("  %-32s %9d %8.0f%% %9d %8.0f%%\n",
-			a.Property, a.Present, a.PresentPass, a.Absent, a.AbsentPass))
+	b.WriteString("\n  Does the process predict the outcome? (within each configuration: `plan` never\n")
+	b.WriteString("  verifies and `limited` runs out of budget first, so pooling them would compare\n")
+	b.WriteString("  configurations rather than runs.)\n\n")
+	b.WriteString(fmt.Sprintf("  %-12s %-32s %6s %7s %8s %7s\n", "configuration", "property", "with", "pass", "without", "pass"))
+	for _, name := range configurations {
+		rows := associateProcess(results, name)
+		if len(rows) == 0 {
+			continue
+		}
+		if summarizeProcess(name, results).Runs == 0 {
+			continue
+		}
+		for _, a := range rows {
+			b.WriteString(fmt.Sprintf("  %-12s %-32s %6d %6.0f%% %8d %6.0f%%\n",
+				name, a.Property, a.Present, a.PresentPass, a.Absent, a.AbsentPass))
+		}
 	}
 	b.WriteString("\n  A cell with three attempts is a sentence, not a measurement: read the counts, not the percentage.\n")
 	return b.String()

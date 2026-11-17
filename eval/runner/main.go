@@ -259,16 +259,12 @@ func main() {
 			defer fail(fmt.Errorf("%d task(s) regressed against %s", len(comparison.Regressed), *baselinePath))
 		}
 	}
+	report.Knobs = knobs{LimitedBudget: *limitedBudget, TimeoutSeconds: int(timeout.Seconds())}
 	if err := writeBaseline(*out, report); err != nil {
 		fail(err)
 	}
 	fmt.Println()
 	printMarkdown(os.Stdout, report)
-	names := make([]string, 0, len(configs))
-	for _, cfg := range configs {
-		names = append(names, cfg.Name)
-	}
-	fmt.Print(renderProcess(results, names))
 }
 
 // attempt runs the agent once against one task and grades the result.

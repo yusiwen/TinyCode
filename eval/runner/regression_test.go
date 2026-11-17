@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -22,12 +23,13 @@ func reportOf(corpus string, tasks ...struct {
 		})
 	}
 	report := baselineReport{Corpus: corpus, Reps: 2}
-	for _, cfg := range []string{"build"} {
-		if list, ok := byConfig[cfg]; ok {
-			report.Configurations = append(report.Configurations, configSummary{Name: cfg, Tasks: list})
-		}
+	for cfg, list := range byConfig {
+		report.Configurations = append(report.Configurations, configSummary{Name: cfg, Tasks: list})
+		report.Results = append(report.Results, runResult{Configuration: cfg, Task: list[0].Task})
 	}
-	report.Results = []runResult{{Configuration: "build", Task: "a"}}
+	sort.Slice(report.Configurations, func(i, j int) bool {
+		return report.Configurations[i].Name < report.Configurations[j].Name
+	})
 	return report
 }
 
@@ -156,5 +158,55 @@ func TestRegressionSectionIsRendered(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Regressed (1):** build/a") {
 		t.Fatalf("the regression is not named:\n%s", out.String())
+	}
+}
+
+// TestCompareBaselinesRefusesADifferentBudget: `limited` is defined by its token
+// budget, so a baseline made with another one measured a different experiment. The
+// first paid run after F4 landed reported six "regressions" that were exactly this.
+func TestCompareBaselinesRefusesADifferentBudget(t *testing.T) {
+	baseline := reportOf("", outcomeCase{"limited", "a", 2, 2})
+	baseline.Knobs.LimitedBudget = 12000
+	current := reportOf("", outcomeCase{"limited", "a", 0, 2})
+	current.Knobs.LimitedBudget = 4000
+
+	reg := compareBaselines(baseline, current)
+	if reg.Comparable {
+		t.Fatal("compared two different budgets")
+	}
+	if !strings.Contains(reg.Note, "limited budget changed") {
+		t.Fatalf("note = %q", reg.Note)
+	}
+	if len(reg.Regressed) != 0 {
+		t.Fatalf("a budget difference was reported as regressions: %v", reg.Regressed)
+	}
+}
+
+// TestAnUnrecordedBudgetExcludesOnlyTheLimitedRows: a baseline written before the
+// knobs were recorded cannot speak for `limited`, but its build rows are still a
+// fair comparison.
+func TestAnUnrecordedBudgetExcludesOnlyTheLimitedRows(t *testing.T) {
+	baseline := reportOf("", // no knobs recorded: an older baseline file
+		outcomeCase{"build", "a", 2, 2},
+		outcomeCase{"limited", "a", 2, 2},
+	)
+	current := reportOf("",
+		outcomeCase{"build", "a", 0, 2},
+		outcomeCase{"limited", "a", 0, 2},
+	)
+	current.Knobs.LimitedBudget = 4000
+
+	reg := compareBaselines(baseline, current)
+	if !reg.Comparable {
+		t.Fatalf("the build rows are comparable: %s", reg.Note)
+	}
+	if !strings.Contains(reg.Note, "does not record -limited-budget") {
+		t.Fatalf("the note does not explain the excluded rows: %q", reg.Note)
+	}
+	if len(reg.Regressed) != 1 || reg.Regressed[0] != "build/a" {
+		t.Fatalf("regressed = %v, want only build/a", reg.Regressed)
+	}
+	if reg.Inconclusive != 1 {
+		t.Fatalf("inconclusive = %d, want the excluded limited row", reg.Inconclusive)
 	}
 }
