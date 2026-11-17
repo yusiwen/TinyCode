@@ -9,6 +9,22 @@ back to its change and tests.
 
 ## Unreleased
 
+### The comparable measurement: no regression across two months, and a corpus with variance
+
+The second paid run of 2026-11-17 used `-limited-budget 10000`, the same rung as the 2026-10-18 measurement,
+so it is the first baseline since then that can be compared with it row for row. 108 attempts, 3.67M
+tokens, about $0.72: `build` 17/18, `limited` **10/18**, `plan` 0/18. The comparison decided **no
+regressions and no improvements** — 35 tasks unchanged, 19 inconclusive — which is the answer the first run
+could not give: the `limited` differences since October are partial flips, not clean ones.
+
+`build`'s single failure was the same in both runs: an `error` stop on `expr-eval`, not a wrong fix. The run
+kept its attempts (`-work`), so the full-capture trajectories under `/tmp/dsh-eval-work-10k` are the corpus
+the rubric study (#361) can hand-label, and `limited` now has variance (10/18 rather than 0/18) for the
+association table to work with.
+
+`eval/BASELINE.md` and `eval/baseline.json` are this run, with its knobs in the header; `docs/eval.md`
+records both runs side by side and why the first one is not comparable with the October measurement.
+
 ### The first paid evaluation after F4, and what it corrected
 
 `TINYCODE_EVAL=1 go run ./eval/runner -reps 2 -baseline eval/baseline.json` on 2026-11-17: 108 attempts,

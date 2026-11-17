@@ -173,12 +173,23 @@ agent, all fell: the algorithmic bound, the specification to implement, the five
 coupled sites, the all-or-nothing state, the exhaustive format. `build` solved every one, two repetitions out
 of two.
 
-**The 2026-11-17 run recorded in `eval/BASELINE.md` is the same 108 attempts under this tree, and it is *not*
-a successor measurement of that table**: it used the default `-limited-budget 4000`, while the row above was
-measured with 10 000, so its `limited` configuration spends the whole budget before it can do anything
-(0/18, every run stopped by `budget`). The report records the knobs now precisely so this difference cannot
-be read as a regression — the comparison refuses those rows. `build` solved 17/18 (the one failure was an
-`error` stop on `expr-eval`, not a wrong fix) at 3.81M tokens, about $0.75.
+**The 2026-11-17 measurement** is recorded in `eval/BASELINE.md`, and it was run twice: once at the
+documented default budget and once at the 10 000 the table above used.
+
+| Run | Knobs | 108 attempts, tokens | `build` | `limited` | `plan` | Verdict against the table above |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-17 09:52Z | `-limited-budget 4000` | 3.81M, about $0.75 | 17/18 | 0/18 | 0/18 | **not comparable** — the `limited` rung is a different experiment (every run stopped by `budget`) |
+| 2026-11-17 13:46Z | `-limited-budget 10000` | 3.67M, about $0.72 | 17/18 | **10/18** | 0/18 | **comparable**: no regressions and no improvements the rule can decide; 35 tasks unchanged, 19 inconclusive |
+
+The second run answered the question the first could not: **two months of changes since the 2026-10-18
+measurement produced no regression the rule can decide**, and the `limited` rung is comparable again at the
+same budget. It also shows what the first run could not distinguish from a regression: `limited` solved
+6/18 then and 10/18 now, which the rule counts as inconclusive because the flips are partial (one pass out
+of two), not clean.
+
+Both runs solved `build` 17/18, and the single failure was the same both times: an `error` stop on
+`expr-eval`, not a wrong fix. The second run also kept its attempts (`-work`), so the full-capture
+trajectories under `/tmp/dsh-eval-work-10k` are the corpus the rubric study in #361 can hand-label.
 
 What the increment *did* show is where the difficulty went, and it is not where the labels were:
 
