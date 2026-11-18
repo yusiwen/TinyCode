@@ -252,3 +252,57 @@ func TestASummaryAndAnAssociationHoldTheConfigurationFixed(t *testing.T) {
 		t.Errorf("the report does not print one association row per configuration:\n%s", out)
 	}
 }
+
+// TestRunTestsCountsAsVerification is the disagreement the rubric study found by
+// hand: a run that verified through the `run_tests` tool was scored as never
+// having verified, because only `bash` was inspected. The tool runs the project's
+// test command by construction, so the rule counts it.
+func TestRunTestsCountsAsVerification(t *testing.T) {
+	events := []map[string]any{
+		toolEvent("run_tests", "ok", "r1", ""),
+		toolEvent("write_file", "ok", "w1", `{"path":"a.go"}`),
+		toolEvent("run_tests", "ok", "r2", ""),
+		runEndEvent(3),
+	}
+	p := measureProcess(events)
+	if p.Tests != 2 {
+		t.Errorf("tests = %d, want both run_tests calls", p.Tests)
+	}
+	if !p.Verified {
+		t.Error("a run_tests call after the last write was not counted as verification")
+	}
+
+	// And the wrong order still does not verify.
+	events = []map[string]any{
+		toolEvent("run_tests", "ok", "r1", ""),
+		toolEvent("write_file", "ok", "w1", `{"path":"a.go"}`),
+		runEndEvent(2),
+	}
+	if measureProcess(events).Verified {
+		t.Error("a run_tests call before the write counted as verification")
+	}
+}
+
+// TestBashReadsCountAsEvidenceGathering is the second half of what the rubric study
+// found: `cat eval.go` is reading, and the rule called it nothing. Without this the
+// rule and a reader disagreed on half of the sampled attempts.
+func TestBashReadsCountAsEvidenceGathering(t *testing.T) {
+	events := []map[string]any{
+		toolEvent("bash", "ok", "b1", `{"command":"cat eval.go && echo --- && cat eval_test.go"}`),
+		toolEvent("write_file", "ok", "w1", `{"path":"eval.go"}`),
+		runEndEvent(2),
+	}
+	if p := measureProcess(events); !p.ReadBeforeWrite || p.Reads != 1 {
+		t.Errorf("a cat before the write was not counted: %+v", p)
+	}
+
+	// An in-place sed edit is a write, not a read.
+	events = []map[string]any{
+		toolEvent("bash", "ok", "b1", `{"command":"sed -i 's/a/b/' eval.go"}`),
+		toolEvent("write_file", "ok", "w1", `{"path":"eval.go"}`),
+		runEndEvent(2),
+	}
+	if p := measureProcess(events); p.ReadBeforeWrite {
+		t.Error("an in-place sed edit counted as evidence gathering")
+	}
+}

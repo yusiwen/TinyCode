@@ -95,6 +95,19 @@ func measureProcess(events []map[string]any) process {
 
 			argsText := payloadText(event["args"])
 			switch {
+			case tool == "bash":
+				// A shell call can gather evidence and verify in one go, and in this
+				// corpus it usually gathers it with `cat`/`grep` rather than the
+				// read_file tool. The rubric study measured the old rule against a
+				// reader's label and found it agreed on half the attempts: it called
+				// `cat eval.go` not-reading.
+				if bashReads(argsText) {
+					p.Reads++
+				}
+				if runsGradedSuite(argsText) {
+					p.Tests++
+					lastTestAt = i
+				}
 			case readTools[tool]:
 				p.Reads++
 			case writeTools[tool]:
@@ -103,11 +116,10 @@ func measureProcess(events []map[string]any) process {
 				if path := writtenPath(argsText); path != "" {
 					wroteFiles[path] = true
 				}
-			case tool == "bash":
-				if runsGradedSuite(argsText) {
-					p.Tests++
-					lastTestAt = i
-				}
+			case tool == "run_tests":
+				// The tool runs the project's test command by construction.
+				p.Tests++
+				lastTestAt = i
 			}
 		case "run.end":
 			p.Steps = int(number(event["steps"]))
@@ -134,7 +146,8 @@ func measureProcess(events []map[string]any) process {
 		if event["type"] != "tool.call" {
 			continue
 		}
-		if tool, _ := event["tool"].(string); readTools[tool] {
+		tool, _ := event["tool"].(string)
+		if readTools[tool] || (tool == "bash" && bashReads(payloadText(event["args"]))) {
 			p.ReadBeforeWrite = true
 			break
 		}
@@ -175,6 +188,42 @@ func writtenPath(argsText string) string {
 		return ""
 	}
 	return args.Path
+}
+
+// readCommands are the shell commands that read a file's contents. A bash call
+// that runs one of them is evidence gathering, which is what the dimension is
+// about; the rule cannot tell which file it read, so it records that the run
+// looked at something before it changed anything.
+var readCommands = map[string]bool{
+	"cat": true, "head": true, "tail": true, "grep": true, "rg": true,
+	"wc": true, "less": true, "more": true, "bat": true, "awk": true,
+}
+
+// bashReads reports whether a shell command reads file contents. `sed` counts only
+// without -i, because an in-place edit is a write, not a read.
+func bashReads(command string) bool {
+	if command == "" {
+		return false
+	}
+	var args struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal([]byte(command), &args); err != nil {
+		return false
+	}
+	for _, field := range strings.Fields(args.Command) {
+		word := strings.Trim(field, "\"'`")
+		if word == "sed" {
+			if strings.Contains(args.Command, "-i") {
+				continue
+			}
+			return true
+		}
+		if readCommands[word] {
+			return true
+		}
+	}
+	return false
 }
 
 // runsGradedSuite reports whether a shell command invoked the suite the tasks are
