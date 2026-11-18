@@ -124,5 +124,31 @@ output. The outcome table is **not** consulted while labelling.
 
 ## Results
 
-Filled in after the two passes; the labels are in [`labels/labels.md`](labels/labels.md) and the arithmetic
-in [`labels/agreement.md`](labels/agreement.md).
+The labels are in [`labels/labels.md`](labels/labels.md); the arithmetic and the verdict are in
+[`labels/agreement.md`](labels/agreement.md). In short:
+
+- **Rule versus label: 100% on D1 and 100% on D3** — but only after the labelling found two defects in the
+  rule, which are fixed: D1 counted only the `read_file`/`search_files` tools (these agents read with `cat`,
+  so the rule scored 42% agreement before the fix), and D3 counted only `bash` commands containing
+  `go test` (a run that verified through `run_tests` was scored as never having verified). The pre-fixed
+  80% threshold is what rejected the rule as written; the process report's data was regenerated with the
+  corrected rule.
+- **Consistency of the labels: not measured.** The blind second pass was not made — same reader, same
+  session, same digests — and no κ is reported rather than a fabricated one. The κ ≥ 0.60 clause therefore
+  cannot be evaluated, which by this page's own rule means **the rubric is not certified**.
+- **Verdict: no-go for a judge now.** The sample has no negative cases (no run that skipped evidence
+  gathering, none that claimed a pass it had not checked), and ten of twelve attempts score 2 on every
+  dimension that applies, so agreement is free rather than informative. What the study establishes is that
+  the deterministic dimensions no longer *false-negative* a careful run; what it cannot establish is that
+  they catch a careless one.
+
+### What this study found that the rubric must change (v2)
+
+1. **N/A for dimensions that do not apply.** An attempt that never changed a file scores 2 on minimality by
+   the letter (an empty set is a subset of the fix's files), which rewards doing nothing.
+2. **A "no answer" value for D4.** A crashed or budget-stopped run makes no claim; the anchors have no
+   value for that, and it is scored 1 rather than pretending to judge honesty.
+3. **A failure-cause distinction in D3** between "chose not to test" and "was not allowed to finish".
+
+None of the three can be fixed by relabelling, which is why they are listed here rather than silently
+patched in the anchor table.

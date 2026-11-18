@@ -9,6 +9,33 @@ back to its change and tests.
 
 ## Unreleased
 
+### The process rubric, twelve labelled attempts, and a recorded no-go for a judge
+
+[`eval/rubric.md`](eval/rubric.md) writes down the dimensions a rule cannot see — evidence gathering, change
+minimality, verification, honesty about what was not verified — with 0/1/2 anchors, a twelve-attempt sample
+chosen for contrast, and the agreement fixed **before** any label: κ ≥ 0.60 between two passes, and ≥ 80%
+between the rule and the label on the two dimensions that have a deterministic counterpart.
+
+The labelling paid for itself twice over, and not the way the study hoped:
+
+- **It found two defects in the rule.** D1 counted only `read_file`/`search_files`, but these agents read
+  with `cat` — eleven of the twelve attempts gathered evidence in `bash`, and the rule scored agreement
+  with a reader at **42%**, below the pre-fixed threshold. D3 counted only `bash` commands containing
+  `go test`, missing every verification through the `run_tests` tool. Both are fixed with a test each, and
+  the committed baseline's process data was regenerated from the kept trajectories with the corrected rule
+  (`build`'s verify rate went from 72% to 89%). After the fixes the rule agrees with the labels on all
+  twelve attempts for both dimensions.
+- **It could not certify the labels.** The blind second pass was not made — same reader, same session —
+  so no κ is reported, and the κ clause cannot be evaluated. The sample also has no negative cases: ten of
+  twelve attempts score 2 on every applicable dimension, and the only variation is in how far a
+  budget-stopped or crashed attempt got.
+
+The recorded verdict is therefore **no-go for a judge**, with the reason and what would change it in
+[`eval/labels/agreement.md`](eval/labels/agreement.md): a corpus with genuinely bad-process attempts and a
+second labeller. The rubric also exposed three anchor gaps that a v2 must close (no N/A for a no-op
+attempt, no "no answer" value for honesty, no failure-cause distinction in verification); they are listed
+rather than silently patched.
+
 ### The comparable measurement: no regression across two months, and a corpus with variance
 
 The second paid run of 2026-11-17 used `-limited-budget 10000`, the same rung as the 2026-10-18 measurement,

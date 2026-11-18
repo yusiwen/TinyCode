@@ -113,8 +113,8 @@ The process (roadmap F4)
   What the run did, from its trajectory — not what it achieved, which is the grade above.
 
   configuration  runs avg steps avg calls  read%  verify%   repeat%  errors%
-  build           36       8.9       9.9    42%      72%      3.4%     0.3%
-  limited         36       3.0       4.7    47%       0%      0.0%     0.0%
+  build           36       8.9       9.9   100%      89%      3.4%     0.3%
+  limited         36       3.0       4.7   100%       0%      0.0%     0.0%
   plan            36       4.4       6.5   100%       0%      0.0%    24.0%
 
   Does the process predict the outcome? (within each configuration: `plan` never
@@ -123,11 +123,11 @@ The process (roadmap F4)
 
   configuration property                           with    pass  without    pass
   build        hit a tool error                      1    100%       35     97%
-  build        read before writing                  15    100%       21     95%
+  build        read before writing                  36     97%        0      0%
   build        repeated a call                      12    100%       24     96%
-  build        verified after the last write        26    100%       10     90%
+  build        verified after the last write        32    100%        4     75%
   limited      hit a tool error                      0      0%       36     61%
-  limited      read before writing                  17     59%       19     63%
+  limited      read before writing                  36     61%        0      0%
   limited      repeated a call                       0      0%       36     61%
   limited      verified after the last write         0      0%       36     61%
   plan         hit a tool error                     33      0%        3      0%

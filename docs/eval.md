@@ -92,8 +92,8 @@ it:
 | steps, tool calls | from the record's `run.end` and `tool.call` events |
 | repeated calls | the same tool with the same argument digest, more than once — the cheapest signal that a run is stuck, because the second identical call gets the same answer |
 | tool errors, refusals | the event's `status`: anything but `ok`, and `refused`/`blocked`/`denied` separately |
-| evidence gathering | a read or search call (`read_file`, `search_files`, the `lsp_*` tools) before the first write |
-| verification | a `go test` call **after the last write** — a test that ran before the change proves nothing about it |
+| evidence gathering | a read or search call (`read_file`, `search_files`, the `lsp_*` tools) or a reading shell command (`cat`, `head`, `tail`, `grep`, `rg`, `wc`, `less`, `more`, `bat`, `awk`, `sed` without `-i`) before the first write |
+| verification | a `go test` command from `bash` **or a `run_tests` call after the last write** — a test that ran before the change proves nothing about it |
 | files written | distinct `path` arguments across `write_file`/`edit`/`apply_patch` |
 
 **What it takes to see it.** Two dimensions need the argument text, and the record's default is metadata
@@ -120,6 +120,14 @@ F4 landed reported six "regressions" against a stored baseline that turned out t
 not a code change. A baseline written before the knobs were recorded has its `limited` rows counted as
 inconclusive instead. And the attempt's scratch directory is removed at the end: pass `-work <dir>` to
 keep the trajectories, full capture included, which is what a rubric study hand-labels.
+
+**The rubric, and what it found.** [`rubric.md`](rubric.md) defines the dimensions a rule cannot see
+(evidence gathering, minimality, verification, honesty) and the agreement a label must reach before a judge
+may score them. Twelve attempts were labelled from a kept run; the labelling found two defects in the
+deterministic dimensions above — the rule did not count `cat` as reading, nor `run_tests` as verifying —
+both fixed, after which it agrees with the labels on all twelve. The labels themselves could not be
+certified (no blind second pass), so the recorded verdict is **no-go for a judge**, with what the corpus
+would need to change that: attempts with genuinely bad process, and a second labeller.
 
 **What is deliberately not measured.** Whether a run was *honest about what it had not verified*, and
 whether its change was *minimal* relative to the reference fix, need a reader's judgement — that is the
