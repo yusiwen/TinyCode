@@ -11,28 +11,43 @@ table never trails the prose.
 
 ## Where the entries stand
 
-The source inventory lists 39 items; this document carries 41 entries, because D7 and F4 were
-recorded after it (see *Provenance and method*).
+The source inventory lists 39 items; this document carries 43 entries, because D7 and F4 were recorded
+after it, and F5 and F6 were filed on 2026-11-19 from measuring the harness itself (see *Provenance and
+method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
 | Delivered | 30 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 10 | verified gaps, no issue opened |
-| **Total** | **41** | `grep -Ec '^\| [A-H][0-9] \| .* \| (Delivered —\|Refuted\|In progress\|Not started)' docs/roadmap.md` |
+| Not started | 12 | verified gaps; F5 and F6 name a filed issue, the other ten have none |
+| **Total** | **43** | counted by the command below the table |
+
+The count in the Total row is a number written into a document, so one command has to reproduce it — and
+before 2026-11-19 this one reproduced **0**: it was written `-Ec` (extended regex) with BRE's `\|` for
+alternation, so the pattern looked for a literal `|Refuted` and matched nothing while the table claimed 41.
+The `[|]` form is extended-regex-safe *and* safe inside a table cell, which is what the escaping was for:
+
+```bash
+grep -Ec '^[|] [A-H][0-9] [|] .* [|] (Delivered —|Refuted|In progress|Not started)' docs/roadmap.md
+# 43
+```
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
 [#302](https://github.com/yusiwen/TinyCode/issues/302) — B1's remaining slice, the Hindsight adapter's
 contract against a real deployment — and [#269](https://github.com/yusiwen/TinyCode/issues/269)
 (steering input while a run streams), which is not a roadmap entry. F1 is delivered; its judge became
-F4 rather than disappearing, so a deliberate exclusion is not mistaken for a finished capability.
+F4 rather than disappearing, and F4 is delivered too — recorded as a **no-go for a judge** with its
+numbers in [`eval/rubric.md`](../eval/rubric.md) — so a deliberate exclusion is not mistaken for a
+finished capability.
 
-**Next, by the reading order**: C4 (the hooks bundle; then C5, C3, C6 — reordered on 2026-11-03 because
-hooks are the smallest item and two entries need them: C5 can fire a test command from one, and D7 needs a
-turn-end seam), then C6 (a second isolation tier, since C7's macOS fence is delivered), then F1, then the
-larger D and E items. B4 is **not** next: it was measured on 2026-10-28 and the
-injected map lost, so it reopens only under the three conditions its entry names.
+**Next, by the reading order**: the first half of that order has been delivered — C4 (the hooks bundle),
+C5, C3, C6 and F1 all landed after it was written — so it is a record of the order, not a plan. What is
+left is the twelve *Not started* entries: F5 and F6 first (both are consequences of F1's own numbers and
+neither spends money to diagnose), then the larger D and E items, then G1/G2. B4 is **not** next: it was
+measured on 2026-10-28 and the injected map lost, so it reopens only under the three conditions its entry
+names — the first of which, *a corpus that defeats the baseline*, is what F5 and the step-budget ablation
+are about.
 
 ### Status by entry
 
@@ -74,6 +89,8 @@ injected map lost, so it reopens only under the three conditions its entry names
 | F2 | No A/B comparison mechanism | Delivered — #345 |
 | F3 | Tool calls are not validated against their schema | Delivered — #200 |
 | F4 | The evaluation grades outcomes, never the process | Delivered — #360 |
+| F5 | An attempt's failure has no class, and the tool coverage is unrecorded | Not started — #366 |
+| F6 | Every number is one model under one scaffold | Not started — #367 |
 | G1 | Delegation is two levels deep | Not started |
 | G2 | Sub-agent output is not streamed to the UI | Not started |
 | H1 | No i18n | Delivered — #350 |
@@ -1009,6 +1026,48 @@ says how to record and refresh one — and a
   predicts the outcomes the tests already measure. If it does not, the rubric scores something nobody acts
   on.
 - **Effort**: ~5–8 d (rubric 1–2 d, harness 2 d, agreement study 2–3 d including the hand-labelling).
+
+### F5 — An attempt's failure has no class, and the tool coverage is unrecorded
+
+- **Filed**: [#366](https://github.com/yusiwen/TinyCode/issues/366) — 2026-11-19, not started. Found by
+  auditing the 2026-11-17 measurement against the **harness** rather than the agent, so the diagnosis and
+  the corpus it diagnoses are the same run.
+- **Gap**: the report counts how a run stopped (`final`, `error`, `budget`) but not *why it failed*, so a
+  wrong fix and a harness failure occupy the same cell. `build` produced one failure in 36 attempts and it
+  was an `error` stop — the report reads that as a statement about difficulty. The corpus also never says
+  which declared tools it reached: 356 `build` calls used **6 of 25**, leaving `apply_patch`,
+  `search_files` under `build`, the four `lsp_*`, `task`/`task_collect`, `todo`, `goal`, `skill_*`,
+  `web_*`, `git_*` and `mcp_*` with no evidence either way. `max_steps` is missing from the recorded
+  knobs although every recorded repository attempt ended on it.
+- **Evidence**: `eval/baseline.json` — `stops` (`build`: `final 35, error 1`; `limited`: `budget 36`),
+  the per-task `tools` maps, and a `knobs` block naming `-limited-budget` and `-timeout` only.
+  [#336](https://github.com/yusiwen/TinyCode/issues/336) is the same defect class, half-fixed.
+- **Already present**: `stops`, `killed`, `tampered`, per-task `tools` counts, the knobs block and
+  `compareBaselines`' refusal to compare across knobs. The record exists; the taxonomy and the coverage
+  row do not.
+- **What it unblocks**: F4's **no-go for a judge** rests on a twelve-attempt sample with no negative
+  cases. The corpus has no rung between *the default agent does it well* (35 of 36 attempts `final`) and
+  *a budget stops it before it can act* (36 of 36 `budget`), and its one failure is a harness error rather
+  than a careless run. A failure taxonomy is what makes attempts usable as negative cases.
+- **Effort**: ~1–2 d. No API spend: every number above is already in the committed baseline.
+
+### F6 — Every number is one model under one scaffold
+
+- **Filed**: [#367](https://github.com/yusiwen/TinyCode/issues/367) — 2026-11-19, not started.
+- **Gap**: `eval/BASELINE.md` is `(TinyCode, deepseek-flash)` at `reps=2`, which answers *is this
+  configuration good* and not *is this harness good*. Same-model different-scaffold gaps reach **15.6pp
+  median, 48pp max**; model rankings reverse across scaffolds (+7.94pp in one, −30.16pp in another); and
+  reliability is **0.94–0.99** for a fixed model–scaffold pairing against **0.15–0.84** for the model. No
+  table here can separate "the harness improved" from "the harness fitted one model". `reps=2` also caps
+  `pass@k` at `k ≤ 2`, and `pass@k` is not `pass^k`; nothing in the report is an interval.
+- **Evidence**: `eval/BASELINE.md` (`Models: deepseek-flash`); [eval.md](eval.md) — "not a statistical
+  test", and "reps agreed … the noise floor, not a confidence interval".
+- **Already present**: `-variants` names a model per arm (`eval/runner/variants.go`), six provider
+  backends (A6), and `pass@k` ([#339](https://github.com/yusiwen/TinyCode/issues/339)). The axis costs a
+  JSON file, not code.
+- **Rule, registered before the run**: if swapping the model moves `build` below half the task set, no
+  earlier number may be reported as a capability of TinyCode rather than of the model it ran on.
+- **Effort**: ~2–3 d plus ~$2 of module-corpus spend; the expensive band at `reps=5` is the larger cost.
 
 ## G. Multi-agent
 
