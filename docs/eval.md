@@ -51,6 +51,51 @@ Each attempt gets a fresh copy of the task and its own record directory, so one 
 next one. Test files are hashed before and after: an attempt that edited a test is recorded as
 **tampered** and counts as a failure, because a pass obtained by weakening the test is not a pass.
 
+## What the corpus reaches
+
+A configuration can only be measured on the tools its tasks make it call. `CODEBASE.md`'s registry names
+**26** built-in tools plus the runtime `mcp_*` family; the 2026-11-17 baseline made 759 calls and used
+**10** of them.
+
+| Tool | `build` | `limited` | `plan` | calls |
+| --- | ---: | ---: | ---: | ---: |
+| `bash` | 242 | 100 | — | 342 |
+| `read_file` | 33 | 38 | 63 | 134 |
+| `search_files` | — | — | 134 | 134 |
+| `write_file` | 29 | 13 | — | 42 |
+| `run_tests` | 28 | 11 | — | 39 |
+| `git_status` | — | — | 33 | 33 |
+| `edit` | 16 | 8 | — | 24 |
+| `sandbox_allow` | 8 | — | — | 8 |
+| `git_log` | — | — | 2 | 2 |
+| `lsp_symbols` | — | — | 1 | 1 |
+| **distinct** | **6** | **5** | **5** | **10** |
+
+Sixteen tools were called by **no** configuration: `apply_patch`, `git_diff`, `git_commit`, `git_branch`,
+`web_search`, `web_extract`, `web_extract_browser`, `task`, `task_collect`, `todo`, `goal`, `load_skill`,
+`skill_manage`, `lsp_definition`, `lsp_references`, `lsp_hover` — plus the `mcp_*` family.
+
+This is a property of the corpus, not of the tools. Eighteen single-module fixes make an agent read, edit
+and test; nothing in that shape of work needs a sub-agent, a goal, a checkpoint or a web fetch. What it
+means for evaluation is the part worth recording: **a component no task triggers cannot be ablated.**
+Switching the LSP tools off would leave this score unchanged, and a report would print "no effect" where
+the truth is "not measured". Roadmap F5 carries the coverage matrix as a requirement; until it exists, a
+zero delta over an unreached tool is not evidence.
+
+## What a stop does not say
+
+`stops` counts how an attempt ended, and the report prints it beside the verdict, which reads as though it
+were the verdict. Two rows say otherwise:
+
+- `limited` ended **36 of 36** attempts on `budget` and still solved **10 of 18** tasks — the work landed
+  before the budget ran out, and the attempt had no call left to report it.
+- `build` ended 35 of 36 on `final` and the 36th on `error`, and that one attempt is the only failure in
+  eighteen tasks: a harness failure, not a wrong fix.
+
+So `stop` is a property of the attempt and `solved` is the verdict, and neither derives from the other.
+The distinction this page cannot yet make — *why* it failed, as against *whether* it failed — is roadmap
+F5, and it is the reason the corpus's single failure cannot be read as evidence about difficulty.
+
 ## The process, measured
 
 The grade is the task's own suite, so two passing runs look identical even when one read the code it

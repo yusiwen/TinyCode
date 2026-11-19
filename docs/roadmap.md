@@ -11,17 +11,17 @@ table never trails the prose.
 
 ## Where the entries stand
 
-The source inventory lists 39 items; this document carries 43 entries, because D7 and F4 were recorded
-after it, and F5 and F6 were filed on 2026-11-19 from measuring the harness itself (see *Provenance and
-method*).
+The source inventory lists 39 items; this document carries 44 entries, because D7 and F4 were recorded
+after it, and F5, F6 and F7 were filed on 2026-11-19 from measuring the harness itself (see *Provenance
+and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
 | Delivered | 30 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 12 | verified gaps; F5 and F6 name a filed issue, the other ten have none |
-| **Total** | **43** | counted by the command below the table |
+| Not started | 13 | verified gaps; F5, F6 and F7 name a filed issue, the other ten have none |
+| **Total** | **44** | counted by the command below the table |
 
 The count in the Total row is a number written into a document, so one command has to reproduce it — and
 before 2026-11-19 this one reproduced **0**: it was written `-Ec` (extended regex) with BRE's `\|` for
@@ -30,7 +30,7 @@ The `[|]` form is extended-regex-safe *and* safe inside a table cell, which is w
 
 ```bash
 grep -Ec '^[|] [A-H][0-9] [|] .* [|] (Delivered —|Refuted|In progress|Not started)' docs/roadmap.md
-# 43
+# 44
 ```
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -91,6 +91,7 @@ are about.
 | F4 | The evaluation grades outcomes, never the process | Delivered — #360 |
 | F5 | An attempt's failure has no class, and the tool coverage is unrecorded | Not started — #366 |
 | F6 | Every number is one model under one scaffold | Not started — #367 |
+| F7 | Robustness is not measured | Not started — #368 |
 | G1 | Delegation is two levels deep | Not started |
 | G2 | Sub-agent output is not streamed to the UI | Not started |
 | H1 | No i18n | Delivered — #350 |
@@ -1035,10 +1036,10 @@ says how to record and refresh one — and a
 - **Gap**: the report counts how a run stopped (`final`, `error`, `budget`) but not *why it failed*, so a
   wrong fix and a harness failure occupy the same cell. `build` produced one failure in 36 attempts and it
   was an `error` stop — the report reads that as a statement about difficulty. The corpus also never says
-  which declared tools it reached: 356 `build` calls used **6 of 25**, leaving `apply_patch`,
-  `search_files` under `build`, the four `lsp_*`, `task`/`task_collect`, `todo`, `goal`, `skill_*`,
-  `web_*`, `git_*` and `mcp_*` with no evidence either way. `max_steps` is missing from the recorded
-  knobs although every recorded repository attempt ended on it.
+  which declared tools it reached: the registry names 26, `build` called **6**, and all three
+  configurations together called **10** — sixteen were never called by any of them, so a component the
+  corpus cannot reach would report "no effect" where the truth is "not measured". `max_steps` is missing
+  from the recorded knobs although every recorded repository attempt ended on it.
 - **Evidence**: `eval/baseline.json` — `stops` (`build`: `final 35, error 1`; `limited`: `budget 36`),
   the per-task `tools` maps, and a `knobs` block naming `-limited-budget` and `-timeout` only.
   [#336](https://github.com/yusiwen/TinyCode/issues/336) is the same defect class, half-fixed.
@@ -1049,6 +1050,14 @@ says how to record and refresh one — and a
   cases. The corpus has no rung between *the default agent does it well* (35 of 36 attempts `final`) and
   *a budget stops it before it can act* (36 of 36 `budget`), and its one failure is a harness error rather
   than a careless run. A failure taxonomy is what makes attempts usable as negative cases.
+- **The step budget, separated from difficulty**: `root-threading` and `run-compaction` each failed 0/2
+  with every attempt ending at the 50-step limit, and "the budget is the binding constraint" is a reading
+  of `stops` rather than a measurement — the same inference this entry is about. `-variants` already takes
+  `max_steps`, so the experiment costs a JSON file: 50/150/300 over the three repository tasks, 18
+  attempts. **Rule, registered before the run**: a task solved inside 150 records its failure as *budget*
+  and the step budget joins the knobs; still unsolved at 300 means the failure is the task. This is the
+  first of everything in F5–F7 to run, because it decides whether the next corpus increment is about
+  difficulty at all.
 - **Effort**: ~1–2 d. No API spend: every number above is already in the committed baseline.
 
 ### F6 — Every number is one model under one scaffold
@@ -1068,6 +1077,33 @@ says how to record and refresh one — and a
 - **Rule, registered before the run**: if swapping the model moves `build` below half the task set, no
   earlier number may be reported as a capability of TinyCode rather than of the model it ran on.
 - **Effort**: ~2–3 d plus ~$2 of module-corpus spend; the expensive band at `reps=5` is the larger cost.
+
+### F7 — Robustness is not measured
+
+- **Filed**: [#368](https://github.com/yusiwen/TinyCode/issues/368) — 2026-11-19, not started.
+- **Gap**: every corpus task assumes the tools work — `bash` returns an exit code the model can read,
+  `run_tests` returns a parseable summary, `read_file` returns the bytes — so the measurement is of an
+  agent in a world where nothing goes wrong. A1 retried provider failures and #336 made a killed attempt
+  record itself honestly, but nothing asks whether a run **still solves the task** when a tool times out,
+  fails unparseably, or returns an empty success. The F4 process table counts tool errors the run *hit*,
+  not a fault the harness *survived*; the two are different numbers and only the first exists.
+- **Evidence**: `grep -ri 'robustness\|fault injection' docs/ eval/` finds nothing; `eval/runner` injects
+  no failure; `eval/BASELINE.md` has no such row. A1's tests (`agent/retry_test.go`) cover the provider
+  call, not the loop.
+- **Already present**: A1's backoff with `Retry-After` flooring, `-timeout` recorded as `stop: "timeout"`
+  (#336), the `refused`/`blocked`/`denied` statuses the process report already counts, and C6's isolation
+  tiers. The failure *sources* exist; the experiment does not.
+- **What to measure**: one fault per arm, with the clean arm always present in the same session — `bash`
+  killed at its timeout, `run_tests` exiting non-zero with unparseable output, `read_file` truncated one
+  line short, a provider 429 on the second turn (A1's path exercised mid-run), and a tool returning an
+  empty success. Report solve rate per arm beside the `failure_class` mix from F5 — which is why these two
+  are ordered after it.
+- **Rule, registered before the run**: a fault arm whose solve rate falls below the clean arm's by more
+  than the clean arm's own cross-repetition spread is a **harness defect**, not noise. At `reps=2` no
+  spread is estimable, so the first pass is a smoke test: it may only name a defect when the clean arm
+  solves and the fault arm does not.
+- **Effort**: ~2–3 d — a wrapper around the tool layer that fails by name, one flag per fault (off by
+  default, so an older baseline still means what it meant), and the report rows. No new corpus.
 
 ## G. Multi-agent
 
