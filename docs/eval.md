@@ -450,6 +450,20 @@ Two tasks, `build`, two repetitions each (2026-11-06):
 | `root-threading` | **0/2** (one hit the 50-step limit; the other was killed by the attempt timeout and recorded no steps) | 2.56M tokens for the recorded attempt |
 | `run-compaction` | **0/2** (one hit the 50-step limit; the other killed by the attempt timeout) | 3.33M tokens for the recorded attempt |
 
+**Re-measured 2026-11-21, one attempt at the same 50-step budget**: `hook-timeout` **failed**, ending at
+`final` after 40 steps and 1.44M tokens — the agent believed it was done and `go test ./hook` disagreed.
+Re-measured again the same day through a different driver, `local` did not finish it either.
+
+So the reading below — that this task is "too easy" — does not survive. A task solved 2/2 on 2026-11-06
+and answered **wrongly** on 2026-11-21 is not an easy task; it is a task near a 50% pass rate. The
+distinction matters because the two imply opposite things about the corpus: an easy task is filler, an
+unstable one is noise, and neither can carry a comparison. The module corpus has the same case in
+`expr-eval`, whose six recorded runs read 5, 13, 30, 9, 15, 11 steps (see `agent-harness-eval`, `PLAN.md`).
+
+What two passes plus one wrong answer say, precisely: **`hook-timeout` should not be counted as solved
+headroom, and should not be counted as a defeat.** It is the one task here whose verdict moves between
+runs, and a task like that is worth replacing rather than re-running.
+
 Across the set: `build` solved **1/3**, every repetition agreed on its verdict, the median attempt hit the
 **50-step limit**, and **tokens per solved task were 9.0M** — against 88k–184k on the module-level corpus. The
 second measurement, with the third task added, is the one that met this increment's condition:
@@ -472,9 +486,11 @@ Two of three did. What that means, said precisely:
 **One of the two defeated the funded agent**, so the domain lever is real — and the increment's
 pre-registered condition ("at least two tasks defeat `build`") was **not met**. Two facts are worth keeping:
 
-- `hook-timeout` was too easy for the repository it sits in: the fix is the same idiom the codebase already
-  uses in `tool/bash.go`, and the agent found it in one pass. A repository-level task still has to be hard
-  *for that repository*.
+- `hook-timeout` was **not reliably solvable**, which two passes had suggested it was: the 2026-11-21
+  re-measurement ends at `final` with the suite red, after 40 steps and 1.44M tokens. Its fix is an idiom the
+  codebase already uses in `tool/bash.go`, which makes it cheap to attempt and easy to get *almost* right —
+  that is a recipe for an unstable task, not an easy one. A repository-level task still has to be hard *for
+  that repository*, and it also has to be hard the same way twice.
 - `root-threading` defeated the agent by being a **cross-cutting change**: several files derive the root for
   one call, and the agent's first attempt patched one of them and reasoned about "what remains" at the step
   limit. That is the shape the F1 entry has been pointing at since the first increment — a failure mode that

@@ -908,13 +908,16 @@ working directory only — it never walks upward and never merges nested files (
 - **Repository-level tasks** ([#332](https://github.com/yusiwen/TinyCode/issues/332)) — the domain the previous
   increment named. A task is this repository at a commit **before** a fix, materialized from `git archive` at
   run time, with the fix's own test files injected only after the attempt and the fix's non-test diff kept as
-  the reference. **Measured 2026-11-06, four runs**: `hook-timeout` solved 2/2 (too easy — its fix is an idiom
-  the codebase already uses), `root-threading` **0/2** (a cross-cutting change; one attempt hit the 50-step
+  the reference. **Measured 2026-11-06, four runs**: `hook-timeout` solved 2/2 (~~too easy — its fix is an idiom
+  the codebase already uses~~ **not reproducible: on 2026-11-21 it ended at `final`, 40 steps, 1.44M tokens,
+  with the suite red — a task near a 50% pass rate, not an easy one; see `docs/eval.md`**), `root-threading`
+  **0/2** (a cross-cutting change; one attempt hit the 50-step
   limit with "what remains" reasoning). One of two defeated the funded agent, so the domain lever is real, and
   the pre-registered condition ("at least two") was not met: the next increment is more tasks of the
   cross-cutting shape, not a framework. A third task, `run-compaction` (a run's own messages never compact, so a
   long round grows until the provider refuses), was added with a test written for the behaviour rather than
-  taken from a fix commit. **Re-measured 2026-11-06, six runs: `build` solved 1/3.** `hook-timeout` 2/2,
+  taken from a fix commit. **Re-measured 2026-11-06, six runs: `build` solved 1/3.** `hook-timeout` 2/2 (on
+  that date only — see above),
   `root-threading` 0/2, `run-compaction` 0/2 — **two of three defeat the default configuration**, which is this
   increment's condition, and the reading that goes with it: every recorded attempt ended at the **50-step
   limit** (so the budget is the binding constraint, not only the task), two attempts were killed by the
