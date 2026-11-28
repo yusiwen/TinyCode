@@ -11,17 +11,17 @@ table never trails the prose.
 
 ## Where the entries stand
 
-The source inventory lists 39 items; this document carries 44 entries, because D7 and F4 were recorded
-after it, and F5, F6 and F7 were filed on 2026-11-19 from measuring the harness itself (see *Provenance
-and method*).
+The source inventory lists 39 items; this document carries 45 entries: D7 and F4 were recorded after it,
+F5, F6 and F7 were filed on 2026-11-19 from measuring the harness itself, and H4 was filed on 2026-11-28
+for the branch-handling gaps (see *Provenance and method*).
 
 | State | Entries | Note |
 | :--- | ---: | :--- |
 | Delivered | 30 | the entry's **Picked up** line names the issue that landed it |
 | Refuted | 1 | E5 — the capability exists, recorded so it is not re-filed |
 | In progress | 0 | nothing is picked up right now |
-| Not started | 13 | verified gaps; F5, F6 and F7 name a filed issue, the other ten have none |
-| **Total** | **44** | counted by the command below the table |
+| Not started | 14 | verified gaps; F5, F6, F7 and H4 name a filed issue, the other ten have none |
+| **Total** | **45** | counted by the command below the table |
 
 The count in the Total row is a number written into a document, so one command has to reproduce it — and
 before 2026-11-19 this one reproduced **0**: it was written `-Ec` (extended regex) with BRE's `\|` for
@@ -30,7 +30,7 @@ The `[|]` form is extended-regex-safe *and* safe inside a table cell, which is w
 
 ```bash
 grep -Ec '^[|] [A-H][0-9] [|] .* [|] (Delivered —|Refuted|In progress|Not started)' docs/roadmap.md
-# 44
+# 45
 ```
 
 **Open work**: nothing on this roadmap is picked up right now. Off-roadmap work still open is
@@ -43,7 +43,7 @@ finished capability.
 
 **Next, by the reading order**: the first half of that order has been delivered — C4 (the hooks bundle),
 C5, C3, C6 and F1 all landed after it was written — so it is a record of the order, not a plan. What is
-left is the twelve *Not started* entries: F5 and F6 first (both are consequences of F1's own numbers and
+left is the fourteen *Not started* entries: F5 and F6 first (both are consequences of F1's own numbers and
 neither spends money to diagnose), then the larger D and E items, then G1/G2. B4 is **not** next: it was
 measured on 2026-10-28 and the injected map lost, so it reopens only under the three conditions its entry
 names — the first of which, *a corpus that defeats the baseline*, is what F5 and the step-budget ablation
@@ -97,6 +97,7 @@ are about.
 | H1 | No i18n | Delivered — #350 |
 | H2 | Command checks are heuristics, not a boundary | Delivered — #352 |
 | H3 | No branch visualisation | Delivered — #347 |
+| H4 | Branch handling ends at the split: no address, no CLI, no re-parent, no reach | Not started — #372 |
 
 ## Provenance and method
 
@@ -105,7 +106,8 @@ are about.
 - **Added since the inventory**: D7 and the resume/history defect its prerequisite names were not in
   the source report. They were recorded 2026-10-19 from a capability-by-capability comparison with a
   harness that has persistent goals, and every reference in them was checked with the same rule as
-  the rest — a counted search or an exit code, never a sample.
+  the rest — a counted search or an exit code, never a sample. H4 was recorded 2026-11-28 from the
+  boundaries H3's delivery left open, and its references are pinned to the tree of that day.
 - **Re-checked**: every item was verified against the source with counted or exit-coded searches
   (`rg -c`, `rg -q`; exit 1 = no match, exit 2 = searched wrong) rather than by sampling. Nothing
   here rests on a truncated listing.
@@ -138,12 +140,16 @@ was missing and how that was checked, in the past tense of the commit they were 
 authority; read a delivered entry's Gap as the reason it was worth building, not as a claim about the
 tree.
 
+A **Filed** entry names an issue in the tracker and nothing more: the gap is recorded and no work has
+begun. Only a **Picked up** line means someone is building it, which keeps a recorded gap and a
+commitment distinguishable at a glance.
+
 Every reference was checked against `7e6b017` (83 references, none missing, verified by a sweep
 that was itself mutation-tested: a renamed file and an out-of-range line each make it fail). The
 line numbers are pinned to that baseline and **will drift** as the code moves. The durable part of
 an entry is its file and symbol; read a line number as a starting point, not as a fact about the
-current tree. D7 is the exception: it was recorded later, so its references are pinned to the
-2026-10-19 tree instead.
+current tree. D7, F5–F7 and H4 are the exceptions: they were recorded later, so their references are
+pinned to the tree of the day each was filed.
 
 ---
 
@@ -1188,6 +1194,33 @@ says how to record and refresh one — and a
 - **Evidence**: `session/session.go:222` implements `Fork`; the TUI calls it at
   `tui/update.go:1146` and prints `Created branch: …`; there is no tree view and no branch
   comparison.
+
+### H4 — Branch handling ends at the split: no address, no CLI, no re-parent, no reach
+
+- **Filed**: [#372](https://github.com/yusiwen/TinyCode/issues/372) — 2026-11-28, not started. S1 only;
+  S2–S4 are recorded here and have no issue, and each gets one when it is picked up.
+- **Gap**: a branch can only be taken at the newest message, and only from inside the terminal UI; the
+  link a fork writes cannot be corrected afterwards, and a session directory cannot be shared between
+  machines. The storage layer is not the limit — `Store.Fork` already accepts any fork point — so S1 is
+  a command and an address rather than a schema change.
+- **Evidence**: `tui/update.go:1309` passes `len(m.messages)` as `forkAt` while `session.Store.Fork`
+  (`session/session.go:246`) accepts any index and clamps it (`:295`); the help line offers
+  `/fork [label]` only (`tui/update.go:1252`); `main.go:695-711` has no `--fork` and no `--compare`;
+  `docs/sessions.md:69-74` records the three boundaries as deliberate.
+- **S1 — fork at a chosen message**: `/fork @<n> [label]` keeps the first n messages, and `/fork ?`
+  lists the indices with a one-line preview, because an index the user cannot see is not addressable.
+  Bare `/fork` keeps forking at the newest message, and an out-of-range index is refused instead of
+  clamped.
+- **S2 — CLI parity**: `--fork <id>@<n> [--label l]` and `--compare a b` over the same `session` calls,
+  so taking a branch and comparing two do not require a terminal device.
+- **S3 — re-parent and rename**: rewrite `parent_session`, `fork_at` and the id under validation,
+  instead of the documented "edit the file to change it".
+- **S4 — reach**: a session directory more than one machine can use. Depends on E2; it is not part of
+  E2 because the forest, the ids and the fork point are session concerns.
+- **Not planned**: merging two transcripts. A conversation has no merge semantics — no base to
+  three-way merge against and no conflict to resolve — so what is implementable is S3. Recorded so the
+  boundary is not re-filed as a gap.
+- **Effort** (estimates, not measured): S1 ~½ d; S2 ~1 d; S3 ~1 d; S4 unknown until E2 exists.
 
 ---
 
