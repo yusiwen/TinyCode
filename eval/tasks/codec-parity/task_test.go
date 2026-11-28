@@ -28,8 +28,8 @@ func TestEncodersAgree(t *testing.T) {
 			ID: "t1", Title: "ship it", Due: due(),
 			Tags: []string{"a", "b"}, Priority: 3,
 		},
-		"empty": {},
-		"title only": {Title: "x"},
+		"empty":            {},
+		"title only":       {Title: "x"},
 		"tags empty slice": {ID: "t2", Tags: []string{}},
 		"priority zero":    {ID: "t3", Priority: 0},
 		"due only":         {Due: due()},
@@ -71,10 +71,10 @@ func TestOmissions(t *testing.T) {
 		task Task
 		want []string
 	}{
-		"empty task has no fields":       {Task{}, nil},
-		"zero priority is omitted":       {Task{ID: "t", Priority: 0}, []string{"id"}},
-		"empty slice is omitted":         {Task{ID: "t", Tags: []string{}}, []string{"id"}},
-		"empty string title is omitted":  {Task{ID: "t", Title: ""}, []string{"id"}},
+		"empty task has no fields":      {Task{}, nil},
+		"zero priority is omitted":      {Task{ID: "t", Priority: 0}, []string{"id"}},
+		"empty slice is omitted":        {Task{ID: "t", Tags: []string{}}, []string{"id"}},
+		"empty string title is omitted": {Task{ID: "t", Title: ""}, []string{"id"}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

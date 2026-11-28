@@ -8,7 +8,6 @@ type Interval struct {
 	StartInclusive, EndInclusive bool
 }
 
-
 // Merge sorts and merges a list of intervals, returning a new slice and leaving the input
 // untouched.
 //
@@ -94,8 +93,8 @@ func merges(a, b Interval) bool {
 func union(a, b Interval) Interval {
 	if b.End > a.End {
 		return Interval{
-			Start:       a.Start,
-			End:         b.End,
+			Start:          a.Start,
+			End:            b.End,
 			StartInclusive: a.StartInclusive,
 			EndInclusive:   b.EndInclusive,
 		}
